@@ -1,0 +1,42 @@
+domain: project
+
+entities:
+  Project:
+    label: Project
+    table: projects
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      name:
+        type: string
+        required: true
+        max_length: 120
+        searchable: true
+        sortable: true
+      status:
+        type: enum
+        values: [draft, active, archived]
+        default: draft
+        filterable: true
+      owner:
+        type: relation
+        target: User
+        required: true
+        on_delete: restrict
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list:
+        role: member
+      read:
+        role: member
+      create:
+        role: member
+      update:
+        role: member
+      delete:
+        role: admin

@@ -1,0 +1,276 @@
+{
+  "ir_version": 1,
+  "app": {
+    "name": "project-hub"
+  },
+  "database": {
+    "provider": "postgres",
+    "dev_mode": "managed"
+  },
+  "auth": {
+    "enabled": true
+  },
+  "enums": [],
+  "value_objects": [],
+  "entities": [
+    {
+      "id": "app::Project",
+      "rust_name": "Project",
+      "api_name": "Project",
+      "label": "Project",
+      "table_name": "projects",
+      "fields": [
+        {
+          "id": "app::Project.created_at",
+          "entity": "app::Project",
+          "rust_name": "created_at",
+          "api_name": "created_at",
+          "column_name": "created_at",
+          "ty": {
+            "kind": "datetime"
+          },
+          "nullable": false,
+          "primary_key": false,
+          "generated": "now",
+          "default": null,
+          "validation": {
+            "min_length": null,
+            "max_length": null
+          },
+          "capabilities": {
+            "searchable": false,
+            "filterable": false,
+            "sortable": true
+          }
+        },
+        {
+          "id": "app::Project.id",
+          "entity": "app::Project",
+          "rust_name": "id",
+          "api_name": "id",
+          "column_name": "id",
+          "ty": {
+            "kind": "uuid"
+          },
+          "nullable": false,
+          "primary_key": true,
+          "generated": "uuid_v7",
+          "default": null,
+          "validation": {
+            "min_length": null,
+            "max_length": null
+          },
+          "capabilities": {
+            "searchable": false,
+            "filterable": false,
+            "sortable": false
+          }
+        },
+        {
+          "id": "app::Project.name",
+          "entity": "app::Project",
+          "rust_name": "name",
+          "api_name": "name",
+          "column_name": "name",
+          "ty": {
+            "kind": "string"
+          },
+          "nullable": false,
+          "primary_key": false,
+          "generated": null,
+          "default": null,
+          "validation": {
+            "min_length": null,
+            "max_length": 120
+          },
+          "capabilities": {
+            "searchable": true,
+            "filterable": false,
+            "sortable": true
+          }
+        },
+        {
+          "id": "app::Project.owner",
+          "entity": "app::Project",
+          "rust_name": "owner_id",
+          "api_name": "owner",
+          "column_name": "owner_id",
+          "ty": {
+            "kind": "relation",
+            "target": "app::User"
+          },
+          "nullable": false,
+          "primary_key": false,
+          "generated": null,
+          "default": null,
+          "validation": {
+            "min_length": null,
+            "max_length": null
+          },
+          "capabilities": {
+            "searchable": false,
+            "filterable": false,
+            "sortable": false
+          }
+        },
+        {
+          "id": "app::Project.status",
+          "entity": "app::Project",
+          "rust_name": "status",
+          "api_name": "status",
+          "column_name": "status",
+          "ty": {
+            "kind": "enum",
+            "values": [
+              "draft",
+              "active",
+              "archived"
+            ]
+          },
+          "nullable": true,
+          "primary_key": false,
+          "generated": null,
+          "default": "draft",
+          "validation": {
+            "min_length": null,
+            "max_length": null
+          },
+          "capabilities": {
+            "searchable": false,
+            "filterable": true,
+            "sortable": false
+          }
+        }
+      ],
+      "access": {
+        "list": {
+          "mode": "role",
+          "role": "member"
+        },
+        "read": {
+          "mode": "role",
+          "role": "member"
+        },
+        "create": {
+          "mode": "role",
+          "role": "member"
+        },
+        "update": {
+          "mode": "role",
+          "role": "member"
+        },
+        "delete": {
+          "mode": "role",
+          "role": "admin"
+        }
+      },
+      "views": {},
+      "hooks": {},
+      "concurrency": {
+        "enabled": false
+      }
+    },
+    {
+      "id": "app::User",
+      "rust_name": "User",
+      "api_name": "User",
+      "label": "User",
+      "table_name": "users",
+      "fields": [
+        {
+          "id": "app::User.email",
+          "entity": "app::User",
+          "rust_name": "email",
+          "api_name": "email",
+          "column_name": "email",
+          "ty": {
+            "kind": "string"
+          },
+          "nullable": false,
+          "primary_key": false,
+          "generated": null,
+          "default": null,
+          "validation": {
+            "min_length": null,
+            "max_length": 320
+          },
+          "capabilities": {
+            "searchable": true,
+            "filterable": false,
+            "sortable": false
+          }
+        },
+        {
+          "id": "app::User.id",
+          "entity": "app::User",
+          "rust_name": "id",
+          "api_name": "id",
+          "column_name": "id",
+          "ty": {
+            "kind": "uuid"
+          },
+          "nullable": false,
+          "primary_key": true,
+          "generated": "uuid_v7",
+          "default": null,
+          "validation": {
+            "min_length": null,
+            "max_length": null
+          },
+          "capabilities": {
+            "searchable": false,
+            "filterable": false,
+            "sortable": false
+          }
+        }
+      ],
+      "access": {
+        "list": {
+          "mode": "role",
+          "role": "member"
+        },
+        "read": {
+          "mode": "role",
+          "role": "member"
+        },
+        "create": {
+          "mode": "role",
+          "role": "admin"
+        },
+        "update": {
+          "mode": "role",
+          "role": "admin"
+        },
+        "delete": {
+          "mode": "role",
+          "role": "admin"
+        }
+      },
+      "views": {},
+      "hooks": {},
+      "concurrency": {
+        "enabled": false
+      }
+    }
+  ],
+  "relations": [
+    {
+      "id": "app::Project.owner",
+      "source": "app::Project",
+      "target": "app::User",
+      "cardinality": "many_to_one",
+      "foreign_key_owner": "app::Project",
+      "foreign_key_fields": [
+        "app::Project.owner"
+      ],
+      "inverse": null,
+      "required": true,
+      "unique": false,
+      "on_delete": "restrict"
+    }
+  ],
+  "commands": [],
+  "queries": [],
+  "pages": [],
+  "modules": []
+}

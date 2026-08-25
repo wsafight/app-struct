@@ -1,0 +1,7 @@
+# External source checkouts used only for local architecture research.
+/references/PROJECT_REFERENCES.md
+/references/*/
+
+# Local build output and compiler caches.
+/target/
+**/.appstruct/cache/

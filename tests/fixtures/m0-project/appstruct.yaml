@@ -1,0 +1,17 @@
+version: 1
+
+app:
+  name: project-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: managed
+
+modules:
+  auth:
+    enabled: true
+
+includes:
+  - spec/project.yaml
+  - spec/identity.yaml

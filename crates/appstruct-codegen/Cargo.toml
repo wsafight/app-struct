@@ -1,0 +1,20 @@
+[package]
+name = "appstruct-codegen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+appstruct-ir.workspace = true
+prettyplease.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+
+[dev-dependencies]
+appstruct-compiler.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
