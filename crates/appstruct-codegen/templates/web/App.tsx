@@ -7,15 +7,14 @@ import { ResourceList } from "../pages/ResourceList";
 import { ResourceDetail } from "../pages/ResourceDetail";
 import { customPages } from "../generated/registry";
 import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
+import { ResourceActorProvider, useVisibleResources } from "../resource";
 
 export function App({ registry }: { registry?: AppStructRegistry }) {
-  const first = resources[0];
-  const firstPath = first?.slug ?? customPages[0]?.path ?? "empty";
   const pageComponents = registry?.pages as Record<string, ComponentType<PageComponentProps>> | undefined;
   return (
-    <Routes>
+    <ResourceActorProvider user={null}><Routes>
       <Route element={<Layout resources={resources} pages={customPages} />}>
-        <Route index element={<Navigate to={`/${firstPath}`} replace />} />
+        <Route index element={<HomeRedirect />} />
         {resources.map((resource) => (
           <Route key={resource.name}>
             <Route path={resource.slug} element={<ResourceList resource={resource} resources={resources} />} />
@@ -30,6 +29,11 @@ export function App({ registry }: { registry?: AppStructRegistry }) {
         })}
         <Route path="empty" element={<main className="page"><h1>No resources</h1></main>} />
       </Route>
-    </Routes>
+    </Routes></ResourceActorProvider>
   );
+}
+
+function HomeRedirect() {
+  const first = useVisibleResources(resources)[0];
+  return <Navigate to={`/${first?.slug ?? customPages[0]?.path ?? "empty"}`} replace />;
 }

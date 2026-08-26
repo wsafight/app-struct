@@ -1,9 +1,11 @@
 import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import { useEffect, useState } from "react";
 import { auditApi, type AuditEvent } from "../generated/client";
-import { errorMessage } from "../resource";
+import { auditAccess } from "../generated/resources";
+import { errorMessage, useCanAccessRule } from "../resource";
 
 export function AuditPage() {
+  const canRead = useCanAccessRule(auditAccess);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -12,15 +14,17 @@ export function AuditPage() {
   const pageSize = 25;
 
   useEffect(() => {
+    if (!canRead) return;
     setLoading(true);
     setError("");
     auditApi.list({ page, page_size: pageSize })
       .then((response) => { setEvents(response.data); setTotal(response.meta.total); })
       .catch((reason) => setError(errorMessage(reason)))
       .finally(() => setLoading(false));
-  }, [page]);
+  }, [canRead, page]);
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (!canRead) return <main className="page"><div className="alert" role="alert">You do not have permission to view the audit log.</div></main>;
   return <main className="page audit-page">
     <div className="page-heading"><div><h1>Audit log</h1><p>{total} events</p></div><History size={22} aria-hidden /></div>
     {error && <div className="alert" role="alert">{error}</div>}

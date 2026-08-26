@@ -98,6 +98,32 @@ fn database_migration_commands_require_database_url() {
 }
 
 #[test]
+fn administrator_bootstrap_validates_project_email_and_database_configuration() {
+    let unauthenticated = temporary_project("m2-project");
+    let unavailable = run(
+        &unauthenticated,
+        &["auth", "bootstrap-admin", "--email", "admin@example.test"],
+    );
+    assert_eq!(unavailable.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&unavailable.stderr).contains("AS6201"));
+
+    let authenticated = temporary_project("m0-project");
+    let invalid = run(
+        &authenticated,
+        &["auth", "bootstrap-admin", "--email", "invalid"],
+    );
+    assert_eq!(invalid.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&invalid.stderr).contains("AS6202"));
+
+    let missing_database = run(
+        &authenticated,
+        &["auth", "bootstrap-admin", "--email", "admin@example.test"],
+    );
+    assert_eq!(missing_database.status.code(), Some(3));
+    assert!(String::from_utf8_lossy(&missing_database.stderr).contains("AS6203"));
+}
+
+#[test]
 fn new_creates_valid_official_projects_without_overwrite() {
     let temporary = tempfile::tempdir().unwrap();
     for (name, template) in [

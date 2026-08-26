@@ -5,6 +5,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod auth_admin;
 mod build;
 mod development;
 mod doctor;
@@ -39,6 +40,11 @@ enum Command {
     },
     /// Build validated backend and web production artifacts.
     Build,
+    /// Manage authentication accounts.
+    Auth {
+        #[command(subcommand)]
+        command: auth_admin::AuthCommand,
+    },
     /// Check the local toolchain, database mode, and project configuration.
     Doctor {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
@@ -109,6 +115,7 @@ fn run(cli: Cli) -> ExitCode {
     let diagnostic_format = match &cli.command {
         Command::Check { format } | Command::Doctor { format } => *format,
         Command::New { .. }
+        | Command::Auth { .. }
         | Command::Build
         | Command::Dev { .. }
         | Command::Generate { .. }
@@ -140,6 +147,7 @@ fn run(cli: Cli) -> ExitCode {
 
     match cli.command {
         Command::New { .. } => unreachable!(),
+        Command::Auth { command } => auth_admin::run(&project, &command),
         Command::Build => build::run(&project),
         Command::Doctor { format } => doctor::run(&project, format == OutputFormat::Json),
         Command::Dev { api_port, web_port } => development::run(&project, api_port, web_port),

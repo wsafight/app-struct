@@ -3,7 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { FieldDefinition, ResourceDefinition, ResourceInput, ResourceRecord } from "../resource";
 import type { AppStructRegistry, FieldComponentProps } from "../generated/registry";
-import { errorMessage, fieldErrors } from "../resource";
+import { canAccessResource, errorMessage, fieldErrors, useCanAccess, useResourceActor } from "../resource";
 
 type FormValues = Record<string, string | boolean>;
 
@@ -11,6 +11,7 @@ export function ResourceForm({ resource, resources, registry }: { resource: Reso
   const { id } = useParams();
   const navigate = useNavigate();
   const editing = id !== undefined;
+  const canSubmit = useCanAccess(resource, editing ? "update" : "create");
   const [values, setValues] = useState<FormValues>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pageError, setPageError] = useState("");
@@ -24,7 +25,7 @@ export function ResourceForm({ resource, resources, registry }: { resource: Reso
   }, [id, resource]);
 
   async function loadRecord() {
-    if (!id) return;
+    if (!id || !canSubmit) return;
     setLoading(true);
     setConflict(false);
     try {
@@ -36,6 +37,8 @@ export function ResourceForm({ resource, resources, registry }: { resource: Reso
       setLoading(false);
     }
   }
+
+  if (!canSubmit) return <main className="page"><div className="alert" role="alert">You do not have permission to change this resource.</div></main>;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -84,12 +87,13 @@ function FieldControl({ field, resources, registry, value, error, onChange }: { 
 }
 
 function RelationSelect({ id, field, target, value, error, onChange }: { id: string; field: FieldDefinition; target?: ResourceDefinition; value: string; error?: string; onChange(value: string): void }) {
+  const actor = useResourceActor();
   const [options, setOptions] = useState<ResourceRecord[]>([]);
   const [loadError, setLoadError] = useState("");
   useEffect(() => {
-    if (!target) return;
+    if (!target || !canAccessResource(target, "list", actor)) return;
     target.api.list({ page_size: 100 }).then((response) => setOptions(response.data)).catch((reason) => setLoadError(errorMessage(reason)));
-  }, [target]);
+  }, [actor, target]);
   const labelField = target?.fields.find((item) => !item.primaryKey && (item.kind === "string" || item.kind === "text"));
   return <div className="field"><label htmlFor={id}>{field.label}{field.required && <span aria-hidden> *</span>}</label><select id={id} required={field.required} value={value} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error)}><option value="">Select</option>{options.map((record) => { const optionValue = String(record[target?.primaryKey ?? "id"]); return <option key={optionValue} value={optionValue}>{String(record[labelField?.name ?? target?.primaryKey ?? "id"])}</option>; })}</select>{(error || loadError) && <small className="field-error">{error || loadError}</small>}</div>;
 }

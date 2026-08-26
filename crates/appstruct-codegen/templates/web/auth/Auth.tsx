@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { authApi, type AuthUser } from "../generated/client";
+import { ResourceActorProvider } from "../resource";
 
 interface AuthContextValue {
   loading: boolean;
@@ -28,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async logout() { await authApi.logout(); setUser(null); },
   }), [loading, user]);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}><ResourceActorProvider user={user}>{children}</ResourceActorProvider></AuthContext.Provider>;
 }
 
 export function useAuth(): AuthContextValue {

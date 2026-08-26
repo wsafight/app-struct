@@ -76,7 +76,7 @@ pub fn status_project(
     database_url: &str,
 ) -> Result<MigrationStatus, MigrationError> {
     let project = ProjectMigrations::load(project)?;
-    let mut client = connect(database_url)?;
+    let mut client = connect_database(database_url)?;
     let applied = history::load(&mut client)?;
     let reconciliation = reconcile(&project.files, &applied)?;
     let drift = if reconciliation.pending == 0 {
@@ -99,7 +99,7 @@ pub fn status_project(
 /// mismatches. Transaction-disabled failures remain recorded for manual recovery.
 pub fn apply_project(project: &Path, database_url: &str) -> Result<ApplyReport, MigrationError> {
     let project = ProjectMigrations::load(project)?;
-    let mut client = connect(database_url)?;
+    let mut client = connect_database(database_url)?;
     history::lock(&mut client)?;
     history::ensure_table(&mut client)?;
     let applied = history::load(&mut client)?;
@@ -116,7 +116,13 @@ pub fn apply_project(project: &Path, database_url: &str) -> Result<ApplyReport, 
     })
 }
 
-fn connect(database_url: &str) -> Result<Client, MigrationError> {
+/// Connect to PostgreSQL using the same TLS policy as migration commands.
+///
+/// # Errors
+///
+/// Returns an error when the URL is invalid, TLS cannot be initialized, or PostgreSQL rejects the
+/// connection.
+pub fn connect_database(database_url: &str) -> Result<Client, MigrationError> {
     let config = database_url.parse::<Config>().map_err(|error| {
         MigrationError::Database(format!(
             "invalid PostgreSQL connection configuration: {error}"

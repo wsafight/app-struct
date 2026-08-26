@@ -119,6 +119,12 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(project_api.contains("actor.has_role(\"admin\")"));
     assert!(project_api.contains("Column::OwnerId.eq(actor.id)"));
     assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("Argon2"));
+    let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
+    assert!(resources.contains(r#""mode":"role","role":"admin""#));
+    assert!(resources.contains("export const auditAccess"));
+    let access = artifact_text(&artifacts, "web/src/resource.ts");
+    assert!(access.contains("canAccessResource"));
+    assert!(access.contains("`${logicalField}_id`"));
     assert_m4_openapi_contract(&artifacts);
 
     let manifest = temporary.path().join("generated/backend/Cargo.toml");

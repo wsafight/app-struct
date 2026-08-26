@@ -8,12 +8,11 @@ import type { AppStructRegistry, PageComponentProps } from "../generated/registr
 import { ResourceDetail } from "../pages/ResourceDetail";
 import { ResourceForm } from "../pages/ResourceForm";
 import { ResourceList } from "../pages/ResourceList";
+import { useVisibleResources } from "../resource";
 import { RequireTenant, TenantProvider } from "../tenant/Tenant";
 import { Layout } from "./Layout";
 
 export function App({ registry }: { registry?: AppStructRegistry }) {
-  const first = resources[0];
-  const firstPath = first?.slug ?? customPages[0]?.path ?? "empty";
   const pageComponents = registry?.pages as Record<string, ComponentType<PageComponentProps>> | undefined;
   return <AuthProvider><Routes>
     <Route path="login" element={<LoginPage />} />
@@ -23,7 +22,7 @@ export function App({ registry }: { registry?: AppStructRegistry }) {
     <Route element={<RequireAuth />}>
       <Route element={<TenantProvider><RequireTenant /></TenantProvider>}>
         <Route element={<Layout resources={resources} pages={customPages} />}>
-          <Route index element={<Navigate to={`/${firstPath}`} replace />} />
+          <Route index element={<HomeRedirect />} />
           {resources.map((resource) => <Route key={resource.name}>
             <Route path={resource.slug} element={<ResourceList resource={resource} resources={resources} />} />
             <Route path={`${resource.slug}/new`} element={<ResourceForm resource={resource} resources={resources} registry={registry} />} />
@@ -39,4 +38,9 @@ export function App({ registry }: { registry?: AppStructRegistry }) {
       </Route>
     </Route>
   </Routes></AuthProvider>;
+}
+
+function HomeRedirect() {
+  const first = useVisibleResources(resources)[0];
+  return <Navigate to={`/${first?.slug ?? customPages[0]?.path ?? "empty"}`} replace />;
 }

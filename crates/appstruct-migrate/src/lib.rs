@@ -9,7 +9,7 @@ pub use diff::{
     ChangeRisk, ExecutionRisk, MigrationPlan, PlannedChange, SchemaChange, SchemaRisk, diff,
 };
 pub use runner::{
-    ApplyReport, DriftStatus, MigrationError, MigrationStatus, apply_project,
+    ApplyReport, DriftStatus, MigrationError, MigrationStatus, apply_project, connect_database,
     stamp_schema_checksum, status_project,
 };
 pub use schema::{

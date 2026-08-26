@@ -13,6 +13,8 @@ test("SaaS template supports tenant work and audit on desktop and mobile", async
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
 
+  await expect(page.getByRole("link", { name: "Users" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Audit log" })).toBeVisible();
   await page.getByRole("link", { name: "Projects" }).click();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await page.getByRole("link", { name: "Add" }).click();
@@ -54,4 +56,29 @@ test("SaaS template supports tenant work and audit on desktop and mobile", async
   expect(layout).toEqual({ tableContained: true, tableScrollable: true });
   await page.screenshot({ path: testInfo.outputPath("saas-mobile.png"), fullPage: true });
   expect(errors).toEqual([]);
+});
+
+test("member navigation only exposes authorized resources", async ({ page }) => {
+  const email = `saas-member-${Date.now()}@example.test`;
+  const password = "AppStruct-Member-E2E-2026";
+
+  await page.goto("/register");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  await expect(page.getByRole("heading", { name: "Create organization" })).toBeVisible();
+  await page.getByLabel("Name").fill("Member workspace");
+  await page.getByRole("button", { name: "Create" }).click();
+
+  await expect(page.getByRole("link", { name: "Projects" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tasks" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Users" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Audit log" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+
+  await page.goto("/users");
+  await expect(page.getByRole("alert")).toContainText("do not have permission");
+  await page.goto("/audit");
+  await expect(page.getByRole("alert")).toContainText("do not have permission");
 });

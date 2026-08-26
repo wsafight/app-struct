@@ -71,10 +71,13 @@ curl --fail --silent --show-error -c "$cookie_jar" -b "$cookie_jar" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$email\",\"password\":\"$password\"}" \
   "$api/api/auth/register" >"$temporary_root/admin.json"
-user_id="$(jq -er '.user.id' "$temporary_root/admin.json")"
-psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 \
-  -c "UPDATE \"_appstruct_auth_accounts\" SET roles = '[\"admin\"]'::jsonb WHERE user_id = '$user_id'::uuid" \
-  >/dev/null
+DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
+  target/debug/appstruct --project "$project" auth bootstrap-admin --email "$email"
+DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
+  target/debug/appstruct --project "$project" auth bootstrap-admin --email "$email"
+bootstrap_events="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
+  "SELECT count(*) FROM \"_appstruct_audit_events\" WHERE entity = '_appstruct_auth_accounts' AND operation = 'update'")"
+[[ "$bootstrap_events" == "1" ]]
 csrf="$(awk '$6 == "appstruct_csrf" { print $7 }' "$cookie_jar")"
 curl --fail --silent --show-error -c "$cookie_jar" -b "$cookie_jar" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $csrf" \

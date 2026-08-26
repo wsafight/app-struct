@@ -1,14 +1,15 @@
 import { Boxes } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
-import type { ResourceDefinition } from "../resource";
+import { type ResourceDefinition, useVisibleResources } from "../resource";
 
 export function Layout({ resources, pages }: { resources: ResourceDefinition[]; pages: readonly { name: string; label: string; path: string }[] }) {
+  const visibleResources = useVisibleResources(resources);
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand"><Boxes size={20} aria-hidden /> <span>AppStruct</span></div>
         <nav aria-label="Resources">
-          {resources.map((resource) => (
+          {visibleResources.map((resource) => (
             <NavLink key={resource.name} to={`/${resource.slug}`}>
               {resource.label}
             </NavLink>

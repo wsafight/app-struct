@@ -1,5 +1,5 @@
 use crate::{Artifact, ArtifactKind, generated_header};
-use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
+use appstruct_ir::{AccessRuleIr, AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
 use std::fmt::Write;
 
 pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
@@ -191,10 +191,11 @@ fn resources_source(ir: &AppIr) -> String {
         .collect::<Vec<_>>()
         .join(",\n");
     format!(
-        "{}import type {{ ResourceApi, ResourceDefinition }} from \"../resource\";\n{}\n\nexport const resources: ResourceDefinition[] = [\n{}\n];\n",
+        "{}import type {{ AccessRule, ResourceApi, ResourceDefinition }} from \"../resource\";\n{}\n\nexport const resources: ResourceDefinition[] = [\n{}\n];\n\nexport const auditAccess: AccessRule = {};\n",
         generated_header("//"),
         imports,
-        indent(&resources, 2)
+        indent(&resources, 2),
+        audit_access_source(ir),
     )
 }
 
@@ -218,15 +219,30 @@ fn resource_source(entity: &EntityIr) -> String {
         .map_or("id", |field| field.rust_name.as_str());
     let api = format!("{}Api", lower_camel(&entity.rust_name));
     format!(
-        "{{\n  id: {:?},\n  name: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  fields: [\n{}\n  ],\n  api: {} as unknown as ResourceApi,\n}}",
+        "{{\n  id: {:?},\n  name: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  access: {},\n  fields: [\n{}\n  ],\n  api: {} as unknown as ResourceApi,\n}}",
         entity.id.0,
         entity.rust_name,
         entity.label,
         entity.table_name,
         primary_key,
+        serde_json::to_string(&entity.access).expect("access IR is serializable"),
         indent(&fields, 4),
         api,
     )
+}
+
+fn audit_access_source(ir: &AppIr) -> String {
+    let rules = ir
+        .audit
+        .reader_roles
+        .iter()
+        .map(|role| AccessRuleIr::Role { role: role.clone() })
+        .collect::<Vec<_>>();
+    let rule = match rules.as_slice() {
+        [rule] => rule.clone(),
+        _ => AccessRuleIr::Any { rules },
+    };
+    serde_json::to_string(&rule).expect("access IR is serializable")
 }
 
 fn field_source(field: &FieldIr) -> String {

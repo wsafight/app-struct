@@ -2,9 +2,12 @@ import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Eye, Plus, RefreshCw, Se
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { FieldDefinition, ResourceDefinition, ResourceRecord } from "../resource";
-import { errorMessage } from "../resource";
+import { canAccessResource, errorMessage, useCanAccess, useResourceActor } from "../resource";
 
 export function ResourceList({ resource, resources }: { resource: ResourceDefinition; resources: ResourceDefinition[] }) {
+  const actor = useResourceActor();
+  const canList = useCanAccess(resource, "list");
+  const canCreate = useCanAccess(resource, "create");
   const [searchParams, setSearchParams] = useSearchParams();
   const [records, setRecords] = useState<ResourceRecord[]>([]);
   const [total, setTotal] = useState(0);
@@ -19,6 +22,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
   const filterFields = resource.fields.filter((field) => field.filterable);
 
   const load = useCallback(async () => {
+    if (!canList) return;
     setLoading(true);
     setError("");
     try {
@@ -42,7 +46,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, queryKey, resource, sort]);
+  }, [canList, page, pageSize, queryKey, resource, sort]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { setSearch(searchParams.get("q") ?? ""); }, [queryKey]);
@@ -77,8 +81,9 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
   }
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (!canList) return <AccessDenied />;
   return <main className="page">
-    <div className="page-heading"><div><h1>{resource.label}</h1><p>{total} records</p></div><div className="toolbar"><button className="icon-button" onClick={() => void load()} title="Refresh" aria-label="Refresh"><RefreshCw size={17} /></button><Link className="primary-button" to={`/${resource.slug}/new`}><Plus size={17} /> Add</Link></div></div>
+    <div className="page-heading"><div><h1>{resource.label}</h1><p>{total} records</p></div><div className="toolbar"><button className="icon-button" onClick={() => void load()} title="Refresh" aria-label="Refresh"><RefreshCw size={17} /></button>{canCreate && <Link className="primary-button" to={`/${resource.slug}/new`}><Plus size={17} /> Add</Link>}</div></div>
     <div className="list-controls">
       {resource.fields.some((field) => field.searchable) && <form className="search-control" onSubmit={submitSearch}><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search" placeholder="Search" /></form>}
       {filterFields.map((field) => <FilterControl key={field.name} field={field} resources={resources} searchParams={searchParams} updateParam={updateParam} />)}
@@ -87,7 +92,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
     <div className="table-frame"><table><thead><tr>{columns.map((field) => <th key={field.name}>{field.sortable || field.primaryKey ? <button className="sort-button" onClick={() => changeSort(field.name)}>{field.label}{sort === field.name ? <ArrowUp size={14} /> : sort === `-${field.name}` ? <ArrowDown size={14} /> : null}</button> : field.label}</th>)}<th><span className="sr-only">Actions</span></th></tr></thead><tbody>
       {loading && <tr><td colSpan={columns.length + 1} className="empty">Loading...</td></tr>}
       {!loading && records.length === 0 && <tr><td colSpan={columns.length + 1} className="empty">No records</td></tr>}
-      {!loading && records.map((record) => { const id = String(record[resource.primaryKey]); return <tr key={id}>{columns.map((field) => <td key={field.name}>{formatValue(record[field.name])}</td>)}<td className="row-actions"><Link className="icon-button" to={`/${resource.slug}/${encodeURIComponent(id)}`} title="View" aria-label="View"><Eye size={16} /></Link><button className="icon-button danger" onClick={() => void remove(id)} title="Delete" aria-label="Delete"><Trash2 size={16} /></button></td></tr>; })}
+      {!loading && records.map((record) => { const id = String(record[resource.primaryKey]); const canRead = canAccessResource(resource, "read", actor, record); const canDelete = canAccessResource(resource, "delete", actor, record); return <tr key={id}>{columns.map((field) => <td key={field.name}>{formatValue(record[field.name])}</td>)}<td className="row-actions">{canRead && <Link className="icon-button" to={`/${resource.slug}/${encodeURIComponent(id)}`} title="View" aria-label="View"><Eye size={16} /></Link>}{canDelete && <button className="icon-button danger" onClick={() => void remove(id)} title="Delete" aria-label="Delete"><Trash2 size={16} /></button>}</td></tr>; })}
     </tbody></table></div>
     <div className="pagination"><span>Page {page} of {pages}</span><div><button className="icon-button" disabled={page <= 1} onClick={() => updateParam("page", String(page - 1))} aria-label="Previous page"><ChevronLeft size={17} /></button><button className="icon-button" disabled={page >= pages} onClick={() => updateParam("page", String(page + 1))} aria-label="Next page"><ChevronRight size={17} /></button></div></div>
   </main>;
@@ -111,13 +116,18 @@ function FilterControl({ field, resources, searchParams, updateParam }: { field:
 }
 
 function RelationFilter({ field, target, value, onChange }: { field: FieldDefinition; target?: ResourceDefinition; value: string; onChange(value?: string): void }) {
+  const actor = useResourceActor();
   const [options, setOptions] = useState<ResourceRecord[]>([]);
   useEffect(() => {
-    if (!target) return;
+    if (!target || !canAccessResource(target, "list", actor)) return;
     target.api.list({ page_size: 100 }).then((response) => setOptions(response.data)).catch(() => setOptions([]));
-  }, [target]);
+  }, [actor, target]);
   const labelField = target?.fields.find((item) => !item.primaryKey && (item.kind === "string" || item.kind === "text"));
   return <label className="filter-control"><span>{field.label}</span><select value={value} onChange={(event) => onChange(event.target.value || undefined)}><option value="">All</option>{options.map((record) => { const optionValue = String(record[target?.primaryKey ?? "id"]); return <option key={optionValue} value={optionValue}>{String(record[labelField?.name ?? target?.primaryKey ?? "id"])}</option>; })}</select></label>;
+}
+
+function AccessDenied() {
+  return <main className="page"><div className="alert" role="alert">You do not have permission to view this resource.</div></main>;
 }
 
 function supportsRange(field: FieldDefinition): boolean {

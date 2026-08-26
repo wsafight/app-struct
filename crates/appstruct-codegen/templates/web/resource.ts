@@ -1,8 +1,72 @@
 import type { ApiError, ListQuery, ListResponse } from "./generated/client";
 import type { AppStructRegistry } from "./generated/registry";
+import { createContext, createElement, type ReactNode, useContext } from "react";
 
 export type ResourceRecord = Record<string, unknown>;
 export type ResourceInput = Record<string, unknown>;
+
+export type AccessRule =
+  | { mode: "public" }
+  | { mode: "authenticated" }
+  | { mode: "role"; role: string }
+  | { mode: "owner"; field: string }
+  | { mode: "any"; rules: AccessRule[] }
+  | { mode: "all"; rules: AccessRule[] };
+
+export type ResourceOperation = "list" | "read" | "create" | "update" | "delete";
+
+export interface ResourceAccess {
+  list: AccessRule;
+  read: AccessRule;
+  create: AccessRule;
+  update: AccessRule;
+  delete: AccessRule;
+}
+
+export interface AccessActor {
+  id: string;
+  roles: string[];
+}
+
+const ResourceActorContext = createContext<AccessActor | null>(null);
+
+export function ResourceActorProvider({ user, children }: { user: AccessActor | null; children: ReactNode }) {
+  return createElement(ResourceActorContext.Provider, { value: user }, children);
+}
+
+export function useResourceActor(): AccessActor | null {
+  return useContext(ResourceActorContext);
+}
+
+export function canAccessRule(rule: AccessRule, actor: AccessActor | null, record?: ResourceRecord): boolean {
+  if (rule.mode === "public") return true;
+  if (rule.mode === "authenticated") return actor !== null;
+  if (rule.mode === "role") return actor?.roles.includes(rule.role) ?? false;
+  if (rule.mode === "any") return rule.rules.some((item) => canAccessRule(item, actor, record));
+  if (rule.mode === "all") return rule.rules.every((item) => canAccessRule(item, actor, record));
+  if (!actor) return false;
+  if (!record) return true;
+  const logicalField = rule.field.split(".").at(-1) ?? rule.field;
+  const field = logicalField in record ? logicalField : `${logicalField}_id`;
+  return String(record[field] ?? "") === actor.id;
+}
+
+export function canAccessResource(resource: ResourceDefinition, operation: ResourceOperation, actor: AccessActor | null, record?: ResourceRecord): boolean {
+  return canAccessRule(resource.access[operation], actor, record);
+}
+
+export function useCanAccess(resource: ResourceDefinition, operation: ResourceOperation, record?: ResourceRecord): boolean {
+  return canAccessResource(resource, operation, useResourceActor(), record);
+}
+
+export function useCanAccessRule(rule: AccessRule): boolean {
+  return canAccessRule(rule, useResourceActor());
+}
+
+export function useVisibleResources(resources: ResourceDefinition[]): ResourceDefinition[] {
+  const actor = useResourceActor();
+  return resources.filter((resource) => canAccessResource(resource, "list", actor));
+}
 
 export interface ResourceApi {
   list(query?: ListQuery): Promise<ListResponse<ResourceRecord>>;
@@ -49,6 +113,7 @@ export interface ResourceDefinition {
   label: string;
   slug: string;
   primaryKey: string;
+  access: ResourceAccess;
   fields: FieldDefinition[];
   api: ResourceApi;
 }
