@@ -1,6 +1,6 @@
 # AppStruct 技术设计文档
 
-> 状态：Implementation Baseline v0.8<br>
+> 状态：Implementation Baseline v0.9<br>
 > 日期：2026-08-26<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
@@ -34,6 +34,8 @@ CRUD 一致性加固已完成：写路径在显式 SeaORM 事务中执行，事�
 M4 将 `modules.auth`/`modules.rbac` 降低为 `AuthIr` 和规范化 `AccessRuleIr`，Compiler 校验 Auth User 的 UUID 主键与 required unique email、角色声明、owner relation 目标及非空组合规则。迁移 schema 在业务表之外生成 `_appstruct_auth_accounts`、`sessions`、`password_resets` 和开发邮件捕获表及外键。生成后端使用 Argon2id、opaque token hash、可撤销/过期 session、CSRF/Origin 校验和窄化的开发捕获/SMTP sender；Actor 同时进入 connection/transaction `RequestContext`，owner/RBAC scope 下推为 SeaORM `Condition`。OpenAPI、TypeScript client 和 React 路由从同一 Auth IR 生成 Cookie security scheme、启用的 endpoint、Cookie/CSRF 调用和认证页面。独立 PostgreSQL 验收已覆盖匿名、owner、admin、CSRF、并发前置条件及密码重置/会话撤销路径。
 
 CLI 生成路径已拆为 orchestration、ownership 和 transaction 模块。`generated/.appstruct-manifest.json` 使用确定性 JSON 保存 Artifact 路径、类别、Generator 版本和 SHA-256；生成前拒绝未知文件或被人工修改的 owned file。`target/`、`node_modules/`、`dist/`、`.vite/` 和 Cargo 自动创建的 `Cargo.lock` 视为可丢弃构建瞬态，不参与 ownership 冲突。项目级排他文件锁覆盖恢复、编译、规划与提交；追加式 journal 在每个目录交换 phase 后 `sync_all`。下一次命令会验证候选树的 manifest/hash，再完成提交或恢复 backup；歧义状态保留全部目录并失败关闭。
+
+M5 Template 初始化已进入 CLI。`new` 在项目发现前执行，以当前目录或全局 `--project` 指定目录为 parent；名称限制为可移植的小写 ASCII package/directory name。内置 `minimal/dashboard` 文件表在编译期嵌入二进制，通过固定 sibling staging 写完后提交，目标或 staging 存在时不覆盖。Template 产物归用户所有，包含 `appstruct.lock`、固定 1.98.0 的 `rust-toolchain.toml`、环境示例和本地状态 ignore；`generate` 仍只拥有 `generated/`。
 
 ## 2. 架构决策摘要
 

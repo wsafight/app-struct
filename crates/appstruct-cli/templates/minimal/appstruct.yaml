@@ -1,0 +1,12 @@
+version: 1
+
+app:
+  name: __APPSTRUCT_PROJECT_NAME__
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+
+includes:
+  - spec/main.yaml

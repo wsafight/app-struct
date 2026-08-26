@@ -1,6 +1,6 @@
 # AppStruct 产品需求文档
 
-> 状态：Implementation Baseline v0.9<br>
+> 状态：Implementation Baseline v1.0<br>
 > 日期：2026-08-26<br>
 > 产品类型：配置驱动的 Rust 全栈应用生成框架<br>
 > 文档范围：产品定位、用户体验、功能边界、MVP 和验收标准
@@ -20,6 +20,7 @@
 | M4 | 已完成 | 邮箱密码认证、opaque session、CSRF/Origin、密码重置、RBAC/owner scope、认证 UI 和 OpenAPI 安全契约 |
 | Migration Runner | 已完成 | apply/status、数据库历史、checksum、事务边界、dirty-state 阻断和 PostgreSQL schema drift 检测 |
 | Generator Transaction | 已完成 | 跨进程项目锁、追加式恢复 journal、目录交换崩溃恢复和歧义状态保护 |
+| M5 Templates | 已完成 | `appstruct new`、`minimal/dashboard`、固定 Rust/Node 依赖和不覆盖的一次性项目骨架 |
 
 M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
@@ -34,6 +35,8 @@ M4 已通过独立本地 PostgreSQL 数据库验收：覆盖匿名 401、注册�
 Migration Runner 使用 `_appstruct_migrations` 保存 migration ID、文件 SHA-256、`applying/applied/failed` 状态和时间；session advisory lock 阻止同一数据库并发 apply。迁移默认与历史写入共享事务；带 `-- appstruct:transaction=off` 的审查后迁移在事务外执行，失败会留下 dirty history 并要求人工恢复。每次 `migrate dev` 生成的最新迁移都绑定 schema snapshot checksum；已执行文件被修改、历史缺失/乱序或 snapshot 不匹配时 apply/status 会拒绝继续。全部迁移完成后，status 从 PostgreSQL catalog 校验业务表、列类型/null/default/identity、主键/唯一、enum CHECK 和外键；存在 pending 时明确延后 drift 判断，避免把尚未执行的目标 schema 误报为漂移。
 
 ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新生成先获取 `.appstruct/generation.lock` 的跨进程排他锁，再拒绝未知文件和 hash 已变化的生成文件。完整 staging 通过 manifest 校验后，CLI 向 `.appstruct/generation.journal` 追加并持久化 `prepared/backed_up/installed` phase，随后交换同级 staging/backup 目录。下次生成在持锁状态下根据 journal 和三个目录的实际组合完成提交或回滚；缺少 journal 的旧版遗留目录也能恢复，歧义组合则保留现场并失败。`app/` 不进入该事务。
+
+`appstruct new <name> --template minimal|dashboard` 已提供不覆盖的一次性项目创建。`minimal` 生成 external PostgreSQL 的公开 Note 应用；`dashboard` 生成 managed PostgreSQL Compose、Auth/RBAC/owner 和 User/Project/Task 三实体项目管理应用。两个模板都提交 `appstruct.lock`、`rust-toolchain.toml`、`.env.example` 和本地状态忽略规则，首次 generate 再产生固定的 `pnpm-lock.yaml`；目标或 sibling staging 已存在时创建会中止。
 
 ## 1. 产品摘要
 

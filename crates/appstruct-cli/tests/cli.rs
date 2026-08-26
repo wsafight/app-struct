@@ -98,6 +98,30 @@ fn database_migration_commands_require_database_url() {
 }
 
 #[test]
+fn new_creates_valid_minimal_and_dashboard_projects_without_overwrite() {
+    let temporary = tempfile::tempdir().unwrap();
+    for (name, template) in [("notes-app", "minimal"), ("project-app", "dashboard")] {
+        let created = run_new(temporary.path(), name, template);
+        assert!(
+            created.status.success(),
+            "{}",
+            String::from_utf8_lossy(&created.stderr)
+        );
+        let project = temporary.path().join(name);
+        assert!(run(&project, &["check"]).status.success());
+        assert!(project.join("appstruct.lock").is_file());
+        assert!(project.join("rust-toolchain.toml").is_file());
+
+        let readme = fs::read(project.join("README.md")).unwrap();
+        let repeated = run_new(temporary.path(), name, template);
+        assert_eq!(repeated.status.code(), Some(1));
+        assert_eq!(fs::read(project.join("README.md")).unwrap(), readme);
+    }
+    assert!(temporary.path().join("project-app/compose.yaml").is_file());
+    assert!(!temporary.path().join("notes-app/compose.yaml").exists());
+}
+
+#[test]
 fn generation_manifest_blocks_modified_and_unknown_files() {
     let project = temporary_project("m2-project");
     let initial = run(&project, &["generate"]);
@@ -188,6 +212,14 @@ fn run(project: &Path, arguments: &[&str]) -> std::process::Output {
         .arg(project)
         .args(arguments)
         .env_remove("DATABASE_URL")
+        .output()
+        .unwrap()
+}
+
+fn run_new(parent: &Path, name: &str, template: &str) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .current_dir(parent)
+        .args(["new", name, "--template", template])
         .output()
         .unwrap()
 }

@@ -1,0 +1,29 @@
+domain: main
+
+entities:
+  Note:
+    label: Notes
+    table: notes
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      title:
+        type: string
+        required: true
+        max_length: 160
+        searchable: true
+        sortable: true
+      body:
+        type: text
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { public: true }
+      read: { public: true }
+      create: { public: true }
+      update: { public: true }
+      delete: { public: true }

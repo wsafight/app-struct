@@ -7,6 +7,7 @@ use std::process::ExitCode;
 
 mod generation;
 mod migration;
+mod project_new;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -25,6 +26,12 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Create a new `AppStruct` project from an official template.
+    New {
+        name: String,
+        #[arg(long, value_enum, default_value_t = project_new::ProjectTemplate::Dashboard)]
+        template: project_new::ProjectTemplate,
+    },
     /// Validate the App Spec and build normalized IR in memory.
     Check {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
@@ -62,9 +69,24 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> ExitCode {
+    if let Command::New { name, template } = &cli.command {
+        let parent = match cli.project {
+            Some(ref path) => path.clone(),
+            None => match env::current_dir() {
+                Ok(path) => path,
+                Err(error) => {
+                    eprintln!("error[AS6001]: cannot read current directory: {error}");
+                    return ExitCode::from(3);
+                }
+            },
+        };
+        return project_new::run(&parent, name, *template);
+    }
     let diagnostic_format = match &cli.command {
         Command::Check { format } => *format,
-        Command::Generate { .. } | Command::Migrate { .. } => OutputFormat::Text,
+        Command::New { .. } | Command::Generate { .. } | Command::Migrate { .. } => {
+            OutputFormat::Text
+        }
     };
     let start = match cli.project {
         Some(path) => path,
@@ -90,6 +112,7 @@ fn run(cli: Cli) -> ExitCode {
     };
 
     match cli.command {
+        Command::New { .. } => unreachable!(),
         Command::Check { format } => match appstruct_compiler::compile_project(&project) {
             Ok(ir) => {
                 match format {

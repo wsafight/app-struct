@@ -1,0 +1,82 @@
+domain: project
+
+entities:
+  Project:
+    label: Projects
+    table: projects
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      name:
+        type: string
+        required: true
+        max_length: 120
+        searchable: true
+        sortable: true
+      status:
+        type: enum
+        values: [draft, active, archived]
+        default: draft
+        filterable: true
+      owner:
+        type: relation
+        target: User
+        required: true
+        on_delete: restrict
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { any: [{ owner: owner }, { role: admin }] }
+      read: { any: [{ owner: owner }, { role: admin }] }
+      create: { any: [{ owner: owner }, { role: admin }] }
+      update: { any: [{ owner: owner }, { role: admin }] }
+      delete: { role: admin }
+
+  Task:
+    label: Tasks
+    table: tasks
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      project:
+        type: relation
+        target: Project
+        required: true
+        on_delete: cascade
+        filterable: true
+      title:
+        type: string
+        required: true
+        max_length: 160
+        searchable: true
+        sortable: true
+      status:
+        type: enum
+        values: [todo, in_progress, done]
+        default: todo
+        filterable: true
+      owner:
+        type: relation
+        target: User
+        required: true
+        on_delete: restrict
+      due_date:
+        type: date
+        filterable: true
+        sortable: true
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { any: [{ owner: owner }, { role: admin }] }
+      read: { any: [{ owner: owner }, { role: admin }] }
+      create: { any: [{ owner: owner }, { role: admin }] }
+      update: { any: [{ owner: owner }, { role: admin }] }
+      delete: { any: [{ owner: owner }, { role: admin }] }
