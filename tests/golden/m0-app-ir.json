@@ -8,7 +8,15 @@
     "dev_mode": "managed"
   },
   "auth": {
-    "enabled": true
+    "enabled": true,
+    "user_entity": "app::User",
+    "registration_enabled": true,
+    "password_reset_enabled": true,
+    "roles": [
+      "admin",
+      "member"
+    ],
+    "default_role": "member"
   },
   "enums": [],
   "value_objects": [],
@@ -191,20 +199,56 @@
       ],
       "access": {
         "list": {
-          "mode": "role",
-          "role": "member"
+          "mode": "any",
+          "rules": [
+            {
+              "mode": "role",
+              "role": "admin"
+            },
+            {
+              "mode": "owner",
+              "field": "app::Project.owner"
+            }
+          ]
         },
         "read": {
-          "mode": "role",
-          "role": "member"
+          "mode": "any",
+          "rules": [
+            {
+              "mode": "role",
+              "role": "admin"
+            },
+            {
+              "mode": "owner",
+              "field": "app::Project.owner"
+            }
+          ]
         },
         "create": {
-          "mode": "role",
-          "role": "member"
+          "mode": "any",
+          "rules": [
+            {
+              "mode": "role",
+              "role": "admin"
+            },
+            {
+              "mode": "owner",
+              "field": "app::Project.owner"
+            }
+          ]
         },
         "update": {
-          "mode": "role",
-          "role": "member"
+          "mode": "any",
+          "rules": [
+            {
+              "mode": "role",
+              "role": "admin"
+            },
+            {
+              "mode": "owner",
+              "field": "app::Project.owner"
+            }
+          ]
         },
         "delete": {
           "mode": "role",
@@ -235,7 +279,7 @@
           },
           "nullable": false,
           "primary_key": false,
-          "unique": false,
+          "unique": true,
           "generated": null,
           "default": null,
           "validation": {

@@ -1,12 +1,13 @@
 mod access;
+mod auth;
 mod extension;
 mod value;
 
 pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
 
 use self::value::{
-    ensure_known_keys, expect_bool, expect_mapping, expect_scalar_string, expect_sequence,
-    expect_string, expect_u64, optional_bool, optional_string, optional_u64, required,
+    ensure_known_keys, expect_mapping, expect_scalar_string, expect_sequence, expect_string,
+    expect_u64, optional_bool, optional_string, optional_u64, required,
 };
 use crate::yaml::{MappingEntry, Node};
 use appstruct_ir::{Diagnostic, SourceSpan};
@@ -23,8 +24,18 @@ pub(crate) struct SurfaceRoot {
     pub app_name: Located<String>,
     pub database_provider: Located<String>,
     pub database_mode: Located<String>,
-    pub auth_enabled: bool,
+    pub auth: SurfaceAuth,
     pub includes: Vec<Located<String>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SurfaceAuth {
+    pub enabled: bool,
+    pub user_entity: Option<Located<String>>,
+    pub registration_enabled: bool,
+    pub password_reset_enabled: bool,
+    pub roles: Vec<Located<String>>,
+    pub default_role: Option<Located<String>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -130,7 +141,11 @@ pub(crate) struct SurfaceAccess {
 #[derive(Clone, Debug)]
 pub(crate) enum SurfaceAccessRule {
     Public,
+    Authenticated,
     Role(String),
+    Owner(String),
+    Any(Vec<Located<SurfaceAccessRule>>),
+    All(Vec<Located<SurfaceAccessRule>>),
 }
 
 pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
@@ -179,29 +194,14 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
         .map(|node| expect_string(node, "include path"))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let auth_enabled = if let Some(modules_node) = mapping.get("modules") {
-        let modules = expect_mapping(&modules_node.value, "`modules`")?;
-        ensure_known_keys(modules, &["auth"], "`modules` in M0")?;
-        if let Some(auth_node) = modules.get("auth") {
-            let auth = expect_mapping(&auth_node.value, "`modules.auth`")?;
-            ensure_known_keys(auth, &["enabled"], "`modules.auth`")?;
-            auth.get("enabled")
-                .map(|enabled| expect_bool(&enabled.value, "`modules.auth.enabled`"))
-                .transpose()?
-                .unwrap_or(false)
-        } else {
-            false
-        }
-    } else {
-        false
-    };
+    let auth = auth::decode(mapping.get("modules"))?;
 
     Ok(SurfaceRoot {
         version,
         app_name,
         database_provider,
         database_mode: dev_mode,
-        auth_enabled,
+        auth,
         includes,
     })
 }

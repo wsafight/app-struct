@@ -102,8 +102,81 @@ fn m3_extensions_require_every_handler_at_compile_time() {
     assert!(complete.success());
 }
 
+#[test]
+fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+    let ir = compile_project(&fixture).unwrap();
+    let artifacts = plan(&ir).unwrap();
+    assert_eq!(artifacts.len(), 40);
+    let temporary = tempfile::tempdir().unwrap();
+    write_artifacts(temporary.path(), &artifacts);
+
+    let sql = artifact_text(&artifacts, "database/0001_initial.sql");
+    assert!(sql.contains("_appstruct_auth_accounts"));
+    assert!(sql.contains("_appstruct_auth_sessions"));
+    assert!(sql.contains("_appstruct_auth_password_resets"));
+    let project_api = artifact_text(&artifacts, "backend/src/api/project.rs");
+    assert!(project_api.contains("actor.has_role(\"admin\")"));
+    assert!(project_api.contains("Column::OwnerId.eq(actor.id)"));
+    assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("Argon2"));
+    assert_m4_openapi_contract(&artifacts);
+
+    let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    let checked = cargo_check(&manifest, true);
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+}
+
+#[test]
+fn m4_disabled_auth_flows_are_not_published() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+    let mut ir = compile_project(&fixture).unwrap();
+    ir.auth.registration_enabled = false;
+    ir.auth.password_reset_enabled = false;
+    let artifacts = plan(&ir).unwrap();
+    let openapi: Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+
+    assert!(openapi["paths"]["/api/auth/register"].is_null());
+    assert!(openapi["paths"]["/api/auth/password/request"].is_null());
+    assert!(openapi["paths"]["/api/auth/password/reset"].is_null());
+    assert!(
+        artifact_text(&artifacts, "backend/src/auth/session.rs").contains("DisabledMailSender")
+    );
+    assert!(
+        artifact_text(&artifacts, "web/src/auth/AuthPages.tsx")
+            .contains("if (!authFeatures.passwordReset)")
+    );
+}
+
+fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
+    let openapi: Value =
+        serde_json::from_str(artifact_text(artifacts, "openapi/openapi.json")).unwrap();
+    assert_eq!(
+        openapi["components"]["securitySchemes"]["cookieSession"]["name"],
+        "appstruct_session"
+    );
+    assert_eq!(
+        openapi["paths"]["/api/projects/"]["get"]["security"][0]["cookieSession"],
+        serde_json::json!([])
+    );
+    assert!(openapi["paths"]["/api/auth/register"]["post"].is_object());
+    assert!(openapi["paths"]["/api/auth/password/request"]["post"].is_object());
+    assert_eq!(
+        openapi["paths"]["/api/auth/logout"]["post"]["parameters"][0]["name"],
+        "X-CSRF-Token"
+    );
+    assert_eq!(
+        openapi["components"]["schemas"]["AuthUser"]["properties"]["roles"]["items"]["enum"],
+        serde_json::json!(["admin", "member"])
+    );
+}
+
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 33);
+    assert_eq!(artifacts.len(), 34);
     assert!(artifact_text(artifacts, "database/0001_initial.sql").contains("CREATE TABLE"));
     assert!(artifact_text(artifacts, "web/pnpm-lock.yaml").contains("lockfileVersion"));
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("ListResponse"));
@@ -131,6 +204,14 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
 
     let openapi: Value =
         serde_json::from_str(artifact_text(artifacts, "openapi/openapi.json")).unwrap();
+    assert_eq!(
+        openapi["components"]["securitySchemes"],
+        serde_json::json!({})
+    );
+    assert_eq!(
+        openapi["paths"]["/api/projects/"]["get"]["security"],
+        serde_json::json!([])
+    );
     assert!(openapi["paths"]["/api/projects/"]["post"].is_object());
     assert!(openapi["paths"]["/api/projects/{id}"]["patch"].is_object());
     assert!(

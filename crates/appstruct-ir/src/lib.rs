@@ -57,6 +57,11 @@ pub enum DatabaseDevMode {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthIr {
     pub enabled: bool,
+    pub user_entity: Option<EntityId>,
+    pub registration_enabled: bool,
+    pub password_reset_enabled: bool,
+    pub roles: Vec<String>,
+    pub default_role: Option<String>,
 }
 
 /// Stable logical entity identifier. It never depends on vector position.
@@ -206,7 +211,11 @@ pub struct CrudAccessIr {
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum AccessRuleIr {
     Public,
+    Authenticated,
     Role { role: String },
+    Owner { field: FieldId },
+    Any { rules: Vec<AccessRuleIr> },
+    All { rules: Vec<AccessRuleIr> },
 }
 
 /// M0 preserves the future IR shape while leaving UI defaults empty.

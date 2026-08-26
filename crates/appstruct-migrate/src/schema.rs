@@ -1,6 +1,8 @@
 use appstruct_ir::{AppIr, DatabaseProvider, FieldTypeIr, GeneratedValueIr, OnDeleteIr};
 use serde::{Deserialize, Serialize};
 
+mod auth;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatabaseSchema {
     pub schema_version: u32,
@@ -56,7 +58,7 @@ pub struct ForeignKeySchema {
 
 #[must_use]
 pub fn extract(ir: &AppIr) -> DatabaseSchema {
-    let tables = ir
+    let mut tables = ir
         .entities
         .iter()
         .map(|entity| TableSchema {
@@ -77,12 +79,16 @@ pub fn extract(ir: &AppIr) -> DatabaseSchema {
                 })
                 .collect(),
         })
-        .collect();
-    let foreign_keys = ir
+        .collect::<Vec<_>>();
+    let mut foreign_keys = ir
         .relations
         .iter()
         .map(|relation| foreign_key(ir, relation))
-        .collect();
+        .collect::<Vec<_>>();
+    if ir.auth.enabled {
+        tables.extend(auth::tables());
+        foreign_keys.extend(auth::foreign_keys(ir));
+    }
     DatabaseSchema {
         schema_version: 1,
         provider: ir.database.provider,

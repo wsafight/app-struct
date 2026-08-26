@@ -24,14 +24,17 @@ pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
     let hooks = format_ident!("{}_hooks", module_name(entity));
     let policy = format_ident!("{}_policy", module_name(entity));
     let handlers = write::handlers(
-        &module,
-        &hooks,
-        &policy,
-        &parse_id,
+        entity,
+        &write::HandlerContext {
+            module: &module,
+            hooks: &hooks,
+            policy: &policy,
+            parse_id: &parse_id,
+        },
         &create_values,
         active_default.as_ref(),
         &updates,
-    );
+    )?;
     let validators = validation_functions(entity)?;
 
     render(quote! {
@@ -85,6 +88,10 @@ fn validation_functions(entity: &EntityIr) -> Result<TokenStream, CodegenError> 
 
         fn finish_validation(violations: Vec<FieldViolation>) -> Result<(), ApiError> {
             if violations.is_empty() { Ok(()) } else { Err(ApiError::Validation(violations)) }
+        }
+
+        fn access_denied(context: &RequestContext) -> ApiError {
+            if context.actor().is_some() { ApiError::Forbidden } else { ApiError::Unauthorized }
         }
     })
 }

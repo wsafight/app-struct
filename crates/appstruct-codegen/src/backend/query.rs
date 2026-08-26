@@ -1,3 +1,4 @@
+use super::access;
 use super::{parse_ident, rust_type};
 use crate::CodegenError;
 use appstruct_ir::{EntityIr, FieldIr, FieldTypeIr};
@@ -14,6 +15,7 @@ pub(super) fn list_support(
     let search = search_rule(entity, module)?;
     let sorts = sort_rules(entity, module)?;
     let primary = column_ident(primary_key(entity)?)?;
+    let access_scope = access::scope(entity, module, &entity.access.list)?;
     Ok(quote! {
         use sea_orm::{ColumnTrait, Condition, PaginatorTrait, QueryFilter, QueryOrder};
 
@@ -42,8 +44,10 @@ pub(super) fn list_support(
 
         async fn list(
             State(state): State<AppState>,
+            headers: HeaderMap,
             axum::extract::Query(query): axum::extract::Query<ListQuery>,
         ) -> Result<Json<ListResponse<#module::Model>>, ApiError> {
+            let context = state.context(&headers).await?;
             let page = query.page.unwrap_or(1);
             let page_size = query.page_size.unwrap_or(25);
             if page == 0 || !(1..=100).contains(&page_size) {
@@ -58,6 +62,7 @@ pub(super) fn list_support(
                 }
             }
             let mut select = #module::Entity::find();
+            #access_scope
             #(#filters)*
             #search
             let mut primary_sorted = false;

@@ -12,6 +12,7 @@ entities:
       email:
         type: string
         required: true
+        unique: true
         max_length: 320
         searchable: true
     access:

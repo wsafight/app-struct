@@ -33,7 +33,11 @@ fn document(ir: &AppIr) -> Value {
         add_entity_paths(&mut paths, entity);
         add_entity_schemas(&mut schemas, entity);
     }
+    if ir.auth.enabled {
+        auth::add(&mut paths, &mut schemas, ir);
+    }
     extension::add(ir, &mut paths, &mut schemas);
+    let security_schemes = auth::security_schemes(ir.auth.enabled);
     json!({
         "openapi": "3.1.0",
         "info": {
@@ -41,7 +45,7 @@ fn document(ir: &AppIr) -> Value {
             "version": "0.1.0",
         },
         "paths": paths,
-        "components": { "schemas": schemas },
+        "components": { "schemas": schemas, "securitySchemes": security_schemes },
     })
 }
 
@@ -55,6 +59,7 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
             "get": {
                 "operationId": format!("list{singular}"),
                 "tags": [singular],
+                "security": auth::security(&entity.access.list),
                 "parameters": list_parameters(entity),
                 "responses": {
                     "200": response(
@@ -66,6 +71,7 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
             "post": {
                 "operationId": format!("create{singular}"),
                 "tags": [singular],
+                "security": auth::security(&entity.access.create),
                 "requestBody": request_body(&format!("Create{singular}Input")),
                 "responses": {
                     "201": versioned_response("Resource created", &schema_ref(singular)),
@@ -86,6 +92,7 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
             "get": {
                 "operationId": format!("get{singular}"),
                 "tags": [singular],
+                "security": auth::security(&entity.access.read),
                 "responses": {
                     "200": versioned_response("Resource", &schema_ref(singular)),
                     "404": error_response(),
@@ -94,6 +101,7 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
             "patch": {
                 "operationId": format!("update{singular}"),
                 "tags": [singular],
+                "security": auth::security(&entity.access.update),
                 "parameters": [if_match_parameter()],
                 "requestBody": request_body(&format!("Update{singular}Input")),
                 "responses": {
@@ -107,6 +115,7 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
             "delete": {
                 "operationId": format!("delete{singular}"),
                 "tags": [singular],
+                "security": auth::security(&entity.access.delete),
                 "parameters": [if_match_parameter()],
                 "responses": {
                     "204": { "description": "Resource deleted" },
@@ -365,4 +374,5 @@ fn error_schema() -> Value {
         }
     })
 }
+mod auth;
 mod extension;

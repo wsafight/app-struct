@@ -19,10 +19,16 @@ pub enum ApiError {
     InvalidPrecondition,
     PreconditionRequired,
     ConcurrentModification,
+    InvalidCredentialsInput,
+    InvalidCsrf,
+    InvalidResetToken,
+    Unauthorized,
+    TooManyRequests,
     Forbidden,
     NotFound,
     Validation(Vec<FieldViolation>),
     Database(DbErr),
+    Internal,
 }
 
 #[derive(Serialize)]
@@ -76,6 +82,36 @@ impl IntoResponse for ApiError {
                 "The resource changed after it was loaded".to_owned(),
                 vec![],
             ),
+            Self::InvalidCredentialsInput => (
+                StatusCode::BAD_REQUEST,
+                "INVALID_CREDENTIALS_INPUT",
+                "The email or password does not meet the required format".to_owned(),
+                vec![],
+            ),
+            Self::InvalidCsrf => (
+                StatusCode::FORBIDDEN,
+                "INVALID_CSRF",
+                "The request could not be verified".to_owned(),
+                vec![],
+            ),
+            Self::InvalidResetToken => (
+                StatusCode::BAD_REQUEST,
+                "INVALID_RESET_TOKEN",
+                "The password reset link is invalid or expired".to_owned(),
+                vec![],
+            ),
+            Self::Unauthorized => (
+                StatusCode::UNAUTHORIZED,
+                "UNAUTHENTICATED",
+                "Authentication is required".to_owned(),
+                vec![],
+            ),
+            Self::TooManyRequests => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "RATE_LIMITED",
+                "Too many authentication attempts".to_owned(),
+                vec![],
+            ),
             Self::NotFound => (
                 StatusCode::NOT_FOUND,
                 "NOT_FOUND",
@@ -115,6 +151,12 @@ impl IntoResponse for ApiError {
                     )
                 }
             }
+            Self::Internal => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL_ERROR",
+                "The request could not be completed".to_owned(),
+                vec![],
+            ),
         };
         (status, Json(ErrorEnvelope { error: ErrorBody { code, message, fields } })).into_response()
     }

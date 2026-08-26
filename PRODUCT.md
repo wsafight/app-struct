@@ -1,13 +1,13 @@
 # AppStruct 产品需求文档
 
-> 状态：Implementation Baseline v0.6<br>
+> 状态：Implementation Baseline v0.7<br>
 > 日期：2026-08-26<br>
 > 产品类型：配置驱动的 Rust 全栈应用生成框架<br>
 > 文档范围：产品定位、用户体验、功能边界、MVP 和验收标准
 
 ## 0. 当前实现基线
 
-截至 2026-08-26，仓库已完成 M0 至 M3，并在 M1 后完成生成器与编译器的模块化重构：
+截至 2026-08-26，仓库已完成 M0 至 M4，并在 M1 后完成生成器与编译器的模块化重构：
 
 | 里程碑 | 状态 | 已固化能力 |
 | --- | --- | --- |
@@ -17,12 +17,17 @@
 | M2 | 已完成 | 默认值、唯一/枚举/数值校验、关系与反向关系、分页/过滤/搜索/排序、详情页、RelationSelect 和 schema diff 风险阻断 |
 | M3 | 已完成 | Value Object、Hook、Command、Query、Policy、Rust/React registry、SHA-256 ownership manifest 和安全目录交换 |
 | 一致性加固 | 已完成 | 显式写事务、事务内 Hook connection、final-state Policy、revision/ETag 乐观并发和冲突恢复 UI |
+| M4 | 已完成 | 邮箱密码认证、opaque session、CSRF/Origin、密码重置、RBAC/owner scope、认证 UI 和 OpenAPI 安全契约 |
 
 M2 的 `migrate plan` 是纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。数据库历史、checksum、`migrate apply/status` 与自动连接开发数据库仍属于后续工程化范围，不能把 snapshot 解读为数据库已经执行到该版本。
 
 M3 将用户实现固定在 `app/` 边界，生成目录只保存可重复构建的契约和运行时。Rust 端以一个实现全部必需 Command/Query handler trait 的聚合对象完成类型状态注册，缺少任一 trait 时编译失败；Entity Hook 和 Policy 是有安全默认实现的可选注册项。React 端生成字段组件和自定义页面的必需 registry key；存在引用时，生成入口从用户所有的 `app/web/registry.tsx` 导入实现，并通过 TypeScript `satisfies` 在构建期检查完整性。真实 PostgreSQL 验收已覆盖输入 Hook、归档 Command、指标 Query 和拒绝删除 Policy。
 
 CRUD 写路径已在显式 SeaORM 事务内执行：`before_create/update/delete`、主记录写入和 `after_create/update/delete` 共享事务连接，任一步失败都会放弃事务；`after_commit` 在提交后以普通连接 best-effort 执行，失败只记录日志。Update Policy 同时看到旧记录、类型化 patch 和最终候选记录。每个实体由框架管理 `revision bigint not null default 1`，详情/创建/更新返回 ETag，更新和删除要求 `If-Match`；陈旧 revision 返回 412，生成客户端自动维护 ETag，表单冲突时保留输入并允许重新加载。
+
+M4 已将 `modules.auth` 和 `modules.rbac` 纳入 Surface、Typed IR、Compiler 校验与全部生成器。启用认证的应用会生成注册、登录、退出、当前用户和可选密码重置流程，使用 Argon2id 密码哈希、只保存 hash 的 opaque session/reset token、`HttpOnly` session Cookie、CSRF token 和 Origin 校验。Actor 被注入普通及事务内 `RequestContext`，`public/authenticated/role/owner/any/all` 规则在后端执行；列表和按 ID 读取会将 owner/RBAC 转换为 SeaORM 查询条件。React 生成物包含认证状态、登录/注册/密码重置页面、路由守卫和退出入口，TypeScript client 默认携带 Cookie 并自动发送 CSRF，OpenAPI 同步发布 Cookie security scheme 和启用的 Auth endpoint。
+
+M4 已通过独立本地 PostgreSQL 数据库验收：覆盖匿名 401、注册与 Cookie、CSRF 403、owner 数据隔离、admin 跨 owner 访问、member 删除 403、ETag `rev-1/rev-2`、缺少 `If-Match` 的 428、陈旧 revision 的 412，以及密码重置 token 单次使用、旧 session 撤销和新密码登录。验收数据库在测试后已回收。
 
 当前 ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新生成前会拒绝未知文件和 hash 已变化的生成文件，再通过同级 staging/backup 目录交换提交；`app/` 不进入交换范围。跨进程生成锁、崩溃恢复 journal 和自动恢复未完成目录事务仍是后续工程化能力，当前实现发现遗留 staging/backup 时会明确中止。
 
@@ -500,11 +505,11 @@ MVP 提供邮箱密码认证，并预留 OAuth Provider 接口。认证模块包
 - 当前用户接口
 - 受保护路由
 
-Auth Module 在 MVP 内提供仅用于注册验证和密码重置的 `AuthMailSender` 接口、开发捕获器以及一个生产可用的 SMTP adapter。生产环境未配置邮件发送能力时，启用相关认证流程必须在启动前失败。V1 的 Mail Module 在该窄接口之上提供通用模板、Provider 路由和业务事件邮件，不作为 MVP 密码重置的前置依赖。
+Auth Module 在 MVP 内提供仅用于密码重置的 `AuthMailSender` 接口、开发捕获器以及一个生产可用的 SMTP adapter。生产环境未配置邮件发送能力时，启用密码重置必须在启动前失败。注册验证可在后续扩展这一窄接口；V1 的 Mail Module 在其上提供通用模板、Provider 路由和业务事件邮件，不作为 MVP 密码重置的前置依赖。
 
 ### 11.2 RBAC
 
-配置可以为实体操作和自定义操作声明角色。MVP 角色集合由 RBAC Module 配置或其他 Module export 显式声明，用户记录保存其角色分配；引用未声明角色时 Compiler 报错。单条规则使用 `role`、`owner`、`authenticated`、`public` 或命名 `policy`；`any` 和 `all` 用于组合规则。数组顺序不影响授权结果，空组合在配置校验阶段报错。MVP 不支持否定规则或任意权限表达式。
+配置可以为实体操作和自定义操作声明角色。MVP 角色集合由 RBAC Module 配置或其他 Module export 显式声明，用户记录保存其角色分配；引用未声明角色时 Compiler 报错。单条规则使用 `role`、`owner`、`authenticated` 或 `public`；`any` 和 `all` 用于组合规则。数组顺序不影响授权结果，空组合在配置校验阶段报错。复杂业务授权继续通过实体 Policy trait 扩展，MVP 不支持 YAML 命名 Policy、否定规则或任意权限表达式。
 
 例如，项目所有者或管理员均可更新：
 

@@ -11,6 +11,9 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
 
 fn client_source(ir: &AppIr) -> String {
     let mut sections = vec![generated_header("//"), runtime_source().to_owned()];
+    if ir.auth.enabled {
+        sections.push(auth_source(ir));
+    }
     sections.extend(ir.value_objects.iter().map(value_object_type));
     for entity in &ir.entities {
         sections.push(entity_types(entity));
@@ -129,6 +132,11 @@ const resourceEtags = new Map<string, string>();
 async function request<T>(path: string, init?: RequestInit, revisionKey?: string): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
+  const method = init?.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD") {
+    const csrf = cookieValue("appstruct_csrf");
+    if (csrf) headers.set("X-CSRF-Token", csrf);
+  }
   if (init?.method === "PATCH" || init?.method === "DELETE") {
     const etag = resourceEtags.get(path);
     if (etag) headers.set("If-Match", etag);
@@ -136,6 +144,7 @@ async function request<T>(path: string, init?: RequestInit, revisionKey?: string
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
+    credentials: "include",
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as ErrorEnvelope | null;
@@ -151,6 +160,13 @@ async function request<T>(path: string, init?: RequestInit, revisionKey?: string
   if (init?.method === "DELETE") resourceEtags.delete(path);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+function cookieValue(name: string): string | undefined {
+  return document.cookie
+    .split(";")
+    .map((part) => part.trim().split("="))
+    .find(([candidate]) => candidate === name)?.[1];
 }
 
 function listPath(path: string, query: ListQuery): string {
@@ -170,6 +186,39 @@ function listPath(path: string, query: ListQuery): string {
   return search ? `${path}?${search}` : path;
 }
 "#
+}
+
+fn auth_source(ir: &AppIr) -> String {
+    let registration = ir.auth.registration_enabled;
+    let password_reset = ir.auth.password_reset_enabled;
+    format!(
+        r#"export interface AuthUser {{
+  id: string;
+  email: string;
+  roles: string[];
+}}
+
+interface AuthResponse {{ user: AuthUser; }}
+
+export const authFeatures = {{ registration: {registration}, passwordReset: {password_reset} }} as const;
+
+export const authApi = {{
+  me: async () => (await request<AuthResponse>("/api/auth/me")).user,
+  login: async (email: string, password: string) =>
+    (await request<AuthResponse>("/api/auth/login", {{ method: "POST", body: JSON.stringify({{ email, password }}) }})).user,
+  register: async (email: string, password: string) =>
+    (await request<AuthResponse>("/api/auth/register", {{ method: "POST", body: JSON.stringify({{ email, password }}) }})).user,
+  logout: async () => {{
+    await request<void>("/api/auth/logout", {{ method: "POST" }});
+    resourceEtags.clear();
+  }},
+  requestPasswordReset: (email: string) =>
+    request<void>("/api/auth/password/request", {{ method: "POST", body: JSON.stringify({{ email }}) }}),
+  resetPassword: (token: string, password: string) =>
+    request<void>("/api/auth/password/reset", {{ method: "POST", body: JSON.stringify({{ token, password }}) }}),
+}};
+"#
+    )
 }
 
 fn entity_types(entity: &EntityIr) -> String {

@@ -1,5 +1,5 @@
-pub(super) fn cargo() -> &'static str {
-    concat!(
+pub(super) fn cargo(auth_enabled: bool) -> String {
+    let mut manifest = concat!(
         "[package]\n",
         "name = \"appstruct-generated-backend\"\n",
         "version = \"0.0.0\"\n",
@@ -19,4 +19,15 @@ pub(super) fn cargo() -> &'static str {
         "tracing-subscriber = { version = \"0.3.22\", features = [\"env-filter\", \"fmt\"] }\n",
         "uuid = { version = \"1.25.0\", features = [\"serde\", \"v7\"] }\n",
     )
+    .to_owned();
+    if auth_enabled {
+        manifest.push_str(concat!(
+            "argon2 = \"0.5.3\"\n",
+            "base64 = \"0.22.1\"\n",
+            "lettre = { version = \"0.11.19\", default-features = false, features = [\"builder\", \"smtp-transport\", \"tokio1-rustls-tls\"] }\n",
+            "rand = \"0.9.2\"\n",
+            "sha2 = \"0.10.9\"\n",
+        ));
+    }
+    manifest
 }

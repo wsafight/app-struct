@@ -8,7 +8,17 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
     } else {
         include_str!("../templates/web/main.tsx")
     };
-    let static_files = [
+    let app = if ir.auth.enabled {
+        include_str!("../templates/web/AppAuth.tsx")
+    } else {
+        include_str!("../templates/web/App.tsx")
+    };
+    let layout = if ir.auth.enabled {
+        include_str!("../templates/web/LayoutAuth.tsx")
+    } else {
+        include_str!("../templates/web/Layout.tsx")
+    };
+    let static_files = vec![
         (
             "web/index.html",
             include_str!("../templates/web/index.html"),
@@ -18,14 +28,8 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
             "web/src/resource.ts",
             include_str!("../templates/web/resource.ts"),
         ),
-        (
-            "web/src/app/App.tsx",
-            include_str!("../templates/web/App.tsx"),
-        ),
-        (
-            "web/src/app/Layout.tsx",
-            include_str!("../templates/web/Layout.tsx"),
-        ),
+        ("web/src/app/App.tsx", app),
+        ("web/src/app/Layout.tsx", layout),
         (
             "web/src/pages/ResourceList.tsx",
             include_str!("../templates/web/ResourceList.tsx"),
@@ -55,6 +59,20 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
         .into_iter()
         .map(|(path, content)| Artifact::text(path, content, ArtifactKind::Web))
         .collect::<Vec<_>>();
+    if ir.auth.enabled {
+        artifacts.extend([
+            Artifact::text(
+                "web/src/auth/Auth.tsx",
+                include_str!("../templates/web/auth/Auth.tsx"),
+                ArtifactKind::Web,
+            ),
+            Artifact::text(
+                "web/src/auth/AuthPages.tsx",
+                include_str!("../templates/web/auth/AuthPages.tsx"),
+                ArtifactKind::Web,
+            ),
+        ]);
+    }
     artifacts.extend([
         Artifact::text("web/tsconfig.json", tsconfig(), ArtifactKind::Web),
         Artifact::text("web/vite.config.ts", vite_config(), ArtifactKind::Web),
@@ -240,7 +258,7 @@ fn registry_source(ir: &AppIr) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "{}import type {{ ComponentType }} from \"react\";\n\nexport interface FieldComponentProps {{\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport type PageComponentProps = Record<string, never>;\n\nexport interface AppStructRegistry {{\n  fields: {{\n{field_members}\n  }};\n  pages: {{\n{page_members}\n  }};\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages = [\n{pages}\n] as const;\n",
+        "{}import type {{ ComponentType }} from \"react\";\n\nexport interface FieldComponentProps {{\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport type PageComponentProps = Record<string, never>;\n\nexport interface AppStructRegistry {{\n  fields: {{\n{field_members}\n  }};\n  pages: {{\n{page_members}\n  }};\n}}\n\nexport interface CustomPageDefinition {{\n  name: string;\n  label: string;\n  path: string;\n  component: keyof AppStructRegistry[\"pages\"];\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages: readonly CustomPageDefinition[] = [\n{pages}\n];\n",
         generated_header("//")
     )
 }

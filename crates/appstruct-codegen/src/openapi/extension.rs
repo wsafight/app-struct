@@ -27,6 +27,7 @@ pub(super) fn add(ir: &AppIr, paths: &mut Map<String, Value>, schemas: &mut Map<
                 "post": {
                     "operationId": lower_camel(&command.rust_name),
                     "tags": ["Commands"],
+                    "security": super::auth::security(&command.access),
                     "requestBody": request_body(&type_name(ir, &command.input)),
                     "responses": {
                         "200": response("Command result", &type_schema(ir, &command.output)),
@@ -42,6 +43,7 @@ pub(super) fn add(ir: &AppIr, paths: &mut Map<String, Value>, schemas: &mut Map<
             json!({
                 "operationId": lower_camel(&query.rust_name),
                 "tags": ["Queries"],
+                "security": super::auth::security(&query.access),
                 "requestBody": request_body(&type_name(ir, input)),
                 "responses": {
                     "200": response("Query result", &type_schema(ir, &query.output)),
@@ -52,6 +54,7 @@ pub(super) fn add(ir: &AppIr, paths: &mut Map<String, Value>, schemas: &mut Map<
             json!({
                 "operationId": lower_camel(&query.rust_name),
                 "tags": ["Queries"],
+                "security": super::auth::security(&query.access),
                 "responses": {
                     "200": response("Query result", &type_schema(ir, &query.output)),
                     "403": error_response(),

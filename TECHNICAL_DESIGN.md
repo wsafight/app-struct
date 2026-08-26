@@ -1,6 +1,6 @@
 # AppStruct 技术设计文档
 
-> 状态：Implementation Baseline v0.5<br>
+> 状态：Implementation Baseline v0.6<br>
 > 日期：2026-08-26<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
@@ -21,7 +21,7 @@
 
 ### 1.1 当前落地状态
 
-当前实现已经通过 M0 至 M3 验收。编译链保持 `App Spec -> Surface -> Typed IR -> Generators` 单向数据流；M1 后的重构将 Compiler 拆分为加载、命名、字段选项、校验、访问规则和 lowering，将 Backend Generator 拆分为 API、Entity、查询、校验和 manifest，`source_size` 测试对 Rust 源文件执行 400 行上限。
+当前实现已经通过 M0 至 M4 验收。编译链保持 `App Spec -> Surface -> Typed IR -> Generators` 单向数据流；M1 后的重构将 Compiler 拆分为加载、命名、字段选项、校验、访问规则和 lowering，将 Backend Generator 拆分为 API、Entity、查询、校验和 manifest，`source_size` 测试对 Rust 源文件执行 400 行上限。
 
 M2 新增独立的 `appstruct-migrate` crate。它从 IR 提取规范化 PostgreSQL schema，持久化确定性 JSON snapshot，按 schema 风险与执行风险分类 diff，并只为 `NonDestructive + Online` 计划生成 SQL。删除表/列、重命名、类型或主键变化、非空收紧、唯一约束变化、已有表新增外键等变更会在 snapshot 写入前阻断。迁移文件与 snapshot 使用 staging 文件提交，局部提交失败时回滚本地新文件。
 
@@ -29,7 +29,9 @@ M2 新增独立的 `appstruct-migrate` crate。它从 IR 提取规范化 Postgre
 
 M3 在 IR 中加入 Value Object、Command、Query、自定义页面和字段 UI component 引用。Backend Generator 生成 DTO、Entity Hook/Policy trait、Command/Query handler trait、路由和类型状态 registry；OpenAPI 与 TypeScript Generator 从同一 IR 生成 operation 契约和客户端。Web Generator 生成必需组件/page key，并在存在引用时让生成入口静态导入用户所有的 `app/web/registry.tsx`；该 registry 通过 TypeScript `satisfies` 完整性检查。M3 fixture 同时验证缺少 Rust handler 或 React page 时构建失败、完整实现可构建，并在真实 PostgreSQL 上验证 Hook、Command、Query 和 Policy 行为。
 
-CRUD 一致性加固已完成：写路径在显式 SeaORM 事务中执行，事务内 `RequestContext` 把 Hook/Policy 查询委托到同一 `DatabaseTransaction`；Update/Delete 锁定目标行并比较 `If-Match` revision，Update Policy 在写入前看到最终候选状态。`after_commit` 保持 best-effort 错误隔离。actor/tenant context 和基于身份的数据范围仍由 M4/M6 提供，在这些里程碑完成前不得把默认 allow Policy 当作权限边界。
+CRUD 一致性加固已完成：写路径在显式 SeaORM 事务中执行，事务内 `RequestContext` 把 Hook/Policy 查询委托到同一 `DatabaseTransaction`；Update/Delete 锁定目标行并比较 `If-Match` revision，Update Policy 在写入前看到最终候选状态。`after_commit` 保持 best-effort 错误隔离。M4 已提供 actor context 和基于身份的数据范围；tenant context 与租户隔离仍由 M6 提供。
+
+M4 将 `modules.auth`/`modules.rbac` 降低为 `AuthIr` 和规范化 `AccessRuleIr`，Compiler 校验 Auth User 的 UUID 主键与 required unique email、角色声明、owner relation 目标及非空组合规则。迁移 schema 在业务表之外生成 `_appstruct_auth_accounts`、`sessions`、`password_resets` 和开发邮件捕获表及外键。生成后端使用 Argon2id、opaque token hash、可撤销/过期 session、CSRF/Origin 校验和窄化的开发捕获/SMTP sender；Actor 同时进入 connection/transaction `RequestContext`，owner/RBAC scope 下推为 SeaORM `Condition`。OpenAPI、TypeScript client 和 React 路由从同一 Auth IR 生成 Cookie security scheme、启用的 endpoint、Cookie/CSRF 调用和认证页面。独立 PostgreSQL 验收已覆盖匿名、owner、admin、CSRF、并发前置条件及密码重置/会话撤销路径。
 
 CLI 生成路径已拆到独立模块。`generated/.appstruct-manifest.json` 使用确定性 JSON 保存 Artifact 路径、类别、Generator 版本和 SHA-256；生成前拒绝未知文件或被人工修改的 owned file。`target/`、`node_modules/`、`dist/`、`.vite/` 和 Cargo 自动创建的 `Cargo.lock` 视为可丢弃构建瞬态，不参与 ownership 冲突。写入使用项目目录中的 sibling staging/backup 交换，失败时立即恢复 backup。当前尚未实现跨进程项目锁和崩溃恢复 journal；检测到遗留 staging/backup 时命令中止，不会猜测或覆盖现场。
 
@@ -875,31 +877,30 @@ OpenAPI 必须描述 `ETag`、`If-Match`、428 和 412 响应。
 Web SPA 使用服务端 opaque session 和 `HttpOnly` Cookie：
 
 - 密码使用 Argon2id
-- Cookie 默认 `Secure`、`HttpOnly`、`SameSite=Lax`
+- Session Cookie 始终 `HttpOnly`、`SameSite=Lax`，生产环境默认 `Secure`；本地 HTTP 开发可显式使用非 Secure Cookie
 - 登录和敏感操作具备速率限制入口
 - 状态变更请求执行 CSRF/Origin 校验
-- Session 支持撤销、过期和设备级登出
-- CORS 默认仅同源
+- Session 支持撤销、过期和当前会话退出；密码重置会撤销该用户的现有会话
+- CORS 默认只允许配置的前端 Origin 并携带凭证
 
-Auth Module 还定义窄化的 `AuthMailSender` capability，只允许发送注册验证和密码重置消息。MVP 提供开发捕获器和生产 SMTP adapter；启用依赖邮件的认证流程但未注册 sender 时，扩展装配必须在 server 启动前失败。重置 token 只保存 hash，必须单次使用并具有短过期时间。通用模板、Provider 路由和业务事件邮件属于 V1 Mail Module。
+Auth Module 还定义窄化的 `AuthMailSender` capability，当前只发送密码重置消息。MVP 提供开发捕获器和生产 SMTP adapter；生产环境启用密码重置但未配置 SMTP 时，server 必须在启动前失败。重置 token 只保存 hash，必须单次使用并具有短过期时间。注册验证可在后续扩展这一 capability；通用模板、Provider 路由和业务事件邮件属于 V1 Mail Module。
 
 JWT 和 API token 放入后续 Provider，不作为浏览器默认认证方式。
 
 ### 15.2 授权模型
 
 ```rust
-pub enum AccessExprIr {
+pub enum AccessRuleIr {
     Public,
     Authenticated,
-    Role(RoleId),
-    Owner(FieldId),
-    Policy(PolicyId),
-    Any(Vec<AccessExprIr>),
-    All(Vec<AccessExprIr>),
+    Role { role: String },
+    Owner { field: FieldId },
+    Any(Vec<AccessRuleIr>),
+    All(Vec<AccessRuleIr>),
 }
 ```
 
-`Any` 和 `All` 至少包含一个子表达式；Compiler 负责展平同类嵌套、按稳定 ID 排序并拒绝无意义或冲突的组合。MVP 不提供 `Not`，避免否定规则在查询范围转换时产生难以审查的语义。没有实体级或应用级默认授权声明时，Compiler 报错，`public` 必须显式写出。
+`Any` 和 `All` 至少包含一个子表达式；Compiler 负责展平同类嵌套、按稳定 ID 排序并去重。MVP 不提供 YAML 命名 Policy 或 `Not`；实体 Policy trait 是访问表达式之后的独立业务授权阶段。没有实体级或应用级默认授权声明时，Compiler 报错，`public` 必须显式写出。
 
 ### 15.3 查询范围
 
@@ -1420,6 +1421,8 @@ Pull Request 使用最小必要矩阵；主分支和发布构建运行完整示�
 验收：重新生成后用户扩展不变，缺失扩展在构建期失败。
 
 ### M4：认证与权限
+
+状态：已完成。
 
 - Auth Module
 - server-side session

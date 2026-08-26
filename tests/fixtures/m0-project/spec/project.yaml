@@ -31,12 +31,20 @@ entities:
         sortable: true
     access:
       list:
-        role: member
+        any:
+          - owner: owner
+          - role: admin
       read:
-        role: member
+        any:
+          - owner: owner
+          - role: admin
       create:
-        role: member
+        any:
+          - owner: owner
+          - role: admin
       update:
-        role: member
+        any:
+          - owner: owner
+          - role: admin
       delete:
         role: admin

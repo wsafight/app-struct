@@ -11,6 +11,12 @@ database:
 modules:
   auth:
     enabled: true
+    user_entity: User
+    registration: true
+    password_reset: true
+  rbac:
+    roles: [member, admin]
+    default_role: member
 
 includes:
   - spec/project.yaml

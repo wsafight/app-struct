@@ -1,5 +1,5 @@
 use super::extensions::operation_type;
-use super::{parse_ident, render};
+use super::{access, parse_ident, render};
 use crate::CodegenError;
 use appstruct_ir::AppIr;
 use proc_macro2::Span;
@@ -25,13 +25,17 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
         let trait_name = format_ident!("{}Handler", command.rust_name);
         let input = operation_type(ir, &command.input)?;
         let output = operation_type(ir, &command.output)?;
+        let allowed = access::operation_allowed(&command.access);
         routes.push(quote! { .route(#path, axum::routing::post(#function)) });
         handlers.push(quote! {
             async fn #function(
                 axum::extract::State(state): axum::extract::State<AppState>,
+                headers: axum::http::HeaderMap,
                 axum::Json(input): axum::Json<#input>,
             ) -> Result<axum::Json<#output>, ApiError> {
-                let context = state.context();
+                state.auth.verify_csrf(&state.database, &headers).await?;
+                let context = state.context(&headers).await?;
+                if !(#allowed) { return Err(access_denied(&context)); }
                 let output = #trait_name::execute(
                     state.extensions.handlers(), &context, input
                 ).await?;
@@ -47,15 +51,19 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
         );
         let trait_name = format_ident!("{}Handler", query.rust_name);
         let output = operation_type(ir, &query.output)?;
+        let allowed = access::operation_allowed(&query.access);
         if let Some(input) = &query.input {
             let input = operation_type(ir, input)?;
             routes.push(quote! { .route(#path, axum::routing::post(#function)) });
             handlers.push(quote! {
                 async fn #function(
                     axum::extract::State(state): axum::extract::State<AppState>,
+                    headers: axum::http::HeaderMap,
                     axum::Json(input): axum::Json<#input>,
                 ) -> Result<axum::Json<#output>, ApiError> {
-                    let context = state.context();
+                    state.auth.verify_csrf(&state.database, &headers).await?;
+                    let context = state.context(&headers).await?;
+                    if !(#allowed) { return Err(access_denied(&context)); }
                     let output = #trait_name::execute(
                         state.extensions.handlers(), &context, input
                     ).await?;
@@ -67,8 +75,10 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
             handlers.push(quote! {
                 async fn #function(
                     axum::extract::State(state): axum::extract::State<AppState>,
+                    headers: axum::http::HeaderMap,
                 ) -> Result<axum::Json<#output>, ApiError> {
-                    let context = state.context();
+                    let context = state.context(&headers).await?;
+                    if !(#allowed) { return Err(access_denied(&context)); }
                     let output = #trait_name::execute(
                         state.extensions.handlers(), &context
                     ).await?;
@@ -83,6 +93,10 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
 
         pub fn router() -> Router<AppState> { Router::new() #(#routes)* }
         #(#handlers)*
+
+        fn access_denied(context: &RequestContext) -> ApiError {
+            if context.actor().is_some() { ApiError::Forbidden } else { ApiError::Unauthorized }
+        }
     })
 }
 

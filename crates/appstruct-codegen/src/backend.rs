@@ -1,4 +1,6 @@
+mod access;
 mod api;
+mod auth;
 mod entity;
 mod extensions;
 mod manifest;
@@ -16,7 +18,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     let mut artifacts = vec![
         Artifact::text(
             "backend/Cargo.toml",
-            manifest::cargo(),
+            manifest::cargo(ir.auth.enabled),
             ArtifactKind::RustManifest,
         ),
         Artifact::text(
@@ -60,16 +62,21 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             ArtifactKind::RustSource,
         ),
     ];
+    artifacts.extend(auth::plan(ir)?);
     for entity in &ir.entities {
         let module = module_name(entity);
         artifacts.push(Artifact::text(
             format!("backend/src/entities/{module}.rs"),
-            entity::source(ir, entity)?,
+            entity::source(ir, entity).map_err(|error| {
+                CodegenError::new(format!("entity `{module}` generation failed: {error}"))
+            })?,
             ArtifactKind::RustSource,
         ));
         artifacts.push(Artifact::text(
             format!("backend/src/api/{module}.rs"),
-            api::source(entity)?,
+            api::source(entity).map_err(|error| {
+                CodegenError::new(format!("API `{module}` generation failed: {error}"))
+            })?,
             ArtifactKind::RustSource,
         ));
     }
@@ -96,42 +103,62 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
             Ok(quote! { .nest(#path, api::#module::router()) })
         })
         .collect::<Result<Vec<_>, CodegenError>>()?;
+    let auth_exports = if ir.auth.enabled {
+        quote! { pub use auth::{AuthMailSender, AuthState, DevMailSender, SmtpMailSender}; }
+    } else {
+        quote! { pub use auth::AuthState; }
+    };
     render(quote! {
         pub mod api;
         pub mod entities;
         pub mod extensions;
+        mod auth;
         mod error;
         mod openapi;
         mod operations;
 
         pub use error::{ApiError, FieldViolation};
-        pub use extensions::{AppExtensions, HookOperation, RequestContext};
+        pub use extensions::{Actor, AppExtensions, HookOperation, RequestContext};
+        #auth_exports
 
-        use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
+        use axum::{Router, http::{HeaderMap, StatusCode}, response::IntoResponse, routing::get};
         use sea_orm::DatabaseConnection;
-        use tower_http::{cors::CorsLayer, trace::TraceLayer};
+        use tower_http::trace::TraceLayer;
 
         #[derive(Clone)]
         pub struct AppState {
             pub database: DatabaseConnection,
             pub extensions: AppExtensions,
+            pub auth: AuthState,
         }
 
         impl AppState {
-            pub fn context(&self) -> RequestContext<'_> {
-                RequestContext::connection(&self.database)
+            pub async fn context(&self, headers: &HeaderMap) -> Result<RequestContext<'_>, ApiError> {
+                let actor = self.auth.actor(&self.database, headers).await?;
+                Ok(RequestContext::connection(&self.database, actor))
             }
         }
 
         pub fn router(database: DatabaseConnection, extensions: AppExtensions) -> Router {
+            let auth = AuthState::from_env().expect("invalid AppStruct auth configuration");
+            router_with_auth(database, extensions, auth)
+        }
+
+        pub fn router_with_auth(
+            database: DatabaseConnection,
+            extensions: AppExtensions,
+            auth: AuthState,
+        ) -> Router {
+            let cors = auth.cors_layer();
             Router::new()
                 #(#routes)*
                 .merge(operations::router())
+                .merge(auth::router())
                 .route("/health/live", get(health))
                 .route("/openapi.json", get(openapi))
-                .layer(CorsLayer::permissive())
+                .layer(cors)
                 .layer(TraceLayer::new_for_http())
-                .with_state(AppState { database, extensions })
+                .with_state(AppState { database, extensions, auth })
         }
 
         async fn health() -> StatusCode { StatusCode::NO_CONTENT }

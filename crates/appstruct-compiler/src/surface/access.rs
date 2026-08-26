@@ -1,4 +1,6 @@
-use super::value::{ensure_known_keys, expect_bool, expect_mapping, expect_string};
+use super::value::{
+    ensure_known_keys, expect_bool, expect_mapping, expect_sequence, expect_string,
+};
 use super::{Located, SurfaceAccess, SurfaceAccessRule};
 use crate::yaml::{MappingEntry, Node};
 use appstruct_ir::Diagnostic;
@@ -23,9 +25,22 @@ pub(super) fn decode_crud_access(node: &Node) -> Result<SurfaceAccess, Diagnosti
 
 pub(super) fn decode_rule(node: &Node) -> Result<Located<SurfaceAccessRule>, Diagnostic> {
     let rule = expect_mapping(node, "access rule")?;
-    ensure_known_keys(rule, &["role", "public"], "access rule")?;
+    ensure_known_keys(
+        rule,
+        &["role", "public", "authenticated", "owner", "any", "all"],
+        "access rule",
+    )?;
+    if rule.len() != 1 {
+        return Err(Diagnostic::error(
+            "AS1007",
+            "access rule must contain exactly one expression",
+            node.span.clone(),
+        ));
+    }
     let value = if let Some(role) = rule.get("role") {
         SurfaceAccessRule::Role(expect_string(&role.value, "access `role`")?.value)
+    } else if let Some(owner) = rule.get("owner") {
+        SurfaceAccessRule::Owner(expect_string(&owner.value, "access `owner`")?.value)
     } else if let Some(public) = rule.get("public") {
         if !expect_bool(&public.value, "access `public`")? {
             return Err(Diagnostic::error(
@@ -35,10 +50,23 @@ pub(super) fn decode_rule(node: &Node) -> Result<Located<SurfaceAccessRule>, Dia
             ));
         }
         SurfaceAccessRule::Public
+    } else if let Some(authenticated) = rule.get("authenticated") {
+        if !expect_bool(&authenticated.value, "access `authenticated`")? {
+            return Err(Diagnostic::error(
+                "AS1007",
+                "`authenticated` must be true when present",
+                authenticated.value.span.clone(),
+            ));
+        }
+        SurfaceAccessRule::Authenticated
+    } else if let Some(any) = rule.get("any") {
+        SurfaceAccessRule::Any(decode_children(&any.value, "access `any`")?)
+    } else if let Some(all) = rule.get("all") {
+        SurfaceAccessRule::All(decode_children(&all.value, "access `all`")?)
     } else {
         return Err(Diagnostic::error(
             "AS1007",
-            "access rule requires `role` or `public: true`",
+            "access rule requires a supported expression",
             node.span.clone(),
         ));
     };
@@ -46,6 +74,21 @@ pub(super) fn decode_rule(node: &Node) -> Result<Located<SurfaceAccessRule>, Dia
         value,
         span: node.span.clone(),
     })
+}
+
+fn decode_children(
+    node: &Node,
+    context: &str,
+) -> Result<Vec<Located<SurfaceAccessRule>>, Diagnostic> {
+    let children = expect_sequence(node, context)?;
+    if children.is_empty() {
+        return Err(Diagnostic::error(
+            "AS1007",
+            format!("{context} must contain at least one rule"),
+            node.span.clone(),
+        ));
+    }
+    children.iter().map(decode_rule).collect()
 }
 
 fn optional_rule(

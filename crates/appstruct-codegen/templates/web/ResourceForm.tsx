@@ -2,7 +2,7 @@ import { ArrowLeft, RefreshCw, Save } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { FieldDefinition, ResourceDefinition, ResourceInput, ResourceRecord } from "../resource";
-import type { AppStructRegistry } from "../generated/registry";
+import type { AppStructRegistry, FieldComponentProps } from "../generated/registry";
 import { errorMessage, fieldErrors } from "../resource";
 
 type FormValues = Record<string, string | boolean>;
@@ -68,7 +68,8 @@ export function ResourceForm({ resource, resources, registry }: { resource: Reso
 function FieldControl({ field, resources, registry, value, error, onChange }: { field: FieldDefinition; resources: ResourceDefinition[]; registry?: AppStructRegistry; value: string | boolean | undefined; error?: string; onChange(value: string | boolean): void }) {
   const id = `field-${field.name}`;
   if (field.uiComponent) {
-    const Component = registry?.fields[field.uiComponent];
+    const components = registry?.fields as Record<string, React.ComponentType<FieldComponentProps>> | undefined;
+    const Component = components?.[String(field.uiComponent)];
     return <div className="field"><label>{field.label}{field.required && <span aria-hidden> *</span>}</label>{Component ? <Component label={field.label} required={field.required} value={value} error={error} readOnly={false} onChange={onChange} /> : <div className="alert" role="alert">Field renderer unavailable</div>}</div>;
   }
   if (field.kind === "boolean") return <label className="checkbox-field"><input id={id} type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} /> <span>{field.label}</span>{error && <small>{error}</small>}</label>;

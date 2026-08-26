@@ -31,23 +31,40 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
         };
         use std::sync::Arc;
 
+        #[derive(Clone, Debug, serde::Serialize)]
+        pub struct Actor {
+            pub id: uuid::Uuid,
+            pub email: String,
+            pub roles: Vec<String>,
+        }
+
+        impl Actor {
+            pub fn has_role(&self, role: &str) -> bool {
+                self.roles.iter().any(|candidate| candidate == role)
+            }
+        }
+
         #[derive(Clone, Copy)]
         enum RequestDatabase<'db> {
             Connection(&'db DatabaseConnection),
             Transaction(&'db DatabaseTransaction),
         }
 
-        #[derive(Clone, Copy)]
-        pub struct RequestContext<'db> { database: RequestDatabase<'db> }
+        #[derive(Clone)]
+        pub struct RequestContext<'db> {
+            database: RequestDatabase<'db>,
+            actor: Option<Actor>,
+        }
 
         impl<'db> RequestContext<'db> {
-            pub(crate) fn connection(database: &'db DatabaseConnection) -> Self {
-                Self { database: RequestDatabase::Connection(database) }
+            pub(crate) fn connection(database: &'db DatabaseConnection, actor: Option<Actor>) -> Self {
+                Self { database: RequestDatabase::Connection(database), actor }
             }
-            pub(crate) fn transaction(database: &'db DatabaseTransaction) -> Self {
-                Self { database: RequestDatabase::Transaction(database) }
+            pub(crate) fn transaction(database: &'db DatabaseTransaction, actor: Option<Actor>) -> Self {
+                Self { database: RequestDatabase::Transaction(database), actor }
             }
             pub fn database(&self) -> &Self { self }
+            pub fn actor(&self) -> Option<&Actor> { self.actor.as_ref() }
         }
 
         #[async_trait]

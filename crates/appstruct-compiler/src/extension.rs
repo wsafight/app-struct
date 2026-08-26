@@ -1,9 +1,9 @@
-use crate::access::convert_rule;
+use crate::access::build_operation_access;
 use crate::naming::{is_rust_field_name, is_rust_type_name};
 use crate::surface::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
 use appstruct_ir::{
-    CommandIr, Diagnostic, EntityId, FieldTypeIr, OperationTypeIr, PageIr, QueryIr, SourceSpan,
-    ValueFieldIr, ValueObjectIr,
+    AuthIr, CommandIr, Diagnostic, EntityId, FieldTypeIr, OperationTypeIr, PageIr, QueryIr,
+    SourceSpan, ValueFieldIr, ValueObjectIr,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,16 +14,22 @@ pub(crate) struct LoweredExtensions {
     pub pages: Vec<PageIr>,
 }
 
+pub(crate) struct ExtensionContext<'context> {
+    pub known_entities: &'context BTreeSet<String>,
+    pub resource_paths: &'context BTreeSet<String>,
+    pub auth: &'context AuthIr,
+}
+
 pub(crate) fn lower_extensions(
     value_objects: Vec<SurfaceValueObject>,
     commands: Vec<SurfaceOperation>,
     queries: Vec<SurfaceOperation>,
     pages: Vec<SurfacePage>,
-    known_entities: &BTreeSet<String>,
-    resource_paths: &BTreeSet<String>,
+    context: &ExtensionContext<'_>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> LoweredExtensions {
-    let known_values = validate_value_declarations(&value_objects, known_entities, diagnostics);
+    let known_values =
+        validate_value_declarations(&value_objects, context.known_entities, diagnostics);
     let mut lowered_values = value_objects
         .into_iter()
         .filter_map(|value| lower_value_object(value, diagnostics))
@@ -33,17 +39,29 @@ pub(crate) fn lower_extensions(
         .into_iter()
         .filter_map(|operation| {
             validate_operation_name(&operation, &mut operation_names, diagnostics);
-            lower_command(operation, known_entities, &known_values, diagnostics)
+            lower_command(
+                operation,
+                context.known_entities,
+                &known_values,
+                context.auth,
+                diagnostics,
+            )
         })
         .collect::<Vec<_>>();
     let mut lowered_queries = queries
         .into_iter()
         .filter_map(|operation| {
             validate_operation_name(&operation, &mut operation_names, diagnostics);
-            lower_query(operation, known_entities, &known_values, diagnostics)
+            lower_query(
+                operation,
+                context.known_entities,
+                &known_values,
+                context.auth,
+                diagnostics,
+            )
         })
         .collect::<Vec<_>>();
-    let mut lowered_pages = lower_pages(pages, resource_paths, diagnostics);
+    let mut lowered_pages = lower_pages(pages, context.resource_paths, diagnostics);
     lowered_values.sort_by(|left, right| left.id.cmp(&right.id));
     lowered_commands.sort_by(|left, right| left.id.cmp(&right.id));
     lowered_queries.sort_by(|left, right| left.id.cmp(&right.id));
@@ -181,6 +199,7 @@ fn lower_command(
     operation: SurfaceOperation,
     entities: &BTreeSet<String>,
     values: &BTreeSet<String>,
+    auth: &AuthIr,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<CommandIr> {
     let input = resolve_type(operation.input.as_ref()?, entities, values, diagnostics)?;
@@ -190,7 +209,7 @@ fn lower_command(
         rust_name: operation.name.value,
         input,
         output,
-        access: convert_rule(&operation.access),
+        access: build_operation_access(&operation.access, auth, diagnostics)?,
     })
 }
 
@@ -198,6 +217,7 @@ fn lower_query(
     operation: SurfaceOperation,
     entities: &BTreeSet<String>,
     values: &BTreeSet<String>,
+    auth: &AuthIr,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<QueryIr> {
     let input = operation
@@ -210,7 +230,7 @@ fn lower_query(
         rust_name: operation.name.value,
         input,
         output,
-        access: convert_rule(&operation.access),
+        access: build_operation_access(&operation.access, auth, diagnostics)?,
     })
 }
 

@@ -1,0 +1,207 @@
+use super::{error_response, request_body, response, schema_ref};
+use appstruct_ir::{AccessRuleIr, AppIr};
+use serde_json::{Map, Value, json};
+
+pub(super) fn security(rule: &AccessRuleIr) -> Value {
+    if allows_anonymous(rule) {
+        json!([])
+    } else {
+        json!([{ "cookieSession": [] }])
+    }
+}
+
+pub(super) fn security_schemes(enabled: bool) -> Value {
+    if enabled {
+        json!({
+            "cookieSession": {
+                "type": "apiKey",
+                "in": "cookie",
+                "name": "appstruct_session"
+            }
+        })
+    } else {
+        json!({})
+    }
+}
+
+pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>, ir: &AppIr) {
+    schemas.insert("AuthCredentials".to_owned(), credentials_schema());
+    schemas.insert("AuthUser".to_owned(), user_schema(ir));
+    schemas.insert("AuthResponse".to_owned(), auth_response_schema());
+    schemas.insert("PasswordResetRequest".to_owned(), reset_request_schema());
+    schemas.insert("PasswordResetInput".to_owned(), reset_input_schema());
+    paths.insert(
+        "/api/auth/login".to_owned(),
+        json!({ "post": auth_operation("login", "AuthCredentials") }),
+    );
+    if ir.auth.registration_enabled {
+        paths.insert(
+            "/api/auth/register".to_owned(),
+            json!({ "post": auth_operation("register", "AuthCredentials") }),
+        );
+    }
+    paths.insert(
+        "/api/auth/logout".to_owned(),
+        json!({
+            "post": {
+                "operationId": "logout",
+                "tags": ["Auth"],
+                "security": [{ "cookieSession": [] }],
+                "parameters": [csrf_parameter()],
+                "responses": {
+                    "204": { "description": "Session revoked" },
+                    "401": error_response(),
+                    "403": error_response()
+                }
+            }
+        }),
+    );
+    paths.insert(
+        "/api/auth/me".to_owned(),
+        json!({
+            "get": {
+                "operationId": "currentUser",
+                "tags": ["Auth"],
+                "security": [{ "cookieSession": [] }],
+                "responses": {
+                    "200": response("Current user", &schema_ref("AuthResponse")),
+                    "401": error_response()
+                }
+            }
+        }),
+    );
+    if ir.auth.password_reset_enabled {
+        add_password_reset_paths(paths);
+    }
+}
+
+fn auth_operation(name: &str, body: &str) -> Value {
+    json!({
+        "operationId": name,
+        "tags": ["Auth"],
+        "requestBody": request_body(body),
+        "responses": {
+            "200": response("Authenticated session", &schema_ref("AuthResponse")),
+            "400": error_response(),
+            "401": error_response(),
+            "404": error_response(),
+            "429": error_response()
+        }
+    })
+}
+
+fn add_password_reset_paths(paths: &mut Map<String, Value>) {
+    paths.insert(
+        "/api/auth/password/request".to_owned(),
+        json!({
+            "post": {
+                "operationId": "requestPasswordReset",
+                "tags": ["Auth"],
+                "requestBody": request_body("PasswordResetRequest"),
+                "responses": {
+                    "204": { "description": "Request accepted" },
+                    "404": error_response(),
+                    "429": error_response()
+                }
+            }
+        }),
+    );
+    paths.insert(
+        "/api/auth/password/reset".to_owned(),
+        json!({
+            "post": {
+                "operationId": "resetPassword",
+                "tags": ["Auth"],
+                "requestBody": request_body("PasswordResetInput"),
+                "responses": {
+                    "204": { "description": "Password updated" },
+                    "400": error_response(),
+                    "404": error_response()
+                }
+            }
+        }),
+    );
+}
+
+fn credentials_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+            "email": { "type": "string", "format": "email", "maxLength": 320 },
+            "password": {
+                "type": "string",
+                "format": "password",
+                "minLength": 12,
+                "maxLength": 1024
+            }
+        }
+    })
+}
+
+fn user_schema(ir: &AppIr) -> Value {
+    json!({
+        "type": "object",
+        "required": ["id", "email", "roles"],
+        "properties": {
+            "id": { "type": "string", "format": "uuid" },
+            "email": { "type": "string", "format": "email" },
+            "roles": {
+                "type": "array",
+                "items": { "type": "string", "enum": ir.auth.roles }
+            }
+        }
+    })
+}
+
+fn auth_response_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["user"],
+        "properties": { "user": schema_ref("AuthUser") }
+    })
+}
+
+fn reset_request_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["email"],
+        "properties": { "email": { "type": "string", "format": "email" } }
+    })
+}
+
+fn reset_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["token", "password"],
+        "properties": {
+            "token": { "type": "string" },
+            "password": {
+                "type": "string",
+                "format": "password",
+                "minLength": 12,
+                "maxLength": 1024
+            }
+        }
+    })
+}
+
+fn csrf_parameter() -> Value {
+    json!({
+        "name": "X-CSRF-Token",
+        "in": "header",
+        "required": true,
+        "schema": { "type": "string" }
+    })
+}
+
+fn allows_anonymous(rule: &AccessRuleIr) -> bool {
+    match rule {
+        AccessRuleIr::Public => true,
+        AccessRuleIr::Any { rules } => rules.iter().any(allows_anonymous),
+        AccessRuleIr::All { rules } => rules.iter().all(allows_anonymous),
+        AccessRuleIr::Authenticated | AccessRuleIr::Role { .. } | AccessRuleIr::Owner { .. } => {
+            false
+        }
+    }
+}

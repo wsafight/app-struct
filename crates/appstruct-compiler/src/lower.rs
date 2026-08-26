@@ -1,5 +1,6 @@
 use crate::access::build_access;
-use crate::extension::lower_extensions;
+use crate::auth::lower_auth;
+use crate::extension::{ExtensionContext, lower_extensions};
 use crate::field::{build_column, build_field_type, build_relation};
 use crate::field_options::{build_generated, validate_field_options};
 use crate::naming::{pluralize, to_snake_case};
@@ -28,12 +29,18 @@ pub(crate) fn build_ir(
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
+    let auth = lower_auth(
+        &root.auth,
+        &surface_entities,
+        &root.app_name.span,
+        &mut diagnostics,
+    );
     let known_entities = surface_entities
         .iter()
         .map(|entity| entity.name.value.clone())
         .collect::<BTreeSet<_>>();
     let (mut entities, mut relations) =
-        lower_entities(surface_entities, &known_entities, &mut diagnostics);
+        lower_entities(surface_entities, &known_entities, &auth, &mut diagnostics);
     let resource_paths = entities
         .iter()
         .map(|entity| entity.table_name.clone())
@@ -43,8 +50,11 @@ pub(crate) fn build_ir(
         commands,
         queries,
         pages,
-        &known_entities,
-        &resource_paths,
+        &ExtensionContext {
+            known_entities: &known_entities,
+            resource_paths: &resource_paths,
+            auth: &auth,
+        },
         &mut diagnostics,
     );
     if !diagnostics.is_empty() {
@@ -68,9 +78,7 @@ pub(crate) fn build_ir(
                 DatabaseDevMode::Managed
             },
         },
-        auth: AuthIr {
-            enabled: root.auth_enabled,
-        },
+        auth,
         enums: Vec::new(),
         value_objects: extensions.value_objects,
         entities,
@@ -85,6 +93,7 @@ pub(crate) fn build_ir(
 fn lower_entities(
     surface_entities: Vec<SurfaceEntity>,
     known_entities: &BTreeSet<String>,
+    auth: &AuthIr,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> (Vec<EntityIr>, Vec<RelationIr>) {
     let mut entities = Vec::with_capacity(surface_entities.len());
@@ -95,7 +104,7 @@ fn lower_entities(
             || pluralize(&to_snake_case(&entity.name.value)),
             |table| table.value.clone(),
         );
-        let access = build_access(&entity, diagnostics);
+        let access = build_access(&entity, auth, diagnostics);
         let (mut fields, mut entity_relations) =
             build_fields(&entity, &entity_id, known_entities, diagnostics);
         let revision_conflict = entity.fields.iter().find(|field| {
