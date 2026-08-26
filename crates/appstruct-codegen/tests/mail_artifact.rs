@@ -26,6 +26,10 @@ fn mail_contract_generates_a_compilable_backend() {
     assert!(!mail.contains("ResendProvider"));
     let extensions = artifact_text(&artifacts, "backend/src/extensions.rs");
     assert!(extensions.contains("pub async fn send_mail"));
+    let project_api = artifact_text(&artifacts, "backend/src/api/project.rs");
+    let user_api = artifact_text(&artifacts, "backend/src/api/user.rs");
+    assert!(project_api.contains("ColumnTrait as _"));
+    assert!(!user_api.contains("ColumnTrait as _"));
     let manifest = artifact_text(&artifacts, "backend/Cargo.toml");
     assert!(manifest.contains("minijinja = \"=2.12.0\""));
     assert!(!manifest.contains("reqwest"));

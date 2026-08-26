@@ -17,7 +17,8 @@ pub fn cargo_check(manifest: &Path, library_only: bool) -> Output {
         .args(["check", "--quiet", "--manifest-path"])
         .arg(manifest)
         .env("CARGO_TARGET_DIR", generated_target())
-        .env("CARGO_INCREMENTAL", "0");
+        .env("CARGO_INCREMENTAL", "0")
+        .env("RUSTFLAGS", "-Dwarnings");
     if library_only {
         command.arg("--lib");
     }

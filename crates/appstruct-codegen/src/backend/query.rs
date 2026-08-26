@@ -1,7 +1,7 @@
 use super::access;
 use super::{parse_ident, rust_type};
 use crate::CodegenError;
-use appstruct_ir::{EntityIr, FieldIr, FieldTypeIr};
+use appstruct_ir::{AccessRuleIr, EntityIr, FieldIr, FieldTypeIr};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
@@ -17,8 +17,9 @@ pub(super) fn list_support(
     let sorts = sort_rules(entity, module)?;
     let primary = column_ident(primary_key(entity)?)?;
     let access_scope = access::scope(entity, module, &entity.access.list)?;
+    let column_trait = uses_column_trait(entity).then(|| quote! { ColumnTrait as _, });
     Ok(quote! {
-        use sea_orm::{ColumnTrait as _, Condition, PaginatorTrait, QueryFilter, QueryOrder};
+        use sea_orm::{#column_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
 
         #[derive(Debug, Default, Deserialize)]
         pub struct ListQuery {
@@ -79,6 +80,26 @@ pub(super) fn list_support(
             Ok(Json(ListResponse { data, meta: ListMeta { page, page_size, total } }))
         }
     })
+}
+
+fn uses_column_trait(entity: &EntityIr) -> bool {
+    entity.tenant_scoped
+        || entity
+            .fields
+            .iter()
+            .any(|field| field.capabilities.filterable || field.capabilities.searchable)
+        || rule_uses_owner(&entity.access.list)
+        || rule_uses_owner(&entity.access.read)
+}
+
+fn rule_uses_owner(rule: &AccessRuleIr) -> bool {
+    match rule {
+        AccessRuleIr::Owner { .. } => true,
+        AccessRuleIr::Any { rules } | AccessRuleIr::All { rules } => {
+            rules.iter().any(rule_uses_owner)
+        }
+        AccessRuleIr::Public | AccessRuleIr::Authenticated | AccessRuleIr::Role { .. } => false,
+    }
 }
 
 fn filter_validation(keys: &[LitStr]) -> TokenStream {

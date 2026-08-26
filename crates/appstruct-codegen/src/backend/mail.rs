@@ -19,7 +19,7 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
 fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let sender = &ir.mail.from;
     let provider = provider_initializer(ir.mail.provider);
-    let contract = contract_source(sender, &provider);
+    let contract = contract_source(sender, &provider, ir.mail.provider);
     let templates = template_source(ir);
     let adapter = match ir.mail.provider {
         MailProviderIr::Capture => capture_source(),
@@ -120,7 +120,16 @@ fn template_source(ir: &AppIr) -> proc_macro2::TokenStream {
     }
 }
 
-fn contract_source(sender: &str, provider: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+fn contract_source(
+    sender: &str,
+    provider: &proc_macro2::TokenStream,
+    provider_kind: MailProviderIr,
+) -> proc_macro2::TokenStream {
+    let database = if provider_kind == MailProviderIr::Capture {
+        quote! { database }
+    } else {
+        quote! { _database }
+    };
     quote! {
         #[derive(Clone, Debug, Serialize)]
         pub struct MailMessage {
@@ -176,7 +185,7 @@ fn contract_source(sender: &str, provider: &proc_macro2::TokenStream) -> proc_ma
         pub struct MailState { provider: Arc<dyn MailProvider> }
 
         impl MailState {
-            pub fn from_env(database: DatabaseConnection) -> Result<Self, MailError> {
+            pub fn from_env(#database: DatabaseConnection) -> Result<Self, MailError> {
                 let provider = #provider;
                 Ok(Self { provider })
             }
