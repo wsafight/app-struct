@@ -121,6 +121,26 @@ pub fn expanded_preset(project_root: &Path) -> Result<Option<String>, Vec<Diagno
         .map(preset::render_expanded_modules))
 }
 
+/// Build the canonical lock candidate for an explicit project update.
+///
+/// Existing version and digest fields may be stale, but the lock must remain readable so its
+/// template identity can be preserved. The returned source must still pass a complete staged
+/// project compilation before it replaces the current lock.
+///
+/// # Errors
+///
+/// Returns root configuration, lock parsing, or unsupported preset diagnostics.
+pub fn updated_project_lock(project_root: &Path) -> Result<String, Vec<Diagnostic>> {
+    let root = canonical_project_root(project_root)?;
+    let root_node = loading::load_yaml(&root, &root.join("appstruct.yaml"))?;
+    let surface_root = surface::decode_root(&root_node).map_err(|error| vec![error])?;
+    let diagnostics = validation::validate_root(&surface_root);
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+    preset::updated_lock(&root, &surface_root).map_err(|error| vec![error])
+}
+
 fn canonical_project_root(project_root: &Path) -> Result<PathBuf, Vec<Diagnostic>> {
     fs::canonicalize(project_root).map_err(|error| {
         vec![Diagnostic::error(

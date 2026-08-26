@@ -15,6 +15,7 @@ mod migration;
 mod preset;
 mod project_new;
 mod schema;
+mod update;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -84,6 +85,8 @@ enum Command {
     },
     /// Print the App Spec JSON Schema for editor integration.
     Schema,
+    /// Stage, verify, and transactionally commit locked framework updates.
+    Update,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
@@ -130,7 +133,8 @@ fn run(cli: Cli) -> ExitCode {
         | Command::Generate { .. }
         | Command::Migrate { .. }
         | Command::Preset { .. }
-        | Command::Schema => OutputFormat::Text,
+        | Command::Schema
+        | Command::Update => OutputFormat::Text,
     };
     let start = match cli.project {
         Some(path) => path,
@@ -164,47 +168,52 @@ fn run(cli: Cli) -> ExitCode {
         Command::Check {
             format,
             deny_warnings,
-        } => match appstruct_compiler::compile_project_report(&project) {
-            Ok(report) => {
-                let denied = deny_warnings && !report.diagnostics.is_empty();
-                match format {
-                    OutputFormat::Text => {
-                        for diagnostic in &report.diagnostics {
-                            render_text_diagnostic(diagnostic);
-                        }
-                        if !denied {
-                            println!(
-                                "App Spec is valid: {} ({} entities)",
-                                report.ir.app.name,
-                                report.ir.entities.len()
-                            );
-                        }
-                    }
-                    OutputFormat::Json => {
-                        render_json_report(!denied, report.ir.entities.len(), &report.diagnostics);
-                    }
-                }
-                if denied {
-                    ExitCode::from(1)
-                } else {
-                    ExitCode::SUCCESS
-                }
-            }
-            Err(diagnostics) => {
-                match format {
-                    OutputFormat::Text => {
-                        for diagnostic in &diagnostics {
-                            render_text_diagnostic(diagnostic);
-                        }
-                    }
-                    OutputFormat::Json => render_json_report(false, 0, &diagnostics),
-                }
-                ExitCode::from(1)
-            }
-        },
+        } => run_check(&project, format, deny_warnings),
         Command::Generate { check } => generation::run(&project, check),
         Command::Migrate { command } => migration::run(&project, command),
         Command::Preset { command } => preset::run(&project, &command),
+        Command::Update => update::run(&project),
+    }
+}
+
+fn run_check(project: &std::path::Path, format: OutputFormat, deny_warnings: bool) -> ExitCode {
+    match appstruct_compiler::compile_project_report(project) {
+        Ok(report) => {
+            let denied = deny_warnings && !report.diagnostics.is_empty();
+            match format {
+                OutputFormat::Text => {
+                    for diagnostic in &report.diagnostics {
+                        render_text_diagnostic(diagnostic);
+                    }
+                    if !denied {
+                        println!(
+                            "App Spec is valid: {} ({} entities)",
+                            report.ir.app.name,
+                            report.ir.entities.len()
+                        );
+                    }
+                }
+                OutputFormat::Json => {
+                    render_json_report(!denied, report.ir.entities.len(), &report.diagnostics);
+                }
+            }
+            if denied {
+                ExitCode::from(1)
+            } else {
+                ExitCode::SUCCESS
+            }
+        }
+        Err(diagnostics) => {
+            match format {
+                OutputFormat::Text => {
+                    for diagnostic in &diagnostics {
+                        render_text_diagnostic(diagnostic);
+                    }
+                }
+                OutputFormat::Json => render_json_report(false, 0, &diagnostics),
+            }
+            ExitCode::from(1)
+        }
     }
 }
 

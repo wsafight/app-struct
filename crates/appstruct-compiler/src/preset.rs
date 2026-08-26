@@ -124,6 +124,10 @@ pub(crate) fn validate_lock(project: &Path, root: &SurfaceRoot) -> Vec<Diagnosti
     lock::validate(project, root)
 }
 
+pub(crate) fn updated_lock(project: &Path, root: &SurfaceRoot) -> Result<String, Diagnostic> {
+    lock::updated_source(project, root)
+}
+
 pub(crate) fn render_expanded_modules(modules: &MappingEntry) -> String {
     let mut output = "modules:\n".to_owned();
     render_node(&modules.value, 2, &mut output);

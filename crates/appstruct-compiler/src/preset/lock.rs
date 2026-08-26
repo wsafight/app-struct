@@ -68,6 +68,54 @@ pub(super) fn validate(project: &Path, root: &SurfaceRoot) -> Vec<Diagnostic> {
     validate_contract(&lock, &info)
 }
 
+pub(super) fn updated_source(project: &Path, root: &SurfaceRoot) -> Result<String, Diagnostic> {
+    let template = read_template(project)?;
+    let selected = root
+        .preset
+        .as_ref()
+        .map(|preset| (preset.name.value.as_str(), preset.version.value));
+    source(&template, selected).ok_or_else(|| {
+        let preset = root
+            .preset
+            .as_ref()
+            .expect("only presets can be unsupported");
+        Diagnostic::error(
+            "AS3058",
+            format!(
+                "unsupported preset `{}@{}`",
+                preset.name.value, preset.version.value
+            ),
+            preset.name.span.clone(),
+        )
+        .with_help("this compiler supports `appstruct/saas` version 1")
+    })
+}
+
+fn read_template(project: &Path) -> Result<String, Diagnostic> {
+    let path = project.join("appstruct.lock");
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok("custom".to_owned());
+        }
+        Err(error) => {
+            return Err(lock_error(
+                "AS3059",
+                format!("cannot read preset lock `appstruct.lock`: {error}"),
+            ));
+        }
+    };
+    let lock = toml::from_str::<ProjectLock>(&source).map_err(|error| {
+        lock_error(
+            "AS3059",
+            format!("invalid preset lock `appstruct.lock`: {error}"),
+        )
+    })?;
+    Ok(lock
+        .template
+        .map_or_else(|| "custom".to_owned(), |template| template.name))
+}
+
 fn validate_contract(lock: &ProjectLock, info: &super::PresetInfo) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     if lock.lock_version != 1 || lock.appstruct != env!("CARGO_PKG_VERSION") {
@@ -109,9 +157,15 @@ fn lock_error(code: &str, message: impl Into<String>) -> Diagnostic {
 struct ProjectLock {
     lock_version: u64,
     appstruct: String,
+    template: Option<LockedTemplate>,
     preset: Option<LockedPreset>,
     #[serde(default)]
     modules: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LockedTemplate {
+    name: String,
 }
 
 #[derive(Debug, Deserialize)]

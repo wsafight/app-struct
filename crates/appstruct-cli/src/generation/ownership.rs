@@ -25,7 +25,7 @@ struct ManifestEntry {
     sha256: String,
 }
 
-pub(super) fn expected_files(artifacts: &[Artifact]) -> io::Result<BTreeMap<PathBuf, Vec<u8>>> {
+pub(crate) fn expected_files(artifacts: &[Artifact]) -> io::Result<BTreeMap<PathBuf, Vec<u8>>> {
     let mut files = BTreeMap::new();
     let mut entries = Vec::with_capacity(artifacts.len());
     for artifact in artifacts {
@@ -65,7 +65,7 @@ pub(super) fn validate_existing(
     validate_generated_files(root, owned.as_ref(), Some(expected))
 }
 
-pub(super) fn validate_owned_tree(root: &Path) -> io::Result<()> {
+pub(crate) fn validate_owned_tree(root: &Path) -> io::Result<()> {
     if !root.is_dir() {
         return Err(invalid(format!(
             "generated transaction tree `{}` is not a directory",
@@ -79,6 +79,35 @@ pub(super) fn validate_owned_tree(root: &Path) -> io::Result<()> {
         ))
     })?;
     validate_generated_files(root, Some(&owned), None)
+}
+
+pub(crate) fn copy_owned_tree(source: &Path, destination: &Path) -> io::Result<()> {
+    validate_owned_tree(source)?;
+    let owned = load_owned(source)?.expect("validated tree has a manifest");
+    fs::create_dir(destination)?;
+    for relative in owned
+        .iter()
+        .map(PathBuf::as_path)
+        .chain(std::iter::once(Path::new(MANIFEST_NAME)))
+    {
+        copy_file(source, destination, relative)?;
+    }
+    let cargo_lock = Path::new("backend/Cargo.lock");
+    if source.join(cargo_lock).is_file() {
+        copy_file(source, destination, cargo_lock)?;
+    }
+    validate_owned_tree(destination)
+}
+
+fn copy_file(source: &Path, destination: &Path, relative: &Path) -> io::Result<()> {
+    let target = destination.join(relative);
+    fs::create_dir_all(
+        target
+            .parent()
+            .ok_or_else(|| invalid("owned file has no parent"))?,
+    )?;
+    fs::copy(source.join(relative), target)?;
+    Ok(())
 }
 
 fn load_owned(root: &Path) -> io::Result<Option<BTreeSet<PathBuf>>> {

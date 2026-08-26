@@ -1,4 +1,6 @@
-use appstruct_compiler::{compile_project, expanded_preset, preset_info, project_lock};
+use appstruct_compiler::{
+    compile_project, expanded_preset, preset_info, project_lock, updated_project_lock,
+};
 use appstruct_ir::{FileProviderIr, MailProviderIr};
 use std::{
     fs,
@@ -105,6 +107,33 @@ fn rejects_unknown_preset_before_lowering() {
         "name: appstruct/enterprise",
     );
     assert_diagnostic(temporary.path(), "AS3058");
+}
+
+#[test]
+fn update_lock_repairs_contract_and_preserves_template_identity() {
+    let temporary = copied_fixture();
+    let lock_path = temporary.path().join("appstruct.lock");
+    fs::write(
+        &lock_path,
+        concat!(
+            "lock_version = 1\n",
+            "appstruct = \"0.0.1\"\n\n",
+            "[template]\n",
+            "name = \"saas\"\n",
+            "version = \"0.0.1\"\n\n",
+            "[preset]\n",
+            "name = \"appstruct/saas\"\n",
+            "version = 1\n",
+            "digest = \"sha256:stale\"\n",
+        ),
+    )
+    .unwrap();
+
+    assert_eq!(
+        updated_project_lock(temporary.path()).unwrap(),
+        project_lock("saas", Some(("appstruct/saas", 1))).unwrap()
+    );
+    assert!(fs::read_to_string(lock_path).unwrap().contains("stale"));
 }
 
 fn copied_fixture() -> tempfile::TempDir {

@@ -4,8 +4,8 @@ use std::io;
 use std::path::Path;
 use std::process::ExitCode;
 
-mod ownership;
-mod transaction;
+pub(crate) mod ownership;
+pub(crate) mod transaction;
 mod web_format;
 
 use transaction::GenerationTransaction;

@@ -44,6 +44,26 @@ fn check_can_deny_non_fatal_warnings() {
 }
 
 #[test]
+fn update_rejects_unsupported_preset_without_mutating_project() {
+    let project = temporary_project("m6-preset-project");
+    let lock_path = project.join("appstruct.lock");
+    let before = fs::read(&lock_path).unwrap();
+    let spec_path = project.join("appstruct.yaml");
+    let source = fs::read_to_string(&spec_path).unwrap();
+    fs::write(
+        &spec_path,
+        source.replace("name: appstruct/saas", "name: appstruct/enterprise"),
+    )
+    .unwrap();
+
+    let output = run(&project, &["update"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("AS3058"));
+    assert_eq!(fs::read(lock_path).unwrap(), before);
+    assert!(!project.join(".appstruct/update.journal").exists());
+}
+
+#[test]
 fn project_discovery_failure_honors_json_format() {
     let temporary = tempfile::tempdir().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_appstruct"))

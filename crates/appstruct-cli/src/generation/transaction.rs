@@ -10,7 +10,7 @@ const JOURNAL_NAME: &str = "generation.journal";
 const STAGING_NAME: &str = ".generated.appstruct-staging";
 const BACKUP_NAME: &str = ".generated.appstruct-backup";
 
-pub(super) struct GenerationTransaction {
+pub(crate) struct GenerationTransaction {
     paths: TransactionPaths,
     _lock: File,
 }
@@ -37,7 +37,15 @@ struct JournalRecord {
 }
 
 impl GenerationTransaction {
-    pub(super) fn acquire(project: &Path) -> io::Result<Self> {
+    pub(crate) fn acquire(project: &Path) -> io::Result<Self> {
+        Self::acquire_inner(project, false)
+    }
+
+    pub(crate) fn acquire_for_update(project: &Path) -> io::Result<Self> {
+        Self::acquire_inner(project, true)
+    }
+
+    fn acquire_inner(project: &Path, allow_update_recovery: bool) -> io::Result<Self> {
         let state = project.join(".appstruct");
         fs::create_dir_all(&state)?;
         let lock_path = state.join(LOCK_NAME);
@@ -54,6 +62,11 @@ impl GenerationTransaction {
             )),
             TryLockError::Error(error) => error,
         })?;
+        if !allow_update_recovery && update_state_exists(project) {
+            return Err(invalid(
+                "an unfinished project update exists; run `appstruct update` to recover it",
+            ));
+        }
         let transaction = Self {
             paths: TransactionPaths {
                 root: project.join("generated"),
@@ -67,7 +80,7 @@ impl GenerationTransaction {
         Ok(transaction)
     }
 
-    pub(super) fn replace(&self, files: &BTreeMap<PathBuf, Vec<u8>>) -> io::Result<()> {
+    pub(crate) fn replace(&self, files: &BTreeMap<PathBuf, Vec<u8>>) -> io::Result<()> {
         if self.paths.staging.exists() || self.paths.backup.exists() || self.paths.journal.exists()
         {
             return Err(invalid(
@@ -206,6 +219,18 @@ impl GenerationTransaction {
         }
         Ok(())
     }
+}
+
+fn update_state_exists(project: &Path) -> bool {
+    [
+        project.join(".appstruct/update.journal"),
+        project.join(".generated.appstruct-update-staging"),
+        project.join(".generated.appstruct-update-backup"),
+        project.join(".appstruct.lock.appstruct-update-staging"),
+        project.join(".appstruct.lock.appstruct-update-backup"),
+    ]
+    .iter()
+    .any(|path| path.exists())
 }
 
 struct RecoveryJournal {
