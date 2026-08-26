@@ -6,7 +6,7 @@ OpenAPI, a TypeScript client, and a React/Vite application.
 
 The repository is currently a technical preview. M0-M5 are complete, including templates,
 production builds, environment diagnostics, and the coordinated development server. The M6
-Tenant and Audit modules are available as previews; Mail, Jobs, File, and the SaaS preset remain
+Tenant, Audit, and Mail modules are available as previews; Jobs, File, and the SaaS preset remain
 in development.
 
 ## Quick Start
@@ -73,6 +73,10 @@ Create, update, and delete snapshots are committed in the same PostgreSQL transa
 business write. The generated Audit page and read-only API enforce reader roles and current-tenant
 isolation.
 
+Mail supports compile-time validated templates and `capture`, SMTP, or Resend providers. Provider
+credentials remain in server environment variables, and business handlers can call the generated
+`RequestContext::send_mail` capability. Capture is development-only and rejected in production.
+
 ## Commands
 
 ```text
@@ -121,6 +125,9 @@ APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_tenan
 
 APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_audit_e2e' \
   scripts/run-m6-audit-e2e.sh
+
+APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_mail_e2e' \
+  scripts/run-m6-mail-e2e.sh
 ```
 
 Rust source files are limited to 400 lines by a repository test. Generated projects also pin

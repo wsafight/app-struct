@@ -1,7 +1,7 @@
 use crate::{Actor, ApiError, AppState, FieldViolation, TenantId};
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};

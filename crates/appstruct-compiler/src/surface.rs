@@ -2,12 +2,15 @@ mod access;
 mod audit;
 mod auth;
 mod extension;
+mod mail;
 mod modules;
 mod tenant;
 mod value;
 
 pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
-pub(crate) use modules::{SurfaceAudit, SurfaceAuth, SurfaceTenant};
+pub(crate) use modules::{
+    SurfaceAudit, SurfaceAuth, SurfaceMail, SurfaceMailTemplate, SurfaceTenant,
+};
 
 use self::value::{
     ensure_known_keys, expect_mapping, expect_scalar_string, expect_sequence, expect_string,
@@ -31,6 +34,7 @@ pub(crate) struct SurfaceRoot {
     pub auth: SurfaceAuth,
     pub tenant: SurfaceTenant,
     pub audit: SurfaceAudit,
+    pub mail: SurfaceMail,
     pub includes: Vec<Located<String>>,
 }
 
@@ -195,6 +199,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
     let auth = auth::decode(mapping.get("modules"))?;
     let tenant = tenant::decode(mapping.get("modules"))?;
     let audit = audit::decode(mapping.get("modules"))?;
+    let mail = mail::decode(mapping.get("modules"))?;
 
     Ok(SurfaceRoot {
         version,
@@ -204,6 +209,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
         auth,
         tenant,
         audit,
+        mail,
         includes,
     })
 }

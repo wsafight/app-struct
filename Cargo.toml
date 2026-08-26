@@ -23,6 +23,7 @@ clap = { version = "4.6.6", features = ["derive"] }
 ctrlc = "3.5.2"
 dotenvy = "0.15.7"
 native-tls = "0.2.14"
+minijinja = "=2.12.0"
 prettyplease = "0.2.37"
 postgres = "0.19.12"
 postgres-native-tls = "0.5.3"

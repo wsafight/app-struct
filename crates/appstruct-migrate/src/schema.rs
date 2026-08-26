@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 mod audit;
 mod auth;
+mod mail;
 mod tenant;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,6 +99,10 @@ pub fn extract(ir: &AppIr) -> DatabaseSchema {
     if ir.audit.enabled {
         tables.extend(audit::tables());
         foreign_keys.extend(audit::foreign_keys(ir));
+    }
+    if ir.mail.enabled {
+        tables.extend(mail::tables());
+        foreign_keys.extend(mail::foreign_keys(ir));
     }
     DatabaseSchema {
         schema_version: 1,

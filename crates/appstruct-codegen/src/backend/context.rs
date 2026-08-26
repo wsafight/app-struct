@@ -14,6 +14,7 @@ pub(super) fn contract() -> TokenStream {
         #[derive(Clone)]
         pub struct RequestContext<'db> {
             database: RequestDatabase<'db>,
+            mail: &'db crate::MailState,
             actor: Option<Actor>,
             tenant: Option<TenantId>,
         }
@@ -21,18 +22,20 @@ pub(super) fn contract() -> TokenStream {
         impl<'db> RequestContext<'db> {
             pub(crate) fn connection(
                 database: &'db DatabaseConnection,
+                mail: &'db crate::MailState,
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Connection(database), actor, tenant }
+                Self { database: RequestDatabase::Connection(database), mail, actor, tenant }
             }
 
             pub(crate) fn transaction(
                 database: &'db DatabaseTransaction,
+                mail: &'db crate::MailState,
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Transaction(database), actor, tenant }
+                Self { database: RequestDatabase::Transaction(database), mail, actor, tenant }
             }
 
             pub fn database(&self) -> &Self { self }
@@ -40,6 +43,14 @@ pub(super) fn contract() -> TokenStream {
             pub fn tenant(&self) -> Option<TenantId> { self.tenant }
             pub fn require_tenant(&self) -> Result<TenantId, ApiError> {
                 self.tenant.ok_or(ApiError::InvalidTenant)
+            }
+            pub async fn send_mail(
+                &self,
+                template: &str,
+                recipient: &str,
+                variables: &std::collections::BTreeMap<String, String>,
+            ) -> Result<crate::MailDelivery, crate::MailError> {
+                self.mail.send_template(template, recipient, variables, self.tenant).await
             }
         }
 

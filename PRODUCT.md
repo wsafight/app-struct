@@ -747,6 +747,17 @@ Audit endpoint 只允许配置角色读取。启用 Tenant 时读取还要求有
 Hook 也不能改写已提交事件。认证凭据、session token、密码 hash 和 Mail/File 私密 payload 不进入
 通用实体 snapshot；相关模块只写经过专门脱敏的事件元数据。
 
+Mail Module 通过 `modules.mail` 声明 `capture`、`smtp` 或 `resend` Provider、默认 sender 和命名模板。
+模板包含 subject、text 和可选 HTML，使用受限的 MiniJinja 变量渲染；模板语法在 App Spec 编译时
+校验，收件地址和变量值由业务 Rust 代码在发送时提供。SMTP/Resend 凭据只能来自环境变量，不进入
+App Spec、Typed IR、生成代码或浏览器资产。`capture` 只用于非生产环境，将渲染结果写入专用
+PostgreSQL 表；生产启动时选择 capture 必须失败。
+
+生成 Runtime 暴露窄化的 `MailProvider` capability、可注入的 `MailState` 和带当前 tenant context 的
+业务发送入口。直接发送明确属于 best-effort 外部副作用，应从 `after_commit` 或 Command 调用；需要
+重试和崩溃恢复的邮件必须交给 Jobs/Outbox。Auth 的密码重置继续只依赖 `AuthMailSender`，启用 Mail
+不是 Auth 的前置条件。
+
 每个模块可以包含 Rust Runtime、数据库迁移、React 页面、UI Manifest 和资源模板。YAML 只负责启用模块及提供业务参数，支付 webhook、会话安全、任务重试等行为必须由经过测试的模块代码实现。
 
 运行时按 capability 图的拓扑顺序启动 Module。每个 Module 对自己注册的路由、任务、连接和其他副作用负责，并返回可逆序清理的 handle；启动部分失败时，Runtime 清理本轮已经启动的模块并报告完整依赖链。MVP 不支持在运行中的生产进程动态安装、卸载或加载 Rust 动态库。

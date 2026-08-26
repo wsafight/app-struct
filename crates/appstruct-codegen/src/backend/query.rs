@@ -18,7 +18,7 @@ pub(super) fn list_support(
     let primary = column_ident(primary_key(entity)?)?;
     let access_scope = access::scope(entity, module, &entity.access.list)?;
     Ok(quote! {
-        use sea_orm::{ColumnTrait, Condition, PaginatorTrait, QueryFilter, QueryOrder};
+        use sea_orm::{ColumnTrait as _, Condition, PaginatorTrait, QueryFilter, QueryOrder};
 
         #[derive(Debug, Default, Deserialize)]
         pub struct ListQuery {

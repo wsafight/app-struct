@@ -10,7 +10,11 @@ pub(super) fn decode(modules_entry: Option<&MappingEntry>) -> Result<SurfaceAuth
         return Ok(SurfaceAuth::default());
     };
     let modules = expect_mapping(&modules_entry.value, "`modules`")?;
-    ensure_known_keys(modules, &["auth", "rbac", "tenant", "audit"], "`modules`")?;
+    ensure_known_keys(
+        modules,
+        &["auth", "rbac", "tenant", "audit", "mail"],
+        "`modules`",
+    )?;
     let mut output = decode_auth(modules.get("auth"))?;
     decode_rbac(modules.get("rbac"), &mut output)?;
     Ok(output)

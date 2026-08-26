@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Current serialized IR format version.
-pub const IR_VERSION: u32 = 3;
+pub const IR_VERSION: u32 = 4;
 
 /// Fully normalized application model consumed by generators.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,6 +19,7 @@ pub struct AppIr {
     pub auth: AuthIr,
     pub tenant: TenantIr,
     pub audit: AuditIr,
+    pub mail: MailIr,
     pub enums: Vec<EnumIr>,
     pub value_objects: Vec<ValueObjectIr>,
     pub entities: Vec<EntityIr>,
@@ -77,6 +78,32 @@ pub struct TenantIr {
 pub struct AuditIr {
     pub enabled: bool,
     pub reader_roles: Vec<String>,
+}
+
+/// Mail module settings and compile-time validated templates.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MailIr {
+    pub enabled: bool,
+    pub provider: MailProviderIr,
+    pub from: String,
+    pub templates: Vec<MailTemplateIr>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MailProviderIr {
+    #[default]
+    Capture,
+    Smtp,
+    Resend,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MailTemplateIr {
+    pub name: String,
+    pub subject: String,
+    pub text: String,
+    pub html: Option<String>,
 }
 
 /// Stable logical entity identifier. It never depends on vector position.

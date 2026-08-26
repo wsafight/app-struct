@@ -855,6 +855,35 @@ Model 并写 Audit：Create 为 `(null, after)`，Update 为 `(before, after)`�
 没有任意 entity/record SQL 表达式，也不提供修改或删除事件的路由。OpenAPI 和 TypeScript client 从
 同一 Audit IR 生成只读契约。
 
+M6 Mail 契约如下：
+
+```yaml
+modules:
+  mail:
+    enabled: true
+    provider: capture # capture | smtp | resend
+    from: "AppStruct <notifications@example.com>"
+    templates:
+      welcome:
+        subject: "Welcome {{ name }}"
+        text: "Your workspace is ready."
+        html: "<p>Your workspace is ready.</p>"
+```
+
+Compiler 将配置降低为 `MailIr { enabled, provider, from, templates }`，按 template name 排序，并用
+MiniJinja parser 在生成前验证 subject/text/HTML 语法。IR 只保存 Provider 类型、sender 和模板源；
+SMTP 密码与 Resend API key 只在 Runtime 启动时分别从 `APPSTRUCT_SMTP_*` 与
+`APPSTRUCT_RESEND_API_KEY` 读取。`capture` Provider 在 `APPSTRUCT_ENV=production` 时启动失败。
+
+生成后端导出 object-safe `MailProvider`、`MailState`、`MailMessage`、`MailDelivery` 和 `MailError`。
+`MailState::with_provider` 支持测试或用户 Provider 注入；默认 Provider 由 Mail IR 决定。`RequestContext`
+保留 `MailState` 引用并提供自动携带当前 tenant 的模板发送入口。开发 capture 写入
+`_appstruct_mail_deliveries`；表中的 body 不进入 Audit snapshot，Tenant 删除使用 `SET NULL`。
+
+Mail 的直接 Provider 调用不是可靠队列。业务代码只应从 `after_commit` 或显式 Command 调用；要求
+重试、延迟或进程崩溃恢复时，必须在同一业务事务写 Jobs/Outbox，由 Worker 在 commit 后投递。
+Auth 继续面向独立的 `AuthMailSender` capability，因此 Mail Module 不成为密码重置的强制依赖。
+
 ### 13.3 Repository
 
 生成的 Repository 负责：

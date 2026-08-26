@@ -1,0 +1,37 @@
+version: 1
+
+app:
+  name: mailed-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+    registration: true
+    password_reset: false
+  rbac:
+    roles: [member, admin]
+    default_role: admin
+  tenant:
+    enabled: true
+  mail:
+    enabled: true
+    provider: capture
+    from: "AppStruct <notifications@example.com>"
+    templates:
+      project-created:
+        subject: "Project {{ project_name }} created"
+        text: "Hello {{ recipient_name }}, your project is ready."
+        html: "<p>Hello {{ recipient_name }}, your project is ready.</p>"
+      welcome:
+        subject: "Welcome, {{ recipient_name }}"
+        text: "Your AppStruct workspace is ready."
+
+includes:
+  - spec/project.yaml
+  - spec/identity.yaml

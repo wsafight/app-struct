@@ -48,6 +48,7 @@ The backend reads configuration from its process environment:
 | `APPSTRUCT_SMTP_USERNAME` | required for SMTP | SMTP credential |
 | `APPSTRUCT_SMTP_PASSWORD` | required for SMTP | SMTP secret |
 | `APPSTRUCT_SMTP_FROM` | required for SMTP | valid sender mailbox |
+| `APPSTRUCT_RESEND_API_KEY` | required for Resend Mail | server-side API credential |
 
 Inject secrets through the deployment platform. Do not bake `.env`, database credentials, or
 SMTP credentials into an image or static Web assets. Terminate TLS at a trusted reverse proxy

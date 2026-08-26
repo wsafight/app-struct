@@ -1,5 +1,5 @@
 {
-  "ir_version": 3,
+  "ir_version": 4,
   "app": {
     "name": "project-hub"
   },
@@ -24,6 +24,12 @@
   "audit": {
     "enabled": false,
     "reader_roles": []
+  },
+  "mail": {
+    "enabled": false,
+    "provider": "capture",
+    "from": "",
+    "templates": []
   },
   "enums": [],
   "value_objects": [],

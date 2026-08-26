@@ -1,0 +1,11 @@
+[package]
+name = "appstruct-mail-e2e"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+appstruct-generated-backend = { path = "../../generated/backend" }
+sea-orm = { version = "=2.0.2", default-features = false, features = ["runtime-tokio-rustls", "sqlx-postgres"] }
+tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread"] }
+uuid = "=1.25.0"

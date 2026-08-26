@@ -1,4 +1,6 @@
-pub(super) fn cargo(auth_enabled: bool) -> String {
+use appstruct_ir::{AppIr, MailProviderIr};
+
+pub(super) fn cargo(ir: &AppIr) -> String {
     let mut manifest = concat!(
         "[package]\n",
         "name = \"appstruct-generated-backend\"\n",
@@ -20,14 +22,26 @@ pub(super) fn cargo(auth_enabled: bool) -> String {
         "uuid = { version = \"=1.25.0\", features = [\"serde\", \"v7\"] }\n",
     )
     .to_owned();
-    if auth_enabled {
+    if ir.auth.enabled || ir.mail.enabled {
+        manifest.push_str(
+            "lettre = { version = \"=0.11.19\", default-features = false, features = [\"builder\", \"smtp-transport\", \"tokio1-rustls-tls\"] }\n",
+        );
+    }
+    if ir.auth.enabled {
         manifest.push_str(concat!(
             "argon2 = \"=0.5.3\"\n",
             "base64 = \"=0.22.1\"\n",
-            "lettre = { version = \"=0.11.19\", default-features = false, features = [\"builder\", \"smtp-transport\", \"tokio1-rustls-tls\"] }\n",
             "rand = \"=0.9.2\"\n",
             "sha2 = \"=0.10.9\"\n",
         ));
+    }
+    if ir.mail.enabled {
+        manifest.push_str("minijinja = \"=2.12.0\"\n");
+    }
+    if ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend {
+        manifest.push_str(
+            "reqwest = { version = \"=0.13.4\", default-features = false, features = [\"json\", \"rustls\"] }\n",
+        );
     }
     manifest
 }

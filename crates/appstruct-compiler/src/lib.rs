@@ -8,6 +8,7 @@ mod field;
 mod field_options;
 mod loading;
 mod lower;
+mod mail;
 mod naming;
 mod surface;
 mod validation;

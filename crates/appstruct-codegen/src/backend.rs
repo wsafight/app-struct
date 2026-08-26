@@ -5,6 +5,7 @@ mod auth;
 mod context;
 mod entity;
 mod extensions;
+mod mail;
 mod manifest;
 mod operations;
 mod query;
@@ -21,7 +22,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     let mut artifacts = vec![
         Artifact::text(
             "backend/Cargo.toml",
-            manifest::cargo(ir.auth.enabled),
+            manifest::cargo(ir),
             ArtifactKind::RustManifest,
         ),
         Artifact::text(
@@ -67,6 +68,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     ];
     artifacts.extend(audit::plan(ir)?);
     artifacts.extend(auth::plan(ir)?);
+    artifacts.extend(mail::plan(ir)?);
     artifacts.extend(tenant::plan(ir)?);
     artifacts.extend(entity_artifacts(ir)?);
     Ok(artifacts)
@@ -156,12 +158,14 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod audit;
         mod auth;
         mod error;
+        mod mail;
         mod openapi;
         mod operations;
         mod tenant;
 
         pub use error::{ApiError, FieldViolation};
         pub use extensions::{Actor, AppExtensions, HookOperation, RequestContext, TenantId};
+        pub use mail::{MailDelivery, MailError, MailMessage, MailProvider, MailState};
         #auth_exports
 
         use axum::{Router, extract::State, http::{HeaderMap, StatusCode}, response::IntoResponse, routing::get};
@@ -176,25 +180,39 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
             pub database: DatabaseConnection,
             pub extensions: AppExtensions,
             pub auth: AuthState,
+            pub mail: MailState,
         }
 
         impl AppState {
             pub async fn context(&self, headers: &HeaderMap) -> Result<RequestContext<'_>, ApiError> {
                 let actor = self.auth.actor(&self.database, headers).await?;
                 let tenant = tenant::resolve(&self.database, headers, actor.as_ref()).await?;
-                Ok(RequestContext::connection(&self.database, actor, tenant))
+                Ok(RequestContext::connection(&self.database, &self.mail, actor, tenant))
             }
         }
 
         pub fn router(database: DatabaseConnection, extensions: AppExtensions) -> Router {
             let auth = AuthState::from_env().expect("invalid AppStruct auth configuration");
-            router_with_auth(database, extensions, auth)
+            let mail = MailState::from_env(database.clone())
+                .expect("invalid AppStruct mail configuration");
+            router_with_services(database, extensions, auth, mail)
         }
 
         pub fn router_with_auth(
             database: DatabaseConnection,
             extensions: AppExtensions,
             auth: AuthState,
+        ) -> Router {
+            let mail = MailState::from_env(database.clone())
+                .expect("invalid AppStruct mail configuration");
+            router_with_services(database, extensions, auth, mail)
+        }
+
+        pub fn router_with_services(
+            database: DatabaseConnection,
+            extensions: AppExtensions,
+            auth: AuthState,
+            mail: MailState,
         ) -> Router {
             let cors = auth.cors_layer();
             Router::new()
@@ -210,7 +228,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
                 .layer(PropagateRequestIdLayer::x_request_id())
                 .layer(TraceLayer::new_for_http())
                 .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-                .with_state(AppState { database, extensions, auth })
+                .with_state(AppState { database, extensions, auth, mail })
         }
 
         async fn health() -> StatusCode { StatusCode::NO_CONTENT }

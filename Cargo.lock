@@ -89,6 +89,7 @@ name = "appstruct-compiler"
 version = "0.1.0"
 dependencies = [
  "appstruct-ir",
+ "minijinja",
  "saphyr-parser",
  "serde_json",
  "tempfile",
@@ -599,6 +600,15 @@ name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+
+[[package]]
+name = "minijinja"
+version = "2.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9f264d75233323f4b7d2f03aefe8a990690cdebfbfe26ea86bcbaec5e9ac990"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "mio"
