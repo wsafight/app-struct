@@ -11,6 +11,7 @@ mod mail;
 mod manifest;
 mod operations;
 mod query;
+mod runtime;
 mod tenant;
 mod validation;
 
@@ -156,7 +157,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         quote! { pub use auth::AuthState; }
     };
     let service_exports = service_exports(ir);
-    let runtime = runtime_source(&routes);
+    let runtime = runtime::source(ir, &routes);
     render(quote! {
         pub mod api;
         pub mod entities;
@@ -177,74 +178,6 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         #auth_exports
         #runtime
     })
-}
-
-fn runtime_source(routes: &[TokenStream]) -> TokenStream {
-    quote! {
-        use axum::{Router, extract::State, http::{HeaderMap, StatusCode}, response::IntoResponse, routing::get};
-        use sea_orm::DatabaseConnection;
-        use tower_http::{
-            request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
-            trace::TraceLayer,
-        };
-        #[derive(Clone)]
-        pub struct AppState {
-            pub database: DatabaseConnection,
-            pub extensions: AppExtensions,
-            pub auth: AuthState,
-            pub mail: MailState,
-            pub file: FileState,
-        }
-        impl AppState {
-            pub async fn context(&self, headers: &HeaderMap) -> Result<RequestContext<'_>, ApiError> {
-                let actor = self.auth.actor(&self.database, headers).await?;
-                let tenant = tenant::resolve(&self.database, headers, actor.as_ref()).await?;
-                Ok(RequestContext::connection_with_file(
-                    &self.database, &self.mail, &self.file, actor, tenant,
-                ))
-            }
-        }
-        pub fn router(database: DatabaseConnection, extensions: AppExtensions) -> Router {
-            let auth = AuthState::from_env().expect("invalid AppStruct auth configuration");
-            let mail = MailState::from_env(database.clone())
-                .expect("invalid AppStruct mail configuration");
-            let file = FileState::from_env(database.clone())
-                .expect("invalid AppStruct file configuration");
-            router_with_services(database, extensions, auth, mail, file)
-        }
-        pub fn router_with_auth(
-            database: DatabaseConnection, extensions: AppExtensions, auth: AuthState,
-        ) -> Router {
-            let mail = MailState::from_env(database.clone())
-                .expect("invalid AppStruct mail configuration");
-            let file = FileState::from_env(database.clone())
-                .expect("invalid AppStruct file configuration");
-            router_with_services(database, extensions, auth, mail, file)
-        }
-        pub fn router_with_services(
-            database: DatabaseConnection, extensions: AppExtensions, auth: AuthState,
-            mail: MailState, file: FileState,
-        ) -> Router {
-            let cors = auth.cors_layer();
-            Router::new()
-                #(#routes)*
-                .merge(operations::router()).merge(audit::router())
-                .merge(auth::router()).merge(tenant::router())
-                .route("/health/live", get(health)).route("/health/ready", get(readiness))
-                .route("/openapi.json", get(openapi)).layer(cors)
-                .layer(PropagateRequestIdLayer::x_request_id()).layer(TraceLayer::new_for_http())
-                .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-                .with_state(AppState { database, extensions, auth, mail, file })
-        }
-        async fn health() -> StatusCode { StatusCode::NO_CONTENT }
-        async fn readiness(State(state): State<AppState>) -> StatusCode {
-            if state.database.ping().await.is_ok() { StatusCode::NO_CONTENT }
-            else { StatusCode::SERVICE_UNAVAILABLE }
-        }
-        async fn openapi() -> impl IntoResponse {
-            ([(axum::http::header::CONTENT_TYPE, "application/json")], openapi::OPENAPI_JSON)
-        }
-    }
 }
 
 fn service_exports(ir: &AppIr) -> TokenStream {

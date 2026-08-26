@@ -83,6 +83,22 @@ database ping. Successful responses include `X-Request-Id`; an incoming request 
 and otherwise the backend creates one. Keep the old release available until readiness and a
 database-backed smoke journey both succeed.
 
+Auth, Mail, and File configuration is validated before the listener begins serving requests.
+Invalid environment values return a startup error and a non-zero process status; they do not
+panic. Treat repeated startup failures as a deployment configuration problem rather than a
+liveness failure.
+
+The backend handles `SIGINT` and `SIGTERM`. On either signal it initiates HTTP graceful shutdown,
+stops the Jobs worker, waits for the in-flight job handler and HTTP requests to finish, and only
+then releases the database connection. Configure the platform termination grace period to exceed
+the longest permitted request and job-handler duration.
+
+When Mail and Jobs are both enabled, the default application starts a worker filtered to
+`mail.send`; it cannot claim unrelated custom jobs. Applications that own a custom entrypoint can
+register a comprehensive handler with `AppExtensions::builder().job_handler(handler)` before
+constructing `Application`. If Jobs is enabled without Mail or a registered handler, startup logs
+a warning and leaves the worker stopped rather than consuming jobs it cannot handle.
+
 ## Failure And Rollback
 
 If migration apply fails, do not start the new backend. Preserve logs and migration history,

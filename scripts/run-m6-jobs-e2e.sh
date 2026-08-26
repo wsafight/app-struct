@@ -69,4 +69,23 @@ tenant="$(jq -er '.id' "$temporary_root/tenant.json")"
 DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" TENANT_ID="$tenant" \
   cargo run --quiet --manifest-path "$project/app/jobs-e2e/Cargo.toml"
 pnpm --dir "$project/generated/web" exec tsc --noEmit
+
+kill -INT -- "-$dev_pid"
+wait "$dev_pid"
+dev_pid=""
+grep -q "shutdown signal received" "$log"
+grep -q "job worker stopped" "$log"
+
+backend="$project/.appstruct/cache/backend-target/debug/appstruct-generated-backend"
+if APPSTRUCT_ENV=production DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
+  APPSTRUCT_BIND="127.0.0.1:0" "$backend" >"$temporary_root/config-error.log" 2>&1
+then
+  echo "invalid production mail configuration unexpectedly started" >&2
+  exit 1
+fi
+grep -q "capture mail provider is forbidden in production" "$temporary_root/config-error.log"
+if grep -q "panicked at" "$temporary_root/config-error.log"; then
+  cat "$temporary_root/config-error.log" >&2
+  exit 1
+fi
 echo "Jobs PostgreSQL transaction and worker E2E passed"

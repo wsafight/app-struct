@@ -152,13 +152,26 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
             database: DatabaseConnection,
             handler: Arc<dyn JobHandler>,
             worker_id: String,
+            kind: Option<String>,
         }
         impl JobWorker {
             pub fn new(database: DatabaseConnection, handler: Arc<dyn JobHandler>) -> Self {
-                Self { database, handler, worker_id: uuid::Uuid::now_v7().to_string() }
+                Self {
+                    database, handler, worker_id: uuid::Uuid::now_v7().to_string(), kind: None,
+                }
+            }
+            pub fn for_kind(
+                database: DatabaseConnection, handler: Arc<dyn JobHandler>, kind: &str,
+            ) -> Self {
+                Self {
+                    database, handler, worker_id: uuid::Uuid::now_v7().to_string(),
+                    kind: Some(kind.to_owned()),
+                }
             }
             pub async fn run_once(&self) -> Result<bool, JobError> {
-                let Some(job) = claim(&self.database, &self.worker_id, #lease_seconds).await? else {
+                let Some(job) = claim(
+                    &self.database, &self.worker_id, #lease_seconds, self.kind.as_deref(),
+                ).await? else {
                     return Ok(false);
                 };
                 match self.handler.handle(&job).await {
@@ -193,7 +206,9 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
         impl JobWorkerHandle {
             pub async fn shutdown(self) {
                 let _ = self.shutdown.send(true);
-                let _ = self.task.await;
+                if let Err(error) = self.task.await {
+                    tracing::error!(%error, "job worker task failed");
+                }
             }
         }
     }
@@ -203,11 +218,15 @@ fn persistence_source() -> proc_macro2::TokenStream {
     quote! {
         async fn claim(
             database: &DatabaseConnection, worker_id: &str, lease_seconds: i64,
+            kind: Option<&str>,
         ) -> Result<Option<Job>, JobError> {
             let row = database.query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
-                "WITH candidate AS (SELECT id FROM \"_appstruct_jobs\" WHERE (status = 'queued' AND run_at <= CURRENT_TIMESTAMP) OR (status = 'running' AND locked_until <= CURRENT_TIMESTAMP) ORDER BY run_at, id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE \"_appstruct_jobs\" AS job SET status = 'running', attempts = attempts + 1, locked_by = $1, locked_until = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second') FROM candidate WHERE job.id = candidate.id RETURNING job.id, job.queue, job.kind, job.payload, job.tenant_id, job.attempts, job.max_attempts, job.backoff_seconds",
-                [worker_id.to_owned().into(), lease_seconds.into()],
+                "WITH candidate AS (SELECT id FROM \"_appstruct_jobs\" WHERE ((status = 'queued' AND run_at <= CURRENT_TIMESTAMP) OR (status = 'running' AND locked_until <= CURRENT_TIMESTAMP)) AND ($3::text IS NULL OR kind = $3) ORDER BY run_at, id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE \"_appstruct_jobs\" AS job SET status = 'running', attempts = attempts + 1, locked_by = $1, locked_until = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second') FROM candidate WHERE job.id = candidate.id RETURNING job.id, job.queue, job.kind, job.payload, job.tenant_id, job.attempts, job.max_attempts, job.backoff_seconds",
+                [
+                    worker_id.to_owned().into(), lease_seconds.into(),
+                    kind.map(str::to_owned).into(),
+                ],
             )).await?;
             row.map(job_from_row).transpose().map_err(JobError::from)
         }
@@ -308,6 +327,9 @@ fn disabled_source() -> Result<String, CodegenError> {
         pub struct JobWorker;
         impl JobWorker {
             pub fn new(_database: DatabaseConnection, _handler: Arc<dyn JobHandler>) -> Self { Self }
+            pub fn for_kind(
+                _database: DatabaseConnection, _handler: Arc<dyn JobHandler>, _kind: &str,
+            ) -> Self { Self }
             pub async fn run_once(&self) -> Result<bool, JobError> { Err(JobError::Disabled) }
             pub fn spawn(self) -> JobWorkerHandle { JobWorkerHandle }
         }

@@ -1,6 +1,5 @@
 use appstruct_generated_backend::{
-    Job, JobHandler, JobHandlerError, JobWorker, MailJobHandler, MailJobPayload, MailState,
-    RequestContext,
+    Job, JobHandler, JobHandlerError, JobWorker, MailJobPayload, MailState, RequestContext,
 };
 use async_trait::async_trait;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait};
@@ -168,8 +167,12 @@ async fn assert_mail_job(
     let receipt = context
         .enqueue_job("mail", "mail.send", &payload, Some("mail-job"), None)
         .await?;
-    let worker = JobWorker::new(database.clone(), Arc::new(MailJobHandler::new(mail.clone())));
-    assert!(worker.run_once().await?);
+    for _ in 0..40 {
+        if job_state(database, receipt.id).await? == "succeeded|1" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
     assert_eq!(job_state(database, receipt.id).await?, "succeeded|1");
     assert_eq!(capture_count(database).await?, 1);
     Ok(())

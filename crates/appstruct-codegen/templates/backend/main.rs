@@ -1,4 +1,4 @@
-use appstruct_generated_backend::{AppExtensions, router};
+use appstruct_generated_backend::{AppExtensions, Application};
 use sea_orm::Database;
 use std::{env, net::SocketAddr};
 use tokio::net::TcpListener;
@@ -18,7 +18,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = Database::connect(database_url).await?;
     let extensions = AppExtensions::builder().build();
     let listener = TcpListener::bind(address).await?;
+    let application = Application::from_env(database, extensions)?;
     tracing::info!(%address, "AppStruct API listening");
-    axum::serve(listener, router(database, extensions)).await?;
+    application.serve(listener).await?;
     Ok(())
 }
