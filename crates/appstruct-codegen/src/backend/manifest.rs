@@ -14,7 +14,7 @@ pub(super) fn cargo(auth_enabled: bool) -> String {
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
         "serde_json = \"=1.0.151\"\n",
         "tokio = { version = \"=1.53.1\", features = [\"macros\", \"net\", \"rt-multi-thread\"] }\n",
-        "tower-http = { version = \"=0.7.0\", features = [\"cors\", \"trace\"] }\n",
+        "tower-http = { version = \"=0.7.0\", features = [\"cors\", \"request-id\", \"trace\"] }\n",
         "tracing = \"=0.1.44\"\n",
         "tracing-subscriber = { version = \"=0.3.22\", features = [\"env-filter\", \"fmt\"] }\n",
         "uuid = { version = \"=1.25.0\", features = [\"serde\", \"v7\"] }\n",

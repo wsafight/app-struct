@@ -127,6 +127,12 @@ impl DevProcesses {
     }
 }
 
+impl Drop for DevProcesses {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 pub(super) struct ManagedDatabase {
     project: Option<std::path::PathBuf>,
     environment: Option<ProjectEnvironment>,

@@ -73,6 +73,13 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+Run the PostgreSQL browser gate against a dedicated test database:
+
+```bash
+APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_e2e' \
+  scripts/run-m5-browser-e2e.sh
+```
+
 Rust source files are limited to 400 lines by a repository test. Generated projects also pin
 their Rust and pnpm dependency graphs so repeated generation and production builds remain
 reviewable and reproducible.

@@ -63,8 +63,8 @@ Run each release against one immutable artifact set:
 4. Run `appstruct --project <release-root> migrate apply` as a dedicated release job.
 5. Start the new backend binary with its runtime environment.
 6. Publish `generated/web/dist/` with SPA fallback to `index.html`.
-7. Check `GET /health/live`, `GET /openapi.json`, login when enabled, and one authorized CRUD
-   journey before retiring the previous release.
+7. Check `GET /health/live`, `GET /health/ready`, `GET /openapi.json`, login when enabled, and
+   one authorized CRUD journey before retiring the previous release.
 
 Migration apply uses an advisory lock, validates ordered history and checksums, and checks live
 catalog drift after all pending migrations complete. A dirty non-transactional migration,
@@ -77,10 +77,10 @@ requires it. Expose it through a reverse proxy that provides HTTPS, request size
 logs, and deployment-level timeouts. Serve the Web directory from a static host or CDN and
 route unknown application paths back to `index.html`.
 
-The current generated backend exposes `/health/live`; it proves that the process can answer a
-request but is not a database readiness guarantee. Keep the old release available until a
-database-backed smoke journey succeeds. A dedicated readiness endpoint remains an explicit
-MVP gate rather than something deployment tooling should infer from liveness.
+The generated backend exposes `/health/live` for process liveness and `/health/ready` for a
+database ping. Successful responses include `X-Request-Id`; an incoming request ID is preserved
+and otherwise the backend creates one. Keep the old release available until readiness and a
+database-backed smoke journey both succeed.
 
 ## Failure And Rollback
 

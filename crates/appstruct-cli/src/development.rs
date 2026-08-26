@@ -22,8 +22,17 @@ pub(crate) fn run(project: &Path, api_port: u16, web_port: u16) -> ExitCode {
         eprintln!("error[AS6005]: API and web ports must be non-zero and different");
         return ExitCode::from(2);
     }
-    match DevSession::start(project, api_port, web_port).and_then(|mut session| session.run()) {
+    let stopping = Arc::new(AtomicBool::new(false));
+    let signal = Arc::clone(&stopping);
+    if let Err(error) = ctrlc::set_handler(move || signal.store(true, Ordering::SeqCst)) {
+        eprintln!("error[AS6005]: cannot install Ctrl-C handler: {error}");
+        return ExitCode::from(3);
+    }
+    match DevSession::start(project, api_port, web_port, stopping)
+        .and_then(|mut session| session.run())
+    {
         Ok(()) => ExitCode::SUCCESS,
+        Err(error) if error.kind() == io::ErrorKind::Interrupted => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error[AS6005]: development server failed: {error}");
             ExitCode::from(3)
@@ -40,10 +49,17 @@ struct DevSession<'project> {
     fingerprint: SourceFingerprint,
     api_port: u16,
     web_port: u16,
+    stopping: Arc<AtomicBool>,
 }
 
 impl<'project> DevSession<'project> {
-    fn start(project: &'project Path, api_port: u16, web_port: u16) -> io::Result<Self> {
+    fn start(
+        project: &'project Path,
+        api_port: u16,
+        web_port: u16,
+        stopping: Arc<AtomicBool>,
+    ) -> io::Result<Self> {
+        check_stopping(&stopping)?;
         let ir = compile(project)?;
         let environment = ProjectEnvironment::load(project)?;
         let (database, database_url) = match ir.database.dev_mode {
@@ -52,7 +68,7 @@ impl<'project> DevSession<'project> {
                 let url = environment
                     .get("DATABASE_URL")
                     .unwrap_or_else(|| MANAGED_DATABASE_URL.to_owned());
-                wait_for_database(project, &url)?;
+                wait_for_database(project, &url, &stopping)?;
                 (database, url)
             }
             DatabaseDevMode::External => {
@@ -65,9 +81,11 @@ impl<'project> DevSession<'project> {
                 (ManagedDatabase::external(), url)
             }
         };
-        prepare(project, &database_url, &environment)?;
+        check_stopping(&stopping)?;
+        prepare(project, &database_url, &environment, &stopping)?;
         let processes =
             DevProcesses::spawn(project, &environment, &database_url, api_port, web_port)?;
+        check_stopping(&stopping)?;
         let fingerprint = SourceFingerprint::read(project)?;
         println!("AppStruct development environment is ready:");
         println!("- API: http://127.0.0.1:{api_port}");
@@ -81,15 +99,12 @@ impl<'project> DevSession<'project> {
             fingerprint,
             api_port,
             web_port,
+            stopping,
         })
     }
 
     fn run(&mut self) -> io::Result<()> {
-        let stopping = Arc::new(AtomicBool::new(false));
-        let signal = Arc::clone(&stopping);
-        ctrlc::set_handler(move || signal.store(true, Ordering::SeqCst))
-            .map_err(|error| io::Error::other(format!("cannot install Ctrl-C handler: {error}")))?;
-        while !stopping.load(Ordering::SeqCst) {
+        while !self.stopping.load(Ordering::SeqCst) {
             if let Some(failure) = self.processes.failure()? {
                 return Err(io::Error::other(failure));
             }
@@ -106,7 +121,13 @@ impl<'project> DevSession<'project> {
 
     fn reload(&mut self) {
         println!("[appstruct] project inputs changed; rebuilding");
-        let result = prepare(self.project, &self.database_url, &self.environment).and_then(|()| {
+        let result = prepare(
+            self.project,
+            &self.database_url,
+            &self.environment,
+            &self.stopping,
+        )
+        .and_then(|()| {
             self.processes.restart(
                 self.project,
                 &self.environment,
@@ -144,7 +165,13 @@ fn compile(project: &Path) -> io::Result<appstruct_ir::AppIr> {
     })
 }
 
-fn prepare(project: &Path, database_url: &str, environment: &ProjectEnvironment) -> io::Result<()> {
+fn prepare(
+    project: &Path,
+    database_url: &str,
+    environment: &ProjectEnvironment,
+    stopping: &AtomicBool,
+) -> io::Result<()> {
+    check_stopping(stopping)?;
     if crate::migration::run_with_database(
         project,
         crate::migration::MigrateCommand::Dev { accept: true },
@@ -153,10 +180,13 @@ fn prepare(project: &Path, database_url: &str, environment: &ProjectEnvironment)
     {
         return Err(io::Error::other("migration failed"));
     }
+    check_stopping(stopping)?;
     if crate::generation::run(project, false) != ExitCode::SUCCESS {
         return Err(io::Error::other("generation failed"));
     }
+    check_stopping(stopping)?;
     build_backend(project, environment)?;
+    check_stopping(stopping)?;
     install_web(project, environment)
 }
 
@@ -185,8 +215,9 @@ fn install_web(project: &Path, environment: &ProjectEnvironment) -> io::Result<(
     status(command, "install generated web dependencies")
 }
 
-fn wait_for_database(project: &Path, database_url: &str) -> io::Result<()> {
+fn wait_for_database(project: &Path, database_url: &str, stopping: &AtomicBool) -> io::Result<()> {
     for _ in 0..60 {
+        check_stopping(stopping)?;
         match appstruct_migrate::status_project(project, database_url) {
             Ok(_) => return Ok(()),
             Err(appstruct_migrate::MigrationError::Database(_)) => {}
@@ -198,6 +229,17 @@ fn wait_for_database(project: &Path, database_url: &str) -> io::Result<()> {
         io::ErrorKind::TimedOut,
         "managed PostgreSQL did not become ready within 30 seconds",
     ))
+}
+
+fn check_stopping(stopping: &AtomicBool) -> io::Result<()> {
+    if stopping.load(Ordering::SeqCst) {
+        Err(io::Error::new(
+            io::ErrorKind::Interrupted,
+            "development server startup interrupted",
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn status(mut command: Command, context: &str) -> io::Result<()> {

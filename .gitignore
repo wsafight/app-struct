@@ -7,3 +7,8 @@
 **/.appstruct/cache/
 **/.appstruct/generation.lock
 **/.appstruct/generation.journal
+
+# Browser test output.
+/playwright-report/
+/test-results/
+/node_modules/

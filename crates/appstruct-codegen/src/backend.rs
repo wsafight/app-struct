@@ -63,24 +63,60 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         ),
     ];
     artifacts.extend(auth::plan(ir)?);
-    for entity in &ir.entities {
-        let module = module_name(entity);
-        artifacts.push(Artifact::text(
-            format!("backend/src/entities/{module}.rs"),
-            entity::source(ir, entity).map_err(|error| {
-                CodegenError::new(format!("entity `{module}` generation failed: {error}"))
-            })?,
-            ArtifactKind::RustSource,
-        ));
-        artifacts.push(Artifact::text(
-            format!("backend/src/api/{module}.rs"),
-            api::source(entity).map_err(|error| {
-                CodegenError::new(format!("API `{module}` generation failed: {error}"))
-            })?,
-            ArtifactKind::RustSource,
-        ));
-    }
+    artifacts.extend(entity_artifacts(ir)?);
     Ok(artifacts)
+}
+
+fn entity_artifacts(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
+    if ir.entities.is_empty() {
+        return Ok(Vec::new());
+    }
+    let workers = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(ir.entities.len());
+    let chunk_size = ir.entities.len().div_ceil(workers);
+    std::thread::scope(|scope| {
+        let handles = ir
+            .entities
+            .chunks(chunk_size)
+            .map(|entities| {
+                scope.spawn(move || {
+                    entities
+                        .iter()
+                        .map(|entity| plan_entity(ir, entity))
+                        .collect::<Result<Vec<_>, _>>()
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut artifacts = Vec::with_capacity(ir.entities.len() * 2);
+        for handle in handles {
+            let planned = handle
+                .join()
+                .map_err(|_| CodegenError::new("backend generation worker panicked"))??;
+            artifacts.extend(planned.into_iter().flatten());
+        }
+        Ok(artifacts)
+    })
+}
+
+fn plan_entity(ir: &AppIr, entity: &EntityIr) -> Result<[Artifact; 2], CodegenError> {
+    let module = module_name(entity);
+    let entity_source = entity::source(ir, entity)
+        .map_err(|error| CodegenError::new(format!("entity `{module}` failed: {error}")))?;
+    let api_source = api::source(entity)
+        .map_err(|error| CodegenError::new(format!("API `{module}` failed: {error}")))?;
+    Ok([
+        Artifact::text(
+            format!("backend/src/entities/{module}.rs"),
+            entity_source,
+            ArtifactKind::RustSource,
+        ),
+        Artifact::text(
+            format!("backend/src/api/{module}.rs"),
+            api_source,
+            ArtifactKind::RustSource,
+        ),
+    ])
 }
 
 fn module_source(ir: &AppIr) -> Result<String, CodegenError> {
@@ -121,9 +157,12 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub use extensions::{Actor, AppExtensions, HookOperation, RequestContext};
         #auth_exports
 
-        use axum::{Router, http::{HeaderMap, StatusCode}, response::IntoResponse, routing::get};
+        use axum::{Router, extract::State, http::{HeaderMap, StatusCode}, response::IntoResponse, routing::get};
         use sea_orm::DatabaseConnection;
-        use tower_http::trace::TraceLayer;
+        use tower_http::{
+            request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+            trace::TraceLayer,
+        };
 
         #[derive(Clone)]
         pub struct AppState {
@@ -155,13 +194,24 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
                 .merge(operations::router())
                 .merge(auth::router())
                 .route("/health/live", get(health))
+                .route("/health/ready", get(readiness))
                 .route("/openapi.json", get(openapi))
                 .layer(cors)
+                .layer(PropagateRequestIdLayer::x_request_id())
                 .layer(TraceLayer::new_for_http())
+                .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
                 .with_state(AppState { database, extensions, auth })
         }
 
         async fn health() -> StatusCode { StatusCode::NO_CONTENT }
+
+        async fn readiness(State(state): State<AppState>) -> StatusCode {
+            if state.database.ping().await.is_ok() {
+                StatusCode::NO_CONTENT
+            } else {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
+        }
 
         async fn openapi() -> impl IntoResponse {
             ([(axum::http::header::CONTENT_TYPE, "application/json")], openapi::OPENAPI_JSON)

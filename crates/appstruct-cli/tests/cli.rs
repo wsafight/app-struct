@@ -203,6 +203,15 @@ fn generation_never_overwrites_user_extension_directories() {
     );
 }
 
+#[test]
+fn generation_is_byte_deterministic_across_project_directories() {
+    let first = temporary_project("m2-project");
+    let second = temporary_project("m2-project");
+    assert!(run(&first, &["generate"]).status.success());
+    assert!(run(&second, &["generate"]).status.success());
+    assert_directories_equal(&first.join("generated"), &second.join("generated"));
+}
+
 fn temporary_project(fixture: &str) -> PathBuf {
     let source = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/fixtures")
@@ -249,4 +258,33 @@ fn migration_count(project: &Path) -> usize {
         .filter_map(Result::ok)
         .filter(|entry| entry.path().extension().is_some_and(|value| value == "sql"))
         .count()
+}
+
+fn assert_directories_equal(first: &Path, second: &Path) {
+    let mut first_entries = fs::read_dir(first)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect::<Vec<_>>();
+    let mut second_entries = fs::read_dir(second)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect::<Vec<_>>();
+    first_entries.sort();
+    second_entries.sort();
+    assert_eq!(first_entries, second_entries, "directory entries differ");
+    for name in first_entries {
+        let first_path = first.join(&name);
+        let second_path = second.join(name);
+        if first_path.is_dir() {
+            assert!(second_path.is_dir());
+            assert_directories_equal(&first_path, &second_path);
+        } else {
+            assert_eq!(
+                fs::read(&first_path).unwrap(),
+                fs::read(&second_path).unwrap(),
+                "file bytes differ for {}",
+                first_path.display()
+            );
+        }
+    }
 }

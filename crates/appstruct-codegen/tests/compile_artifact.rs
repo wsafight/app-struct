@@ -178,6 +178,8 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 fn assert_m2_contract(artifacts: &[Artifact]) {
     assert_eq!(artifacts.len(), 34);
     assert!(artifact_text(artifacts, "database/0001_initial.sql").contains("CREATE TABLE"));
+    assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("/health/ready"));
+    assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("MakeRequestUuid"));
     assert!(artifact_text(artifacts, "web/pnpm-lock.yaml").contains("lockfileVersion"));
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("ListResponse"));
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("range_filters"));
