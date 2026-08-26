@@ -2,6 +2,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 pub(super) fn contract() -> TokenStream {
+    let methods = methods();
+    let connection = connection_trait();
     quote! {
         pub type TenantId = uuid::Uuid;
 
@@ -15,10 +17,18 @@ pub(super) fn contract() -> TokenStream {
         pub struct RequestContext<'db> {
             database: RequestDatabase<'db>,
             mail: &'db crate::MailState,
+            file: Option<&'db crate::FileState>,
             actor: Option<Actor>,
             tenant: Option<TenantId>,
         }
 
+        #methods
+        #connection
+    }
+}
+
+fn methods() -> TokenStream {
+    quote! {
         impl<'db> RequestContext<'db> {
             pub fn connection(
                 database: &'db DatabaseConnection,
@@ -26,7 +36,7 @@ pub(super) fn contract() -> TokenStream {
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Connection(database), mail, actor, tenant }
+                Self { database: RequestDatabase::Connection(database), mail, file: None, actor, tenant }
             }
 
             pub fn transaction(
@@ -35,7 +45,27 @@ pub(super) fn contract() -> TokenStream {
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Transaction(database), mail, actor, tenant }
+                Self { database: RequestDatabase::Transaction(database), mail, file: None, actor, tenant }
+            }
+
+            pub fn connection_with_file(
+                database: &'db DatabaseConnection,
+                mail: &'db crate::MailState,
+                file: &'db crate::FileState,
+                actor: Option<Actor>,
+                tenant: Option<TenantId>,
+            ) -> Self {
+                Self { database: RequestDatabase::Connection(database), mail, file: Some(file), actor, tenant }
+            }
+
+            pub(crate) fn transaction_with_file(
+                database: &'db DatabaseTransaction,
+                mail: &'db crate::MailState,
+                file: &'db crate::FileState,
+                actor: Option<Actor>,
+                tenant: Option<TenantId>,
+            ) -> Self {
+                Self { database: RequestDatabase::Transaction(database), mail, file: Some(file), actor, tenant }
             }
 
             pub fn database(&self) -> &Self { self }
@@ -64,8 +94,27 @@ pub(super) fn contract() -> TokenStream {
                     self, queue, kind, payload, idempotency_key, run_at, self.tenant,
                 ).await
             }
+            pub async fn put_file(
+                &self, object_key: &str, original_name: &str,
+                content_type: &str, content: &[u8],
+            ) -> Result<crate::FileMetadata, crate::FileError> {
+                self.file.ok_or(crate::FileError::Disabled)?
+                    .put(object_key, original_name, content_type, content, self.tenant).await
+            }
+            pub async fn get_file(
+                &self, object_key: &str,
+            ) -> Result<(crate::FileMetadata, Vec<u8>), crate::FileError> {
+                self.file.ok_or(crate::FileError::Disabled)?.get(object_key, self.tenant).await
+            }
+            pub async fn delete_file(&self, object_key: &str) -> Result<(), crate::FileError> {
+                self.file.ok_or(crate::FileError::Disabled)?.delete(object_key, self.tenant).await
+            }
         }
+    }
+}
 
+fn connection_trait() -> TokenStream {
+    quote! {
         #[async_trait]
         impl ConnectionTrait for RequestContext<'_> {
             fn get_database_backend(&self) -> DbBackend {

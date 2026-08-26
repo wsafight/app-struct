@@ -913,6 +913,31 @@ Worker 是 at-least-once：进程可在 Handler 成功后、状态更新前崩�
 等待清理。last_error 截断到 2000 字符，不记录 secret。Mail 与 Jobs 同时启用时可用
 `MailJobPayload`/`MailJobHandler` 处理 `mail.send`，但 Auth 不依赖 Jobs。
 
+M6 File 契约如下：
+
+```yaml
+modules:
+  file:
+    enabled: true
+    provider: local # local | s3
+    local_root: .appstruct/files
+    max_bytes: 10485760
+    allowed_content_types: [text/plain, application/json, image/png]
+```
+
+Compiler 降低为 `FileIr`，验证 provider、安全相对 local root、1 到 100 MiB 的单文件上限及规范 MIME
+白名单，并对 MIME 排序去重。迁移安装 `_appstruct_files`，object key 全局唯一，保存原始名称、MIME、
+size、SHA-256、nullable tenant 和创建时间；Tenant 外键使用 `SET NULL`。生成后端导出 object-safe
+`FileProvider`、可注入 `FileState`、`FileMetadata` 和 `FileError`，`RequestContext` 自动传递 tenant。
+
+默认适配器使用 `object_store` 的 LocalFileSystem 或 AmazonS3Builder。S3 运行时读取
+`APPSTRUCT_S3_ENDPOINT`、`APPSTRUCT_S3_BUCKET`、`APPSTRUCT_S3_ACCESS_KEY`、
+`APPSTRUCT_S3_SECRET_KEY` 和可选 region；明文 HTTP 只有 `APPSTRUCT_S3_ALLOW_HTTP=true` 时允许。
+对象写入使用 create-only，不覆盖既有 key；元数据插入失败时 best-effort 删除刚写对象。路径验证拒绝
+absolute、反斜杠、NUL、`.`/`..`、空片段和非规范路径。文本、JSON 和嗅探到的二进制内容必须与声明
+MIME 相符；读取重新校验 checksum。get/delete SQL 使用 `tenant_id IS NOT DISTINCT FROM` 绑定租户，
+跨租户统一表现为元数据不存在。
+
 ### 13.3 Repository
 
 生成的 Repository 负责：

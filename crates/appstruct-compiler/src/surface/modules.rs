@@ -56,3 +56,13 @@ pub(crate) struct SurfaceJobQueue {
     pub max_attempts: Option<Located<u64>>,
     pub backoff_seconds: Option<Located<u64>>,
 }
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SurfaceFile {
+    pub enabled: bool,
+    pub provider: Option<Located<String>>,
+    pub local_root: Option<Located<String>>,
+    pub max_bytes: Option<Located<u64>>,
+    pub allowed_content_types: Vec<Located<String>>,
+    pub span: Option<SourceSpan>,
+}

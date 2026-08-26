@@ -769,6 +769,17 @@ at-least-once，Handler 必须幂等，不能宣称 exactly-once。
 `JobHandler`、单步 Worker 和带显式 shutdown 的后台 Worker handle。幂等键在数据库中唯一，重复
 enqueue 返回原 Job ID，不创建第二条记录。
 
+File Module 通过 `modules.file` 选择本地或 S3 兼容对象存储，并声明单文件大小上限与允许的 MIME
+类型。运行时在写入前拒绝绝对路径、`..`、空路径片段、路径化文件名、控制字符、超限内容和
+MIME/实际内容不匹配；同一 object key 不允许覆盖。文本要求无 NUL 的 UTF-8，JSON 必须可解析，
+图片等二进制类型使用内容特征识别。下载时重新计算 SHA-256 并与 PostgreSQL 元数据比较，发现对象
+被绕过 Provider 篡改时失败关闭。
+
+每条文件元数据保存 object key、原始文件名、MIME、大小、checksum、tenant 和创建时间。读取和删除
+都必须匹配当前 tenant，不能仅凭 object key 跨租户访问。S3 endpoint、bucket、region 和凭据只来自
+运行环境，不进入 App Spec、IR、生成资产或日志；HTTP endpoint 必须通过专用环境变量显式允许。
+File 内容不得进入 Audit snapshot 或 Jobs 错误文本。
+
 每个模块可以包含 Rust Runtime、数据库迁移、React 页面、UI Manifest 和资源模板。YAML 只负责启用模块及提供业务参数，支付 webhook、会话安全、任务重试等行为必须由经过测试的模块代码实现。
 
 运行时按 capability 图的拓扑顺序启动 Module。每个 Module 对自己注册的路由、任务、连接和其他副作用负责，并返回可逆序清理的 handle；启动部分失败时，Runtime 清理本轮已经启动的模块并报告完整依赖链。MVP 不支持在运行中的生产进程动态安装、卸载或加载 Rust 动态库。

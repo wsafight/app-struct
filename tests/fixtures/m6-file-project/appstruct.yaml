@@ -1,0 +1,31 @@
+version: 1
+
+app:
+  name: file-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+    registration: true
+    password_reset: false
+  rbac:
+    roles: [member, admin]
+    default_role: admin
+  tenant:
+    enabled: true
+  file:
+    enabled: true
+    provider: local
+    local_root: .appstruct/files
+    max_bytes: 1024
+    allowed_content_types: [text/plain, image/png, application/json]
+
+includes:
+  - spec/project.yaml
+  - spec/identity.yaml

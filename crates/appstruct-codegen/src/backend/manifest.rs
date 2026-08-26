@@ -1,4 +1,4 @@
-use appstruct_ir::{AppIr, MailProviderIr};
+use appstruct_ir::{AppIr, FileProviderIr, MailProviderIr};
 
 pub(super) fn cargo(ir: &AppIr) -> String {
     let mut manifest = concat!(
@@ -32,8 +32,18 @@ pub(super) fn cargo(ir: &AppIr) -> String {
             "argon2 = \"=0.5.3\"\n",
             "base64 = \"=0.22.1\"\n",
             "rand = \"=0.9.2\"\n",
-            "sha2 = \"=0.10.9\"\n",
         ));
+    }
+    if ir.auth.enabled || ir.file.enabled {
+        manifest.push_str("sha2 = \"=0.10.9\"\n");
+    }
+    if ir.file.enabled {
+        manifest.push_str("infer = \"=0.19.0\"\n");
+        match ir.file.provider {
+            FileProviderIr::Local => manifest.push_str("object_store = \"=0.14.1\"\n"),
+            FileProviderIr::S3 => manifest
+                .push_str("object_store = { version = \"=0.14.1\", features = [\"aws\"] }\n"),
+        }
     }
     if ir.mail.enabled {
         manifest.push_str("minijinja = \"=2.12.0\"\n");

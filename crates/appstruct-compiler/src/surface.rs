@@ -2,6 +2,7 @@ mod access;
 mod audit;
 mod auth;
 mod extension;
+mod file;
 mod jobs;
 mod mail;
 mod modules;
@@ -10,8 +11,8 @@ mod value;
 
 pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
 pub(crate) use modules::{
-    SurfaceAudit, SurfaceAuth, SurfaceJobQueue, SurfaceJobs, SurfaceMail, SurfaceMailTemplate,
-    SurfaceTenant,
+    SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobQueue, SurfaceJobs, SurfaceMail,
+    SurfaceMailTemplate, SurfaceTenant,
 };
 
 use self::value::{
@@ -38,6 +39,7 @@ pub(crate) struct SurfaceRoot {
     pub audit: SurfaceAudit,
     pub mail: SurfaceMail,
     pub jobs: SurfaceJobs,
+    pub file: SurfaceFile,
     pub includes: Vec<Located<String>>,
 }
 
@@ -204,6 +206,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
     let audit = audit::decode(mapping.get("modules"))?;
     let mail = mail::decode(mapping.get("modules"))?;
     let jobs = jobs::decode(mapping.get("modules"))?;
+    let file = file::decode(mapping.get("modules"))?;
 
     Ok(SurfaceRoot {
         version,
@@ -215,6 +218,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
         audit,
         mail,
         jobs,
+        file,
         includes,
     })
 }

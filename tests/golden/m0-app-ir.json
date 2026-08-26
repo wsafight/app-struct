@@ -1,5 +1,5 @@
 {
-  "ir_version": 5,
+  "ir_version": 6,
   "app": {
     "name": "project-hub"
   },
@@ -36,6 +36,13 @@
     "poll_interval_ms": 250,
     "lease_seconds": 30,
     "queues": []
+  },
+  "file": {
+    "enabled": false,
+    "provider": "local",
+    "local_root": ".appstruct/files",
+    "max_bytes": 10485760,
+    "allowed_content_types": []
   },
   "enums": [],
   "value_objects": [],
