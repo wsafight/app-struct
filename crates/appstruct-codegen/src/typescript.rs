@@ -26,6 +26,20 @@ export interface FieldViolation {
   message: string;
 }
 
+export interface ListQuery {
+  page?: number;
+  page_size?: number;
+  sort?: string;
+  q?: string;
+  filters?: Record<string, string>;
+  range_filters?: Record<string, { gte?: string; lte?: string }>;
+}
+
+export interface ListResponse<T> {
+  data: T[];
+  meta: { page: number; page_size: number; total: number };
+}
+
 interface ErrorEnvelope {
   error: {
     code: string;
@@ -61,6 +75,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+function listPath(path: string, query: ListQuery): string {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.page_size) params.set("page_size", String(query.page_size));
+  if (query.sort) params.set("sort", query.sort);
+  if (query.q) params.set("q", query.q);
+  for (const [key, value] of Object.entries(query.filters ?? {})) {
+    if (value !== "") params.set(`filter[${key}]`, value);
+  }
+  for (const [key, range] of Object.entries(query.range_filters ?? {})) {
+    if (range.gte) params.set(`filter[${key}][gte]`, range.gte);
+    if (range.lte) params.set(`filter[${key}][lte]`, range.lte);
+  }
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
 }
 "#
 }
@@ -98,7 +129,7 @@ fn entity_client(entity: &EntityIr) -> String {
     let path = format!("/api/{}/", entity.table_name);
     format!(
         r#"export const {variable}Api = {{
-  list: () => request<{model}[]>("{path}"),
+  list: (query: ListQuery = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query)),
   get: (id: string) => request<{model}>(`{path}${{encodeURIComponent(id)}}`),
   create: (input: Create{model}Input) =>
     request<{model}>("{path}", {{ method: "POST", body: JSON.stringify(input) }}),
@@ -115,7 +146,7 @@ fn entity_client(entity: &EntityIr) -> String {
 }
 
 fn input_property(field: &FieldIr, update: bool) -> String {
-    let optional = update || field.nullable;
+    let optional = update || field.nullable || field.default.is_some();
     let marker = if optional { "?" } else { "" };
     let nullable = if field.nullable { " | null" } else { "" };
     format!(

@@ -1,6 +1,6 @@
 # AppStruct 技术设计文档
 
-> 状态：Implementation Baseline v0.3<br>
+> 状态：Implementation Baseline v0.4<br>
 > 日期：2026-08-26<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
@@ -18,6 +18,14 @@
 - MVP 如何以可验证的垂直切片逐步交付
 
 本文档不定义最终公开插件市场、云托管平台、多数据库适配或可视化编辑器。
+
+### 1.1 当前落地状态
+
+当前实现已经通过 M0、M1 和 M2 验收。编译链保持 `App Spec -> Surface -> Typed IR -> Generators` 单向数据流；M1 后的重构将 Compiler 拆分为加载、命名、字段选项、校验、访问规则和 lowering，将 Backend Generator 拆分为 API、Entity、查询、校验和 manifest，`source_size` 测试对 Rust 源文件执行 400 行上限。
+
+M2 新增独立的 `appstruct-migrate` crate。它从 IR 提取规范化 PostgreSQL schema，持久化确定性 JSON snapshot，按 schema 风险与执行风险分类 diff，并只为 `NonDestructive + Online` 计划生成 SQL。删除表/列、重命名、类型或主键变化、非空收紧、唯一约束变化、已有表新增外键等变更会在 snapshot 写入前阻断。迁移文件与 snapshot 使用 staging 文件提交，局部提交失败时回滚本地新文件。
+
+当前 `migrate dev --accept` 的职责止于创建可审查迁移文件并推进 snapshot；它尚不写数据库迁移历史，也不执行 `migrate apply/status`。这两个状态不能混用：snapshot 表示磁盘迁移链的目标 schema，不代表数据库已经应用。数据库 runner、checksum 和 drift 检测按第 12.4 节协议在后续工程化里程碑实现。
 
 ## 2. 架构决策摘要
 

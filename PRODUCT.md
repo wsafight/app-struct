@@ -1,9 +1,23 @@
 # AppStruct 产品需求文档
 
-> 状态：Implementation Baseline v0.4<br>
+> 状态：Implementation Baseline v0.5<br>
 > 日期：2026-08-26<br>
 > 产品类型：配置驱动的 Rust 全栈应用生成框架<br>
 > 文档范围：产品定位、用户体验、功能边界、MVP 和验收标准
+
+## 0. 当前实现基线
+
+截至 2026-08-26，仓库已完成 M0、M1 和 M2，并在 M1 后完成生成器与编译器的模块化重构：
+
+| 里程碑 | 状态 | 已固化能力 |
+| --- | --- | --- |
+| M0 | 已完成 | 多文件 YAML、带位置诊断、规范化 Typed IR、canonical golden 和最小生成物编译 |
+| M1 | 已完成 | PostgreSQL schema、SeaORM/Axum CRUD、OpenAPI、TypeScript client、React 列表与表单 |
+| 重构 | 已完成 | Compiler 和 Backend Generator 按职责拆分，Rust 源文件由测试限制为最多 400 行 |
+| M2 | 已完成 | 默认值、唯一/枚举/数值校验、关系与反向关系、分页/过滤/搜索/排序、详情页、RelationSelect 和 schema diff 风险阻断 |
+| M3 | 下一阶段 | Hook、Command、Query、Policy 扩展边界与 Rust/React registry、生成 ownership manifest |
+
+M2 的 `migrate plan` 是纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。数据库历史、checksum、`migrate apply/status` 与自动连接开发数据库仍属于后续工程化范围，不能把 snapshot 解读为数据库已经执行到该版本。
 
 ## 1. 产品摘要
 

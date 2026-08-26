@@ -8,6 +8,8 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
 
+mod migration;
+
 #[derive(Debug, Parser)]
 #[command(
     name = "appstruct",
@@ -36,6 +38,11 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// Plan or accept database schema migrations.
+    Migrate {
+        #[command(subcommand)]
+        command: migration::MigrateCommand,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]
@@ -59,7 +66,7 @@ fn main() -> ExitCode {
 fn run(cli: Cli) -> ExitCode {
     let diagnostic_format = match &cli.command {
         Command::Check { format } => *format,
-        Command::Generate { .. } => OutputFormat::Text,
+        Command::Generate { .. } | Command::Migrate { .. } => OutputFormat::Text,
     };
     let start = match cli.project {
         Some(path) => path,
@@ -110,6 +117,7 @@ fn run(cli: Cli) -> ExitCode {
             }
         },
         Command::Generate { check } => generate(&project, check),
+        Command::Migrate { command } => migration::run(&project, command),
     }
 }
 

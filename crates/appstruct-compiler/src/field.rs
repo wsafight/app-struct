@@ -1,8 +1,8 @@
 use crate::naming::{is_rust_field_name, is_sql_name};
 use crate::surface::SurfaceField;
 use appstruct_ir::{
-    Cardinality, Diagnostic, EntityId, FieldId, FieldTypeIr, GeneratedValueIr, OnDeleteIr,
-    RelationId, RelationIr, SourceSpan,
+    Cardinality, Diagnostic, EntityId, FieldId, FieldTypeIr, OnDeleteIr, RelationId, RelationIr,
+    SourceSpan,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -201,102 +201,6 @@ fn build_relation_type(
     Some(FieldTypeIr::Relation {
         target: EntityId(format!("app::{target_name}")),
     })
-}
-
-pub(crate) fn validate_field_options(
-    field: &SurfaceField,
-    field_type: &FieldTypeIr,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    let is_text = matches!(field_type, FieldTypeIr::String | FieldTypeIr::Text);
-    if !is_text && (field.min_length.is_some() || field.max_length.is_some()) {
-        diagnostics.push(Diagnostic::error(
-            "AS2012",
-            "`min_length` and `max_length` are valid only for string or text fields",
-            field.span.clone(),
-        ));
-    }
-    if let (Some(minimum), Some(maximum)) = (&field.min_length, &field.max_length)
-        && minimum.value > maximum.value
-    {
-        diagnostics.push(
-            Diagnostic::error(
-                "AS2013",
-                "`min_length` cannot be greater than `max_length`",
-                minimum.span.clone(),
-            )
-            .with_secondary(maximum.span.clone(), "maximum declared here"),
-        );
-    }
-    if !matches!(field_type, FieldTypeIr::Enum { .. }) && field.values.is_some() {
-        diagnostics.push(Diagnostic::error(
-            "AS2012",
-            "`values` is valid only for enum fields",
-            field.span.clone(),
-        ));
-    }
-    if !matches!(field_type, FieldTypeIr::Relation { .. })
-        && (field.target.is_some() || field.on_delete.is_some())
-    {
-        diagnostics.push(Diagnostic::error(
-            "AS2012",
-            "`target` and `on_delete` are valid only for relation fields",
-            field.span.clone(),
-        ));
-    }
-    if let (Some(default), FieldTypeIr::Enum { values }) = (&field.default, field_type)
-        && !values.contains(&default.value)
-    {
-        diagnostics.push(Diagnostic::error(
-            "AS2014",
-            format!(
-                "enum default `{}` is not one of its declared values",
-                default.value
-            ),
-            default.span.clone(),
-        ));
-    }
-    if field.flags.primary_key()
-        && !matches!(
-            field_type,
-            FieldTypeIr::Uuid | FieldTypeIr::Integer | FieldTypeIr::Bigint
-        )
-    {
-        diagnostics.push(Diagnostic::error(
-            "AS2012",
-            "primary keys must use uuid, integer, or bigint",
-            field.span.clone(),
-        ));
-    }
-}
-
-pub(crate) fn build_generated(
-    field: &SurfaceField,
-    field_type: &FieldTypeIr,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Option<GeneratedValueIr> {
-    let generated = field.generated.as_ref()?;
-    let value = match generated.value.as_str() {
-        "uuid_v7" if matches!(field_type, FieldTypeIr::Uuid) => GeneratedValueIr::UuidV7,
-        "now" if matches!(field_type, FieldTypeIr::Date | FieldTypeIr::Datetime) => {
-            GeneratedValueIr::Now
-        }
-        "auto_increment" if matches!(field_type, FieldTypeIr::Integer | FieldTypeIr::Bigint) => {
-            GeneratedValueIr::AutoIncrement
-        }
-        _ => {
-            diagnostics.push(Diagnostic::error(
-                "AS2015",
-                format!(
-                    "generated value `{}` is incompatible with field type `{}`",
-                    generated.value, field.type_name.value
-                ),
-                generated.span.clone(),
-            ));
-            return None;
-        }
-    };
-    Some(value)
 }
 
 fn build_on_delete(field: &SurfaceField, diagnostics: &mut Vec<Diagnostic>) -> OnDeleteIr {

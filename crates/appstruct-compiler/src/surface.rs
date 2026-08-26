@@ -49,6 +49,8 @@ pub(crate) struct SurfaceField {
     pub default: Option<Located<String>>,
     pub min_length: Option<Located<u64>>,
     pub max_length: Option<Located<u64>>,
+    pub minimum: Option<Located<String>>,
+    pub maximum: Option<Located<String>>,
     pub values: Option<Vec<Located<String>>>,
     pub target: Option<Located<String>>,
     pub on_delete: Option<Located<String>>,
@@ -258,6 +260,8 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             "default",
             "min_length",
             "max_length",
+            "minimum",
+            "maximum",
             "searchable",
             "filterable",
             "sortable",
@@ -302,6 +306,14 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             .transpose()?,
         min_length: optional_u64(mapping, "min_length")?,
         max_length: optional_u64(mapping, "max_length")?,
+        minimum: mapping
+            .get("minimum")
+            .map(|value| expect_scalar_string(&value.value, "field `minimum`"))
+            .transpose()?,
+        maximum: mapping
+            .get("maximum")
+            .map(|value| expect_scalar_string(&value.value, "field `maximum`"))
+            .transpose()?,
         values: mapping
             .get("values")
             .map(|values| {

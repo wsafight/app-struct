@@ -1,10 +1,10 @@
-import type { ApiError } from "./generated/client";
+import type { ApiError, ListQuery, ListResponse } from "./generated/client";
 
 export type ResourceRecord = Record<string, unknown>;
 export type ResourceInput = Record<string, unknown>;
 
 export interface ResourceApi {
-  list(): Promise<ResourceRecord[]>;
+  list(query?: ListQuery): Promise<ListResponse<ResourceRecord>>;
   get(id: string): Promise<ResourceRecord>;
   create(input: ResourceInput): Promise<ResourceRecord>;
   update(id: string, input: ResourceInput): Promise<ResourceRecord>;
@@ -32,11 +32,17 @@ export interface FieldDefinition {
   required: boolean;
   readOnly: boolean;
   primaryKey: boolean;
+  searchable: boolean;
+  filterable: boolean;
+  sortable: boolean;
   values?: string[];
   relation?: string;
+  minimum?: string;
+  maximum?: string;
 }
 
 export interface ResourceDefinition {
+  id: string;
   name: string;
   label: string;
   slug: string;
@@ -53,4 +59,3 @@ export function fieldErrors(error: unknown): Record<string, string> {
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "The request could not be completed";
 }
-

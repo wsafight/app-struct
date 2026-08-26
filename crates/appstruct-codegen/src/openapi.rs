@@ -54,11 +54,12 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
             "get": {
                 "operationId": format!("list{singular}"),
                 "tags": [singular],
+                "parameters": list_parameters(entity),
                 "responses": {
-                    "200": response("Resource collection", &json!({
-                        "type": "array",
-                        "items": schema_ref(singular),
-                    }))
+                    "200": response(
+                        "Paginated resource collection",
+                        &schema_ref(&format!("{singular}ListResponse"))
+                    )
                 }
             },
             "post": {
@@ -114,6 +115,10 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
 fn add_entity_schemas(schemas: &mut Map<String, Value>, entity: &EntityIr) {
     schemas.insert(entity.rust_name.clone(), entity_schema(entity));
     schemas.insert(
+        format!("{}ListResponse", entity.rust_name),
+        list_response_schema(entity),
+    );
+    schemas.insert(
         format!("Create{}Input", entity.rust_name),
         input_schema(entity, false),
     );
@@ -156,11 +161,75 @@ fn input_schema(entity: &EntityIr, update: bool) -> Value {
     } else {
         fields
             .iter()
-            .filter(|field| !field.nullable)
+            .filter(|field| !field.nullable && field.default.is_none())
             .map(|field| Value::String(field.rust_name.clone()))
             .collect()
     };
     json!({ "type": "object", "properties": properties, "required": required })
+}
+
+fn list_response_schema(entity: &EntityIr) -> Value {
+    json!({
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties": {
+            "data": { "type": "array", "items": schema_ref(&entity.rust_name) },
+            "meta": {
+                "type": "object",
+                "required": ["page", "page_size", "total"],
+                "properties": {
+                    "page": { "type": "integer", "minimum": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 100 },
+                    "total": { "type": "integer", "minimum": 0 },
+                }
+            }
+        }
+    })
+}
+
+fn list_parameters(entity: &EntityIr) -> Vec<Value> {
+    let mut parameters = vec![
+        query_parameter(
+            "page",
+            &json!({ "type": "integer", "minimum": 1, "default": 1 }),
+        ),
+        query_parameter(
+            "page_size",
+            &json!({ "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }),
+        ),
+        query_parameter("sort", &json!({ "type": "string" })),
+        query_parameter("q", &json!({ "type": "string" })),
+    ];
+    for field in entity
+        .fields
+        .iter()
+        .filter(|field| field.capabilities.filterable)
+    {
+        parameters.push(query_parameter(
+            &format!("filter[{}]", field.rust_name),
+            &field_schema(field, false),
+        ));
+        if matches!(
+            field.ty,
+            FieldTypeIr::Integer
+                | FieldTypeIr::Bigint
+                | FieldTypeIr::Decimal
+                | FieldTypeIr::Date
+                | FieldTypeIr::Datetime
+        ) {
+            for operator in ["gte", "lte"] {
+                parameters.push(query_parameter(
+                    &format!("filter[{}][{operator}]", field.rust_name),
+                    &field_schema(field, false),
+                ));
+            }
+        }
+    }
+    parameters
+}
+
+fn query_parameter(name: &str, schema: &Value) -> Value {
+    json!({ "name": name, "in": "query", "required": false, "schema": schema })
 }
 
 fn field_schema(field: &FieldIr, response: bool) -> Value {
@@ -193,7 +262,20 @@ fn field_schema(field: &FieldIr, response: bool) -> Value {
     if let Some(maximum) = field.validation.max_length {
         schema["maxLength"] = json!(maximum);
     }
+    if let Some(minimum) = &field.validation.minimum {
+        schema["minimum"] = json_number(minimum);
+    }
+    if let Some(maximum) = &field.validation.maximum {
+        schema["maximum"] = json_number(maximum);
+    }
     schema
+}
+
+fn json_number(value: &str) -> Value {
+    value.parse::<i64>().map_or_else(
+        |_| json!(value.parse::<f64>().unwrap_or_default()),
+        Value::from,
+    )
 }
 
 fn primary_key_schema(entity: &EntityIr) -> Value {

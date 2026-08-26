@@ -1,12 +1,12 @@
 import { ArrowLeft, Save } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { FieldDefinition, ResourceDefinition, ResourceInput } from "../resource";
+import type { FieldDefinition, ResourceDefinition, ResourceInput, ResourceRecord } from "../resource";
 import { errorMessage, fieldErrors } from "../resource";
 
 type FormValues = Record<string, string | boolean>;
 
-export function ResourceForm({ resource }: { resource: ResourceDefinition }) {
+export function ResourceForm({ resource, resources }: { resource: ResourceDefinition; resources: ResourceDefinition[] }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const editing = id !== undefined;
@@ -32,10 +32,10 @@ export function ResourceForm({ resource }: { resource: ResourceDefinition }) {
     setErrors({});
     setPageError("");
     try {
-      const input = Object.fromEntries(fields.map((field) => [field.name, toApiValue(values[field.name], field)])) as ResourceInput;
-      if (id) await resource.api.update(id, input);
-      else await resource.api.create(input);
-      navigate(`/${resource.slug}`);
+      const entries = fields.filter((field) => editing || values[field.name] !== undefined).map((field) => [field.name, toApiValue(values[field.name], field)]);
+      const input = Object.fromEntries(entries) as ResourceInput;
+      if (id) await resource.api.update(id, input); else await resource.api.create(input);
+      navigate(id ? `/${resource.slug}/${encodeURIComponent(id)}` : `/${resource.slug}`);
     } catch (reason) {
       setErrors(fieldErrors(reason));
       setPageError(errorMessage(reason));
@@ -44,34 +44,37 @@ export function ResourceForm({ resource }: { resource: ResourceDefinition }) {
     }
   }
 
-  return (
-    <main className="page form-page">
-      <div className="page-heading">
-        <div><Link className="back-link" to={`/${resource.slug}`}><ArrowLeft size={16} /> {resource.label}</Link><h1>{editing ? "Edit" : "Add"} {resource.label}</h1></div>
-      </div>
-      {pageError && <div className="alert" role="alert">{pageError}</div>}
-      {loading ? <div className="form-frame">Loading...</div> : (
-        <form className="form-frame" onSubmit={(event) => void submit(event)}>
-          <div className="form-grid">
-            {fields.map((field) => <FieldControl key={field.name} field={field} value={values[field.name]} error={errors[field.name]} onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))} />)}
-          </div>
-          <div className="form-actions"><Link className="secondary-button" to={`/${resource.slug}`}>Cancel</Link><button className="primary-button" disabled={saving}><Save size={17} /> {saving ? "Saving..." : "Save"}</button></div>
-        </form>
-      )}
-    </main>
-  );
+  return <main className="page form-page">
+    <div className="page-heading"><div><Link className="back-link" to={`/${resource.slug}`}><ArrowLeft size={16} /> {resource.label}</Link><h1>{editing ? "Edit" : "Add"} {resource.label}</h1></div></div>
+    {pageError && <div className="alert" role="alert">{pageError}</div>}
+    {loading ? <div className="form-frame">Loading...</div> : <form className="form-frame" onSubmit={(event) => void submit(event)}><div className="form-grid">
+      {fields.map((field) => <FieldControl key={field.name} field={field} resources={resources} value={values[field.name]} error={errors[field.name]} onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))} />)}
+    </div><div className="form-actions"><Link className="secondary-button" to={`/${resource.slug}`}>Cancel</Link><button className="primary-button" disabled={saving}><Save size={17} /> {saving ? "Saving..." : "Save"}</button></div></form>}
+  </main>;
 }
 
-function FieldControl({ field, value, error, onChange }: { field: FieldDefinition; value: string | boolean | undefined; error?: string; onChange(value: string | boolean): void }) {
+function FieldControl({ field, resources, value, error, onChange }: { field: FieldDefinition; resources: ResourceDefinition[]; value: string | boolean | undefined; error?: string; onChange(value: string | boolean): void }) {
   const id = `field-${field.name}`;
   if (field.kind === "boolean") return <label className="checkbox-field"><input id={id} type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} /> <span>{field.label}</span>{error && <small>{error}</small>}</label>;
+  if (field.kind === "relation") return <RelationSelect id={id} field={field} target={resources.find((resource) => resource.id === field.relation)} value={String(value ?? "")} error={error} onChange={onChange} />;
   const common = { id, name: field.name, required: field.required, value: String(value ?? ""), onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(event.target.value), "aria-invalid": Boolean(error), "aria-describedby": error ? `${id}-error` : undefined };
   return <div className="field"><label htmlFor={id}>{field.label}{field.required && <span aria-hidden> *</span>}</label>
     {field.kind === "enum" ? <select {...common}><option value="">Select</option>{field.values?.map((item) => <option key={item}>{item}</option>)}</select>
       : field.kind === "text" || field.kind === "json" ? <textarea {...common} rows={field.kind === "json" ? 7 : 4} />
-      : <input {...common} type={inputType(field.kind)} />}
+      : <input {...common} type={inputType(field.kind)} min={field.minimum} max={field.maximum} />}
     {error && <small id={`${id}-error`} className="field-error">{error}</small>}
   </div>;
+}
+
+function RelationSelect({ id, field, target, value, error, onChange }: { id: string; field: FieldDefinition; target?: ResourceDefinition; value: string; error?: string; onChange(value: string): void }) {
+  const [options, setOptions] = useState<ResourceRecord[]>([]);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    if (!target) return;
+    target.api.list({ page_size: 100 }).then((response) => setOptions(response.data)).catch((reason) => setLoadError(errorMessage(reason)));
+  }, [target]);
+  const labelField = target?.fields.find((item) => !item.primaryKey && (item.kind === "string" || item.kind === "text"));
+  return <div className="field"><label htmlFor={id}>{field.label}{field.required && <span aria-hidden> *</span>}</label><select id={id} required={field.required} value={value} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error)}><option value="">Select</option>{options.map((record) => { const optionValue = String(record[target?.primaryKey ?? "id"]); return <option key={optionValue} value={optionValue}>{String(record[labelField?.name ?? target?.primaryKey ?? "id"])}</option>; })}</select>{(error || loadError) && <small className="field-error">{error || loadError}</small>}</div>;
 }
 
 function inputType(kind: FieldDefinition["kind"]): string {
@@ -96,4 +99,3 @@ function toApiValue(value: string | boolean | undefined, field: FieldDefinition)
   if (field.kind === "datetime") return new Date(String(value)).toISOString();
   return value;
 }
-

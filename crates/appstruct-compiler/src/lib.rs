@@ -2,6 +2,7 @@
 
 mod access;
 mod field;
+mod field_options;
 mod loading;
 mod lower;
 mod naming;

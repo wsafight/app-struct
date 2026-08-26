@@ -1,6 +1,7 @@
 mod api;
 mod entity;
 mod manifest;
+mod query;
 mod validation;
 
 use crate::{Artifact, ArtifactKind, CodegenError, format_rust, generated_header};

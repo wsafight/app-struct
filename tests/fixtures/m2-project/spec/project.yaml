@@ -1,0 +1,93 @@
+domain: project
+
+entities:
+  Project:
+    label: Projects
+    table: projects
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      code:
+        type: string
+        required: true
+        unique: true
+        min_length: 2
+        max_length: 24
+        searchable: true
+        sortable: true
+      name:
+        type: string
+        required: true
+        min_length: 2
+        max_length: 120
+        searchable: true
+        sortable: true
+      status:
+        type: enum
+        values: [planned, active, completed]
+        default: planned
+        filterable: true
+        sortable: true
+      created_at:
+        type: datetime
+        generated: now
+        filterable: true
+        sortable: true
+    access:
+      list: { public: true }
+      read: { public: true }
+      create: { public: true }
+      update: { public: true }
+      delete: { public: true }
+
+  Task:
+    label: Tasks
+    table: tasks
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      project:
+        type: relation
+        target: Project
+        required: true
+        filterable: true
+        sortable: true
+        on_delete: cascade
+      title:
+        type: string
+        required: true
+        min_length: 2
+        max_length: 160
+        searchable: true
+        sortable: true
+      status:
+        type: enum
+        values: [todo, in_progress, done]
+        default: todo
+        filterable: true
+        sortable: true
+      priority:
+        type: integer
+        default: 0
+        minimum: 0
+        maximum: 5
+        filterable: true
+        sortable: true
+      due_date:
+        type: date
+        filterable: true
+        sortable: true
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { public: true }
+      read: { public: true }
+      create: { public: true }
+      update: { public: true }
+      delete: { public: true }

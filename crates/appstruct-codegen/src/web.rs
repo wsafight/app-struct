@@ -33,6 +33,10 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
             include_str!("../templates/web/ResourceForm.tsx"),
         ),
         (
+            "web/src/pages/ResourceDetail.tsx",
+            include_str!("../templates/web/ResourceDetail.tsx"),
+        ),
+        (
             "web/src/styles.css",
             include_str!("../templates/web/styles.css"),
         ),
@@ -137,7 +141,8 @@ fn resource_source(entity: &EntityIr) -> String {
         .map_or("id", |field| field.rust_name.as_str());
     let api = format!("{}Api", lower_camel(&entity.rust_name));
     format!(
-        "{{\n  name: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  fields: [\n{}\n  ],\n  api: {} as unknown as ResourceApi,\n}}",
+        "{{\n  id: {:?},\n  name: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  fields: [\n{}\n  ],\n  api: {} as unknown as ResourceApi,\n}}",
+        entity.id.0,
         entity.rust_name,
         entity.label,
         entity.table_name,
@@ -152,15 +157,24 @@ fn field_source(field: &FieldIr) -> String {
         format!("name: {:?}", field.rust_name),
         format!("label: {:?}", humanize(&field.api_name)),
         format!("kind: {:?}", field_kind(&field.ty)),
-        format!("required: {}", !field.nullable),
+        format!("required: {}", !field.nullable && field.default.is_none()),
         format!("readOnly: {}", field.generated.is_some()),
         format!("primaryKey: {}", field.primary_key),
+        format!("searchable: {}", field.capabilities.searchable),
+        format!("filterable: {}", field.capabilities.filterable),
+        format!("sortable: {}", field.capabilities.sortable),
     ];
     if let FieldTypeIr::Enum { values } = &field.ty {
         properties.push(format!("values: {values:?}"));
     }
     if let FieldTypeIr::Relation { target } = &field.ty {
         properties.push(format!("relation: {:?}", target.0));
+    }
+    if let Some(minimum) = &field.validation.minimum {
+        properties.push(format!("minimum: {minimum:?}"));
+    }
+    if let Some(maximum) = &field.validation.maximum {
+        properties.push(format!("maximum: {maximum:?}"));
     }
     format!("{{ {} }}", properties.join(", "))
 }

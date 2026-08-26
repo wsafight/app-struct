@@ -108,6 +108,7 @@ pub struct FieldIr {
     pub ty: FieldTypeIr,
     pub nullable: bool,
     pub primary_key: bool,
+    pub unique: bool,
     pub generated: Option<GeneratedValueIr>,
     pub default: Option<String>,
     pub validation: ValidationIr,
@@ -144,6 +145,8 @@ pub enum GeneratedValueIr {
 pub struct ValidationIr {
     pub min_length: Option<u64>,
     pub max_length: Option<u64>,
+    pub minimum: Option<String>,
+    pub maximum: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

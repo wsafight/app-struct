@@ -1,0 +1,132 @@
+use appstruct_compiler::compile_project;
+use appstruct_migrate::{
+    ColumnSchema, DatabaseType, ExecutionRisk, SchemaChange, SchemaRisk, diff, extract,
+    initial_migration, migration_sql,
+};
+use std::path::Path;
+
+fn fixture_schema() -> appstruct_migrate::DatabaseSchema {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
+    extract(&compile_project(&fixture).unwrap())
+}
+
+#[test]
+fn nullable_column_addition_is_automatic() {
+    let before = fixture_schema();
+    let mut after = before.clone();
+    after.tables[0].columns.push(ColumnSchema {
+        id: "app::Project.notes".to_owned(),
+        name: "notes".to_owned(),
+        data_type: DatabaseType::Text,
+        nullable: true,
+        primary_key: false,
+        unique: false,
+        default: None,
+        generated: None,
+    });
+    let plan = diff(&before, &after);
+    assert_eq!(plan.changes.len(), 1);
+    assert!(!plan.is_blocked());
+    assert_eq!(plan.changes[0].risk.schema, SchemaRisk::NonDestructive);
+    assert_eq!(plan.changes[0].risk.execution, ExecutionRisk::Online);
+}
+
+#[test]
+fn removing_a_column_or_table_is_blocked() {
+    let before = fixture_schema();
+    let mut without_column = before.clone();
+    without_column.tables[0].columns.remove(0);
+    let column_plan = diff(&before, &without_column);
+    assert!(column_plan.is_blocked());
+    assert!(matches!(
+        column_plan.changes[0].change,
+        SchemaChange::RemoveColumn { .. }
+    ));
+
+    let mut without_table = before.clone();
+    without_table.tables.remove(0);
+    let table_plan = diff(&before, &without_table);
+    assert!(table_plan.is_blocked());
+    assert!(
+        table_plan
+            .changes
+            .iter()
+            .any(|change| matches!(change.change, SchemaChange::RemoveTable { .. }))
+    );
+}
+
+#[test]
+fn initial_sql_contains_unique_enum_and_relation_constraints() {
+    let sql = initial_migration(&fixture_schema());
+    assert!(sql.contains("\"code\" TEXT NOT NULL UNIQUE"));
+    assert!(sql.contains("CHECK (\"status\" IN ('planned', 'active', 'completed'))"));
+    assert!(sql.contains("FOREIGN KEY (\"project_id\")"));
+    assert!(sql.contains("ON DELETE CASCADE"));
+}
+
+#[test]
+fn table_rename_and_column_shape_changes_are_blocked() {
+    let before = fixture_schema();
+
+    let mut renamed = before.clone();
+    renamed.tables[0].name = "renamed_projects".to_owned();
+    let rename_plan = diff(&before, &renamed);
+    assert!(rename_plan.is_blocked());
+    assert!(matches!(
+        rename_plan.changes[0].change,
+        SchemaChange::RenameTable { .. }
+    ));
+
+    let mut changed_type = before.clone();
+    changed_type.tables[1]
+        .columns
+        .iter_mut()
+        .find(|column| column.name == "priority")
+        .unwrap()
+        .data_type = DatabaseType::Bigint;
+    let type_plan = diff(&before, &changed_type);
+    assert!(type_plan.is_blocked());
+    assert_eq!(type_plan.changes[0].risk.schema, SchemaRisk::Destructive);
+
+    let mut changed_key = before.clone();
+    changed_key.tables[0]
+        .columns
+        .iter_mut()
+        .find(|column| column.name == "id")
+        .unwrap()
+        .primary_key = false;
+    let key_plan = diff(&before, &changed_key);
+    assert!(key_plan.is_blocked());
+    assert_eq!(key_plan.changes[0].risk.schema, SchemaRisk::Destructive);
+}
+
+#[test]
+fn adding_a_foreign_key_to_existing_tables_requires_review() {
+    let after = fixture_schema();
+    let mut before = after.clone();
+    before.foreign_keys.clear();
+
+    let plan = diff(&before, &after);
+    assert!(plan.is_blocked());
+    assert_eq!(plan.changes[0].risk.schema, SchemaRisk::NonDestructive);
+    assert_eq!(plan.changes[0].risk.execution, ExecutionRisk::MayLock);
+}
+
+#[test]
+fn default_change_and_nullable_relaxation_render_online_sql() {
+    let before = fixture_schema();
+    let mut after = before.clone();
+    let priority = after.tables[1]
+        .columns
+        .iter_mut()
+        .find(|column| column.name == "priority")
+        .unwrap();
+    priority.nullable = true;
+    priority.default = Some("1".to_owned());
+
+    let plan = diff(&before, &after);
+    assert!(!plan.is_blocked());
+    let sql = migration_sql(&plan).unwrap();
+    assert!(sql.contains("ALTER COLUMN \"priority\" DROP NOT NULL"));
+    assert!(sql.contains("ALTER COLUMN \"priority\" SET DEFAULT 1"));
+}

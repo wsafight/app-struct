@@ -1,3 +1,4 @@
+use super::query::list_support;
 use super::validation::validation_rules;
 use super::{module_name, parse_ident, render, rust_type};
 use crate::CodegenError;
@@ -17,6 +18,7 @@ pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
         .then(|| quote! { ..Default::default() });
     let updates = update_values(entity)?;
     let parse_id = parse_id_expression(primary_key(entity)?);
+    let list = list_support(entity, &module)?;
     let handlers = crud_handlers(
         &module,
         &parse_id,
@@ -37,7 +39,8 @@ pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
         use sea_orm::{
             ActiveModelTrait, ActiveValue::Set, EntityTrait, IntoActiveModel, ModelTrait,
         };
-        use serde::Deserialize;
+        use serde::{Deserialize, Serialize};
+        use std::collections::BTreeMap;
 
         #[derive(Debug, Deserialize)]
         pub struct CreateInput { #(#create_fields,)* }
@@ -51,6 +54,7 @@ pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
                 .route("/{id}", get(read).patch(update).delete(delete))
         }
 
+        #list
         #handlers
         #validators
     })
@@ -64,11 +68,6 @@ fn crud_handlers(
     updates: &[TokenStream],
 ) -> TokenStream {
     quote! {
-        async fn list(State(state): State<AppState>) -> Result<Json<Vec<#module::Model>>, ApiError> {
-            let models = #module::Entity::find().all(&state.database).await?;
-            Ok(Json(models))
-        }
-
         async fn read(
             State(state): State<AppState>,
             Path(id): Path<String>,
@@ -150,7 +149,7 @@ fn dto_field(field: &FieldIr, update: bool) -> Result<TokenStream, CodegenError>
     if field.nullable {
         ty = quote! { Option<#ty> };
     }
-    if update {
+    if update || field.default.is_some() {
         ty = quote! { Option<#ty> };
     }
     Ok(quote! { pub #name: #ty })
@@ -173,9 +172,56 @@ fn create_value(field: &FieldIr) -> Result<Option<TokenStream>, CodegenError> {
         }
         Some(GeneratedValueIr::Now) => quote! { chrono::Utc::now() },
         Some(GeneratedValueIr::AutoIncrement) => return Ok(None),
-        None => quote! { input.#name },
+        None => field.default.as_ref().map_or_else(
+            || quote! { input.#name },
+            |default| {
+                let default = default_expression(field, default);
+                quote! { input.#name.unwrap_or_else(|| #default) }
+            },
+        ),
     };
     Ok(Some(quote! { #name: Set(#value) }))
+}
+
+fn default_expression(field: &FieldIr, default: &str) -> TokenStream {
+    match field.ty {
+        FieldTypeIr::String | FieldTypeIr::Text | FieldTypeIr::Enum { .. } => {
+            quote! { #default.to_owned() }
+        }
+        FieldTypeIr::Integer => {
+            let value = default
+                .parse::<i32>()
+                .expect("compiler validated integer default");
+            quote! { #value }
+        }
+        FieldTypeIr::Bigint => {
+            let value = default
+                .parse::<i64>()
+                .expect("compiler validated bigint default");
+            quote! { #value }
+        }
+        FieldTypeIr::Boolean => {
+            let value = default
+                .parse::<bool>()
+                .expect("compiler validated boolean default");
+            quote! { #value }
+        }
+        FieldTypeIr::Decimal => {
+            quote! { rust_decimal::Decimal::from_str_exact(#default).expect("validated default") }
+        }
+        FieldTypeIr::Uuid | FieldTypeIr::Relation { .. } => {
+            quote! { uuid::Uuid::parse_str(#default).expect("validated default") }
+        }
+        FieldTypeIr::Date => {
+            quote! { chrono::NaiveDate::parse_from_str(#default, "%Y-%m-%d").expect("validated default") }
+        }
+        FieldTypeIr::Datetime => {
+            quote! { #default.parse::<chrono::DateTime<chrono::Utc>>().expect("validated default") }
+        }
+        FieldTypeIr::Json => {
+            quote! { serde_json::from_str(#default).expect("validated default") }
+        }
+    }
 }
 
 fn update_values(entity: &EntityIr) -> Result<Vec<TokenStream>, CodegenError> {

@@ -1,7 +1,6 @@
 use crate::access::build_access;
-use crate::field::{
-    build_column, build_field_type, build_generated, build_relation, validate_field_options,
-};
+use crate::field::{build_column, build_field_type, build_relation};
+use crate::field_options::{build_generated, validate_field_options};
 use crate::naming::{pluralize, to_snake_case};
 use crate::surface::{SurfaceEntity, SurfaceField, SurfaceRoot};
 use crate::validation::{validate_entity_declarations, validate_primary_key};
@@ -133,7 +132,10 @@ fn build_field(
     let generated = build_generated(field, &field_type, diagnostics);
     let field_id = FieldId(format!("{entity_id}.{}", field.name.value));
     let relation = build_relation(field, entity_id, &field_id, &field_type, diagnostics);
-    let nullable = !(field.flags.required() || field.flags.primary_key() || generated.is_some());
+    let nullable = !(field.flags.required()
+        || field.flags.primary_key()
+        || generated.is_some()
+        || field.default.is_some());
     Some((
         FieldIr {
             id: field_id,
@@ -148,11 +150,14 @@ fn build_field(
             ty: field_type,
             nullable,
             primary_key: field.flags.primary_key(),
+            unique: field.flags.unique(),
             generated,
             default: field.default.as_ref().map(|value| value.value.clone()),
             validation: ValidationIr {
                 min_length: field.min_length.as_ref().map(|value| value.value),
                 max_length: field.max_length.as_ref().map(|value| value.value),
+                minimum: field.minimum.as_ref().map(|value| value.value.clone()),
+                maximum: field.maximum.as_ref().map(|value| value.value.clone()),
             },
             capabilities: FieldCapabilities {
                 searchable: field.flags.searchable(),

@@ -1,25 +1,17 @@
 [package]
-name = "appstruct-cli"
+name = "appstruct-migrate"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-[[bin]]
-name = "appstruct"
-path = "src/main.rs"
-
 [dependencies]
-appstruct-codegen.workspace = true
-appstruct-compiler.workspace = true
 appstruct-ir.workspace = true
-appstruct-migrate.workspace = true
-clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
+appstruct-compiler.workspace = true
 
 [lints]
 workspace = true

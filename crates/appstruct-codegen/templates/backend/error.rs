@@ -15,6 +15,7 @@ pub struct FieldViolation {
 #[derive(Debug)]
 pub enum ApiError {
     InvalidId,
+    InvalidQuery(String),
     NotFound,
     Validation(Vec<FieldViolation>),
     Database(DbErr),
@@ -45,6 +46,12 @@ impl IntoResponse for ApiError {
                 StatusCode::BAD_REQUEST,
                 "INVALID_ID",
                 "The resource identifier is invalid".to_owned(),
+                vec![],
+            ),
+            Self::InvalidQuery(message) => (
+                StatusCode::BAD_REQUEST,
+                "INVALID_QUERY",
+                message,
                 vec![],
             ),
             Self::NotFound => (
@@ -84,4 +91,3 @@ impl IntoResponse for ApiError {
         (status, Json(ErrorEnvelope { error: ErrorBody { code, message, fields } })).into_response()
     }
 }
-

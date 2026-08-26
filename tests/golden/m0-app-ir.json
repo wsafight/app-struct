@@ -31,11 +31,14 @@
           },
           "nullable": false,
           "primary_key": false,
+          "unique": false,
           "generated": "now",
           "default": null,
           "validation": {
             "min_length": null,
-            "max_length": null
+            "max_length": null,
+            "minimum": null,
+            "maximum": null
           },
           "capabilities": {
             "searchable": false,
@@ -54,11 +57,14 @@
           },
           "nullable": false,
           "primary_key": true,
+          "unique": false,
           "generated": "uuid_v7",
           "default": null,
           "validation": {
             "min_length": null,
-            "max_length": null
+            "max_length": null,
+            "minimum": null,
+            "maximum": null
           },
           "capabilities": {
             "searchable": false,
@@ -77,11 +83,14 @@
           },
           "nullable": false,
           "primary_key": false,
+          "unique": false,
           "generated": null,
           "default": null,
           "validation": {
             "min_length": null,
-            "max_length": 120
+            "max_length": 120,
+            "minimum": null,
+            "maximum": null
           },
           "capabilities": {
             "searchable": true,
@@ -101,11 +110,14 @@
           },
           "nullable": false,
           "primary_key": false,
+          "unique": false,
           "generated": null,
           "default": null,
           "validation": {
             "min_length": null,
-            "max_length": null
+            "max_length": null,
+            "minimum": null,
+            "maximum": null
           },
           "capabilities": {
             "searchable": false,
@@ -127,13 +139,16 @@
               "archived"
             ]
           },
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
+          "unique": false,
           "generated": null,
           "default": "draft",
           "validation": {
             "min_length": null,
-            "max_length": null
+            "max_length": null,
+            "minimum": null,
+            "maximum": null
           },
           "capabilities": {
             "searchable": false,
@@ -188,11 +203,14 @@
           },
           "nullable": false,
           "primary_key": false,
+          "unique": false,
           "generated": null,
           "default": null,
           "validation": {
             "min_length": null,
-            "max_length": 320
+            "max_length": 320,
+            "minimum": null,
+            "maximum": null
           },
           "capabilities": {
             "searchable": true,
@@ -211,11 +229,14 @@
           },
           "nullable": false,
           "primary_key": true,
+          "unique": false,
           "generated": "uuid_v7",
           "default": null,
           "validation": {
             "min_length": null,
-            "max_length": null
+            "max_length": null,
+            "minimum": null,
+            "maximum": null
           },
           "capabilities": {
             "searchable": false,

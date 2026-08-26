@@ -59,6 +59,7 @@ dependencies = [
  "appstruct-codegen",
  "appstruct-compiler",
  "appstruct-ir",
+ "appstruct-migrate",
  "clap",
  "serde",
  "serde_json",
@@ -71,6 +72,7 @@ version = "0.1.0"
 dependencies = [
  "appstruct-compiler",
  "appstruct-ir",
+ "appstruct-migrate",
  "prettyplease",
  "proc-macro2",
  "quote",
@@ -93,6 +95,16 @@ dependencies = [
 name = "appstruct-ir"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "appstruct-migrate"
+version = "0.1.0"
+dependencies = [
+ "appstruct-compiler",
+ "appstruct-ir",
  "serde",
  "serde_json",
 ]
