@@ -1,4 +1,6 @@
+use super::project::{directives, empty_schema};
 use super::*;
+use std::fs;
 
 #[test]
 fn stamped_migration_binds_to_snapshot() {
