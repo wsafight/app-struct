@@ -14,7 +14,7 @@ const ROOT_IGNORED: &[&str] = &[
     ".appstruct.lock.appstruct-update-staging",
     ".appstruct.lock.appstruct-update-backup",
 ];
-const TRANSIENT_DIRECTORIES: &[&str] = &["target", "node_modules", "dist", ".vite"];
+const ROOT_TRANSIENT: &[&str] = &["target", "node_modules", "dist", ".vite"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct ProjectSnapshot {
@@ -136,8 +136,12 @@ fn sorted_entries(directory: &Path) -> io::Result<Vec<fs::DirEntry>> {
 
 fn ignored(relative: &Path, name: &OsStr) -> bool {
     let name = name.to_string_lossy();
-    (relative.components().count() == 1 && ROOT_IGNORED.contains(&name.as_ref()))
-        || TRANSIENT_DIRECTORIES.contains(&name.as_ref())
+    if relative.components().count() == 1 {
+        return ROOT_IGNORED.contains(&name.as_ref()) || ROOT_TRANSIENT.contains(&name.as_ref());
+    }
+    (relative.starts_with("app/backend") && name == "target")
+        || (relative.starts_with("app/web")
+            && matches!(name.as_ref(), "node_modules" | "dist" | ".vite"))
 }
 
 fn content_hash(content: &[u8]) -> String {

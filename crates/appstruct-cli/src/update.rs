@@ -58,7 +58,10 @@ pub(crate) fn run(project: &Path) -> ExitCode {
         return update_error("cannot commit project update", &error, 1);
     }
     if let Err(error) = transaction.commit(&candidate.path().join("generated"), lock.as_bytes()) {
-        return update_error("cannot commit project update", &error, 3);
+        eprintln!(
+            "error[AS6008]: cannot commit project update: {error}; preserve update recovery paths"
+        );
+        return ExitCode::from(3);
     }
     match ir.preset {
         Some(preset) => println!(

@@ -7,6 +7,12 @@
 **/.appstruct/cache/
 **/.appstruct/generation.lock
 **/.appstruct/generation.journal
+**/.appstruct/update.lock
+**/.appstruct/update.journal
+**/.generated.appstruct-update-staging/
+**/.generated.appstruct-update-backup/
+**/.appstruct.lock.appstruct-update-staging
+**/.appstruct.lock.appstruct-update-backup
 
 # Browser test output.
 /playwright-report/

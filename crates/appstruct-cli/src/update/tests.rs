@@ -120,11 +120,18 @@ fn candidate_snapshot_detects_concurrent_source_changes() {
     fs::write(project.path().join("appstruct.yaml"), "version: 1\n").unwrap();
     fs::create_dir(project.path().join("app")).unwrap();
     fs::write(project.path().join("app/handler.rs"), "before\n").unwrap();
+    fs::create_dir_all(project.path().join("spec/target")).unwrap();
+    fs::write(
+        project.path().join("spec/target/domain.yaml"),
+        "domain: Demo\n",
+    )
+    .unwrap();
     let candidate = CandidateWorkspace::prepare(project.path()).unwrap();
     assert_eq!(
         fs::read_to_string(candidate.path().join("app/handler.rs")).unwrap(),
         "before\n"
     );
+    assert!(candidate.path().join("spec/target/domain.yaml").is_file());
     candidate.ensure_source_unchanged(project.path()).unwrap();
 
     fs::write(project.path().join("app/handler.rs"), "after\n").unwrap();
