@@ -1,0 +1,11 @@
+.env
+target/
+dist/
+generated/backend/target/
+generated/web/node_modules/
+generated/web/dist/
+.appstruct/cache/
+.appstruct/generation.lock
+.appstruct/generation.journal
+.generated.appstruct-staging/
+.generated.appstruct-backup/

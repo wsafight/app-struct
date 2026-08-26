@@ -4,10 +4,10 @@ AppStruct is a configuration-driven Rust full-stack application generator. It co
 multi-file YAML App Spec into a typed IR, PostgreSQL migrations, an Axum/SeaORM backend,
 OpenAPI, a TypeScript client, and a React/Vite application.
 
-The repository is currently a technical preview. M0-M5 are complete, including templates,
-production builds, environment diagnostics, and the coordinated development server. The M6
-Tenant, Audit, Mail, Jobs, and File modules and the locked `appstruct/saas@1` preset are available
-as previews; the SaaS template and end-to-end example remain in development.
+The repository is currently a technical preview. M0-M6 are complete, including production builds,
+the coordinated development server, Tenant/Audit/Mail/Jobs/File modules, the locked
+`appstruct/saas@1` preset, and a runnable SaaS template and example. Billing and Admin remain out
+of scope for preset version 1.
 
 ## Quick Start
 
@@ -31,7 +31,8 @@ appstruct dev
 ```
 
 Update `DATABASE_URL` in `.env` before running `doctor`. For a Docker-managed PostgreSQL
-development database, use `--template dashboard` and ensure Docker Compose is available.
+development database, use `--template dashboard` or `--template saas` and ensure Docker Compose
+is available.
 
 `appstruct dev` starts the generated API and Vite, applies only safe development
 migrations, watches App Spec and user Rust inputs, and stops its child processes on Ctrl-C.
@@ -93,7 +94,7 @@ Inspect the locked contract with `appstruct preset show` or print all defaults w
 ## Commands
 
 ```text
-appstruct new <name> --template minimal|dashboard
+appstruct new <name> --template minimal|dashboard|saas
 appstruct check [--format text|json]
 appstruct generate [--check]
 appstruct migrate plan|dev|apply|status
@@ -148,6 +149,9 @@ APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_jobs_
 
 APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_file_e2e' \
   scripts/run-m6-file-e2e.sh
+
+APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_saas_e2e' \
+  scripts/run-m6-saas-e2e.sh
 ```
 
 Rust source files are limited to 400 lines by a repository test. Generated projects also pin

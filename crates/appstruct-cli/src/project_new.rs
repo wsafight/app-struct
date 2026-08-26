@@ -10,6 +10,7 @@ const PROJECT_NAME_MARKER: &str = "__APPSTRUCT_PROJECT_NAME__";
 pub(crate) enum ProjectTemplate {
     Minimal,
     Dashboard,
+    Saas,
 }
 
 struct TemplateFile {
@@ -139,6 +140,7 @@ fn template_files(template: ProjectTemplate) -> &'static [TemplateFile] {
     match template {
         ProjectTemplate::Minimal => MINIMAL_FILES,
         ProjectTemplate::Dashboard => DASHBOARD_FILES,
+        ProjectTemplate::Saas => SAAS_FILES,
     }
 }
 
@@ -209,6 +211,45 @@ const DASHBOARD_FILES: &[TemplateFile] = &[
     TemplateFile {
         path: "spec/project.yaml",
         content: include_str!("../templates/dashboard/spec/project.yaml"),
+    },
+];
+
+const SAAS_FILES: &[TemplateFile] = &[
+    TemplateFile {
+        path: ".gitignore",
+        content: include_str!("../templates/common/gitignore"),
+    },
+    TemplateFile {
+        path: ".env.example",
+        content: include_str!("../templates/saas/env.example"),
+    },
+    TemplateFile {
+        path: "README.md",
+        content: include_str!("../templates/saas/README.md"),
+    },
+    TemplateFile {
+        path: "appstruct.lock",
+        content: include_str!("../templates/saas/appstruct.lock"),
+    },
+    TemplateFile {
+        path: "appstruct.yaml",
+        content: include_str!("../templates/saas/appstruct.yaml"),
+    },
+    TemplateFile {
+        path: "compose.yaml",
+        content: include_str!("../templates/saas/compose.yaml"),
+    },
+    TemplateFile {
+        path: "rust-toolchain.toml",
+        content: include_str!("../templates/common/rust-toolchain.toml"),
+    },
+    TemplateFile {
+        path: "spec/identity.yaml",
+        content: include_str!("../templates/saas/spec/identity.yaml"),
+    },
+    TemplateFile {
+        path: "spec/work.yaml",
+        content: include_str!("../templates/saas/spec/work.yaml"),
     },
 ];
 

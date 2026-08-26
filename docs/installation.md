@@ -99,6 +99,30 @@ Copy `.env.example` to `.env` only when overriding managed defaults. Process env
 variables take precedence over values in `.env`; secrets are never written into generated
 artifacts or command output.
 
+## Start From The SaaS Preset
+
+The `saas` template also uses managed PostgreSQL and locks `appstruct/saas@1`:
+
+```bash
+appstruct new saas-demo --template saas
+cd saas-demo
+appstruct preset show
+appstruct doctor
+appstruct dev
+```
+
+After registration, create an organization and use the generated Project and Task resources. Both
+are tenant-isolated and audited. Development defaults to capture mail and local files under
+`.appstruct/files`; Jobs/Outbox uses PostgreSQL. Inspect the complete defaults with
+`appstruct preset show --expanded`.
+
+New registrations use the `member` role. Because preset version 1 does not include the Admin UI,
+provision initial `admin` operators through a trusted deployment or migration process.
+
+For production, replace capture/local providers through reviewed App Spec overrides and runtime
+environment variables. Keep the generated preset digest and exact module versions in
+`appstruct.lock`. Billing and Admin are not part of preset version 1.
+
 ## Troubleshooting
 
 Use structured diagnostics when integrating the check into another tool:

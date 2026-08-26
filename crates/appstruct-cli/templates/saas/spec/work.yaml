@@ -1,0 +1,73 @@
+domain: work
+
+entities:
+  Project:
+    label: Projects
+    table: projects
+    tenant: true
+    audit: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      name:
+        type: string
+        required: true
+        max_length: 120
+        searchable: true
+        sortable: true
+      status:
+        type: enum
+        values: [planned, active, archived]
+        default: planned
+        filterable: true
+      description:
+        type: text
+        max_length: 2000
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { authenticated: true }
+
+  Task:
+    label: Tasks
+    table: tasks
+    tenant: true
+    audit: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      title:
+        type: string
+        required: true
+        max_length: 160
+        searchable: true
+        sortable: true
+      status:
+        type: enum
+        values: [todo, in_progress, done]
+        default: todo
+        filterable: true
+      due_date:
+        type: date
+        filterable: true
+        sortable: true
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { authenticated: true }

@@ -98,9 +98,13 @@ fn database_migration_commands_require_database_url() {
 }
 
 #[test]
-fn new_creates_valid_minimal_and_dashboard_projects_without_overwrite() {
+fn new_creates_valid_official_projects_without_overwrite() {
     let temporary = tempfile::tempdir().unwrap();
-    for (name, template) in [("notes-app", "minimal"), ("project-app", "dashboard")] {
+    for (name, template) in [
+        ("notes-app", "minimal"),
+        ("project-app", "dashboard"),
+        ("saas-app", "saas"),
+    ] {
         let created = run_new(temporary.path(), name, template);
         assert!(
             created.status.success(),
@@ -118,6 +122,12 @@ fn new_creates_valid_minimal_and_dashboard_projects_without_overwrite() {
         assert_eq!(fs::read(project.join("README.md")).unwrap(), readme);
     }
     assert!(temporary.path().join("project-app/compose.yaml").is_file());
+    assert!(temporary.path().join("saas-app/compose.yaml").is_file());
+    assert!(
+        run(&temporary.path().join("saas-app"), &["preset", "show"])
+            .status
+            .success()
+    );
     assert!(!temporary.path().join("notes-app/compose.yaml").exists());
 }
 

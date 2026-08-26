@@ -25,6 +25,9 @@
 | M5 Dev Server | 已完成 | managed/external PostgreSQL 协调、安全迁移、生成与构建、API/Vite 日志聚合、监听重启和 Ctrl-C 清理 |
 | M5 Docs | 已完成 | 源码安装、external/managed 首次运行、显式暂存升级、生产构建/迁移/配置/回滚文档 |
 | M5 Quality Gates | 已完成 | 跨目录字节确定性、10/100 实体性能预算、PostgreSQL + Chromium 用户旅程、桌面/移动布局、readiness/request ID |
+| M6 Modules | 已完成 | Tenant、Audit、Mail、Jobs/Outbox 和本地/S3 File 能力及独立 PostgreSQL 验收 |
+| M6 Preset | 已完成 | `appstruct/saas@1` 展开、差异覆盖、摘要/模块 lock 校验和查看 CLI |
+| M6 Template | 已完成 | `saas` 一次性骨架、canonical `examples/saas-demo` 和 PostgreSQL/Chromium 端到端旅程 |
 
 M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
@@ -40,7 +43,7 @@ Migration Runner 使用 `_appstruct_migrations` 保存 migration ID、文件 SHA
 
 ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新生成先获取 `.appstruct/generation.lock` 的跨进程排他锁，再拒绝未知文件和 hash 已变化的生成文件。完整 staging 通过 manifest 校验后，CLI 向 `.appstruct/generation.journal` 追加并持久化 `prepared/backed_up/installed` phase，随后交换同级 staging/backup 目录。下次生成在持锁状态下根据 journal 和三个目录的实际组合完成提交或回滚；缺少 journal 的旧版遗留目录也能恢复，歧义组合则保留现场并失败。`app/` 不进入该事务。
 
-`appstruct new <name> --template minimal|dashboard` 已提供不覆盖的一次性项目创建。`minimal` 生成 external PostgreSQL 的公开 Note 应用；`dashboard` 生成 managed PostgreSQL Compose、Auth/RBAC/owner 和 User/Project/Task 三实体项目管理应用。两个模板都提交 `appstruct.lock`、`rust-toolchain.toml`、`.env.example` 和本地状态忽略规则，首次 generate 再产生固定的 `pnpm-lock.yaml`；目标或 sibling staging 已存在时创建会中止。
+`appstruct new <name> --template minimal|dashboard|saas` 已提供不覆盖的一次性项目创建。`minimal` 生成 external PostgreSQL 的公开 Note 应用；`dashboard` 生成 managed PostgreSQL Compose、Auth/RBAC/owner 和 User/Project/Task 三实体项目管理应用；`saas` 锁定 `appstruct/saas@1`，生成 Tenant/Audit 化的 Project/Task 骨架和 Mail/Jobs/File 开发配置。三个模板都提交 `appstruct.lock`、`rust-toolchain.toml`、`.env.example` 和本地状态忽略规则，首次 generate 再产生固定的 `pnpm-lock.yaml`；目标或 sibling staging 已存在时创建会中止。
 
 `appstruct doctor --format text|json` 检查 1.98 Rust/Cargo、rustfmt、Clippy、固定 pnpm 版本和数据库开发模式。managed 模式验证 Compose 文件及 Docker/Compose 服务；external 模式从进程环境或 `.env` 读取 `DATABASE_URL` 并执行 migration status，不在输出中暴露连接串。`appstruct build` 先生成 canonical Artifact，再对固定 Rust dependency lock 执行 fmt、release Clippy 和 release build，并对 pnpm lock 执行 Prettier check、TypeScript 检查和 Vite build。生成 TypeScript 在 manifest hash 计算前由 lockfile 固定的 Prettier 格式化，`generate --check` 与 build 因此使用同一份字节输出。
 
@@ -49,6 +52,8 @@ ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新�
 M5 交付文档已提供源码安装与工具链前置条件、external/managed PostgreSQL 首次运行、技术预览期显式 staging 升级流程，以及生产 Artifact、运行时变量、迁移顺序、健康验证和回滚边界。文档明确 `appstruct update` 和数据库 down migration 尚未实现，避免把规划命令描述为现有能力。
 
 M5 质量门禁已固化。两个独立项目的完整 `generated/` 树逐字节比较；后端 Entity/API Artifact 按可用 CPU 并行规划但最终统一排序，实测 10 实体 IR 编译 70 ms、编译加生成 518 ms，100 实体编译加生成 7774 ms，分别低于 500/1000/10000 ms 预算。Playwright 1.62.1 由根 pnpm lock 固定，external PostgreSQL 17.10 E2E 从 dashboard Template 启动，覆盖 liveness/readiness、`X-Request-Id` 生成与透传、注册、owner Project 创建与编辑、退出重登录和数据保持；1440x900 dashboard 与 390x844 登录页截图无重叠或水平溢出。启动冷构建期间的 SIGINT 也验证了 Cargo 子进程、临时项目和端口全部回收。
+
+M6 SaaS Template 门禁从 CLI 创建真实 `saas` 项目并切换到专用 external PostgreSQL，验证 Preset lock、五个模块数据表、迁移、生成 Web TypeScript、注册、组织选择、Project/Task 写入、Audit 事件和跨租户空结果。Playwright 对 1440x900 Audit 页面和 390x844 Project 页面截图，移动表格保持在视口内并使用局部横向滚动。`examples/saas-demo` 与 CLI 模板逐文件字节比对，防止示例漂移。
 
 ## 1. 产品摘要
 
@@ -813,7 +818,7 @@ Template 是创建项目时复制一次的用户代码和资源骨架，可以�
 | --- | --- | --- |
 | `minimal` | 最小 AppStruct 工程和单实体示例 | Technical Preview |
 | `dashboard` | 认证、RBAC 和项目管理后台示例 | MVP |
-| `saas` | 租户、邀请、邮件、任务、支付和运营能力 | V1 Preview，V2 完整版 |
+| `saas` | V1 提供租户、审计、邮件、任务和文件骨架；V2 再加入支付和运营能力 | V1 Preview，V2 完整版 |
 
 Template 可以包含初始领域配置、用户可修改的 React 页面、邮件模板、品牌资源、Hook、Command 和测试。文件复制后归用户所有，AppStruct 不对其执行自动三方合并。长期升级由 Runtime、Module 和 Preset 版本完成。
 

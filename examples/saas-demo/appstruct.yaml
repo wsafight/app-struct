@@ -1,0 +1,17 @@
+version: 1
+
+app:
+  name: saas-demo
+
+database:
+  provider: postgres
+  dev:
+    mode: managed
+
+preset:
+  name: appstruct/saas
+  version: 1
+
+includes:
+  - spec/identity.yaml
+  - spec/work.yaml

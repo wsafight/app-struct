@@ -1,0 +1,20 @@
+# __APPSTRUCT_PROJECT_NAME__
+
+This project was created from the AppStruct `saas` template and locks `appstruct/saas@1`.
+
+1. Ensure Docker with Compose is running.
+2. Run `appstruct preset show` to inspect the locked modules.
+3. Run `appstruct doctor`.
+4. Run `appstruct dev`.
+
+The API listens on `http://127.0.0.1:3000` and the Web application on
+`http://127.0.0.1:5173` by default. Create an account, create an organization, and then manage
+tenant-isolated projects and tasks. Entity changes are recorded by Audit; the default Audit reader
+role is `admin`.
+
+New accounts receive the `member` role. Preset version 1 has no Admin UI, so provision initial
+operators through a trusted migration or deployment process before exposing admin-only surfaces.
+
+Development uses capture mail, PostgreSQL Jobs/Outbox, and local file storage under
+`.appstruct/files`. Set production Mail/File provider credentials through environment variables;
+never put secrets in `appstruct.yaml`. Billing and Admin are not included in preset version 1.
