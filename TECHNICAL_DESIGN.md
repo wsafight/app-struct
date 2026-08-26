@@ -1,6 +1,6 @@
 # AppStruct 技术设计文档
 
-> 状态：Implementation Baseline v0.7<br>
+> 状态：Implementation Baseline v0.8<br>
 > 日期：2026-08-26<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
@@ -33,7 +33,7 @@ CRUD 一致性加固已完成：写路径在显式 SeaORM 事务中执行，事�
 
 M4 将 `modules.auth`/`modules.rbac` 降低为 `AuthIr` 和规范化 `AccessRuleIr`，Compiler 校验 Auth User 的 UUID 主键与 required unique email、角色声明、owner relation 目标及非空组合规则。迁移 schema 在业务表之外生成 `_appstruct_auth_accounts`、`sessions`、`password_resets` 和开发邮件捕获表及外键。生成后端使用 Argon2id、opaque token hash、可撤销/过期 session、CSRF/Origin 校验和窄化的开发捕获/SMTP sender；Actor 同时进入 connection/transaction `RequestContext`，owner/RBAC scope 下推为 SeaORM `Condition`。OpenAPI、TypeScript client 和 React 路由从同一 Auth IR 生成 Cookie security scheme、启用的 endpoint、Cookie/CSRF 调用和认证页面。独立 PostgreSQL 验收已覆盖匿名、owner、admin、CSRF、并发前置条件及密码重置/会话撤销路径。
 
-CLI 生成路径已拆到独立模块。`generated/.appstruct-manifest.json` 使用确定性 JSON 保存 Artifact 路径、类别、Generator 版本和 SHA-256；生成前拒绝未知文件或被人工修改的 owned file。`target/`、`node_modules/`、`dist/`、`.vite/` 和 Cargo 自动创建的 `Cargo.lock` 视为可丢弃构建瞬态，不参与 ownership 冲突。写入使用项目目录中的 sibling staging/backup 交换，失败时立即恢复 backup。当前尚未实现跨进程项目锁和崩溃恢复 journal；检测到遗留 staging/backup 时命令中止，不会猜测或覆盖现场。
+CLI 生成路径已拆为 orchestration、ownership 和 transaction 模块。`generated/.appstruct-manifest.json` 使用确定性 JSON 保存 Artifact 路径、类别、Generator 版本和 SHA-256；生成前拒绝未知文件或被人工修改的 owned file。`target/`、`node_modules/`、`dist/`、`.vite/` 和 Cargo 自动创建的 `Cargo.lock` 视为可丢弃构建瞬态，不参与 ownership 冲突。项目级排他文件锁覆盖恢复、编译、规划与提交；追加式 journal 在每个目录交换 phase 后 `sync_all`。下一次命令会验证候选树的 manifest/hash，再完成提交或恢复 backup；歧义状态保留全部目录并失败关闭。
 
 ## 2. 架构决策摘要
 
@@ -641,7 +641,7 @@ App Spec -> Rust API -> OpenAPI -> 前端
 
 这里的保证是可恢复的目录事务，而不是依赖“用一次 rename 覆盖非空目录”这一不可移植假设。`app/`、`migrations/` 和其他用户目录永远不进入该事务。
 
-当前 M3 实现覆盖 ownership/hash 校验、路径校验、sibling staging/backup 和同步失败回滚。上图中的项目级锁、恢复 journal、staging 内格式化/静态验证和崩溃后自动恢复是下一阶段增量；在这些能力落地前，CLI 对已有 staging/backup 采取失败关闭策略。
+当前实现覆盖 ownership/hash 校验、路径校验、项目级跨进程文件锁、sibling staging/backup、同步失败回滚和崩溃后自动恢复。journal 采用追加式 JSON record，依次记录 `prepared`、`backed_up` 和 `installed`；即使最后一行因崩溃不完整，也可使用上一条完整 phase 与目录组合恢复。无 journal 的旧版 staging/backup 会回滚到已有完整树；三个目录同时存在等歧义组合不会被猜测性删除。Rust Artifact 已在内存规划期经过 rustfmt；TypeScript 的 staging 内 Prettier/lint/静态验证仍归 M5 构建门禁补齐。
 
 ## 12. 数据库模型与迁移
 

@@ -5,3 +5,5 @@
 # Local build output and compiler caches.
 /target/
 **/.appstruct/cache/
+**/.appstruct/generation.lock
+**/.appstruct/generation.journal
