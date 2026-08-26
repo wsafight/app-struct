@@ -6,7 +6,7 @@ OpenAPI, a TypeScript client, and a React/Vite application.
 
 The repository is currently a technical preview. M0-M5 are complete, including templates,
 production builds, environment diagnostics, and the coordinated development server. The M6
-Tenant, Audit, and Mail modules are available as previews; Jobs, File, and the SaaS preset remain
+Tenant, Audit, Mail, and Jobs modules are available as previews; File and the SaaS preset remain
 in development.
 
 ## Quick Start
@@ -128,6 +128,9 @@ APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_audit
 
 APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_mail_e2e' \
   scripts/run-m6-mail-e2e.sh
+
+APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_jobs_e2e' \
+  scripts/run-m6-jobs-e2e.sh
 ```
 
 Rust source files are limited to 400 lines by a repository test. Generated projects also pin

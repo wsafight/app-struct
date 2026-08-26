@@ -20,7 +20,7 @@ pub(super) fn contract() -> TokenStream {
         }
 
         impl<'db> RequestContext<'db> {
-            pub(crate) fn connection(
+            pub fn connection(
                 database: &'db DatabaseConnection,
                 mail: &'db crate::MailState,
                 actor: Option<Actor>,
@@ -29,7 +29,7 @@ pub(super) fn contract() -> TokenStream {
                 Self { database: RequestDatabase::Connection(database), mail, actor, tenant }
             }
 
-            pub(crate) fn transaction(
+            pub fn transaction(
                 database: &'db DatabaseTransaction,
                 mail: &'db crate::MailState,
                 actor: Option<Actor>,
@@ -51,6 +51,18 @@ pub(super) fn contract() -> TokenStream {
                 variables: &std::collections::BTreeMap<String, String>,
             ) -> Result<crate::MailDelivery, crate::MailError> {
                 self.mail.send_template(template, recipient, variables, self.tenant).await
+            }
+            pub async fn enqueue_job<T: serde::Serialize>(
+                &self,
+                queue: &str,
+                kind: &str,
+                payload: &T,
+                idempotency_key: Option<&str>,
+                run_at: Option<chrono::DateTime<chrono::Utc>>,
+            ) -> Result<crate::JobReceipt, crate::JobError> {
+                crate::jobs::enqueue(
+                    self, queue, kind, payload, idempotency_key, run_at, self.tenant,
+                ).await
             }
         }
 

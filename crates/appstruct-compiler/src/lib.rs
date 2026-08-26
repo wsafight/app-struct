@@ -6,6 +6,7 @@ mod auth;
 mod extension;
 mod field;
 mod field_options;
+mod jobs;
 mod loading;
 mod lower;
 mod mail;

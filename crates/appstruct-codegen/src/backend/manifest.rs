@@ -15,7 +15,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         "sea-orm = { version = \"=2.0.2\", default-features = false, features = [\"macros\", \"runtime-tokio-rustls\", \"sqlx-postgres\", \"with-chrono\", \"with-json\", \"with-rust_decimal\", \"with-uuid\"] }\n",
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
         "serde_json = \"=1.0.151\"\n",
-        "tokio = { version = \"=1.53.1\", features = [\"macros\", \"net\", \"rt-multi-thread\"] }\n",
+        "tokio = { version = \"=1.53.1\", features = [\"macros\", \"net\", \"rt-multi-thread\", \"sync\", \"time\"] }\n",
         "tower-http = { version = \"=0.7.0\", features = [\"cors\", \"request-id\", \"trace\"] }\n",
         "tracing = \"=0.1.44\"\n",
         "tracing-subscriber = { version = \"=0.3.22\", features = [\"env-filter\", \"fmt\"] }\n",

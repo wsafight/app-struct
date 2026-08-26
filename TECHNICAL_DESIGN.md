@@ -884,6 +884,35 @@ Mail 的直接 Provider 调用不是可靠队列。业务代码只应从 `after_
 重试、延迟或进程崩溃恢复时，必须在同一业务事务写 Jobs/Outbox，由 Worker 在 commit 后投递。
 Auth 继续面向独立的 `AuthMailSender` capability，因此 Mail Module 不成为密码重置的强制依赖。
 
+M6 Jobs/Outbox 契约如下：
+
+```yaml
+modules:
+  jobs:
+    enabled: true
+    poll_interval_ms: 250
+    lease_seconds: 30
+    queues:
+      default: { max_attempts: 5, backoff_seconds: 2 }
+      mail: { max_attempts: 8, backoff_seconds: 5 }
+```
+
+Compiler 将配置降低为按 name 排序的 `JobsIr`/`JobQueueIr`，并限制 poll、lease、attempt 和 backoff
+范围。迁移安装 `_appstruct_jobs`，包含 queue/kind/payload、nullable unique idempotency key、nullable
+tenant、status、attempt/max_attempts/backoff、run_at、lease owner/expiry、last_error 和完成时间。
+Tenant 外键使用 `SET NULL`，任务生命周期不会阻止租户删除。
+
+`RequestContext::enqueue_job` 对当前 connection 或 transaction 执行参数化 INSERT；在 CRUD Hook 的
+事务阶段调用时，它与业务写入原子提交。幂等键冲突使用数据库唯一约束返回既有 ID。`JobWorker`
+通过单条 `UPDATE ... FROM (SELECT ... FOR UPDATE SKIP LOCKED)` claim 到期 queued Job 或 lease 已过期的
+running Job，并在调用 object-safe `JobHandler` 前提交 claim。成功标记 succeeded；失败按
+`backoff * 2^(attempt-1)`、最多一小时重新排队，达到 max_attempts 后标记 dead。
+
+Worker 是 at-least-once：进程可在 Handler 成功后、状态更新前崩溃，所以 Handler 和下游 Provider
+必须支持幂等。`spawn` 返回持有 shutdown channel 与 JoinHandle 的 `JobWorkerHandle`，服务停止时显式
+等待清理。last_error 截断到 2000 字符，不记录 secret。Mail 与 Jobs 同时启用时可用
+`MailJobPayload`/`MailJobHandler` 处理 `mail.send`，但 Auth 不依赖 Jobs。
+
 ### 13.3 Repository
 
 生成的 Repository 负责：

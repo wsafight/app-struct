@@ -5,6 +5,7 @@ mod auth;
 mod context;
 mod entity;
 mod extensions;
+mod jobs;
 mod mail;
 mod manifest;
 mod operations;
@@ -68,6 +69,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     ];
     artifacts.extend(audit::plan(ir)?);
     artifacts.extend(auth::plan(ir)?);
+    artifacts.extend(jobs::plan(ir)?);
     artifacts.extend(mail::plan(ir)?);
     artifacts.extend(tenant::plan(ir)?);
     artifacts.extend(entity_artifacts(ir)?);
@@ -151,6 +153,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
     } else {
         quote! { pub use auth::AuthState; }
     };
+    let service_exports = service_exports(ir);
     render(quote! {
         pub mod api;
         pub mod entities;
@@ -158,6 +161,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod audit;
         mod auth;
         mod error;
+        mod jobs;
         mod mail;
         mod openapi;
         mod operations;
@@ -165,7 +169,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
 
         pub use error::{ApiError, FieldViolation};
         pub use extensions::{Actor, AppExtensions, HookOperation, RequestContext, TenantId};
-        pub use mail::{MailDelivery, MailError, MailMessage, MailProvider, MailState};
+        #service_exports
         #auth_exports
 
         use axum::{Router, extract::State, http::{HeaderMap, StatusCode}, response::IntoResponse, routing::get};
@@ -245,6 +249,19 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
             ([(axum::http::header::CONTENT_TYPE, "application/json")], openapi::OPENAPI_JSON)
         }
     })
+}
+
+fn service_exports(ir: &AppIr) -> TokenStream {
+    let mail_job_exports = (ir.jobs.enabled && ir.mail.enabled).then(|| {
+        quote! { pub use jobs::{MailJobHandler, MailJobPayload}; }
+    });
+    quote! {
+        pub use jobs::{
+            Job, JobError, JobHandler, JobHandlerError, JobReceipt, JobWorker, JobWorkerHandle,
+        };
+        #mail_job_exports
+        pub use mail::{MailDelivery, MailError, MailMessage, MailProvider, MailState};
+    }
 }
 
 pub(super) fn rust_type(field_type: &FieldTypeIr) -> TokenStream {

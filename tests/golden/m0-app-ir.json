@@ -1,5 +1,5 @@
 {
-  "ir_version": 4,
+  "ir_version": 5,
   "app": {
     "name": "project-hub"
   },
@@ -30,6 +30,12 @@
     "provider": "capture",
     "from": "",
     "templates": []
+  },
+  "jobs": {
+    "enabled": false,
+    "poll_interval_ms": 250,
+    "lease_seconds": 30,
+    "queues": []
   },
   "enums": [],
   "value_objects": [],

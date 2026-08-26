@@ -4,6 +4,7 @@ use crate::auth::lower_auth;
 use crate::extension::{ExtensionContext, lower_extensions};
 use crate::field::{build_column, build_field_type, build_relation};
 use crate::field_options::{build_generated, validate_field_options};
+use crate::jobs::lower_jobs;
 use crate::mail::lower_mail;
 use crate::naming::{pluralize, to_snake_case};
 use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceField, SurfaceRoot};
@@ -47,6 +48,7 @@ pub(crate) fn build_ir(
         &mut diagnostics,
     );
     let mail = lower_mail(&root.mail, &root.app_name.span, &mut diagnostics);
+    let jobs = lower_jobs(&root.jobs, &root.app_name.span, &mut diagnostics);
     let known_entities = surface_entities
         .iter()
         .map(|entity| entity.name.value.clone())
@@ -94,6 +96,7 @@ pub(crate) fn build_ir(
         tenant,
         audit,
         mail,
+        jobs,
         enums: Vec::new(),
         value_objects: extensions.value_objects,
         entities,

@@ -40,3 +40,19 @@ pub(crate) struct SurfaceMailTemplate {
     pub text: Located<String>,
     pub html: Option<Located<String>>,
 }
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SurfaceJobs {
+    pub enabled: bool,
+    pub poll_interval_ms: Option<Located<u64>>,
+    pub lease_seconds: Option<Located<u64>>,
+    pub queues: Vec<SurfaceJobQueue>,
+    pub span: Option<SourceSpan>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceJobQueue {
+    pub name: Located<String>,
+    pub max_attempts: Option<Located<u64>>,
+    pub backoff_seconds: Option<Located<u64>>,
+}

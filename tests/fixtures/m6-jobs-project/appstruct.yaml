@@ -1,0 +1,40 @@
+version: 1
+
+app:
+  name: jobs-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+    registration: true
+    password_reset: false
+  rbac:
+    roles: [member, admin]
+    default_role: admin
+  tenant:
+    enabled: true
+  mail:
+    enabled: true
+    provider: capture
+    from: "AppStruct <notifications@example.com>"
+    templates:
+      job-complete:
+        subject: "Job {{ job_name }} complete"
+        text: "The job finished successfully."
+  jobs:
+    enabled: true
+    poll_interval_ms: 25
+    lease_seconds: 2
+    queues:
+      default: { max_attempts: 2, backoff_seconds: 1 }
+      mail: { max_attempts: 3, backoff_seconds: 2 }
+
+includes:
+  - spec/project.yaml
+  - spec/identity.yaml

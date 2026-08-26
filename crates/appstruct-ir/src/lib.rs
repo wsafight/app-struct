@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Current serialized IR format version.
-pub const IR_VERSION: u32 = 4;
+pub const IR_VERSION: u32 = 5;
 
 /// Fully normalized application model consumed by generators.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,6 +20,7 @@ pub struct AppIr {
     pub tenant: TenantIr,
     pub audit: AuditIr,
     pub mail: MailIr,
+    pub jobs: JobsIr,
     pub enums: Vec<EnumIr>,
     pub value_objects: Vec<ValueObjectIr>,
     pub entities: Vec<EntityIr>,
@@ -104,6 +105,22 @@ pub struct MailTemplateIr {
     pub subject: String,
     pub text: String,
     pub html: Option<String>,
+}
+
+/// PostgreSQL-backed job worker settings.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobsIr {
+    pub enabled: bool,
+    pub poll_interval_ms: u64,
+    pub lease_seconds: u64,
+    pub queues: Vec<JobQueueIr>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobQueueIr {
+    pub name: String,
+    pub max_attempts: u32,
+    pub backoff_seconds: u64,
 }
 
 /// Stable logical entity identifier. It never depends on vector position.
