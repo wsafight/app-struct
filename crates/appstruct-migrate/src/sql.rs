@@ -1,6 +1,6 @@
 use crate::{
     ColumnSchema, DatabaseSchema, DatabaseType, ForeignKeySchema, MigrationPlan, SchemaChange,
-    TableSchema,
+    TableSchema, UniqueConstraintSchema,
 };
 use appstruct_ir::{GeneratedValueIr, OnDeleteIr};
 
@@ -8,6 +8,7 @@ use appstruct_ir::{GeneratedValueIr, OnDeleteIr};
 pub fn initial_migration(schema: &DatabaseSchema) -> String {
     let mut statements = vec![generated_header()];
     statements.extend(schema.tables.iter().map(create_table));
+    statements.extend(schema.unique_constraints.iter().map(add_unique_constraint));
     statements.extend(schema.foreign_keys.iter().map(add_foreign_key));
     format!("{}\n", statements.join("\n"))
 }
@@ -35,10 +36,12 @@ pub fn migration_sql(plan: &MigrationPlan) -> Result<String, String> {
                 before,
                 after,
             } => alter_column(table, before, after)?,
+            SchemaChange::AddUniqueConstraint { constraint } => add_unique_constraint(constraint),
             SchemaChange::AddForeignKey { foreign_key } => add_foreign_key(foreign_key),
             SchemaChange::RemoveTable { .. }
             | SchemaChange::RenameTable { .. }
             | SchemaChange::RemoveColumn { .. }
+            | SchemaChange::RemoveUniqueConstraint { .. }
             | SchemaChange::RemoveForeignKey { .. } => {
                 return Err("destructive migration cannot be rendered automatically".to_owned());
             }
@@ -140,22 +143,49 @@ fn sql_default(column: &ColumnSchema) -> Option<String> {
 
 fn add_foreign_key(foreign_key: &ForeignKeySchema) -> String {
     let action = match foreign_key.on_delete {
-        OnDeleteIr::Restrict => "RESTRICT",
-        OnDeleteIr::Cascade => "CASCADE",
-        OnDeleteIr::SetNull => "SET NULL",
+        OnDeleteIr::Restrict => "RESTRICT".to_owned(),
+        OnDeleteIr::Cascade => "CASCADE".to_owned(),
+        OnDeleteIr::SetNull if foreign_key.source_columns.len() > 1 => {
+            let nullable_columns = foreign_key.source_columns[1..]
+                .iter()
+                .map(|column| quote_ident(column))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("SET NULL ({nullable_columns})")
+        }
+        OnDeleteIr::SetNull => "SET NULL".to_owned(),
     };
+    let source_columns = quote_columns(&foreign_key.source_columns);
+    let target_columns = quote_columns(&foreign_key.target_columns);
     let constraint = format!(
         "fk_{}_{}",
-        foreign_key.source_table, foreign_key.source_column
+        foreign_key.source_table,
+        foreign_key.source_columns.join("_")
     );
     format!(
-        "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}) ON DELETE {action};\n",
+        "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({source_columns}) REFERENCES {} ({target_columns}) ON DELETE {action};\n",
         quote_ident(&foreign_key.source_table),
         quote_ident(&constraint),
-        quote_ident(&foreign_key.source_column),
         quote_ident(&foreign_key.target_table),
-        quote_ident(&foreign_key.target_column),
     )
+}
+
+fn add_unique_constraint(constraint: &UniqueConstraintSchema) -> String {
+    let name = format!("uq_{}_{}", constraint.table, constraint.columns.join("_"));
+    let columns = quote_columns(&constraint.columns);
+    format!(
+        "ALTER TABLE {} ADD CONSTRAINT {} UNIQUE ({columns});\n",
+        quote_ident(&constraint.table),
+        quote_ident(&name)
+    )
+}
+
+fn quote_columns(columns: &[String]) -> String {
+    columns
+        .iter()
+        .map(|column| quote_ident(column))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn alter_column(

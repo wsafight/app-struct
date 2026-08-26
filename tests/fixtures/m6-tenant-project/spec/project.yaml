@@ -31,3 +31,33 @@ entities:
       create: { authenticated: true }
       update: { authenticated: true }
       delete: { authenticated: true }
+
+  Task:
+    label: Task
+    table: tasks
+    tenant: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      title:
+        type: string
+        required: true
+        max_length: 160
+        searchable: true
+      project:
+        type: relation
+        target: Project
+        required: true
+        on_delete: cascade
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { authenticated: true }

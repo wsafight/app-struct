@@ -14,6 +14,7 @@ mod mail;
 mod naming;
 mod preset;
 mod surface;
+mod tenant;
 mod validation;
 mod yaml;
 

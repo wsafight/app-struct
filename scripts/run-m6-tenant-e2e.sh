@@ -119,6 +119,19 @@ gamma="$(jq -er '.id' "$temporary_root/gamma.json")"
 assert_status 403 "$second_jar" "$alpha" "/api/projects/" "$temporary_root/non-member.json"
 assert_status 403 "$first_jar" "$gamma" "/api/projects/" "$temporary_root/reverse.json"
 
+if psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 >/dev/null 2>&1 <<SQL
+INSERT INTO tasks (id, title, project_id, tenant_id)
+VALUES ('00000000-0000-0000-0000-000000000001', 'Cross tenant', '$project_id', '$beta');
+SQL
+then
+  echo "cross-tenant relation insert unexpectedly succeeded" >&2
+  exit 1
+fi
+psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 >/dev/null <<SQL
+INSERT INTO tasks (id, title, project_id, tenant_id)
+VALUES ('00000000-0000-0000-0000-000000000002', 'Same tenant', '$project_id', '$alpha');
+SQL
+
 pnpm --dir "$project/generated/web" exec tsc --noEmit
 PLAYWRIGHT_API_URL="$api" PLAYWRIGHT_BASE_URL="http://127.0.0.1:$web_port" \
   pnpm exec playwright test --config playwright.tenant.config.ts

@@ -29,9 +29,9 @@ pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {
     vec![ForeignKeySchema {
         id: "appstruct::mail::delivery_tenant".to_owned(),
         source_table: DELIVERIES.to_owned(),
-        source_column: "tenant_id".to_owned(),
+        source_columns: vec!["tenant_id".to_owned()],
         target_table: "_appstruct_tenant_organizations".to_owned(),
-        target_column: "id".to_owned(),
+        target_columns: vec!["id".to_owned()],
         unique: false,
         on_delete: OnDeleteIr::SetNull,
     }]

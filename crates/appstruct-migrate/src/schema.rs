@@ -13,6 +13,8 @@ pub struct DatabaseSchema {
     pub schema_version: u32,
     pub provider: DatabaseProvider,
     pub tables: Vec<TableSchema>,
+    #[serde(default)]
+    pub unique_constraints: Vec<UniqueConstraintSchema>,
     pub foreign_keys: Vec<ForeignKeySchema>,
 }
 
@@ -54,11 +56,20 @@ pub enum DatabaseType {
 pub struct ForeignKeySchema {
     pub id: String,
     pub source_table: String,
-    pub source_column: String,
+    #[serde(alias = "source_column", deserialize_with = "one_or_many")]
+    pub source_columns: Vec<String>,
     pub target_table: String,
-    pub target_column: String,
+    #[serde(alias = "target_column", deserialize_with = "one_or_many")]
+    pub target_columns: Vec<String>,
     pub unique: bool,
     pub on_delete: OnDeleteIr,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UniqueConstraintSchema {
+    pub id: String,
+    pub table: String,
+    pub columns: Vec<String>,
 }
 
 #[must_use]
@@ -84,6 +95,12 @@ pub fn extract(ir: &AppIr) -> DatabaseSchema {
                 })
                 .collect(),
         })
+        .collect::<Vec<_>>();
+    let unique_constraints = ir
+        .entities
+        .iter()
+        .filter(|entity| entity.tenant_scoped)
+        .map(tenant_unique_constraint)
         .collect::<Vec<_>>();
     let mut foreign_keys = ir
         .relations
@@ -115,10 +132,24 @@ pub fn extract(ir: &AppIr) -> DatabaseSchema {
         foreign_keys.extend(file::foreign_keys(ir));
     }
     DatabaseSchema {
-        schema_version: 1,
+        schema_version: 2,
         provider: ir.database.provider,
         tables,
+        unique_constraints,
         foreign_keys,
+    }
+}
+
+fn tenant_unique_constraint(entity: &appstruct_ir::EntityIr) -> UniqueConstraintSchema {
+    let key = entity
+        .fields
+        .iter()
+        .find(|field| field.primary_key)
+        .expect("compiler validated primary key");
+    UniqueConstraintSchema {
+        id: format!("{}.tenant_key", entity.id),
+        table: entity.table_name.clone(),
+        columns: vec!["tenant_id".to_owned(), key.column_name.clone()],
     }
 }
 
@@ -173,15 +204,41 @@ fn foreign_key(ir: &AppIr, relation: &appstruct_ir::RelationIr) -> ForeignKeySch
         .iter()
         .find(|field| field.primary_key)
         .expect("compiler validated target key");
+    let tenant_relation = source.tenant_scoped && target.tenant_scoped;
     ForeignKeySchema {
         id: relation.id.0.clone(),
         source_table: source.table_name.clone(),
-        source_column: source_field.column_name.clone(),
+        source_columns: if tenant_relation {
+            vec!["tenant_id".to_owned(), source_field.column_name.clone()]
+        } else {
+            vec![source_field.column_name.clone()]
+        },
         target_table: target.table_name.clone(),
-        target_column: target_field.column_name.clone(),
+        target_columns: if tenant_relation {
+            vec!["tenant_id".to_owned(), target_field.column_name.clone()]
+        } else {
+            vec![target_field.column_name.clone()]
+        },
         unique: relation.unique,
         on_delete: relation.on_delete,
     }
+}
+
+fn one_or_many<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Columns {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    Ok(match Columns::deserialize(deserializer)? {
+        Columns::One(column) => vec![column],
+        Columns::Many(columns) => columns,
+    })
 }
 
 /// Serialize a canonical schema snapshot.

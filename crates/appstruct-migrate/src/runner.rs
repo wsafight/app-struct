@@ -190,7 +190,10 @@ impl ProjectMigrations {
             ))
         })?;
         let Some(latest) = files.last() else {
-            return if schema.tables.is_empty() && schema.foreign_keys.is_empty() {
+            return if schema.tables.is_empty()
+                && schema.unique_constraints.is_empty()
+                && schema.foreign_keys.is_empty()
+            {
                 Ok(Self { files, schema })
             } else {
                 Err(MigrationError::Project(
@@ -368,9 +371,10 @@ fn reconcile(
 
 fn empty_schema() -> DatabaseSchema {
     DatabaseSchema {
-        schema_version: 1,
+        schema_version: 2,
         provider: DatabaseProvider::Postgres,
         tables: Vec::new(),
+        unique_constraints: Vec::new(),
         foreign_keys: Vec::new(),
     }
 }

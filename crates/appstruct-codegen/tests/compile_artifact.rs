@@ -166,6 +166,10 @@ fn m6_tenant_contract_generates_a_compilable_backend() {
     assert!(sql.contains("_appstruct_tenant_memberships"));
     assert!(sql.contains("PRIMARY KEY (\"organization_id\", \"user_id\")"));
     assert!(sql.contains("FOREIGN KEY (\"tenant_id\")"));
+    assert!(sql.contains("UNIQUE (\"tenant_id\", \"id\")"));
+    assert!(sql.contains(
+        "FOREIGN KEY (\"tenant_id\", \"project_id\") REFERENCES \"projects\" (\"tenant_id\", \"id\")"
+    ));
 
     let api = artifact_text(&artifacts, "backend/src/api/project.rs");
     assert!(api.contains("Column::TenantId.eq(context.require_tenant()?)"));
@@ -248,7 +252,10 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
         serde_json::from_str(artifact_text(artifacts, "database/schema.json")).unwrap();
     assert_eq!(schema["tables"][0]["name"], "projects");
     assert_eq!(schema["tables"][1]["name"], "tasks");
-    assert_eq!(schema["foreign_keys"][0]["source_column"], "project_id");
+    assert_eq!(
+        schema["foreign_keys"][0]["source_columns"],
+        serde_json::json!(["project_id"])
+    );
 
     let openapi: Value =
         serde_json::from_str(artifact_text(artifacts, "openapi/openapi.json")).unwrap();

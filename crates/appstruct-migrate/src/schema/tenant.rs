@@ -146,9 +146,9 @@ fn foreign_key(
     ForeignKeySchema {
         id: format!("appstruct::tenant::{id}"),
         source_table: source_table.to_owned(),
-        source_column: source_column.to_owned(),
+        source_columns: vec![source_column.to_owned()],
         target_table: target_table.to_owned(),
-        target_column: target_column.to_owned(),
+        target_columns: vec![target_column.to_owned()],
         unique: false,
         on_delete,
     }

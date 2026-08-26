@@ -9,12 +9,12 @@ use crate::jobs::lower_jobs;
 use crate::mail::lower_mail;
 use crate::naming::{pluralize, to_snake_case};
 use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceField, SurfaceRoot};
+use crate::tenant::lower_tenant;
 use crate::validation::{validate_entity_declarations, validate_primary_key};
 use appstruct_ir::{
     AppIr, AppMeta, AuthIr, ConcurrencyIr, DatabaseDevMode, DatabaseIr, DatabaseProvider,
     Diagnostic, EntityId, EntityIr, EntityViewsIr, FieldCapabilities, FieldId, FieldIr,
-    FieldTypeIr, GeneratedValueIr, HooksIr, IR_VERSION, RelationIr, SourceSpan, TenantIr,
-    ValidationIr,
+    FieldTypeIr, GeneratedValueIr, HooksIr, IR_VERSION, RelationIr, SourceSpan, ValidationIr,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -114,39 +114,6 @@ pub(crate) fn build_ir(
         pages: extensions.pages,
         modules: Vec::new(),
     })
-}
-
-fn lower_tenant(
-    root: &SurfaceRoot,
-    entities: &[SurfaceEntity],
-    auth: &AuthIr,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> TenantIr {
-    let span = root
-        .tenant
-        .span
-        .as_ref()
-        .unwrap_or(&root.app_name.span)
-        .clone();
-    if root.tenant.enabled && !auth.enabled {
-        diagnostics.push(Diagnostic::error(
-            "AS3034",
-            "enabled tenant module requires `modules.auth.enabled: true`",
-            span.clone(),
-        ));
-    }
-    if !root.tenant.enabled {
-        for entity in entities.iter().filter(|entity| entity.tenant_scoped) {
-            diagnostics.push(Diagnostic::error(
-                "AS3035",
-                "tenant-scoped entity requires `modules.tenant.enabled: true`",
-                entity.span.clone(),
-            ));
-        }
-    }
-    TenantIr {
-        enabled: root.tenant.enabled,
-    }
 }
 
 fn lower_entities(

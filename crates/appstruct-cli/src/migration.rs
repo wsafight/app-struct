@@ -129,9 +129,10 @@ fn read_snapshot(project: &Path) -> io::Result<Option<DatabaseSchema>> {
 
 fn empty_schema() -> DatabaseSchema {
     DatabaseSchema {
-        schema_version: 1,
+        schema_version: 2,
         provider: DatabaseProvider::Postgres,
         tables: Vec::new(),
+        unique_constraints: Vec::new(),
         foreign_keys: Vec::new(),
     }
 }
@@ -220,6 +221,12 @@ fn change_label(change: &SchemaChange) -> String {
         }
         SchemaChange::AlterColumn { table, after, .. } => {
             format!("alter column `{table}.{}`", after.name)
+        }
+        SchemaChange::AddUniqueConstraint { constraint } => {
+            format!("add unique constraint `{}`", constraint.id)
+        }
+        SchemaChange::RemoveUniqueConstraint { constraint } => {
+            format!("remove unique constraint `{}`", constraint.id)
         }
         SchemaChange::AddForeignKey { foreign_key } => {
             format!("add foreign key `{}`", foreign_key.id)

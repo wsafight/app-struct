@@ -55,6 +55,18 @@ fn tenant_id_is_reserved() {
     assert_diagnostic(temporary.path(), "AS3036");
 }
 
+#[test]
+fn global_entity_cannot_reference_tenant_entity() {
+    let temporary = copied_fixture();
+    let identity = temporary.path().join("spec/identity.yaml");
+    replace(
+        &identity,
+        "      email:\n",
+        "      project:\n        type: relation\n        target: Project\n      email:\n",
+    );
+    assert_diagnostic(temporary.path(), "AS3037");
+}
+
 fn copied_fixture() -> tempfile::TempDir {
     let temporary = tempfile::tempdir().unwrap();
     fs::create_dir(temporary.path().join("spec")).unwrap();

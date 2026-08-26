@@ -4,8 +4,10 @@ use appstruct_ir::{GeneratedValueIr, OnDeleteIr};
 use postgres::Client;
 use std::collections::{BTreeMap, BTreeSet};
 
+mod constraints;
 mod normalize;
 
+use constraints::{ForeignKeyShape, UniqueConstraintShape};
 use normalize::{expected_default, expected_type, sql_literals};
 
 const HISTORY_TABLE: &str = "_appstruct_migrations";
@@ -18,23 +20,15 @@ struct ActualColumn {
     identity: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct ForeignKeyShape {
-    source_table: String,
-    source_column: String,
-    target_table: String,
-    target_column: String,
-    on_delete: String,
-}
-
 pub(super) fn detect(
     client: &mut Client,
     expected: &DatabaseSchema,
 ) -> Result<Vec<String>, MigrationError> {
     let actual_tables = tables(client)?;
     let actual_columns = columns(client)?;
-    let key_constraints = key_constraints(client)?;
-    let actual_foreign_keys = foreign_keys(client)?;
+    let key_constraints = constraints::key_constraints(client)?;
+    let actual_unique_constraints = constraints::unique_constraints(client)?;
+    let actual_foreign_keys = constraints::foreign_keys(client)?;
     let checks = check_constraints(client)?;
     let expected_tables = expected
         .tables
@@ -61,6 +55,7 @@ pub(super) fn detect(
             issues.push(format!("unexpected table `{table}`"));
         }
     }
+    compare_unique_constraints(expected, &actual_unique_constraints, &mut issues);
     compare_foreign_keys(expected, &actual_foreign_keys, &mut issues);
     issues.sort();
     issues.dedup();
@@ -112,71 +107,6 @@ WHERE table_schema = current_schema()",
                     identity,
                 },
             ))
-        })
-        .collect()
-}
-
-fn key_constraints(
-    client: &mut Client,
-) -> Result<BTreeMap<(String, String), BTreeSet<String>>, MigrationError> {
-    let rows = client
-        .query(
-            r"SELECT tc.table_name, kcu.column_name, tc.constraint_type
-FROM information_schema.table_constraints tc
-JOIN information_schema.key_column_usage kcu
-  ON kcu.constraint_schema = tc.constraint_schema
- AND kcu.constraint_name = tc.constraint_name
-WHERE tc.table_schema = current_schema()
-  AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')",
-            &[],
-        )
-        .map_err(|error| database_error("cannot inspect key constraints", &error))?;
-    let mut constraints = BTreeMap::<_, BTreeSet<_>>::new();
-    for row in rows {
-        let key = (
-            catalog_string(&row, "table_name")?,
-            catalog_string(&row, "column_name")?,
-        );
-        constraints
-            .entry(key)
-            .or_default()
-            .insert(catalog_string(&row, "constraint_type")?);
-    }
-    Ok(constraints)
-}
-
-fn foreign_keys(client: &mut Client) -> Result<BTreeSet<ForeignKeyShape>, MigrationError> {
-    client
-        .query(
-            r"SELECT tc.table_name AS source_table,
-       kcu.column_name AS source_column,
-       ccu.table_name AS target_table,
-       ccu.column_name AS target_column,
-       rc.delete_rule
-FROM information_schema.table_constraints tc
-JOIN information_schema.key_column_usage kcu
-  ON kcu.constraint_schema = tc.constraint_schema
- AND kcu.constraint_name = tc.constraint_name
-JOIN information_schema.referential_constraints rc
-  ON rc.constraint_schema = tc.constraint_schema
- AND rc.constraint_name = tc.constraint_name
-JOIN information_schema.constraint_column_usage ccu
-  ON ccu.constraint_schema = rc.unique_constraint_schema
- AND ccu.constraint_name = rc.unique_constraint_name
-WHERE tc.table_schema = current_schema()
-  AND tc.constraint_type = 'FOREIGN KEY'",
-            &[],
-        )
-        .map_err(|error| database_error("cannot inspect foreign keys", &error))?
-        .into_iter()
-        .map(|row| {
-            Ok(ForeignKeyShape {
-                source_table: catalog_string(&row, "source_table")?,
-                source_column: catalog_string(&row, "source_column")?,
-                target_table: catalog_string(&row, "target_table")?,
-                target_column: catalog_string(&row, "target_column")?,
-                on_delete: catalog_string(&row, "delete_rule")?,
-            })
         })
         .collect()
 }
@@ -300,9 +230,9 @@ fn compare_foreign_keys(
         .iter()
         .map(|foreign_key| ForeignKeyShape {
             source_table: foreign_key.source_table.clone(),
-            source_column: foreign_key.source_column.clone(),
+            source_columns: foreign_key.source_columns.clone(),
             target_table: foreign_key.target_table.clone(),
-            target_column: foreign_key.target_column.clone(),
+            target_columns: foreign_key.target_columns.clone(),
             on_delete: match foreign_key.on_delete {
                 OnDeleteIr::Restrict => "RESTRICT",
                 OnDeleteIr::Cascade => "CASCADE",
@@ -313,20 +243,49 @@ fn compare_foreign_keys(
         .collect::<BTreeSet<_>>();
     for foreign_key in expected.difference(actual) {
         issues.push(format!(
-            "missing foreign key `{}.{}` -> `{}.{}`",
+            "missing foreign key `{}({})` -> `{}({})`",
             foreign_key.source_table,
-            foreign_key.source_column,
+            foreign_key.source_columns.join(", "),
             foreign_key.target_table,
-            foreign_key.target_column
+            foreign_key.target_columns.join(", ")
         ));
     }
     for foreign_key in actual.difference(&expected) {
         issues.push(format!(
-            "unexpected foreign key `{}.{}` -> `{}.{}`",
+            "unexpected foreign key `{}({})` -> `{}({})`",
             foreign_key.source_table,
-            foreign_key.source_column,
+            foreign_key.source_columns.join(", "),
             foreign_key.target_table,
-            foreign_key.target_column
+            foreign_key.target_columns.join(", ")
+        ));
+    }
+}
+
+fn compare_unique_constraints(
+    expected: &DatabaseSchema,
+    actual: &BTreeSet<UniqueConstraintShape>,
+    issues: &mut Vec<String>,
+) {
+    let expected = expected
+        .unique_constraints
+        .iter()
+        .map(|constraint| UniqueConstraintShape {
+            table: constraint.table.clone(),
+            columns: constraint.columns.clone(),
+        })
+        .collect::<BTreeSet<_>>();
+    for constraint in expected.difference(actual) {
+        issues.push(format!(
+            "missing unique constraint `{}({})`",
+            constraint.table,
+            constraint.columns.join(", ")
+        ));
+    }
+    for constraint in actual.difference(&expected) {
+        issues.push(format!(
+            "unexpected unique constraint `{}({})`",
+            constraint.table,
+            constraint.columns.join(", ")
         ));
     }
 }

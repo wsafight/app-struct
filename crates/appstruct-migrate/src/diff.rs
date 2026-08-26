@@ -1,4 +1,4 @@
-use crate::{ColumnSchema, DatabaseSchema, ForeignKeySchema, TableSchema};
+use crate::{ColumnSchema, DatabaseSchema, ForeignKeySchema, TableSchema, UniqueConstraintSchema};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -49,6 +49,12 @@ pub enum SchemaChange {
         table: String,
         before: ColumnSchema,
         after: ColumnSchema,
+    },
+    AddUniqueConstraint {
+        constraint: UniqueConstraintSchema,
+    },
+    RemoveUniqueConstraint {
+        constraint: UniqueConstraintSchema,
     },
     AddForeignKey {
         foreign_key: ForeignKeySchema,
@@ -121,8 +127,64 @@ pub fn diff(before: &DatabaseSchema, after: &DatabaseSchema) -> MigrationPlan {
             ));
         }
     }
+    diff_unique_constraints(before, after, &old_tables, &mut changes);
     diff_foreign_keys(before, after, &old_tables, &mut changes);
     MigrationPlan { changes }
+}
+
+fn diff_unique_constraints(
+    before: &DatabaseSchema,
+    after: &DatabaseSchema,
+    old_tables: &BTreeMap<&str, &TableSchema>,
+    changes: &mut Vec<PlannedChange>,
+) {
+    let old = by_id(&before.unique_constraints, |constraint| {
+        constraint.id.as_str()
+    });
+    let new = by_id(&after.unique_constraints, |constraint| {
+        constraint.id.as_str()
+    });
+    for constraint in &after.unique_constraints {
+        match old.get(constraint.id.as_str()) {
+            None => changes.push(planned(
+                SchemaChange::AddUniqueConstraint {
+                    constraint: constraint.clone(),
+                },
+                if after.tables.iter().any(|table| {
+                    table.name == constraint.table && !old_tables.contains_key(table.id.as_str())
+                }) {
+                    safe()
+                } else {
+                    may_lock()
+                },
+            )),
+            Some(previous) if *previous != constraint => {
+                changes.push(planned(
+                    SchemaChange::RemoveUniqueConstraint {
+                        constraint: (*previous).clone(),
+                    },
+                    destructive(),
+                ));
+                changes.push(planned(
+                    SchemaChange::AddUniqueConstraint {
+                        constraint: constraint.clone(),
+                    },
+                    may_lock(),
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+    for constraint in &before.unique_constraints {
+        if !new.contains_key(constraint.id.as_str()) {
+            changes.push(planned(
+                SchemaChange::RemoveUniqueConstraint {
+                    constraint: constraint.clone(),
+                },
+                destructive(),
+            ));
+        }
+    }
 }
 
 fn diff_columns(before: &TableSchema, after: &TableSchema, changes: &mut Vec<PlannedChange>) {

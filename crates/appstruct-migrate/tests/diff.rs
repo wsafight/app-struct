@@ -1,12 +1,18 @@
 use appstruct_compiler::compile_project;
 use appstruct_migrate::{
-    ColumnSchema, DatabaseType, ExecutionRisk, SchemaChange, SchemaRisk, diff, extract,
+    ColumnSchema, DatabaseType, ExecutionRisk, SchemaChange, SchemaRisk, diff, extract, from_json,
     initial_migration, migration_sql,
 };
 use std::path::Path;
 
 fn fixture_schema() -> appstruct_migrate::DatabaseSchema {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
+    extract(&compile_project(&fixture).unwrap())
+}
+
+fn tenant_fixture_schema() -> appstruct_migrate::DatabaseSchema {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");
     extract(&compile_project(&fixture).unwrap())
 }
 
@@ -63,6 +69,49 @@ fn initial_sql_contains_unique_enum_and_relation_constraints() {
     assert!(sql.contains("CHECK (\"status\" IN ('planned', 'active', 'completed'))"));
     assert!(sql.contains("FOREIGN KEY (\"project_id\")"));
     assert!(sql.contains("ON DELETE CASCADE"));
+}
+
+#[test]
+fn tenant_relations_use_composite_database_constraints() {
+    let schema = tenant_fixture_schema();
+    let relation = schema
+        .foreign_keys
+        .iter()
+        .find(|foreign_key| foreign_key.source_table == "tasks")
+        .unwrap();
+    assert_eq!(relation.source_columns, ["tenant_id", "project_id"]);
+    assert_eq!(relation.target_columns, ["tenant_id", "id"]);
+    assert!(schema.unique_constraints.iter().any(|constraint| {
+        constraint.table == "projects" && constraint.columns == ["tenant_id", "id"]
+    }));
+
+    let sql = initial_migration(&schema);
+    assert!(sql.contains("UNIQUE (\"tenant_id\", \"id\")"));
+    assert!(sql.contains(
+        "FOREIGN KEY (\"tenant_id\", \"project_id\") REFERENCES \"projects\" (\"tenant_id\", \"id\")"
+    ));
+}
+
+#[test]
+fn legacy_single_column_foreign_keys_remain_readable() {
+    let mut value = serde_json::to_value(fixture_schema()).unwrap();
+    value["schema_version"] = 1.into();
+    value.as_object_mut().unwrap().remove("unique_constraints");
+    for foreign_key in value["foreign_keys"].as_array_mut().unwrap() {
+        let object = foreign_key.as_object_mut().unwrap();
+        for (old, new) in [
+            ("source_columns", "source_column"),
+            ("target_columns", "target_column"),
+        ] {
+            let column = object.remove(old).unwrap().as_array().unwrap()[0].clone();
+            object.insert(new.to_owned(), column);
+        }
+    }
+
+    let restored = from_json(&serde_json::to_string(&value).unwrap()).unwrap();
+    assert_eq!(restored.schema_version, 1);
+    assert!(restored.unique_constraints.is_empty());
+    assert_eq!(restored.foreign_keys[0].source_columns, ["project_id"]);
 }
 
 #[test]
