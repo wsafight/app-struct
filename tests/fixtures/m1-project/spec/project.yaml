@@ -1,0 +1,30 @@
+domain: project
+
+entities:
+  Project:
+    label: Projects
+    table: projects
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      name:
+        type: string
+        required: true
+        min_length: 2
+        max_length: 120
+      description:
+        type: text
+        max_length: 2000
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { public: true }
+      read: { public: true }
+      create: { public: true }
+      update: { public: true }
+      delete: { public: true }
+

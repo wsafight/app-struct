@@ -1,0 +1,13 @@
+version: 1
+
+app:
+  name: project-board
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+
+includes:
+  - spec/project.yaml
+
