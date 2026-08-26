@@ -11,6 +11,13 @@ fn fixture() -> PathBuf {
 fn compiles_fixture_to_canonical_golden() {
     let ir = compile_project(&fixture()).unwrap();
     let actual = to_canonical_json(&ir).unwrap();
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        fs::write(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/golden/m0-app-ir.json"),
+            &actual,
+        )
+        .unwrap();
+    }
     let expected = include_str!("../../../tests/golden/m0-app-ir.json");
     assert_eq!(actual, expected);
 }
@@ -167,6 +174,26 @@ fn rejects_unknown_field_keys_instead_of_ignoring_typos() {
     let diagnostics = compile_project(temporary.path()).unwrap_err();
     assert_eq!(diagnostics[0].code, "AS1012");
     assert_eq!(diagnostics[0].primary.span.line, 8);
+}
+
+#[test]
+fn rejects_revision_field_reserved_for_concurrency() {
+    let temporary = tempfile::tempdir().unwrap();
+    copy_fixture(&fixture(), temporary.path());
+    let spec_path = temporary.path().join("spec/project.yaml");
+    let spec = fs::read_to_string(&spec_path).unwrap();
+    fs::write(
+        &spec_path,
+        spec.replace("      name:\n", "      revision:\n"),
+    )
+    .unwrap();
+
+    let diagnostics = compile_project(temporary.path()).unwrap_err();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "AS2012")
+    );
 }
 
 fn copy_fixture(source: &Path, destination: &Path) {

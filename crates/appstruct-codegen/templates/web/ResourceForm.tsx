@@ -1,4 +1,4 @@
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, RefreshCw, Save } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { FieldDefinition, ResourceDefinition, ResourceInput, ResourceRecord } from "../resource";
@@ -16,16 +16,26 @@ export function ResourceForm({ resource, resources, registry }: { resource: Reso
   const [pageError, setPageError] = useState("");
   const [loading, setLoading] = useState(editing);
   const [saving, setSaving] = useState(false);
+  const [conflict, setConflict] = useState(false);
   const fields = resource.fields.filter((field) => !field.readOnly && !field.primaryKey);
 
   useEffect(() => {
+    void loadRecord();
+  }, [id, resource]);
+
+  async function loadRecord() {
     if (!id) return;
     setLoading(true);
-    resource.api.get(id)
-      .then((record) => setValues(Object.fromEntries(fields.map((field) => [field.name, toFormValue(record[field.name], field)]))))
-      .catch((reason) => setPageError(errorMessage(reason)))
-      .finally(() => setLoading(false));
-  }, [id, resource]);
+    setConflict(false);
+    try {
+      const record = await resource.api.get(id);
+      setValues(Object.fromEntries(fields.map((field) => [field.name, toFormValue(record[field.name], field)])));
+    } catch (reason) {
+      setPageError(errorMessage(reason));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -40,6 +50,7 @@ export function ResourceForm({ resource, resources, registry }: { resource: Reso
     } catch (reason) {
       setErrors(fieldErrors(reason));
       setPageError(errorMessage(reason));
+      setConflict((reason as { code?: string } | undefined)?.code === "CONCURRENT_MODIFICATION");
     } finally {
       setSaving(false);
     }
@@ -47,7 +58,7 @@ export function ResourceForm({ resource, resources, registry }: { resource: Reso
 
   return <main className="page form-page">
     <div className="page-heading"><div><Link className="back-link" to={`/${resource.slug}`}><ArrowLeft size={16} /> {resource.label}</Link><h1>{editing ? "Edit" : "Add"} {resource.label}</h1></div></div>
-    {pageError && <div className="alert" role="alert">{pageError}</div>}
+    {pageError && <div className="alert" role="alert">{pageError}{conflict && <button type="button" className="secondary-button" onClick={() => void loadRecord()}><RefreshCw size={16} /> Reload latest</button>}</div>}
     {loading ? <div className="form-frame">Loading...</div> : <form className="form-frame" onSubmit={(event) => void submit(event)}><div className="form-grid">
       {fields.map((field) => <FieldControl key={field.name} field={field} resources={resources} registry={registry} value={values[field.name]} error={errors[field.name]} onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))} />)}
     </div><div className="form-actions"><Link className="secondary-button" to={`/${resource.slug}`}>Cancel</Link><button className="primary-button" disabled={saving}><Save size={17} /> {saving ? "Saving..." : "Save"}</button></div></form>}

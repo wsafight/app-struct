@@ -68,7 +68,7 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
                 "tags": [singular],
                 "requestBody": request_body(&format!("Create{singular}Input")),
                 "responses": {
-                    "201": response("Resource created", &schema_ref(singular)),
+                    "201": versioned_response("Resource created", &schema_ref(singular)),
                     "422": error_response(),
                 }
             }
@@ -87,26 +87,32 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
                 "operationId": format!("get{singular}"),
                 "tags": [singular],
                 "responses": {
-                    "200": response("Resource", &schema_ref(singular)),
+                    "200": versioned_response("Resource", &schema_ref(singular)),
                     "404": error_response(),
                 }
             },
             "patch": {
                 "operationId": format!("update{singular}"),
                 "tags": [singular],
+                "parameters": [if_match_parameter()],
                 "requestBody": request_body(&format!("Update{singular}Input")),
                 "responses": {
-                    "200": response("Resource updated", &schema_ref(singular)),
+                    "200": versioned_response("Resource updated", &schema_ref(singular)),
                     "404": error_response(),
+                    "412": error_response(),
                     "422": error_response(),
+                    "428": error_response(),
                 }
             },
             "delete": {
                 "operationId": format!("delete{singular}"),
                 "tags": [singular],
+                "parameters": [if_match_parameter()],
                 "responses": {
                     "204": { "description": "Resource deleted" },
                     "404": error_response(),
+                    "412": error_response(),
+                    "428": error_response(),
                 }
             }
         }),
@@ -305,6 +311,26 @@ pub(super) fn response(description: &str, schema: &Value) -> Value {
     json!({
         "description": description,
         "content": { "application/json": { "schema": schema } }
+    })
+}
+
+fn versioned_response(description: &str, schema: &Value) -> Value {
+    let mut value = response(description, schema);
+    value["headers"] = json!({
+        "ETag": {
+            "description": "Optimistic concurrency revision",
+            "schema": { "type": "string", "pattern": "^\\\"rev-[1-9][0-9]*\\\"$" }
+        }
+    });
+    value
+}
+
+fn if_match_parameter() -> Value {
+    json!({
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^\\\"rev-[1-9][0-9]*\\\"$" }
     })
 }
 

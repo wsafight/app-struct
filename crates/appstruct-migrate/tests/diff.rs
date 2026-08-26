@@ -59,6 +59,7 @@ fn removing_a_column_or_table_is_blocked() {
 fn initial_sql_contains_unique_enum_and_relation_constraints() {
     let sql = initial_migration(&fixture_schema());
     assert!(sql.contains("\"code\" TEXT NOT NULL UNIQUE"));
+    assert!(sql.contains("\"revision\" BIGINT NOT NULL DEFAULT 1"));
     assert!(sql.contains("CHECK (\"status\" IN ('planned', 'active', 'completed'))"));
     assert!(sql.contains("FOREIGN KEY (\"project_id\")"));
     assert!(sql.contains("ON DELETE CASCADE"));

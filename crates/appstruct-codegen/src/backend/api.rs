@@ -1,9 +1,11 @@
+mod write;
+
 use super::query::list_support;
 use super::validation::validation_rules;
 use super::{module_name, parse_ident, render, rust_type};
 use crate::CodegenError;
 use appstruct_ir::{EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
@@ -21,7 +23,7 @@ pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
     let list = list_support(entity, &module)?;
     let hooks = format_ident!("{}_hooks", module_name(entity));
     let policy = format_ident!("{}_policy", module_name(entity));
-    let handlers = crud_handlers(
+    let handlers = write::handlers(
         &module,
         &hooks,
         &policy,
@@ -33,15 +35,16 @@ pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
     let validators = validation_functions(entity)?;
 
     render(quote! {
-        use crate::{AppState, ApiError, FieldViolation, entities::#module};
+        use crate::{AppState, ApiError, FieldViolation, RequestContext, entities::#module};
         use axum::{
             Json, Router,
             extract::{Path, State},
-            http::StatusCode,
+            http::{HeaderMap, StatusCode, header},
             routing::get,
         };
         use sea_orm::{
             ActiveModelTrait, ActiveValue::Set, EntityTrait, IntoActiveModel, ModelTrait,
+            QuerySelect, TransactionTrait, TryIntoModel,
         };
         use serde::{Deserialize, Serialize};
         use std::collections::BTreeMap;
@@ -62,107 +65,6 @@ pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
         #handlers
         #validators
     })
-}
-
-fn crud_handlers(
-    module: &Ident,
-    hooks: &Ident,
-    policy: &Ident,
-    parse_id: &TokenStream,
-    create_values: &[TokenStream],
-    active_default: Option<&TokenStream>,
-    updates: &[TokenStream],
-) -> TokenStream {
-    quote! {
-        async fn read(
-            State(state): State<AppState>,
-            Path(id): Path<String>,
-        ) -> Result<Json<#module::Model>, ApiError> {
-            let context = state.context();
-            let id = #parse_id;
-            let model = #module::Entity::find_by_id(id)
-                .one(&state.database).await?.ok_or(ApiError::NotFound)?;
-            if !state.extensions.#policy().can_read(&context, &model).await? {
-                return Err(ApiError::NotFound);
-            }
-            Ok(Json(model))
-        }
-
-        async fn create(
-            State(state): State<AppState>,
-            Json(mut input): Json<CreateInput>,
-        ) -> Result<(StatusCode, Json<#module::Model>), ApiError> {
-            let context = state.context();
-            state.extensions.#hooks().before_validate_create(&context, &mut input).await?;
-            validate_create(&input)?;
-            state.extensions.#hooks().before_create(&context, &mut input).await?;
-            validate_create(&input)?;
-            if !state.extensions.#policy().can_create(&context, &input).await? {
-                return Err(ApiError::Forbidden);
-            }
-            let active = #module::ActiveModel { #(#create_values,)* #active_default };
-            let model = active.insert(&state.database).await?;
-            state.extensions.#hooks().after_create(&context, &model).await?;
-            if let Err(error) = state.extensions.#hooks()
-                .after_commit(&context, crate::HookOperation::Create, &model).await
-            {
-                tracing::error!(?error, operation = "create", entity = stringify!(#module), "after_commit hook failed");
-            }
-            Ok((StatusCode::CREATED, Json(model)))
-        }
-
-        async fn update(
-            State(state): State<AppState>,
-            Path(id): Path<String>,
-            Json(mut input): Json<UpdateInput>,
-        ) -> Result<Json<#module::Model>, ApiError> {
-            let context = state.context();
-            state.extensions.#hooks().before_validate_update(&context, &mut input).await?;
-            validate_update(&input)?;
-            let id = #parse_id;
-            let model = #module::Entity::find_by_id(id)
-                .one(&state.database).await?.ok_or(ApiError::NotFound)?;
-            state.extensions.#hooks().before_update(&context, &model, &mut input).await?;
-            validate_update(&input)?;
-            if !state.extensions.#policy().can_update(&context, &model, &input).await? {
-                return Err(ApiError::Forbidden);
-            }
-            let before = model.clone();
-            let mut active = model.into_active_model();
-            #(#updates)*
-            let after = active.update(&state.database).await?;
-            state.extensions.#hooks().after_update(&context, &before, &after).await?;
-            if let Err(error) = state.extensions.#hooks()
-                .after_commit(&context, crate::HookOperation::Update, &after).await
-            {
-                tracing::error!(?error, operation = "update", entity = stringify!(#module), "after_commit hook failed");
-            }
-            Ok(Json(after))
-        }
-
-        async fn delete(
-            State(state): State<AppState>,
-            Path(id): Path<String>,
-        ) -> Result<StatusCode, ApiError> {
-            let context = state.context();
-            let id = #parse_id;
-            let model = #module::Entity::find_by_id(id)
-                .one(&state.database).await?.ok_or(ApiError::NotFound)?;
-            if !state.extensions.#policy().can_delete(&context, &model).await? {
-                return Err(ApiError::Forbidden);
-            }
-            state.extensions.#hooks().before_delete(&context, &model).await?;
-            let deleted = model.clone();
-            model.delete(&state.database).await?;
-            state.extensions.#hooks().after_delete(&context, &deleted).await?;
-            if let Err(error) = state.extensions.#hooks()
-                .after_commit(&context, crate::HookOperation::Delete, &deleted).await
-            {
-                tracing::error!(?error, operation = "delete", entity = stringify!(#module), "after_commit hook failed");
-            }
-            Ok(StatusCode::NO_CONTENT)
-        }
-    }
 }
 
 fn validation_functions(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
@@ -222,6 +124,7 @@ fn create_value(field: &FieldIr) -> Result<Option<TokenStream>, CodegenError> {
         }
         Some(GeneratedValueIr::Now) => quote! { chrono::Utc::now() },
         Some(GeneratedValueIr::AutoIncrement) => return Ok(None),
+        Some(GeneratedValueIr::Revision) => quote! { 1_i64 },
         None => field.default.as_ref().map_or_else(
             || quote! { input.#name },
             |default| {
@@ -279,7 +182,7 @@ fn update_values(entity: &EntityIr) -> Result<Vec<TokenStream>, CodegenError> {
         .map(|field| {
             let name = parse_ident(&field.rust_name)?;
             Ok(quote! {
-                if let Some(value) = input.#name { active.#name = Set(value); }
+                if let Some(value) = &input.#name { active.#name = Set(value.clone()); }
             })
         })
         .collect()

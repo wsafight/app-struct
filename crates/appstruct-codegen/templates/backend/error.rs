@@ -16,6 +16,9 @@ pub struct FieldViolation {
 pub enum ApiError {
     InvalidId,
     InvalidQuery(String),
+    InvalidPrecondition,
+    PreconditionRequired,
+    ConcurrentModification,
     Forbidden,
     NotFound,
     Validation(Vec<FieldViolation>),
@@ -53,6 +56,24 @@ impl IntoResponse for ApiError {
                 StatusCode::BAD_REQUEST,
                 "INVALID_QUERY",
                 message,
+                vec![],
+            ),
+            Self::InvalidPrecondition => (
+                StatusCode::BAD_REQUEST,
+                "INVALID_PRECONDITION",
+                "The If-Match header is invalid".to_owned(),
+                vec![],
+            ),
+            Self::PreconditionRequired => (
+                StatusCode::PRECONDITION_REQUIRED,
+                "PRECONDITION_REQUIRED",
+                "The latest ETag must be supplied in If-Match".to_owned(),
+                vec![],
+            ),
+            Self::ConcurrentModification => (
+                StatusCode::PRECONDITION_FAILED,
+                "CONCURRENT_MODIFICATION",
+                "The resource changed after it was loaded".to_owned(),
                 vec![],
             ),
             Self::NotFound => (

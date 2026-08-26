@@ -25,15 +25,67 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
     render(quote! {
         use crate::{ApiError, api, entities};
         use async_trait::async_trait;
-        use sea_orm::DatabaseConnection;
+        use sea_orm::{
+            ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr,
+            ExecResult, QueryResult, Statement,
+        };
         use std::sync::Arc;
 
-        #[derive(Clone)]
-        pub struct RequestContext { database: DatabaseConnection }
+        #[derive(Clone, Copy)]
+        enum RequestDatabase<'db> {
+            Connection(&'db DatabaseConnection),
+            Transaction(&'db DatabaseTransaction),
+        }
 
-        impl RequestContext {
-            pub(crate) fn new(database: DatabaseConnection) -> Self { Self { database } }
-            pub fn database(&self) -> &DatabaseConnection { &self.database }
+        #[derive(Clone, Copy)]
+        pub struct RequestContext<'db> { database: RequestDatabase<'db> }
+
+        impl<'db> RequestContext<'db> {
+            pub(crate) fn connection(database: &'db DatabaseConnection) -> Self {
+                Self { database: RequestDatabase::Connection(database) }
+            }
+            pub(crate) fn transaction(database: &'db DatabaseTransaction) -> Self {
+                Self { database: RequestDatabase::Transaction(database) }
+            }
+            pub fn database(&self) -> &Self { self }
+        }
+
+        #[async_trait]
+        impl ConnectionTrait for RequestContext<'_> {
+            fn get_database_backend(&self) -> DbBackend {
+                match self.database {
+                    RequestDatabase::Connection(database) => database.get_database_backend(),
+                    RequestDatabase::Transaction(database) => database.get_database_backend(),
+                }
+            }
+
+            async fn execute_raw(&self, statement: Statement) -> Result<ExecResult, DbErr> {
+                match self.database {
+                    RequestDatabase::Connection(database) => database.execute_raw(statement).await,
+                    RequestDatabase::Transaction(database) => database.execute_raw(statement).await,
+                }
+            }
+
+            async fn execute_unprepared(&self, sql: &str) -> Result<ExecResult, DbErr> {
+                match self.database {
+                    RequestDatabase::Connection(database) => database.execute_unprepared(sql).await,
+                    RequestDatabase::Transaction(database) => database.execute_unprepared(sql).await,
+                }
+            }
+
+            async fn query_one_raw(&self, statement: Statement) -> Result<Option<QueryResult>, DbErr> {
+                match self.database {
+                    RequestDatabase::Connection(database) => database.query_one_raw(statement).await,
+                    RequestDatabase::Transaction(database) => database.query_one_raw(statement).await,
+                }
+            }
+
+            async fn query_all_raw(&self, statement: Statement) -> Result<Vec<QueryResult>, DbErr> {
+                match self.database {
+                    RequestDatabase::Connection(database) => database.query_all_raw(statement).await,
+                    RequestDatabase::Transaction(database) => database.query_all_raw(statement).await,
+                }
+            }
         }
 
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,7 +154,7 @@ fn policy_contract(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
         pub trait #trait_name: Send + Sync {
             async fn can_read(&self, _ctx: &RequestContext, _model: &entities::#module::Model) -> Result<bool, ApiError> { Ok(true) }
             async fn can_create(&self, _ctx: &RequestContext, _input: &api::#module::CreateInput) -> Result<bool, ApiError> { Ok(true) }
-            async fn can_update(&self, _ctx: &RequestContext, _before: &entities::#module::Model, _input: &api::#module::UpdateInput) -> Result<bool, ApiError> { Ok(true) }
+            async fn can_update(&self, _ctx: &RequestContext, _before: &entities::#module::Model, _input: &api::#module::UpdateInput, _after: &entities::#module::Model) -> Result<bool, ApiError> { Ok(true) }
             async fn can_delete(&self, _ctx: &RequestContext, _model: &entities::#module::Model) -> Result<bool, ApiError> { Ok(true) }
         }
 

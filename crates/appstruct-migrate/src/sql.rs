@@ -111,6 +111,9 @@ fn sql_default(column: &ColumnSchema) -> Option<String> {
     if matches!(column.generated, Some(GeneratedValueIr::Now)) {
         return Some("CURRENT_TIMESTAMP".to_owned());
     }
+    if matches!(column.generated, Some(GeneratedValueIr::Revision)) {
+        return Some("1".to_owned());
+    }
     let value = column.default.as_ref()?;
     Some(match column.data_type {
         DatabaseType::Boolean

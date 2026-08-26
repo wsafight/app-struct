@@ -1,5 +1,5 @@
 use crate::{Artifact, ArtifactKind, generated_header};
-use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
+use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
 use std::fmt::Write;
 
 pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
@@ -154,6 +154,7 @@ fn resource_source(entity: &EntityIr) -> String {
     let fields = entity
         .fields
         .iter()
+        .filter(|field| !matches!(field.generated, Some(GeneratedValueIr::Revision)))
         .map(field_source)
         .collect::<Vec<_>>()
         .join(",\n");

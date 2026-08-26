@@ -144,6 +144,7 @@ pub enum GeneratedValueIr {
     UuidV7,
     Now,
     AutoIncrement,
+    Revision,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

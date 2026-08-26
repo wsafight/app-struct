@@ -16,10 +16,13 @@
 | 重构 | 已完成 | Compiler 和 Backend Generator 按职责拆分，Rust 源文件由测试限制为最多 400 行 |
 | M2 | 已完成 | 默认值、唯一/枚举/数值校验、关系与反向关系、分页/过滤/搜索/排序、详情页、RelationSelect 和 schema diff 风险阻断 |
 | M3 | 已完成 | Value Object、Hook、Command、Query、Policy、Rust/React registry、SHA-256 ownership manifest 和安全目录交换 |
+| 一致性加固 | 已完成 | 显式写事务、事务内 Hook connection、final-state Policy、revision/ETag 乐观并发和冲突恢复 UI |
 
 M2 的 `migrate plan` 是纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。数据库历史、checksum、`migrate apply/status` 与自动连接开发数据库仍属于后续工程化范围，不能把 snapshot 解读为数据库已经执行到该版本。
 
 M3 将用户实现固定在 `app/` 边界，生成目录只保存可重复构建的契约和运行时。Rust 端以一个实现全部必需 Command/Query handler trait 的聚合对象完成类型状态注册，缺少任一 trait 时编译失败；Entity Hook 和 Policy 是有安全默认实现的可选注册项。React 端生成字段组件和自定义页面的必需 registry key；存在引用时，生成入口从用户所有的 `app/web/registry.tsx` 导入实现，并通过 TypeScript `satisfies` 在构建期检查完整性。真实 PostgreSQL 验收已覆盖输入 Hook、归档 Command、指标 Query 和拒绝删除 Policy。
+
+CRUD 写路径已在显式 SeaORM 事务内执行：`before_create/update/delete`、主记录写入和 `after_create/update/delete` 共享事务连接，任一步失败都会放弃事务；`after_commit` 在提交后以普通连接 best-effort 执行，失败只记录日志。Update Policy 同时看到旧记录、类型化 patch 和最终候选记录。每个实体由框架管理 `revision bigint not null default 1`，详情/创建/更新返回 ETag，更新和删除要求 `If-Match`；陈旧 revision 返回 412，生成客户端自动维护 ETag，表单冲突时保留输入并允许重新加载。
 
 当前 ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新生成前会拒绝未知文件和 hash 已变化的生成文件，再通过同级 staging/backup 目录交换提交；`app/` 不进入交换范围。跨进程生成锁、崩溃恢复 journal 和自动恢复未完成目录事务仍是后续工程化能力，当前实现发现遗留 staging/backup 时会明确中止。
 

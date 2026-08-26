@@ -130,6 +130,33 @@
           "ui_component": null
         },
         {
+          "id": "app::Project.revision",
+          "entity": "app::Project",
+          "rust_name": "revision",
+          "api_name": "revision",
+          "column_name": "revision",
+          "ty": {
+            "kind": "bigint"
+          },
+          "nullable": false,
+          "primary_key": false,
+          "unique": false,
+          "generated": "revision",
+          "default": "1",
+          "validation": {
+            "min_length": null,
+            "max_length": null,
+            "minimum": null,
+            "maximum": null
+          },
+          "capabilities": {
+            "searchable": false,
+            "filterable": false,
+            "sortable": false
+          },
+          "ui_component": null
+        },
+        {
           "id": "app::Project.status",
           "entity": "app::Project",
           "rust_name": "status",
@@ -187,7 +214,7 @@
       "views": {},
       "hooks": {},
       "concurrency": {
-        "enabled": false
+        "enabled": true
       }
     },
     {
@@ -250,6 +277,33 @@
             "sortable": false
           },
           "ui_component": null
+        },
+        {
+          "id": "app::User.revision",
+          "entity": "app::User",
+          "rust_name": "revision",
+          "api_name": "revision",
+          "column_name": "revision",
+          "ty": {
+            "kind": "bigint"
+          },
+          "nullable": false,
+          "primary_key": false,
+          "unique": false,
+          "generated": "revision",
+          "default": "1",
+          "validation": {
+            "min_length": null,
+            "max_length": null,
+            "minimum": null,
+            "maximum": null
+          },
+          "capabilities": {
+            "searchable": false,
+            "filterable": false,
+            "sortable": false
+          },
+          "ui_component": null
         }
       ],
       "access": {
@@ -277,7 +331,7 @@
       "views": {},
       "hooks": {},
       "concurrency": {
-        "enabled": false
+        "enabled": true
       }
     }
   ],

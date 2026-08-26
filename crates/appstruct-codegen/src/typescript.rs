@@ -124,10 +124,18 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+const resourceEtags = new Map<string, string>();
+
+async function request<T>(path: string, init?: RequestInit, revisionKey?: string): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  if (init?.method === "PATCH" || init?.method === "DELETE") {
+    const etag = resourceEtags.get(path);
+    if (etag) headers.set("If-Match", etag);
+  }
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers,
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as ErrorEnvelope | null;
@@ -138,6 +146,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       body?.error.fields,
     );
   }
+  const etag = response.headers.get("ETag");
+  if (etag && revisionKey) resourceEtags.set(revisionKey, etag);
+  if (init?.method === "DELETE") resourceEtags.delete(path);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
@@ -195,16 +206,23 @@ fn entity_client(entity: &EntityIr) -> String {
     format!(
         r#"export const {variable}Api = {{
   list: (query: ListQuery = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query)),
-  get: (id: string) => request<{model}>(`{path}${{encodeURIComponent(id)}}`),
+  get: (id: string) => {{
+    const member = `{path}${{encodeURIComponent(id)}}`;
+    return request<{model}>(member, undefined, member);
+  }},
   create: (input: Create{model}Input) =>
     request<{model}>("{path}", {{ method: "POST", body: JSON.stringify(input) }}),
-  update: (id: string, input: Update{model}Input) =>
-    request<{model}>(`{path}${{encodeURIComponent(id)}}`, {{
+  update: (id: string, input: Update{model}Input) => {{
+    const member = `{path}${{encodeURIComponent(id)}}`;
+    return request<{model}>(member, {{
       method: "PATCH",
       body: JSON.stringify(input),
-    }}),
-  remove: (id: string) =>
-    request<void>(`{path}${{encodeURIComponent(id)}}`, {{ method: "DELETE" }}),
+    }}, member);
+  }},
+  remove: (id: string) => {{
+    const member = `{path}${{encodeURIComponent(id)}}`;
+    return request<void>(member, {{ method: "DELETE" }});
+  }},
 }};
 "#
     )

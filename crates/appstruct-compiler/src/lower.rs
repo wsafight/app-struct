@@ -7,8 +7,8 @@ use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceField, SurfaceRoot};
 use crate::validation::{validate_entity_declarations, validate_primary_key};
 use appstruct_ir::{
     AppIr, AppMeta, AuthIr, ConcurrencyIr, DatabaseDevMode, DatabaseIr, DatabaseProvider,
-    Diagnostic, EntityId, EntityIr, EntityViewsIr, FieldCapabilities, FieldId, FieldIr, HooksIr,
-    IR_VERSION, RelationIr, SourceSpan, ValidationIr,
+    Diagnostic, EntityId, EntityIr, EntityViewsIr, FieldCapabilities, FieldId, FieldIr,
+    FieldTypeIr, GeneratedValueIr, HooksIr, IR_VERSION, RelationIr, SourceSpan, ValidationIr,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -96,8 +96,24 @@ fn lower_entities(
             |table| table.value.clone(),
         );
         let access = build_access(&entity, diagnostics);
-        let (fields, mut entity_relations) =
+        let (mut fields, mut entity_relations) =
             build_fields(&entity, &entity_id, known_entities, diagnostics);
+        let revision_conflict = entity.fields.iter().find(|field| {
+            field
+                .column
+                .as_ref()
+                .map_or(field.name.value.as_str(), |column| column.value.as_str())
+                == "revision"
+        });
+        if let Some(field) = revision_conflict {
+            diagnostics.push(Diagnostic::error(
+                "AS2012",
+                "`revision` is reserved for optimistic concurrency control",
+                field.span.clone(),
+            ));
+        } else {
+            fields.push(revision_field(&entity_id));
+        }
         relations.append(&mut entity_relations);
         if let Some(access) = access {
             entities.push(EntityIr {
@@ -112,11 +128,34 @@ fn lower_entities(
                 access,
                 views: EntityViewsIr::default(),
                 hooks: HooksIr::default(),
-                concurrency: ConcurrencyIr { enabled: false },
+                concurrency: ConcurrencyIr { enabled: true },
             });
         }
     }
     (entities, relations)
+}
+
+fn revision_field(entity_id: &EntityId) -> FieldIr {
+    FieldIr {
+        id: FieldId(format!("{entity_id}.revision")),
+        entity: entity_id.clone(),
+        rust_name: "revision".to_owned(),
+        api_name: "revision".to_owned(),
+        column_name: "revision".to_owned(),
+        ty: FieldTypeIr::Bigint,
+        nullable: false,
+        primary_key: false,
+        unique: false,
+        generated: Some(GeneratedValueIr::Revision),
+        default: Some("1".to_owned()),
+        validation: ValidationIr::default(),
+        capabilities: FieldCapabilities {
+            searchable: false,
+            filterable: false,
+            sortable: false,
+        },
+        ui_component: None,
+    }
 }
 
 fn build_fields(

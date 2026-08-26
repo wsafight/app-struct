@@ -118,8 +118,8 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         }
 
         impl AppState {
-            pub fn context(&self) -> RequestContext {
-                RequestContext::new(self.database.clone())
+            pub fn context(&self) -> RequestContext<'_> {
+                RequestContext::connection(&self.database)
             }
         }
 

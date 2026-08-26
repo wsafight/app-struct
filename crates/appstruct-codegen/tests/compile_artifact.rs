@@ -108,6 +108,8 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     assert!(artifact_text(artifacts, "web/pnpm-lock.yaml").contains("lockfileVersion"));
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("ListResponse"));
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("range_filters"));
+    assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("resourceEtags"));
+    assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("If-Match"));
     assert!(
         artifact_text(artifacts, "web/src/generated/resources.ts")
             .contains("minimum: \"0\", maximum: \"5\"")
@@ -131,6 +133,16 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
         serde_json::from_str(artifact_text(artifacts, "openapi/openapi.json")).unwrap();
     assert!(openapi["paths"]["/api/projects/"]["post"].is_object());
     assert!(openapi["paths"]["/api/projects/{id}"]["patch"].is_object());
+    assert!(
+        openapi["paths"]["/api/projects/{id}"]["get"]["responses"]["200"]["headers"]["ETag"]
+            .is_object()
+    );
+    assert_eq!(
+        openapi["paths"]["/api/projects/{id}"]["patch"]["parameters"][0]["name"],
+        "If-Match"
+    );
+    assert!(openapi["paths"]["/api/projects/{id}"]["patch"]["responses"]["412"].is_object());
+    assert!(openapi["paths"]["/api/projects/{id}"]["delete"]["responses"]["428"].is_object());
     assert_eq!(
         openapi["components"]["schemas"]["ProjectListResponse"]["properties"]["meta"]["type"],
         "object"

@@ -29,7 +29,7 @@ M2 新增独立的 `appstruct-migrate` crate。它从 IR 提取规范化 Postgre
 
 M3 在 IR 中加入 Value Object、Command、Query、自定义页面和字段 UI component 引用。Backend Generator 生成 DTO、Entity Hook/Policy trait、Command/Query handler trait、路由和类型状态 registry；OpenAPI 与 TypeScript Generator 从同一 IR 生成 operation 契约和客户端。Web Generator 生成必需组件/page key，并在存在引用时让生成入口静态导入用户所有的 `app/web/registry.tsx`；该 registry 通过 TypeScript `satisfies` 完整性检查。M3 fixture 同时验证缺少 Rust handler 或 React page 时构建失败、完整实现可构建，并在真实 PostgreSQL 上验证 Hook、Command、Query 和 Policy 行为。
 
-当前 M3 的 Hook 实现兑现了类型契约、调用顺序、修改后重新校验和 `after_commit` best-effort 错误隔离，但 CRUD 尚未把 before/write/after 阶段放入同一个显式数据库事务，`RequestContext` 也只暴露普通连接。事务锁、revision 条件写入、事务内 Hook connection 和 actor/tenant context 必须在后续 Runtime/权限里程碑一起落地；在此之前不得把 Hook 用于要求原子性的关联写入。
+CRUD 一致性加固已完成：写路径在显式 SeaORM 事务中执行，事务内 `RequestContext` 把 Hook/Policy 查询委托到同一 `DatabaseTransaction`；Update/Delete 锁定目标行并比较 `If-Match` revision，Update Policy 在写入前看到最终候选状态。`after_commit` 保持 best-effort 错误隔离。actor/tenant context 和基于身份的数据范围仍由 M4/M6 提供，在这些里程碑完成前不得把默认 allow Policy 当作权限边界。
 
 CLI 生成路径已拆到独立模块。`generated/.appstruct-manifest.json` 使用确定性 JSON 保存 Artifact 路径、类别、Generator 版本和 SHA-256；生成前拒绝未知文件或被人工修改的 owned file。`target/`、`node_modules/`、`dist/`、`.vite/` 和 Cargo 自动创建的 `Cargo.lock` 视为可丢弃构建瞬态，不参与 ownership 冲突。写入使用项目目录中的 sibling staging/backup 交换，失败时立即恢复 backup。当前尚未实现跨进程项目锁和崩溃恢复 journal；检测到遗留 staging/backup 时命令中止，不会猜测或覆盖现场。
 
@@ -862,7 +862,7 @@ GET /api/projects?page=1&page_size=25
 
 - 详情读取以及成功的创建、更新响应返回 `ETag: "rev-<revision>"`。
 - `PATCH` 和 `DELETE` 必须携带最近一次详情读取得到的 `If-Match`；缺失时返回 `428 PRECONDITION_REQUIRED`。
-- Repository 使用 `WHERE id = ? AND revision = ?` 执行更新或删除。匹配失败且记录仍存在时返回 `412 CONCURRENT_MODIFICATION`，记录不存在时继续遵守 not-found/forbidden 防泄露规则。
+- Repository 在写事务内用 `SELECT ... FOR UPDATE` 锁定目标行，先执行 read Policy，再比较 revision，成功更新时原子递增 revision。revision 不匹配返回 `412 CONCURRENT_MODIFICATION`；记录不存在或 read Policy 不可见时继续遵守 404 防泄露规则。行锁将同一记录的并发写串行化，因此比较和后续写入之间不会出现丢失更新。
 - 生成的 TypeScript client 保存 ETag 并自动发送 `If-Match`。收到 412 时，React Runtime 保留未提交表单值并提供重新加载最新记录的操作。
 - 自定义 Command 若修改实体，必须显式接收 expected revision 或调用 Repository 的条件写入 API；不能绕过并发控制后仍声称具备冲突保护。
 
