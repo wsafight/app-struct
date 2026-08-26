@@ -788,6 +788,43 @@ pub struct RequestContext {
 
 Context 由认证和租户 middleware 构建，通过显式参数传递给 Service、Policy 和 Hook。不得通过进程级全局变量获取当前用户或租户。
 
+M6 Tenant 契约如下：
+
+```yaml
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+  tenant:
+    enabled: true
+
+entities:
+  Project:
+    tenant: true
+```
+
+`TenantIr.enabled` 和 `EntityIr.tenant_scoped` 是唯一生成输入。Compiler 拒绝在 Auth 未启用时启用
+Tenant，也拒绝业务字段占用保留列 `tenant_id`。Lowering 为 tenant-scoped Entity 注入
+`GeneratedValueIr::Tenant` UUID 字段；该字段进入 Entity 与 migration schema，但不进入 Create/Update
+DTO，也不作为可配置筛选器显示。
+
+模块迁移安装 `_appstruct_tenant_organizations` 和 `_appstruct_tenant_memberships`。Membership 以
+`(organization_id, user_id)` 为复合主键，两个引用均使用 `ON DELETE CASCADE`；organization 的
+`created_by` 引用 Auth User 并使用 `RESTRICT`。模块 endpoint 提供当前 actor 可见的组织列表和组织
+创建，创建组织与 owner membership 在同一事务提交。
+
+生成后端从 `X-AppStruct-Tenant` 解析 UUID，并在构造 `RequestContext` 时用 membership 表验证 actor。
+普通非租户 endpoint 可以得到 `tenant: None`；tenant-scoped CRUD 必须调用
+`context.require_tenant()`，再将 `tenant_id = current_tenant` 与 AccessRule 产生的 Condition 使用 AND
+组合。Create 的 ActiveModel 直接使用 context tenant；Update/Delete 先用相同条件锁行，因此其他
+租户的 ID 保持 `404`。事务内和 `after_commit` context 都保留相同 actor/tenant，Hook 与 Policy
+只能读取该值。
+
+TypeScript runtime 暴露 `tenantApi.listOrganizations/createOrganization/select/clear/current`，将选中的
+tenant ID 保存在 `localStorage`，并为所有 API 请求附加 header。UI 切换器只负责选择上下文，安全
+边界仍在后端。OpenAPI 为 tenant-scoped operation 声明必需的 `X-AppStruct-Tenant` header，并描述
+Tenant endpoint。
+
 ### 13.3 Repository
 
 生成的 Repository 负责：

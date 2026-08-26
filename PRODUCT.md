@@ -559,15 +559,25 @@ access:
 
 ### 11.4 多租户
 
-多租户不是首个 MVP 的强制能力，但数据访问层必须预留策略入口。后续版本支持：
+Tenant Module 通过 `modules.tenant.enabled: true` 启用，并要求 Auth Module。业务实体用
+`tenant: true` 声明租户范围；Compiler 为这类实体注入框架拥有且不可由客户端写入的
+`tenant_id`。没有声明 `tenant: true` 的实体仍是应用级数据，不能依赖当前租户进行隐式隔离。
 
-- 组织和成员关系
-- 当前租户上下文
-- 自动注入租户过滤条件
-- 跨租户访问保护
-- 租户切换
+Tenant Module 提供组织和成员关系。已认证用户可以创建组织，创建者自动成为 owner；用户只能列出
+自己所属的组织。Web Client 将当前组织保存在浏览器本地状态，并在请求中发送
+`X-AppStruct-Tenant`。切换租户只改变后续请求的显式上下文，不复制或迁移业务数据。
 
-仅在 UI 隐藏其他租户数据不构成租户隔离。
+对 tenant-scoped Entity 的所有 list、read、create、update 和 delete 请求，Runtime 必须先验证：
+
+- 请求已认证且携带合法的当前租户 ID；
+- actor 是当前组织的有效成员；
+- 创建时由 Runtime 写入当前 `tenant_id`；
+- 查询、更新和删除在数据库条件中同时包含当前 `tenant_id`；
+- 客户端输入、Hook 和 Policy 都不能改写 `tenant_id`。
+
+缺少或格式错误的租户 header 返回 `400 INVALID_TENANT`，未认证返回 `401`，不是组织成员返回
+`403`。按 ID 请求其他租户的记录仍返回 `404`，避免泄露记录是否存在。仅在 UI 隐藏其他租户数据
+不构成租户隔离；PostgreSQL 跨租户集成测试是模块发布门槛。
 
 ## 12. 数据库与迁移
 

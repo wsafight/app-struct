@@ -28,7 +28,7 @@ pub fn migration_sql(plan: &MigrationPlan) -> Result<String, String> {
             SchemaChange::AddColumn { table, column } => format!(
                 "ALTER TABLE {} ADD COLUMN {};\n",
                 quote_ident(table),
-                column_definition(column)
+                column_definition(column, true)
             ),
             SchemaChange::AlterColumn {
                 table,
@@ -48,19 +48,33 @@ pub fn migration_sql(plan: &MigrationPlan) -> Result<String, String> {
 }
 
 fn create_table(table: &TableSchema) -> String {
-    let columns = table
+    let primary_keys = table
         .columns
         .iter()
-        .map(column_definition)
-        .collect::<Vec<_>>()
-        .join(",\n    ");
+        .filter(|column| column.primary_key)
+        .collect::<Vec<_>>();
+    let inline_primary_key = primary_keys.len() <= 1;
+    let mut definitions = table
+        .columns
+        .iter()
+        .map(|column| column_definition(column, inline_primary_key))
+        .collect::<Vec<_>>();
+    if !inline_primary_key {
+        let columns = primary_keys
+            .iter()
+            .map(|column| quote_ident(&column.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        definitions.push(format!("PRIMARY KEY ({columns})"));
+    }
+    let columns = definitions.join(",\n    ");
     format!(
         "CREATE TABLE {} (\n    {columns}\n);\n",
         quote_ident(&table.name)
     )
 }
 
-fn column_definition(column: &ColumnSchema) -> String {
+fn column_definition(column: &ColumnSchema, inline_primary_key: bool) -> String {
     let mut fragments = vec![
         quote_ident(&column.name),
         sql_type(&column.data_type).to_owned(),
@@ -71,7 +85,7 @@ fn column_definition(column: &ColumnSchema) -> String {
     if !column.nullable {
         fragments.push("NOT NULL".to_owned());
     }
-    if column.primary_key {
+    if column.primary_key && inline_primary_key {
         fragments.push("PRIMARY KEY".to_owned());
     } else if column.unique {
         fragments.push("UNIQUE".to_owned());

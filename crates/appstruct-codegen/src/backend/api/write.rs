@@ -107,11 +107,12 @@ fn create_handler(
             state.auth.verify_csrf(&state.database, &headers).await?;
             let context = state.context(&headers).await?;
             let actor = context.actor().cloned();
+            let tenant = context.tenant();
             state.extensions.#hooks().before_validate_create(&context, &mut input).await?;
             validate_create(&input)?;
             let transaction = state.database.begin().await?;
             let model = {
-                let context = RequestContext::transaction(&transaction, actor.clone());
+                let context = RequestContext::transaction(&transaction, actor.clone(), tenant);
                 state.extensions.#hooks().before_create(&context, &mut input).await?;
                 validate_create(&input)?;
                 if !(#create_allowed) {
@@ -126,7 +127,7 @@ fn create_handler(
                 model
             };
             transaction.commit().await?;
-            run_after_commit(&state, crate::HookOperation::Create, &model, actor).await;
+            run_after_commit(&state, crate::HookOperation::Create, &model, actor, tenant).await;
             Ok((StatusCode::CREATED, etag_header(&model), Json(model)))
         }
     }
@@ -152,12 +153,13 @@ fn update_handler(
             let expected = expected_revision(&headers)?;
             let context = state.context(&headers).await?;
             let actor = context.actor().cloned();
+            let tenant = context.tenant();
             state.extensions.#hooks().before_validate_update(&context, &mut input).await?;
             validate_update(&input)?;
             let id = #parse_id;
             let transaction = state.database.begin().await?;
             let after = {
-                let context = RequestContext::transaction(&transaction, actor.clone());
+                let context = RequestContext::transaction(&transaction, actor.clone(), tenant);
                 #read_scope
                 let before = #module::Entity::find_by_id(id)
                     .filter(access_condition)
@@ -189,7 +191,7 @@ fn update_handler(
                 after
             };
             transaction.commit().await?;
-            run_after_commit(&state, crate::HookOperation::Update, &after, actor).await;
+            run_after_commit(&state, crate::HookOperation::Update, &after, actor, tenant).await;
             Ok((etag_header(&after), Json(after)))
         }
     }
@@ -213,10 +215,11 @@ fn delete_handler(
             let expected = expected_revision(&headers)?;
             let context = state.context(&headers).await?;
             let actor = context.actor().cloned();
+            let tenant = context.tenant();
             let id = #parse_id;
             let transaction = state.database.begin().await?;
             let deleted = {
-                let context = RequestContext::transaction(&transaction, actor.clone());
+                let context = RequestContext::transaction(&transaction, actor.clone(), tenant);
                 #read_scope
                 let model = #module::Entity::find_by_id(id)
                     .filter(access_condition)
@@ -241,7 +244,7 @@ fn delete_handler(
                 deleted
             };
             transaction.commit().await?;
-            run_after_commit(&state, crate::HookOperation::Delete, &deleted, actor).await;
+            run_after_commit(&state, crate::HookOperation::Delete, &deleted, actor, tenant).await;
             Ok(StatusCode::NO_CONTENT)
         }
     }
@@ -268,8 +271,9 @@ fn helper_functions(module: &Ident, hooks: &Ident) -> TokenStream {
             operation: crate::HookOperation,
             model: &#module::Model,
             actor: Option<crate::Actor>,
+            tenant: Option<crate::TenantId>,
         ) {
-            let context = RequestContext::connection(&state.database, actor);
+            let context = RequestContext::connection(&state.database, actor, tenant);
             if let Err(error) = state.extensions.#hooks().after_commit(&context, operation, model).await {
                 tracing::error!(?error, ?operation, entity = stringify!(#module), "after_commit hook failed");
             }

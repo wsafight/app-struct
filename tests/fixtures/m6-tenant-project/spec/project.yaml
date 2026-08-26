@@ -1,0 +1,33 @@
+domain: project
+
+entities:
+  Project:
+    label: Project
+    table: projects
+    tenant: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      name:
+        type: string
+        required: true
+        max_length: 120
+        searchable: true
+        sortable: true
+      owner:
+        type: relation
+        target: User
+        required: true
+        on_delete: restrict
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { authenticated: true }

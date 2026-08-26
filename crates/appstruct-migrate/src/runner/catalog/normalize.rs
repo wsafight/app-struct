@@ -20,7 +20,9 @@ pub(super) fn expected_default(column: &ColumnSchema) -> Option<String> {
     match column.generated {
         Some(GeneratedValueIr::Now) => Some("current_timestamp".to_owned()),
         Some(GeneratedValueIr::Revision) => Some("1".to_owned()),
-        Some(GeneratedValueIr::UuidV7 | GeneratedValueIr::AutoIncrement) => None,
+        Some(
+            GeneratedValueIr::UuidV7 | GeneratedValueIr::AutoIncrement | GeneratedValueIr::Tenant,
+        ) => None,
         None => column.default.as_deref().map(normalize_literal),
     }
 }

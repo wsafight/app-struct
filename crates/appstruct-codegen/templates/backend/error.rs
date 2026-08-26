@@ -16,6 +16,7 @@ pub struct FieldViolation {
 pub enum ApiError {
     InvalidId,
     InvalidQuery(String),
+    InvalidTenant,
     InvalidPrecondition,
     PreconditionRequired,
     ConcurrentModification,
@@ -62,6 +63,12 @@ impl IntoResponse for ApiError {
                 StatusCode::BAD_REQUEST,
                 "INVALID_QUERY",
                 message,
+                vec![],
+            ),
+            Self::InvalidTenant => (
+                StatusCode::BAD_REQUEST,
+                "INVALID_TENANT",
+                "A valid X-AppStruct-Tenant header is required".to_owned(),
                 vec![],
             ),
             Self::InvalidPrecondition => (

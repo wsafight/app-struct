@@ -9,7 +9,8 @@ use crate::validation::{validate_entity_declarations, validate_primary_key};
 use appstruct_ir::{
     AppIr, AppMeta, AuthIr, ConcurrencyIr, DatabaseDevMode, DatabaseIr, DatabaseProvider,
     Diagnostic, EntityId, EntityIr, EntityViewsIr, FieldCapabilities, FieldId, FieldIr,
-    FieldTypeIr, GeneratedValueIr, HooksIr, IR_VERSION, RelationIr, SourceSpan, ValidationIr,
+    FieldTypeIr, GeneratedValueIr, HooksIr, IR_VERSION, RelationIr, SourceSpan, TenantIr,
+    ValidationIr,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -35,6 +36,7 @@ pub(crate) fn build_ir(
         &root.app_name.span,
         &mut diagnostics,
     );
+    let tenant = lower_tenant(&root, &surface_entities, &auth, &mut diagnostics);
     let known_entities = surface_entities
         .iter()
         .map(|entity| entity.name.value.clone())
@@ -79,6 +81,7 @@ pub(crate) fn build_ir(
             },
         },
         auth,
+        tenant,
         enums: Vec::new(),
         value_objects: extensions.value_objects,
         entities,
@@ -88,6 +91,39 @@ pub(crate) fn build_ir(
         pages: extensions.pages,
         modules: Vec::new(),
     })
+}
+
+fn lower_tenant(
+    root: &SurfaceRoot,
+    entities: &[SurfaceEntity],
+    auth: &AuthIr,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> TenantIr {
+    let span = root
+        .tenant
+        .span
+        .as_ref()
+        .unwrap_or(&root.app_name.span)
+        .clone();
+    if root.tenant.enabled && !auth.enabled {
+        diagnostics.push(Diagnostic::error(
+            "AS3034",
+            "enabled tenant module requires `modules.auth.enabled: true`",
+            span.clone(),
+        ));
+    }
+    if !root.tenant.enabled {
+        for entity in entities.iter().filter(|entity| entity.tenant_scoped) {
+            diagnostics.push(Diagnostic::error(
+                "AS3035",
+                "tenant-scoped entity requires `modules.tenant.enabled: true`",
+                entity.span.clone(),
+            ));
+        }
+    }
+    TenantIr {
+        enabled: root.tenant.enabled,
+    }
 }
 
 fn lower_entities(
@@ -123,6 +159,23 @@ fn lower_entities(
         } else {
             fields.push(revision_field(&entity_id));
         }
+        if entity.tenant_scoped {
+            if let Some(field) = entity.fields.iter().find(|field| {
+                field
+                    .column
+                    .as_ref()
+                    .map_or(field.name.value.as_str(), |column| column.value.as_str())
+                    == "tenant_id"
+            }) {
+                diagnostics.push(Diagnostic::error(
+                    "AS3036",
+                    "`tenant_id` is reserved for tenant isolation",
+                    field.span.clone(),
+                ));
+            } else {
+                fields.push(tenant_field(&entity_id));
+            }
+        }
         relations.append(&mut entity_relations);
         if let Some(access) = access {
             entities.push(EntityIr {
@@ -138,10 +191,34 @@ fn lower_entities(
                 views: EntityViewsIr::default(),
                 hooks: HooksIr::default(),
                 concurrency: ConcurrencyIr { enabled: true },
+                tenant_scoped: entity.tenant_scoped,
             });
         }
     }
     (entities, relations)
+}
+
+fn tenant_field(entity_id: &EntityId) -> FieldIr {
+    FieldIr {
+        id: FieldId(format!("{entity_id}.tenant_id")),
+        entity: entity_id.clone(),
+        rust_name: "tenant_id".to_owned(),
+        api_name: "tenant_id".to_owned(),
+        column_name: "tenant_id".to_owned(),
+        ty: FieldTypeIr::Uuid,
+        nullable: false,
+        primary_key: false,
+        unique: false,
+        generated: Some(GeneratedValueIr::Tenant),
+        default: None,
+        validation: ValidationIr::default(),
+        capabilities: FieldCapabilities {
+            searchable: false,
+            filterable: false,
+            sortable: false,
+        },
+        ui_component: None,
+    }
 }
 
 fn revision_field(entity_id: &EntityId) -> FieldIr {

@@ -3,9 +3,12 @@
 body { margin: 0; min-width: 320px; }
 button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
-.shell { min-height: 100vh; display: grid; grid-template-columns: 224px minmax(0, 1fr); }
+.shell { width: 100%; min-height: 100vh; display: grid; grid-template-columns: 224px minmax(0, 1fr); overflow-x: hidden; }
 .sidebar { background: #172126; color: #dce5e8; border-right: 1px solid #2e393e; padding: 18px 12px; }
 .brand { height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 10px; color: white; font-weight: 700; }
+.tenant-switcher { height: 38px; display: grid; grid-template-columns: 18px minmax(0, 1fr) 30px; align-items: center; gap: 6px; margin: 8px 4px 0; padding: 0 5px 0 7px; border: 1px solid #46545a; border-radius: 5px; color: #b9c6ca; }
+.tenant-switcher select { min-width: 0; width: 100%; border: 0; outline: 0; background: #172126; color: white; font-size: 12px; }
+.tenant-switcher button { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-left: 1px solid #46545a; background: transparent; color: #dce5e8; cursor: pointer; }
 .sidebar nav { display: grid; gap: 3px; margin-top: 18px; }
 .sidebar nav a { color: #b9c6ca; padding: 9px 10px; text-decoration: none; border-radius: 5px; font-size: 14px; }
 .sidebar nav a:hover, .sidebar nav a.active { background: #2a373c; color: white; }

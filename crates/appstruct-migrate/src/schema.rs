@@ -2,6 +2,7 @@ use appstruct_ir::{AppIr, DatabaseProvider, FieldTypeIr, GeneratedValueIr, OnDel
 use serde::{Deserialize, Serialize};
 
 mod auth;
+mod tenant;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatabaseSchema {
@@ -88,6 +89,10 @@ pub fn extract(ir: &AppIr) -> DatabaseSchema {
     if ir.auth.enabled {
         tables.extend(auth::tables());
         foreign_keys.extend(auth::foreign_keys(ir));
+    }
+    if ir.tenant.enabled {
+        tables.extend(tenant::tables());
+        foreign_keys.extend(tenant::foreign_keys(ir));
     }
     DatabaseSchema {
         schema_version: 1,

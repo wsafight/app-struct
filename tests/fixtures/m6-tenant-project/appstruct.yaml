@@ -1,0 +1,25 @@
+version: 1
+
+app:
+  name: tenant-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+    registration: true
+    password_reset: false
+  rbac:
+    roles: [member, admin]
+    default_role: member
+  tenant:
+    enabled: true
+
+includes:
+  - spec/project.yaml
+  - spec/identity.yaml

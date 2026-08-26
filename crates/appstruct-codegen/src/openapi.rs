@@ -36,6 +36,9 @@ fn document(ir: &AppIr) -> Value {
     if ir.auth.enabled {
         auth::add(&mut paths, &mut schemas, ir);
     }
+    if ir.tenant.enabled {
+        tenant::add(&mut paths, &mut schemas);
+    }
     extension::add(ir, &mut paths, &mut schemas);
     let security_schemes = auth::security_schemes(ir.auth.enabled);
     json!({
@@ -53,6 +56,20 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
     let singular = &entity.rust_name;
     let collection = format!("/api/{}/", entity.table_name);
     let member = format!("/api/{}/{{id}}", entity.table_name);
+    let mut list_parameters = list_parameters(entity);
+    let mut member_parameters = vec![json!({
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": primary_key_schema(entity),
+    })];
+    let create_parameters = if entity.tenant_scoped {
+        list_parameters.push(tenant::parameter());
+        member_parameters.push(tenant::parameter());
+        vec![tenant::parameter()]
+    } else {
+        Vec::new()
+    };
     paths.insert(
         collection,
         json!({
@@ -60,7 +77,7 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
                 "operationId": format!("list{singular}"),
                 "tags": [singular],
                 "security": auth::security(&entity.access.list),
-                "parameters": list_parameters(entity),
+                "parameters": list_parameters,
                 "responses": {
                     "200": response(
                         "Paginated resource collection",
@@ -72,6 +89,7 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
                 "operationId": format!("create{singular}"),
                 "tags": [singular],
                 "security": auth::security(&entity.access.create),
+                "parameters": create_parameters,
                 "requestBody": request_body(&format!("Create{singular}Input")),
                 "responses": {
                     "201": versioned_response("Resource created", &schema_ref(singular)),
@@ -83,12 +101,7 @@ fn add_entity_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
     paths.insert(
         member,
         json!({
-            "parameters": [{
-                "name": "id",
-                "in": "path",
-                "required": true,
-                "schema": primary_key_schema(entity),
-            }],
+            "parameters": member_parameters,
             "get": {
                 "operationId": format!("get{singular}"),
                 "tags": [singular],
@@ -376,3 +389,4 @@ fn error_schema() -> Value {
 }
 mod auth;
 mod extension;
+mod tenant;

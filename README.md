@@ -4,9 +4,10 @@ AppStruct is a configuration-driven Rust full-stack application generator. It co
 multi-file YAML App Spec into a typed IR, PostgreSQL migrations, an Axum/SeaORM backend,
 OpenAPI, a TypeScript client, and a React/Vite application.
 
-The repository is currently a technical preview. M0-M4 are complete; M5 templates,
-production builds, environment diagnostics, and the coordinated development server are
-available. SaaS modules planned for M6 are not part of the current release.
+The repository is currently a technical preview. M0-M5 are complete, including templates,
+production builds, environment diagnostics, and the coordinated development server. The M6
+Tenant module is available as a preview; Audit, Mail, Jobs, File, and the SaaS preset remain in
+development.
 
 ## Quick Start
 
@@ -35,6 +36,25 @@ development database, use `--template dashboard` and ensure Docker Compose is av
 `appstruct dev` starts the generated API and Vite, applies only safe development
 migrations, watches App Spec and user Rust inputs, and stops its child processes on Ctrl-C.
 The default URLs are `http://127.0.0.1:3000` and `http://127.0.0.1:5173`.
+
+Enable tenant isolation together with Auth and mark each tenant-owned entity explicitly:
+
+```yaml
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+  tenant:
+    enabled: true
+
+entities:
+  Project:
+    tenant: true
+```
+
+The generated Web application provides organization onboarding and switching. Generated clients
+send `X-AppStruct-Tenant`; the backend validates membership and injects `tenant_id` into every
+tenant-scoped CRUD query and write.
 
 ## Commands
 
@@ -78,6 +98,9 @@ Run the PostgreSQL browser gate against a dedicated test database:
 ```bash
 APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_e2e' \
   scripts/run-m5-browser-e2e.sh
+
+APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_tenant_e2e' \
+  scripts/run-m6-tenant-e2e.sh
 ```
 
 Rust source files are limited to 400 lines by a repository test. Generated projects also pin

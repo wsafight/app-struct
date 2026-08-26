@@ -1,11 +1,13 @@
 mod access;
 mod api;
 mod auth;
+mod context;
 mod entity;
 mod extensions;
 mod manifest;
 mod operations;
 mod query;
+mod tenant;
 mod validation;
 
 use crate::{Artifact, ArtifactKind, CodegenError, format_rust, generated_header};
@@ -63,6 +65,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         ),
     ];
     artifacts.extend(auth::plan(ir)?);
+    artifacts.extend(tenant::plan(ir)?);
     artifacts.extend(entity_artifacts(ir)?);
     Ok(artifacts)
 }
@@ -152,9 +155,10 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod error;
         mod openapi;
         mod operations;
+        mod tenant;
 
         pub use error::{ApiError, FieldViolation};
-        pub use extensions::{Actor, AppExtensions, HookOperation, RequestContext};
+        pub use extensions::{Actor, AppExtensions, HookOperation, RequestContext, TenantId};
         #auth_exports
 
         use axum::{Router, extract::State, http::{HeaderMap, StatusCode}, response::IntoResponse, routing::get};
@@ -174,7 +178,8 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         impl AppState {
             pub async fn context(&self, headers: &HeaderMap) -> Result<RequestContext<'_>, ApiError> {
                 let actor = self.auth.actor(&self.database, headers).await?;
-                Ok(RequestContext::connection(&self.database, actor))
+                let tenant = tenant::resolve(&self.database, headers, actor.as_ref()).await?;
+                Ok(RequestContext::connection(&self.database, actor, tenant))
             }
         }
 
@@ -193,6 +198,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
                 #(#routes)*
                 .merge(operations::router())
                 .merge(auth::router())
+                .merge(tenant::router())
                 .route("/health/live", get(health))
                 .route("/health/ready", get(readiness))
                 .route("/openapi.json", get(openapi))

@@ -150,8 +150,11 @@ async fn me(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<AuthResponse>, ApiError> {
-    let context = state.context(&headers).await?;
-    let user = context.actor().cloned().ok_or(ApiError::Unauthorized)?;
+    let user = state
+        .auth
+        .actor(&state.database, &headers)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
     Ok(Json(AuthResponse { user }))
 }
 

@@ -1,5 +1,5 @@
 {
-  "ir_version": 1,
+  "ir_version": 2,
   "app": {
     "name": "project-hub"
   },
@@ -17,6 +17,9 @@
       "member"
     ],
     "default_role": "member"
+  },
+  "tenant": {
+    "enabled": false
   },
   "enums": [],
   "value_objects": [],
@@ -259,7 +262,8 @@
       "hooks": {},
       "concurrency": {
         "enabled": true
-      }
+      },
+      "tenant_scoped": false
     },
     {
       "id": "app::User",
@@ -376,7 +380,8 @@
       "hooks": {},
       "concurrency": {
         "enabled": true
-      }
+      },
+      "tenant_scoped": false
     }
   ],
   "relations": [

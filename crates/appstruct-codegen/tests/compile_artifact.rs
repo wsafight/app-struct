@@ -107,7 +107,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 40);
+    assert_eq!(artifacts.len(), 41);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -152,6 +152,52 @@ fn m4_disabled_auth_flows_are_not_published() {
     );
 }
 
+#[test]
+fn m6_tenant_contract_generates_a_compilable_backend() {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");
+    let ir = compile_project(&fixture).unwrap();
+    let artifacts = plan(&ir).unwrap();
+    let temporary = tempfile::tempdir().unwrap();
+    write_artifacts(temporary.path(), &artifacts);
+
+    let sql = artifact_text(&artifacts, "database/0001_initial.sql");
+    assert!(sql.contains("_appstruct_tenant_organizations"));
+    assert!(sql.contains("_appstruct_tenant_memberships"));
+    assert!(sql.contains("PRIMARY KEY (\"organization_id\", \"user_id\")"));
+    assert!(sql.contains("FOREIGN KEY (\"tenant_id\")"));
+
+    let api = artifact_text(&artifacts, "backend/src/api/project.rs");
+    assert!(api.contains("Column::TenantId.eq(context.require_tenant()?)"));
+    assert!(api.contains("tenant_id: Set(context.require_tenant()?)"));
+    assert!(!api.contains("pub tenant_id: uuid::Uuid"));
+
+    let client = artifact_text(&artifacts, "web/src/generated/client.ts");
+    assert!(client.contains("X-AppStruct-Tenant"));
+    assert!(client.contains("export const tenantApi"));
+    assert!(
+        artifacts
+            .iter()
+            .any(|artifact| { artifact.relative_path == Path::new("web/src/tenant/Tenant.tsx") })
+    );
+
+    let openapi: Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    assert_eq!(
+        openapi["paths"]["/api/projects/"]["get"]["parameters"][4]["name"],
+        "X-AppStruct-Tenant"
+    );
+    assert!(openapi["paths"]["/api/tenant/organizations"]["post"].is_object());
+
+    let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    let checked = cargo_check(&manifest, true);
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+}
+
 fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
     let openapi: Value =
         serde_json::from_str(artifact_text(artifacts, "openapi/openapi.json")).unwrap();
@@ -176,7 +222,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 34);
+    assert_eq!(artifacts.len(), 35);
     assert!(artifact_text(artifacts, "database/0001_initial.sql").contains("CREATE TABLE"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("/health/ready"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("MakeRequestUuid"));

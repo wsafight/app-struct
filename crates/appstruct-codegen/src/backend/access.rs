@@ -10,6 +10,7 @@ pub(super) fn scope(
     rule: &AccessRuleIr,
 ) -> Result<TokenStream, CodegenError> {
     let condition = condition(entity, module, rule)?;
+    let tenant_scope = tenant_scope(entity, module);
     Ok(quote! {
         let access_scope = #condition;
         let access_condition = match access_scope {
@@ -17,6 +18,7 @@ pub(super) fn scope(
             None => return Err(access_denied(&context)),
         };
         select = select.filter(access_condition);
+        #tenant_scope
     })
 }
 
@@ -26,9 +28,31 @@ pub(super) fn member_scope(
     rule: &AccessRuleIr,
 ) -> Result<TokenStream, CodegenError> {
     let condition = condition(entity, module, rule)?;
+    let tenant_condition = tenant_condition(entity, module);
     Ok(quote! {
-        let access_condition = #condition.ok_or_else(|| access_denied(&context))?;
+        let access_condition = #condition
+            .ok_or_else(|| access_denied(&context))?
+            #tenant_condition;
     })
+}
+
+fn tenant_scope(entity: &EntityIr, module: &syn::Ident) -> TokenStream {
+    if entity.tenant_scoped {
+        quote! {
+            let tenant_id = context.require_tenant()?;
+            select = select.filter(#module::Column::TenantId.eq(tenant_id));
+        }
+    } else {
+        TokenStream::new()
+    }
+}
+
+fn tenant_condition(entity: &EntityIr, module: &syn::Ident) -> TokenStream {
+    if entity.tenant_scoped {
+        quote! { .add(#module::Column::TenantId.eq(context.require_tenant()?)) }
+    } else {
+        TokenStream::new()
+    }
 }
 
 pub(super) fn create_allowed(

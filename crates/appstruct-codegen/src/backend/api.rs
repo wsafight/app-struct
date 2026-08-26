@@ -132,6 +132,7 @@ fn create_value(field: &FieldIr) -> Result<Option<TokenStream>, CodegenError> {
         Some(GeneratedValueIr::Now) => quote! { chrono::Utc::now() },
         Some(GeneratedValueIr::AutoIncrement) => return Ok(None),
         Some(GeneratedValueIr::Revision) => quote! { 1_i64 },
+        Some(GeneratedValueIr::Tenant) => quote! { context.require_tenant()? },
         None => field.default.as_ref().map_or_else(
             || quote! { input.#name },
             |default| {

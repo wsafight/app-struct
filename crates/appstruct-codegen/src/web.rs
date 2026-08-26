@@ -8,12 +8,16 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
     } else {
         include_str!("../templates/web/main.tsx")
     };
-    let app = if ir.auth.enabled {
+    let app = if ir.tenant.enabled {
+        include_str!("../templates/web/AppTenant.tsx")
+    } else if ir.auth.enabled {
         include_str!("../templates/web/AppAuth.tsx")
     } else {
         include_str!("../templates/web/App.tsx")
     };
-    let layout = if ir.auth.enabled {
+    let layout = if ir.tenant.enabled {
+        include_str!("../templates/web/LayoutTenant.tsx")
+    } else if ir.auth.enabled {
         include_str!("../templates/web/LayoutAuth.tsx")
     } else {
         include_str!("../templates/web/Layout.tsx")
@@ -72,6 +76,13 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
                 ArtifactKind::Web,
             ),
         ]);
+    }
+    if ir.tenant.enabled {
+        artifacts.push(Artifact::text(
+            "web/src/tenant/Tenant.tsx",
+            include_str!("../templates/web/tenant/Tenant.tsx"),
+            ArtifactKind::Web,
+        ));
     }
     artifacts.extend([
         Artifact::text("web/tsconfig.json", tsconfig(), ArtifactKind::Web),
@@ -172,7 +183,12 @@ fn resource_source(entity: &EntityIr) -> String {
     let fields = entity
         .fields
         .iter()
-        .filter(|field| !matches!(field.generated, Some(GeneratedValueIr::Revision)))
+        .filter(|field| {
+            !matches!(
+                field.generated,
+                Some(GeneratedValueIr::Revision | GeneratedValueIr::Tenant)
+            )
+        })
         .map(field_source)
         .collect::<Vec<_>>()
         .join(",\n");

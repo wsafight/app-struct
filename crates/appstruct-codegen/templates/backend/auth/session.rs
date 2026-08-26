@@ -160,7 +160,12 @@ impl AuthState {
             .allow_origin(self.config.allowed_origin.parse::<HeaderValue>().expect("validated origin"))
             .allow_credentials(true)
             .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
-            .allow_headers([header::CONTENT_TYPE, header::IF_MATCH, "x-csrf-token".parse().unwrap()])
+            .allow_headers([
+                header::CONTENT_TYPE,
+                header::IF_MATCH,
+                "x-csrf-token".parse().unwrap(),
+                "x-appstruct-tenant".parse().unwrap(),
+            ])
             .expose_headers([header::ETAG])
     }
 
