@@ -39,6 +39,9 @@ fn document(ir: &AppIr) -> Value {
     if ir.tenant.enabled {
         tenant::add(&mut paths, &mut schemas);
     }
+    if ir.audit.enabled {
+        audit::add(ir, &mut paths, &mut schemas);
+    }
     extension::add(ir, &mut paths, &mut schemas);
     let security_schemes = auth::security_schemes(ir.auth.enabled);
     json!({
@@ -387,6 +390,7 @@ fn error_schema() -> Value {
         }
     })
 }
+mod audit;
 mod auth;
 mod extension;
 mod tenant;

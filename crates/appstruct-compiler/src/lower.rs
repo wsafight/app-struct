@@ -1,4 +1,5 @@
 use crate::access::build_access;
+use crate::audit::lower_audit;
 use crate::auth::lower_auth;
 use crate::extension::{ExtensionContext, lower_extensions};
 use crate::field::{build_column, build_field_type, build_relation};
@@ -37,6 +38,13 @@ pub(crate) fn build_ir(
         &mut diagnostics,
     );
     let tenant = lower_tenant(&root, &surface_entities, &auth, &mut diagnostics);
+    let audit = lower_audit(
+        &root.audit,
+        &root.auth,
+        &surface_entities,
+        &root.app_name.span,
+        &mut diagnostics,
+    );
     let known_entities = surface_entities
         .iter()
         .map(|entity| entity.name.value.clone())
@@ -82,6 +90,7 @@ pub(crate) fn build_ir(
         },
         auth,
         tenant,
+        audit,
         enums: Vec::new(),
         value_objects: extensions.value_objects,
         entities,
@@ -192,6 +201,7 @@ fn lower_entities(
                 hooks: HooksIr::default(),
                 concurrency: ConcurrencyIr { enabled: true },
                 tenant_scoped: entity.tenant_scoped,
+                audit_enabled: entity.audit_enabled,
             });
         }
     }

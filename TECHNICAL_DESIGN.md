@@ -825,6 +825,36 @@ tenant ID 保存在 `localStorage`，并为所有 API 请求附加 header。UI �
 边界仍在后端。OpenAPI 为 tenant-scoped operation 声明必需的 `X-AppStruct-Tenant` header，并描述
 Tenant endpoint。
 
+M6 Audit 契约如下：
+
+```yaml
+modules:
+  audit:
+    enabled: true
+    reader_roles: [admin]
+
+entities:
+  Project:
+    audit: true
+```
+
+Compiler 将配置降低为 `AuditIr { enabled, reader_roles }` 和 `EntityIr.audit_enabled`，并验证 Audit
+依赖 Auth、reader role 已由 RBAC 声明、`audit: true` 只在模块启用时出现。迁移安装仅追加的
+`_appstruct_audit_events`，包含 UUID 主键、entity/record_id/operation、nullable actor/tenant、nullable
+before/after JSONB 和 `occurred_at`。actor 删除使用 `SET NULL`；Tenant 可用时 tenant 删除也使用
+`SET NULL`，保留审计记录。
+
+CRUD write pipeline 在 `after_create/after_update/after_delete` Hook 成功后、事务 commit 前序列化最终
+Model 并写 Audit：Create 为 `(null, after)`，Update 为 `(before, after)`，Delete 为 `(before, null)`。
+事件写入使用同一个 `DatabaseTransaction` 和 `RequestContext`，因此不会出现业务提交但审计缺失；
+它不使用 best-effort `after_commit`。通用 Audit 只观察显式标记的业务 Entity，不记录 Auth 内部表、
+密码 hash、session、Mail body 或 File 内容。
+
+`GET /api/audit/events` 支持有上限的分页并按 `occurred_at, id` 倒序。Runtime 先验证 actor 具有
+`reader_roles` 之一；启用 Tenant 时还调用 `require_tenant()` 并把 tenant 条件下推到 SQL。该 endpoint
+没有任意 entity/record SQL 表达式，也不提供修改或删除事件的路由。OpenAPI 和 TypeScript client 从
+同一 Audit IR 生成只读契约。
+
 ### 13.3 Repository
 
 生成的 Repository 负责：

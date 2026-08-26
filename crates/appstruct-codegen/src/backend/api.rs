@@ -20,6 +20,7 @@ pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
         .then(|| quote! { ..Default::default() });
     let updates = update_values(entity)?;
     let parse_id = parse_id_expression(primary_key(entity)?);
+    let primary = parse_ident(&primary_key(entity)?.rust_name)?;
     let list = list_support(entity, &module)?;
     let hooks = format_ident!("{}_hooks", module_name(entity));
     let policy = format_ident!("{}_policy", module_name(entity));
@@ -30,6 +31,7 @@ pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
             hooks: &hooks,
             policy: &policy,
             parse_id: &parse_id,
+            primary: &primary,
         },
         &create_values,
         active_default.as_ref(),

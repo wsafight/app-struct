@@ -9,6 +9,7 @@ pub(super) struct HandlerContext<'context> {
     pub hooks: &'context Ident,
     pub policy: &'context Ident,
     pub parse_id: &'context TokenStream,
+    pub primary: &'context Ident,
 }
 
 pub(super) fn handlers(
@@ -23,12 +24,16 @@ pub(super) fn handlers(
         hooks,
         policy,
         parse_id,
+        primary,
     } = context;
     let read_scope = access::member_scope(entity, module, &entity.access.read)?;
     let create_allowed = access::create_allowed(entity, &entity.access.create)?;
     let update_allowed = access::update_allowed(entity, &entity.access.update)?;
     let delete_allowed = access::row_allowed(entity, &entity.access.delete)?;
     let read = read_handler(module, policy, parse_id, &read_scope);
+    let create_audit = audit_event(entity, primary, "create");
+    let update_audit = audit_event(entity, primary, "update");
+    let delete_audit = audit_event(entity, primary, "delete");
     let create = create_handler(
         module,
         hooks,
@@ -36,15 +41,14 @@ pub(super) fn handlers(
         create_values,
         active_default,
         &create_allowed,
+        &create_audit,
     );
     let update = update_handler(
-        module,
-        hooks,
-        policy,
-        parse_id,
+        context,
         updates,
         &read_scope,
         &update_allowed,
+        &update_audit,
     );
     let delete = delete_handler(
         module,
@@ -53,6 +57,7 @@ pub(super) fn handlers(
         parse_id,
         &read_scope,
         &delete_allowed,
+        &delete_audit,
     );
     let helpers = helper_functions(module, hooks);
     Ok(quote! {
@@ -97,6 +102,7 @@ fn create_handler(
     create_values: &[TokenStream],
     active_default: Option<&TokenStream>,
     create_allowed: &TokenStream,
+    audit: &TokenStream,
 ) -> TokenStream {
     quote! {
         async fn create(
@@ -124,6 +130,7 @@ fn create_handler(
                 let active = #module::ActiveModel { #(#create_values,)* #active_default };
                 let model = active.insert(&transaction).await?;
                 state.extensions.#hooks().after_create(&context, &model).await?;
+                #audit
                 model
             };
             transaction.commit().await?;
@@ -134,14 +141,19 @@ fn create_handler(
 }
 
 fn update_handler(
-    module: &Ident,
-    hooks: &Ident,
-    policy: &Ident,
-    parse_id: &TokenStream,
+    context: &HandlerContext<'_>,
     updates: &[TokenStream],
     read_scope: &TokenStream,
     update_allowed: &TokenStream,
+    audit: &TokenStream,
 ) -> TokenStream {
+    let HandlerContext {
+        module,
+        hooks,
+        policy,
+        parse_id,
+        ..
+    } = context;
     quote! {
         async fn update(
             State(state): State<AppState>,
@@ -188,6 +200,7 @@ fn update_handler(
                 }
                 let after = active.update(&transaction).await?;
                 state.extensions.#hooks().after_update(&context, &before, &after).await?;
+                #audit
                 after
             };
             transaction.commit().await?;
@@ -204,6 +217,7 @@ fn delete_handler(
     parse_id: &TokenStream,
     read_scope: &TokenStream,
     delete_allowed: &TokenStream,
+    audit: &TokenStream,
 ) -> TokenStream {
     quote! {
         async fn delete(
@@ -241,12 +255,41 @@ fn delete_handler(
                 let deleted = model.clone();
                 model.delete(&transaction).await?;
                 state.extensions.#hooks().after_delete(&context, &deleted).await?;
+                #audit
                 deleted
             };
             transaction.commit().await?;
             run_after_commit(&state, crate::HookOperation::Delete, &deleted, actor, tenant).await;
             Ok(StatusCode::NO_CONTENT)
         }
+    }
+}
+
+fn audit_event(entity: &EntityIr, primary: &Ident, operation: &str) -> TokenStream {
+    if !entity.audit_enabled {
+        return TokenStream::new();
+    }
+    let entity_id = &entity.id.0;
+    match operation {
+        "create" => quote! {
+            crate::audit::record(
+                &transaction, &context, #entity_id, model.#primary.to_string(),
+                "create", None, Some(&model),
+            ).await?;
+        },
+        "update" => quote! {
+            crate::audit::record(
+                &transaction, &context, #entity_id, after.#primary.to_string(),
+                "update", Some(&before), Some(&after),
+            ).await?;
+        },
+        "delete" => quote! {
+            crate::audit::record(
+                &transaction, &context, #entity_id, deleted.#primary.to_string(),
+                "delete", Some(&deleted), None,
+            ).await?;
+        },
+        _ => unreachable!(),
     }
 }
 

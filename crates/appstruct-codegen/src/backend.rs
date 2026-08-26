@@ -1,5 +1,6 @@
 mod access;
 mod api;
+mod audit;
 mod auth;
 mod context;
 mod entity;
@@ -64,6 +65,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             ArtifactKind::RustSource,
         ),
     ];
+    artifacts.extend(audit::plan(ir)?);
     artifacts.extend(auth::plan(ir)?);
     artifacts.extend(tenant::plan(ir)?);
     artifacts.extend(entity_artifacts(ir)?);
@@ -151,6 +153,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub mod api;
         pub mod entities;
         pub mod extensions;
+        mod audit;
         mod auth;
         mod error;
         mod openapi;
@@ -197,6 +200,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
             Router::new()
                 #(#routes)*
                 .merge(operations::router())
+                .merge(audit::router())
                 .merge(auth::router())
                 .merge(tenant::router())
                 .route("/health/live", get(health))

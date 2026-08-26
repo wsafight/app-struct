@@ -737,6 +737,16 @@ project-hub/
 
 模块通过明确的配置 schema、运行时接口和迁移安装，不允许任意修改其他模块的生成模板。Module manifest 必须声明 `provides` 和 `requires` capability；Compiler 在生成前检查缺失 provider、重复 provider 和依赖环。模块间只通过窄化、类型化 capability 协作，例如 Auth 依赖 `AuthMailSender`，而不是依赖整个 Mail Module。
 
+Audit Module 通过 `modules.audit.enabled: true` 启用，并要求 Auth 和至少一个声明过的
+`reader_roles`。业务实体用 `audit: true` 选择记录 create、update 和 delete。每条事件保存实体、记录
+ID、操作、actor、tenant、发生时间，以及变更前后的 JSON snapshot；Audit 事件与业务写入在同一
+PostgreSQL 事务提交，审计写入失败必须回滚业务写入。
+
+Audit endpoint 只允许配置角色读取。启用 Tenant 时读取还要求有效的当前租户，并只返回该租户的
+事件；其他租户的事件不能通过筛选参数或记录 ID 绕过。Audit 表不提供 update/delete API，应用级
+Hook 也不能改写已提交事件。认证凭据、session token、密码 hash 和 Mail/File 私密 payload 不进入
+通用实体 snapshot；相关模块只写经过专门脱敏的事件元数据。
+
 每个模块可以包含 Rust Runtime、数据库迁移、React 页面、UI Manifest 和资源模板。YAML 只负责启用模块及提供业务参数，支付 webhook、会话安全、任务重试等行为必须由经过测试的模块代码实现。
 
 运行时按 capability 图的拓扑顺序启动 Module。每个 Module 对自己注册的路由、任务、连接和其他副作用负责，并返回可逆序清理的 handle；启动部分失败时，Runtime 清理本轮已经启动的模块并报告完整依赖链。MVP 不支持在运行中的生产进程动态安装、卸载或加载 Rust 动态库。

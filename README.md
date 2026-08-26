@@ -6,8 +6,8 @@ OpenAPI, a TypeScript client, and a React/Vite application.
 
 The repository is currently a technical preview. M0-M5 are complete, including templates,
 production builds, environment diagnostics, and the coordinated development server. The M6
-Tenant module is available as a preview; Audit, Mail, Jobs, File, and the SaaS preset remain in
-development.
+Tenant and Audit modules are available as previews; Mail, Jobs, File, and the SaaS preset remain
+in development.
 
 ## Quick Start
 
@@ -56,6 +56,23 @@ The generated Web application provides organization onboarding and switching. Ge
 send `X-AppStruct-Tenant`; the backend validates membership and injects `tenant_id` into every
 tenant-scoped CRUD query and write.
 
+Enable Audit with Auth, choose the reader roles, and opt entities into transactional snapshots:
+
+```yaml
+modules:
+  audit:
+    enabled: true
+    reader_roles: [admin]
+
+entities:
+  Project:
+    audit: true
+```
+
+Create, update, and delete snapshots are committed in the same PostgreSQL transaction as the
+business write. The generated Audit page and read-only API enforce reader roles and current-tenant
+isolation.
+
 ## Commands
 
 ```text
@@ -101,6 +118,9 @@ APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_e2e' 
 
 APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_tenant_e2e' \
   scripts/run-m6-tenant-e2e.sh
+
+APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_audit_e2e' \
+  scripts/run-m6-audit-e2e.sh
 ```
 
 Rust source files are limited to 400 lines by a repository test. Generated projects also pin

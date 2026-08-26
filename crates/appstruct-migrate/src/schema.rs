@@ -1,6 +1,7 @@
 use appstruct_ir::{AppIr, DatabaseProvider, FieldTypeIr, GeneratedValueIr, OnDeleteIr};
 use serde::{Deserialize, Serialize};
 
+mod audit;
 mod auth;
 mod tenant;
 
@@ -93,6 +94,10 @@ pub fn extract(ir: &AppIr) -> DatabaseSchema {
     if ir.tenant.enabled {
         tables.extend(tenant::tables());
         foreign_keys.extend(tenant::foreign_keys(ir));
+    }
+    if ir.audit.enabled {
+        tables.extend(audit::tables());
+        foreign_keys.extend(audit::foreign_keys(ir));
     }
     DatabaseSchema {
         schema_version: 1,

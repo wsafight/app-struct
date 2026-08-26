@@ -8,15 +8,23 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
     } else {
         include_str!("../templates/web/main.tsx")
     };
-    let app = if ir.tenant.enabled {
+    let app = if ir.tenant.enabled && ir.audit.enabled {
+        include_str!("../templates/web/AppTenantAudit.tsx")
+    } else if ir.tenant.enabled {
         include_str!("../templates/web/AppTenant.tsx")
+    } else if ir.audit.enabled {
+        include_str!("../templates/web/AppAudit.tsx")
     } else if ir.auth.enabled {
         include_str!("../templates/web/AppAuth.tsx")
     } else {
         include_str!("../templates/web/App.tsx")
     };
-    let layout = if ir.tenant.enabled {
+    let layout = if ir.tenant.enabled && ir.audit.enabled {
+        include_str!("../templates/web/LayoutTenantAudit.tsx")
+    } else if ir.tenant.enabled {
         include_str!("../templates/web/LayoutTenant.tsx")
+    } else if ir.audit.enabled {
+        include_str!("../templates/web/LayoutAudit.tsx")
     } else if ir.auth.enabled {
         include_str!("../templates/web/LayoutAuth.tsx")
     } else {
@@ -63,6 +71,25 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
         .into_iter()
         .map(|(path, content)| Artifact::text(path, content, ArtifactKind::Web))
         .collect::<Vec<_>>();
+    extend_module_artifacts(ir, &mut artifacts);
+    artifacts.extend([
+        Artifact::text("web/tsconfig.json", tsconfig(), ArtifactKind::Web),
+        Artifact::text("web/vite.config.ts", vite_config(), ArtifactKind::Web),
+        Artifact::text(
+            "web/src/generated/resources.ts",
+            resources_source(ir),
+            ArtifactKind::TypeScript,
+        ),
+        Artifact::text(
+            "web/src/generated/registry.ts",
+            registry_source(ir),
+            ArtifactKind::TypeScript,
+        ),
+    ]);
+    artifacts
+}
+
+fn extend_module_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
     if ir.auth.enabled {
         artifacts.extend([
             Artifact::text(
@@ -84,21 +111,13 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
             ArtifactKind::Web,
         ));
     }
-    artifacts.extend([
-        Artifact::text("web/tsconfig.json", tsconfig(), ArtifactKind::Web),
-        Artifact::text("web/vite.config.ts", vite_config(), ArtifactKind::Web),
-        Artifact::text(
-            "web/src/generated/resources.ts",
-            resources_source(ir),
-            ArtifactKind::TypeScript,
-        ),
-        Artifact::text(
-            "web/src/generated/registry.ts",
-            registry_source(ir),
-            ArtifactKind::TypeScript,
-        ),
-    ]);
-    artifacts
+    if ir.audit.enabled {
+        artifacts.push(Artifact::text(
+            "web/src/audit/AuditPage.tsx",
+            include_str!("../templates/web/audit/AuditPage.tsx"),
+            ArtifactKind::Web,
+        ));
+    }
 }
 
 fn requires_registry(ir: &AppIr) -> bool {

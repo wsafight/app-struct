@@ -1,5 +1,5 @@
 {
-  "ir_version": 2,
+  "ir_version": 3,
   "app": {
     "name": "project-hub"
   },
@@ -20,6 +20,10 @@
   },
   "tenant": {
     "enabled": false
+  },
+  "audit": {
+    "enabled": false,
+    "reader_roles": []
   },
   "enums": [],
   "value_objects": [],
@@ -263,7 +267,8 @@
       "concurrency": {
         "enabled": true
       },
-      "tenant_scoped": false
+      "tenant_scoped": false,
+      "audit_enabled": false
     },
     {
       "id": "app::User",
@@ -381,7 +386,8 @@
       "concurrency": {
         "enabled": true
       },
-      "tenant_scoped": false
+      "tenant_scoped": false,
+      "audit_enabled": false
     }
   ],
   "relations": [

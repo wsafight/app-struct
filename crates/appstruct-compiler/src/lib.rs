@@ -1,6 +1,7 @@
 //! `AppStruct` configuration loading, validation, and normalization.
 
 mod access;
+mod audit;
 mod auth;
 mod extension;
 mod field;

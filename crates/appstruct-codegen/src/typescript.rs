@@ -1,5 +1,8 @@
+mod modules;
+
 use crate::{Artifact, ArtifactKind, generated_header};
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, OperationTypeIr, ValueObjectIr};
+use modules::{audit_source, tenant_source, tenant_storage_source};
 
 pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
     vec![Artifact::text(
@@ -20,6 +23,9 @@ fn client_source(ir: &AppIr) -> String {
     }
     if ir.tenant.enabled {
         sections.push(tenant_source());
+    }
+    if ir.audit.enabled {
+        sections.push(audit_source());
     }
     sections.extend(ir.value_objects.iter().map(value_object_type));
     for entity in &ir.entities {
@@ -197,21 +203,6 @@ function listPath(path: string, query: ListQuery): string {
 "#
 }
 
-fn tenant_storage_source() -> &'static str {
-    r#"const TENANT_STORAGE_KEY = "appstruct_tenant";
-
-function currentTenant(): string | undefined {
-  return window.localStorage.getItem(TENANT_STORAGE_KEY) ?? undefined;
-}
-
-function selectTenant(id?: string): void {
-  if (id) window.localStorage.setItem(TENANT_STORAGE_KEY, id);
-  else window.localStorage.removeItem(TENANT_STORAGE_KEY);
-  resourceEtags.clear();
-}
-"#
-}
-
 fn auth_source(ir: &AppIr) -> String {
     let registration = ir.auth.registration_enabled;
     let password_reset = ir.auth.password_reset_enabled;
@@ -244,28 +235,6 @@ export const authApi = {{
 }};
 "#
     )
-}
-
-fn tenant_source() -> String {
-    r#"export interface TenantOrganization {
-  id: string;
-  name: string;
-  role: "owner" | "member";
-  created_at: string;
-}
-
-export const tenantApi = {
-  listOrganizations: () => request<{ data: TenantOrganization[] }>("/api/tenant/organizations"),
-  createOrganization: (name: string) => request<TenantOrganization>("/api/tenant/organizations", {
-    method: "POST",
-    body: JSON.stringify({ name }),
-  }),
-  select: (id: string) => selectTenant(id),
-  clear: () => selectTenant(),
-  current: () => currentTenant(),
-};
-"#
-    .to_owned()
 }
 
 fn entity_types(entity: &EntityIr) -> String {

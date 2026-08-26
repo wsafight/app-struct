@@ -1,0 +1,28 @@
+version: 1
+
+app:
+  name: audited-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+    registration: true
+    password_reset: false
+  rbac:
+    roles: [member, admin]
+    default_role: admin
+  tenant:
+    enabled: true
+  audit:
+    enabled: true
+    reader_roles: [admin]
+
+includes:
+  - spec/project.yaml
+  - spec/identity.yaml

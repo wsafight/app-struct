@@ -1,10 +1,13 @@
 mod access;
+mod audit;
 mod auth;
 mod extension;
+mod modules;
 mod tenant;
 mod value;
 
 pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
+pub(crate) use modules::{SurfaceAudit, SurfaceAuth, SurfaceTenant};
 
 use self::value::{
     ensure_known_keys, expect_mapping, expect_scalar_string, expect_sequence, expect_string,
@@ -27,23 +30,8 @@ pub(crate) struct SurfaceRoot {
     pub database_mode: Located<String>,
     pub auth: SurfaceAuth,
     pub tenant: SurfaceTenant,
+    pub audit: SurfaceAudit,
     pub includes: Vec<Located<String>>,
-}
-
-#[derive(Clone, Debug, Default)]
-pub(crate) struct SurfaceAuth {
-    pub enabled: bool,
-    pub user_entity: Option<Located<String>>,
-    pub registration_enabled: bool,
-    pub password_reset_enabled: bool,
-    pub roles: Vec<Located<String>>,
-    pub default_role: Option<Located<String>>,
-}
-
-#[derive(Clone, Debug, Default)]
-pub(crate) struct SurfaceTenant {
-    pub enabled: bool,
-    pub span: Option<SourceSpan>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -73,6 +61,7 @@ pub(crate) struct SurfaceEntity {
     pub fields: Vec<SurfaceField>,
     pub access: Option<SurfaceAccess>,
     pub tenant_scoped: bool,
+    pub audit_enabled: bool,
     pub span: SourceSpan,
 }
 
@@ -205,6 +194,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
 
     let auth = auth::decode(mapping.get("modules"))?;
     let tenant = tenant::decode(mapping.get("modules"))?;
+    let audit = audit::decode(mapping.get("modules"))?;
 
     Ok(SurfaceRoot {
         version,
@@ -213,6 +203,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
         database_mode: dev_mode,
         auth,
         tenant,
+        audit,
         includes,
     })
 }
@@ -264,7 +255,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
     let mapping = expect_mapping(&entry.value, "entity definition")?;
     ensure_known_keys(
         mapping,
-        &["label", "table", "fields", "access", "tenant"],
+        &["label", "table", "fields", "access", "tenant", "audit"],
         "entity definition",
     )?;
     let fields_node = required(mapping, "fields", &entry.value.span)?;
@@ -287,6 +278,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
             .map(|access| access::decode_crud_access(&access.value))
             .transpose()?,
         tenant_scoped: optional_bool(mapping, "tenant")?,
+        audit_enabled: optional_bool(mapping, "audit")?,
         span: entry.value.span.clone(),
     })
 }

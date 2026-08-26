@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Current serialized IR format version.
-pub const IR_VERSION: u32 = 2;
+pub const IR_VERSION: u32 = 3;
 
 /// Fully normalized application model consumed by generators.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,6 +18,7 @@ pub struct AppIr {
     pub database: DatabaseIr,
     pub auth: AuthIr,
     pub tenant: TenantIr,
+    pub audit: AuditIr,
     pub enums: Vec<EnumIr>,
     pub value_objects: Vec<ValueObjectIr>,
     pub entities: Vec<EntityIr>,
@@ -71,6 +72,13 @@ pub struct TenantIr {
     pub enabled: bool,
 }
 
+/// Audit module settings normalized by the compiler.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuditIr {
+    pub enabled: bool,
+    pub reader_roles: Vec<String>,
+}
+
 /// Stable logical entity identifier. It never depends on vector position.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -112,6 +120,7 @@ pub struct EntityIr {
     pub hooks: HooksIr,
     pub concurrency: ConcurrencyIr,
     pub tenant_scoped: bool,
+    pub audit_enabled: bool,
 }
 
 /// Normalized field definition.
