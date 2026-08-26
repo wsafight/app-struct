@@ -1,6 +1,6 @@
 # AppStruct 技术设计文档
 
-> 状态：Implementation Baseline v0.9<br>
+> 状态：Implementation Baseline v1.0<br>
 > 日期：2026-08-26<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
@@ -36,6 +36,8 @@ M4 将 `modules.auth`/`modules.rbac` 降低为 `AuthIr` 和规范化 `AccessRule
 CLI 生成路径已拆为 orchestration、ownership 和 transaction 模块。`generated/.appstruct-manifest.json` 使用确定性 JSON 保存 Artifact 路径、类别、Generator 版本和 SHA-256；生成前拒绝未知文件或被人工修改的 owned file。`target/`、`node_modules/`、`dist/`、`.vite/` 和 Cargo 自动创建的 `Cargo.lock` 视为可丢弃构建瞬态，不参与 ownership 冲突。项目级排他文件锁覆盖恢复、编译、规划与提交；追加式 journal 在每个目录交换 phase 后 `sync_all`。下一次命令会验证候选树的 manifest/hash，再完成提交或恢复 backup；歧义状态保留全部目录并失败关闭。
 
 M5 Template 初始化已进入 CLI。`new` 在项目发现前执行，以当前目录或全局 `--project` 指定目录为 parent；名称限制为可移植的小写 ASCII package/directory name。内置 `minimal/dashboard` 文件表在编译期嵌入二进制，通过固定 sibling staging 写完后提交，目标或 staging 存在时不覆盖。Template 产物归用户所有，包含 `appstruct.lock`、固定 1.98.0 的 `rust-toolchain.toml`、环境示例和本地状态 ignore；`generate` 仍只拥有 `generated/`。
+
+M5 build/doctor 已实现。项目 `.env` 使用 dotenv parser 读取但不修改 CLI 进程环境，显式环境变量始终优先；错误和诊断只报告变量名或连接结果。doctor 根据 IR 的 `database.dev.mode` 选择 Docker/Compose 或 PostgreSQL migration status 检查，并提供 text/JSON 两种确定性结构。build 先完成生成事务，若缺少 backend `Cargo.lock` 则生成一次，之后目录交换在 Cargo.toml 未变化时保留该 transient lock；Clippy 与 release build 均使用 `--locked` 和 `.appstruct/cache/backend-target`。Web Artifact 在 ownership manifest 计算前由临时目录内、pnpm lock 固定的 Prettier 3.9.6 格式化；build 再运行 frozen install、format check、`tsc --noEmit` 与 Vite build。
 
 ## 2. 架构决策摘要
 
@@ -643,7 +645,7 @@ App Spec -> Rust API -> OpenAPI -> 前端
 
 这里的保证是可恢复的目录事务，而不是依赖“用一次 rename 覆盖非空目录”这一不可移植假设。`app/`、`migrations/` 和其他用户目录永远不进入该事务。
 
-当前实现覆盖 ownership/hash 校验、路径校验、项目级跨进程文件锁、sibling staging/backup、同步失败回滚和崩溃后自动恢复。journal 采用追加式 JSON record，依次记录 `prepared`、`backed_up` 和 `installed`；即使最后一行因崩溃不完整，也可使用上一条完整 phase 与目录组合恢复。无 journal 的旧版 staging/backup 会回滚到已有完整树；三个目录同时存在等歧义组合不会被猜测性删除。Rust Artifact 已在内存规划期经过 rustfmt；TypeScript 的 staging 内 Prettier/lint/静态验证仍归 M5 构建门禁补齐。
+当前实现覆盖 ownership/hash 校验、路径校验、项目级跨进程文件锁、sibling staging/backup、同步失败回滚和崩溃后自动恢复。journal 采用追加式 JSON record，依次记录 `prepared`、`backed_up` 和 `installed`；即使最后一行因崩溃不完整，也可使用上一条完整 phase 与目录组合恢复。无 journal 的旧版 staging/backup 会回滚到已有完整树；三个目录同时存在等歧义组合不会被猜测性删除。Rust Artifact 在内存规划期经过 rustfmt；TypeScript Artifact 在 manifest 计算前经过 lockfile 固定的 Prettier。生产 build 还对最终 staging 结果执行 Clippy、Prettier check、TypeScript check 和 Vite build。
 
 ## 12. 数据库模型与迁移
 

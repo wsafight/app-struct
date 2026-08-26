@@ -188,11 +188,30 @@ fn update_values(entity: &EntityIr) -> Result<Vec<TokenStream>, CodegenError> {
     writable_fields(entity, true)
         .map(|field| {
             let name = parse_ident(&field.rust_name)?;
+            let value = if copy_type(&field.ty) {
+                quote! { *value }
+            } else {
+                quote! { value.clone() }
+            };
             Ok(quote! {
-                if let Some(value) = &input.#name { active.#name = Set(value.clone()); }
+                if let Some(value) = &input.#name { active.#name = Set(#value); }
             })
         })
         .collect()
+}
+
+fn copy_type(field_type: &FieldTypeIr) -> bool {
+    matches!(
+        field_type,
+        FieldTypeIr::Uuid
+            | FieldTypeIr::Integer
+            | FieldTypeIr::Bigint
+            | FieldTypeIr::Decimal
+            | FieldTypeIr::Boolean
+            | FieldTypeIr::Date
+            | FieldTypeIr::Datetime
+            | FieldTypeIr::Relation { .. }
+    )
 }
 
 fn writable_fields(entity: &EntityIr, update: bool) -> impl Iterator<Item = &FieldIr> {

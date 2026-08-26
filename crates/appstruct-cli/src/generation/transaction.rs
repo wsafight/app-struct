@@ -78,6 +78,10 @@ impl GenerationTransaction {
             let _ = fs::remove_dir_all(&self.paths.staging);
             return Err(error);
         }
+        if let Err(error) = preserve_cargo_lock(&self.paths.root, &self.paths.staging) {
+            let _ = fs::remove_dir_all(&self.paths.staging);
+            return Err(error);
+        }
         if let Err(error) = ownership::validate_owned_tree(&self.paths.staging) {
             let _ = fs::remove_dir_all(&self.paths.staging);
             return Err(error);
@@ -270,6 +274,18 @@ fn write_staging(staging: &Path, files: &BTreeMap<PathBuf, Vec<u8>>) -> io::Resu
         let mut file = File::create(path)?;
         file.write_all(content)?;
         file.sync_all()?;
+    }
+    Ok(())
+}
+
+fn preserve_cargo_lock(root: &Path, staging: &Path) -> io::Result<()> {
+    let source = root.join("backend/Cargo.lock");
+    let manifest_unchanged = fs::read(root.join("backend/Cargo.toml"))
+        .ok()
+        .zip(fs::read(staging.join("backend/Cargo.toml")).ok())
+        .is_some_and(|(old, new)| old == new);
+    if source.is_file() && manifest_unchanged {
+        fs::copy(source, staging.join("backend/Cargo.lock"))?;
     }
     Ok(())
 }

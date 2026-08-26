@@ -11,7 +11,8 @@ pub(super) fn scope(
 ) -> Result<TokenStream, CodegenError> {
     let condition = condition(entity, module, rule)?;
     Ok(quote! {
-        let access_condition = match #condition {
+        let access_scope = #condition;
+        let access_condition = match access_scope {
             Some(condition) => condition,
             None => return Err(access_denied(&context)),
         };

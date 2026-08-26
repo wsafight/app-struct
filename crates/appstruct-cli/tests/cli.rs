@@ -122,6 +122,22 @@ fn new_creates_valid_minimal_and_dashboard_projects_without_overwrite() {
 }
 
 #[test]
+fn doctor_json_reports_missing_external_database_configuration() {
+    let project = temporary_project("m2-project");
+    let output = run(&project, &["doctor", "--format", "json"]);
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stderr.is_empty());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["healthy"], false);
+    assert!(report["checks"].as_array().unwrap().iter().any(|check| {
+        check["name"] == "PostgreSQL"
+            && check["detail"]
+                .as_str()
+                .is_some_and(|detail| detail.contains("DATABASE_URL"))
+    }));
+}
+
+#[test]
 fn generation_manifest_blocks_modified_and_unknown_files() {
     let project = temporary_project("m2-project");
     let initial = run(&project, &["generate"]);
@@ -140,7 +156,10 @@ fn generation_manifest_blocks_modified_and_unknown_files() {
     let second = run(&project, &["generate"]);
     assert!(second.status.success());
     assert!(String::from_utf8_lossy(&second.stdout).contains("0 changed"));
-    assert!(!cargo_lock.exists());
+    assert_eq!(
+        fs::read_to_string(&cargo_lock).unwrap(),
+        "# build-generated lockfile\n"
+    );
     assert!(run(&project, &["generate", "--check"]).status.success());
 
     let owned = project.join("generated/openapi/openapi.json");

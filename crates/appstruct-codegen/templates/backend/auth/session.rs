@@ -133,10 +133,12 @@ impl AuthState {
     }
 
     pub(crate) fn validate_origin(&self, headers: &HeaderMap) -> Result<(), ApiError> {
-        if let Some(origin) = headers.get(header::ORIGIN).and_then(|value| value.to_str().ok()) {
-            if origin != self.config.allowed_origin {
-                return Err(ApiError::InvalidCsrf);
-            }
+        if headers
+            .get(header::ORIGIN)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|origin| origin != self.config.allowed_origin)
+        {
+            return Err(ApiError::InvalidCsrf);
         }
         Ok(())
     }

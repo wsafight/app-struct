@@ -5,6 +5,9 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod build;
+mod doctor;
+mod environment;
 mod generation;
 mod migration;
 mod project_new;
@@ -32,6 +35,13 @@ enum Command {
         #[arg(long, value_enum, default_value_t = project_new::ProjectTemplate::Dashboard)]
         template: project_new::ProjectTemplate,
     },
+    /// Build validated backend and web production artifacts.
+    Build,
+    /// Check the local toolchain, database mode, and project configuration.
+    Doctor {
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+    },
     /// Validate the App Spec and build normalized IR in memory.
     Check {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
@@ -50,7 +60,7 @@ enum Command {
     },
 }
 
-#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
 enum OutputFormat {
     #[default]
     Text,
@@ -83,10 +93,11 @@ fn run(cli: Cli) -> ExitCode {
         return project_new::run(&parent, name, *template);
     }
     let diagnostic_format = match &cli.command {
-        Command::Check { format } => *format,
-        Command::New { .. } | Command::Generate { .. } | Command::Migrate { .. } => {
-            OutputFormat::Text
-        }
+        Command::Check { format } | Command::Doctor { format } => *format,
+        Command::New { .. }
+        | Command::Build
+        | Command::Generate { .. }
+        | Command::Migrate { .. } => OutputFormat::Text,
     };
     let start = match cli.project {
         Some(path) => path,
@@ -113,6 +124,8 @@ fn run(cli: Cli) -> ExitCode {
 
     match cli.command {
         Command::New { .. } => unreachable!(),
+        Command::Build => build::run(&project),
+        Command::Doctor { format } => doctor::run(&project, format == OutputFormat::Json),
         Command::Check { format } => match appstruct_compiler::compile_project(&project) {
             Ok(ir) => {
                 match format {

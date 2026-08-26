@@ -6,6 +6,7 @@ use std::process::ExitCode;
 
 mod ownership;
 mod transaction;
+mod web_format;
 
 use transaction::GenerationTransaction;
 
@@ -26,13 +27,17 @@ pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
             return ExitCode::from(1);
         }
     };
-    let artifacts = match appstruct_codegen::plan(&ir) {
+    let mut artifacts = match appstruct_codegen::plan(&ir) {
         Ok(artifacts) => artifacts,
         Err(error) => {
             eprintln!("error[AS5001]: {error}");
             return ExitCode::from(1);
         }
     };
+    if let Err(error) = web_format::format(project, &mut artifacts) {
+        eprintln!("error[AS5006]: cannot format generated web artifacts: {error}");
+        return ExitCode::from(3);
+    }
     let root = project.join("generated");
     if check {
         return check_artifacts(&root, &artifacts);

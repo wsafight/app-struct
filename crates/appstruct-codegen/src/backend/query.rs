@@ -12,6 +12,7 @@ pub(super) fn list_support(
 ) -> Result<TokenStream, CodegenError> {
     let filters = filter_rules(entity, module)?;
     let filter_keys = filter_keys(entity);
+    let filter_validation = filter_validation(&filter_keys);
     let search = search_rule(entity, module)?;
     let sorts = sort_rules(entity, module)?;
     let primary = column_ident(primary_key(entity)?)?;
@@ -55,12 +56,7 @@ pub(super) fn list_support(
                     "`page` must be at least 1 and `page_size` must be between 1 and 100".to_owned()
                 ));
             }
-            for key in query.filters.keys() {
-                match key.as_str() {
-                    #(#filter_keys => {},)*
-                    _ => return Err(ApiError::InvalidQuery(format!("unsupported query parameter `{key}`"))),
-                }
-            }
+            #filter_validation
             let mut select = #module::Entity::find();
             #access_scope
             #(#filters)*
@@ -83,6 +79,25 @@ pub(super) fn list_support(
             Ok(Json(ListResponse { data, meta: ListMeta { page, page_size, total } }))
         }
     })
+}
+
+fn filter_validation(keys: &[LitStr]) -> TokenStream {
+    if keys.is_empty() {
+        quote! {
+            if let Some(key) = query.filters.keys().next() {
+                return Err(ApiError::InvalidQuery(format!("unsupported query parameter `{key}`")));
+            }
+        }
+    } else {
+        quote! {
+            for key in query.filters.keys() {
+                match key.as_str() {
+                    #(#keys => {},)*
+                    _ => return Err(ApiError::InvalidQuery(format!("unsupported query parameter `{key}`"))),
+                }
+            }
+        }
+    }
 }
 
 fn filter_rules(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream>, CodegenError> {

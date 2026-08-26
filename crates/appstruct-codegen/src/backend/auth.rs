@@ -56,7 +56,6 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
         .default_role
         .as_deref()
         .expect("compiler requires default role");
-    let roles = &ir.auth.roles;
     let user_table = &user.table_name;
     let user_id_column = &id.column_name;
     let user_email_column = &email.column_name;
@@ -64,7 +63,6 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub const REGISTRATION_ENABLED: bool = #registration;
         pub const PASSWORD_RESET_ENABLED: bool = #password_reset;
         pub const DEFAULT_ROLE: &str = #default_role;
-        pub const ROLES: &[&str] = &[#(#roles),*];
         pub const USER_TABLE: &str = #user_table;
         pub const USER_ID_COLUMN: &str = #user_id_column;
         pub const USER_EMAIL_COLUMN: &str = #user_email_column;

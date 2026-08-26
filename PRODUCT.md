@@ -1,6 +1,6 @@
 # AppStruct 产品需求文档
 
-> 状态：Implementation Baseline v1.0<br>
+> 状态：Implementation Baseline v1.1<br>
 > 日期：2026-08-26<br>
 > 产品类型：配置驱动的 Rust 全栈应用生成框架<br>
 > 文档范围：产品定位、用户体验、功能边界、MVP 和验收标准
@@ -21,6 +21,7 @@
 | Migration Runner | 已完成 | apply/status、数据库历史、checksum、事务边界、dirty-state 阻断和 PostgreSQL schema drift 检测 |
 | Generator Transaction | 已完成 | 跨进程项目锁、追加式恢复 journal、目录交换崩溃恢复和歧义状态保护 |
 | M5 Templates | 已完成 | `appstruct new`、`minimal/dashboard`、固定 Rust/Node 依赖和不覆盖的一次性项目骨架 |
+| M5 Build/Doctor | 已完成 | 工具链与数据库模式诊断、JSON 报告、锁定依赖的 Rust/TypeScript 生产构建门禁 |
 
 M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
@@ -37,6 +38,8 @@ Migration Runner 使用 `_appstruct_migrations` 保存 migration ID、文件 SHA
 ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新生成先获取 `.appstruct/generation.lock` 的跨进程排他锁，再拒绝未知文件和 hash 已变化的生成文件。完整 staging 通过 manifest 校验后，CLI 向 `.appstruct/generation.journal` 追加并持久化 `prepared/backed_up/installed` phase，随后交换同级 staging/backup 目录。下次生成在持锁状态下根据 journal 和三个目录的实际组合完成提交或回滚；缺少 journal 的旧版遗留目录也能恢复，歧义组合则保留现场并失败。`app/` 不进入该事务。
 
 `appstruct new <name> --template minimal|dashboard` 已提供不覆盖的一次性项目创建。`minimal` 生成 external PostgreSQL 的公开 Note 应用；`dashboard` 生成 managed PostgreSQL Compose、Auth/RBAC/owner 和 User/Project/Task 三实体项目管理应用。两个模板都提交 `appstruct.lock`、`rust-toolchain.toml`、`.env.example` 和本地状态忽略规则，首次 generate 再产生固定的 `pnpm-lock.yaml`；目标或 sibling staging 已存在时创建会中止。
+
+`appstruct doctor --format text|json` 检查 1.98 Rust/Cargo、rustfmt、Clippy、固定 pnpm 版本和数据库开发模式。managed 模式验证 Compose 文件及 Docker/Compose 服务；external 模式从进程环境或 `.env` 读取 `DATABASE_URL` 并执行 migration status，不在输出中暴露连接串。`appstruct build` 先生成 canonical Artifact，再对固定 Rust dependency lock 执行 fmt、release Clippy 和 release build，并对 pnpm lock 执行 Prettier check、TypeScript 检查和 Vite build。生成 TypeScript 在 manifest hash 计算前由 lockfile 固定的 Prettier 格式化，`generate --check` 与 build 因此使用同一份字节输出。
 
 ## 1. 产品摘要
 
