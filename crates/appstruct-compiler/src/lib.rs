@@ -8,6 +8,7 @@ mod field;
 mod field_options;
 mod file;
 mod jobs;
+mod lint;
 mod loading;
 mod lower;
 mod mail;
@@ -24,6 +25,12 @@ pub use preset::{PresetInfo, preset_info, project_lock};
 /// Draft 2020-12 schema for root and domain App Spec YAML documents.
 pub const APP_SPEC_SCHEMA: &str = include_str!("../schema/appstruct.schema.json");
 
+#[derive(Clone, Debug)]
+pub struct CompileReport {
+    pub ir: AppIr,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
 use appstruct_ir::{AppIr, Diagnostic, SourceSpan};
 use std::collections::BTreeMap;
 use std::fs;
@@ -36,6 +43,15 @@ use std::path::{Path, PathBuf};
 /// Returns all diagnostics found during path resolution and semantic validation. YAML shape errors
 /// are reported per source before semantic validation starts.
 pub fn compile_project(project_root: &Path) -> Result<AppIr, Vec<Diagnostic>> {
+    compile_project_report(project_root).map(|report| report.ir)
+}
+
+/// Compile a project and retain non-fatal diagnostics for CLI and CI policy.
+///
+/// # Errors
+///
+/// Returns all fatal diagnostics found during loading and semantic validation.
+pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<Diagnostic>> {
     let root = canonical_project_root(project_root)?;
     let root_node = loading::load_yaml(&root, &root.join("appstruct.yaml"))?;
     let surface_root = surface::decode_root(&root_node).map_err(|error| vec![error])?;
@@ -74,11 +90,14 @@ pub fn compile_project(project_root: &Path) -> Result<AppIr, Vec<Diagnostic>> {
         }
     }
 
-    if diagnostics.is_empty() {
-        lower::build_ir(surface_root, application)
-    } else {
-        Err(diagnostics)
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
     }
+    let warnings = lint::warnings(&application);
+    lower::build_ir(surface_root, application).map(|ir| CompileReport {
+        ir,
+        diagnostics: warnings,
+    })
 }
 
 /// Return the selected preset's effective module configuration after project overrides.

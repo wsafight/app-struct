@@ -62,6 +62,9 @@ enum Command {
     Check {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
+        /// Treat non-fatal App Spec diagnostics as errors.
+        #[arg(long)]
+        deny_warnings: bool,
     },
     /// Generate canonical IR and the minimal Rust backend artifact.
     Generate {
@@ -119,7 +122,7 @@ fn run(cli: Cli) -> ExitCode {
         return schema::run();
     }
     let diagnostic_format = match &cli.command {
-        Command::Check { format } | Command::Doctor { format } => *format,
+        Command::Check { format, .. } | Command::Doctor { format } => *format,
         Command::New { .. }
         | Command::Auth { .. }
         | Command::Build
@@ -158,17 +161,34 @@ fn run(cli: Cli) -> ExitCode {
         Command::Build => build::run(&project),
         Command::Doctor { format } => doctor::run(&project, format == OutputFormat::Json),
         Command::Dev { api_port, web_port } => development::run(&project, api_port, web_port),
-        Command::Check { format } => match appstruct_compiler::compile_project(&project) {
-            Ok(ir) => {
+        Command::Check {
+            format,
+            deny_warnings,
+        } => match appstruct_compiler::compile_project_report(&project) {
+            Ok(report) => {
+                let denied = deny_warnings && !report.diagnostics.is_empty();
                 match format {
-                    OutputFormat::Text => println!(
-                        "App Spec is valid: {} ({} entities)",
-                        ir.app.name,
-                        ir.entities.len()
-                    ),
-                    OutputFormat::Json => render_json_report(true, ir.entities.len(), &[]),
+                    OutputFormat::Text => {
+                        for diagnostic in &report.diagnostics {
+                            render_text_diagnostic(diagnostic);
+                        }
+                        if !denied {
+                            println!(
+                                "App Spec is valid: {} ({} entities)",
+                                report.ir.app.name,
+                                report.ir.entities.len()
+                            );
+                        }
+                    }
+                    OutputFormat::Json => {
+                        render_json_report(!denied, report.ir.entities.len(), &report.diagnostics);
+                    }
                 }
-                ExitCode::SUCCESS
+                if denied {
+                    ExitCode::from(1)
+                } else {
+                    ExitCode::SUCCESS
+                }
             }
             Err(diagnostics) => {
                 match format {

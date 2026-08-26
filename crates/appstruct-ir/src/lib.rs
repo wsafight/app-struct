@@ -310,6 +310,21 @@ impl Diagnostic {
     }
 
     #[must_use]
+    pub fn warning(code: &str, message: impl Into<String>, span: SourceSpan) -> Self {
+        Self {
+            severity: Severity::Warning,
+            code: code.to_owned(),
+            message: message.into(),
+            primary: Box::new(Label {
+                span,
+                message: String::new(),
+            }),
+            secondary: Vec::new(),
+            help: None,
+        }
+    }
+
+    #[must_use]
     pub fn with_primary_message(mut self, message: impl Into<String>) -> Self {
         self.primary.message = message.into();
         self

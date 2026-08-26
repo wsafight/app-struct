@@ -1,4 +1,4 @@
-use appstruct_compiler::compile_project;
+use appstruct_compiler::{compile_project, compile_project_report};
 use appstruct_ir::{OperationTypeIr, to_canonical_json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,6 +20,18 @@ fn compiles_fixture_to_canonical_golden() {
     }
     let expected = include_str!("../../../tests/golden/m0-app-ir.json");
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn reports_public_mutations_without_blocking_compilation() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
+    let report = compile_project_report(&fixture).unwrap();
+    assert_eq!(report.ir.entities.len(), 2);
+    assert_eq!(report.diagnostics.len(), 2);
+    assert!(report.diagnostics.iter().all(|diagnostic| {
+        diagnostic.code == "AS3070" && diagnostic.severity == appstruct_ir::Severity::Warning
+    }));
+    assert!(compile_project(&fixture).is_ok());
 }
 
 #[test]

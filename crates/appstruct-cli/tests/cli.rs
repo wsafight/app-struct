@@ -25,6 +25,25 @@ fn check_emits_machine_readable_diagnostics_contract() {
 }
 
 #[test]
+fn check_can_deny_non_fatal_warnings() {
+    let project = temporary_project("m2-project");
+    let allowed = run(&project, &["check", "--format", "json"]);
+    assert!(allowed.status.success());
+    let report: Value = serde_json::from_slice(&allowed.stdout).unwrap();
+    assert_eq!(report["valid"], true);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 2);
+    assert_eq!(report["diagnostics"][0]["severity"], "warning");
+    assert_eq!(report["diagnostics"][0]["code"], "AS3070");
+
+    let denied = run(&project, &["check", "--deny-warnings", "--format", "json"]);
+    assert_eq!(denied.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&denied.stdout).unwrap();
+    assert_eq!(report["valid"], false);
+    assert_eq!(report["entity_count"], 2);
+    assert_eq!(report["diagnostics"].as_array().unwrap().len(), 2);
+}
+
+#[test]
 fn project_discovery_failure_honors_json_format() {
     let temporary = tempfile::tempdir().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_appstruct"))
