@@ -1,4 +1,8 @@
+mod access;
+mod extension;
 mod value;
+
+pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
 
 use self::value::{
     ensure_known_keys, expect_bool, expect_mapping, expect_scalar_string, expect_sequence,
@@ -6,7 +10,6 @@ use self::value::{
 };
 use crate::yaml::{MappingEntry, Node};
 use appstruct_ir::{Diagnostic, SourceSpan};
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Located<T> {
@@ -24,9 +27,23 @@ pub(crate) struct SurfaceRoot {
     pub includes: Vec<Located<String>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct SurfaceDomain {
     pub entities: Vec<SurfaceEntity>,
+    pub value_objects: Vec<SurfaceValueObject>,
+    pub commands: Vec<SurfaceOperation>,
+    pub queries: Vec<SurfaceOperation>,
+    pub pages: Vec<SurfacePage>,
+}
+
+impl SurfaceDomain {
+    pub(crate) fn extend(&mut self, mut domain: Self) {
+        self.entities.append(&mut domain.entities);
+        self.value_objects.append(&mut domain.value_objects);
+        self.commands.append(&mut domain.commands);
+        self.queries.append(&mut domain.queries);
+        self.pages.append(&mut domain.pages);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +71,7 @@ pub(crate) struct SurfaceField {
     pub values: Option<Vec<Located<String>>>,
     pub target: Option<Located<String>>,
     pub on_delete: Option<Located<String>>,
+    pub ui_component: Option<Located<String>>,
     pub span: SourceSpan,
 }
 
@@ -192,7 +210,15 @@ pub(crate) fn decode_domain(root: &Node) -> Result<SurfaceDomain, Diagnostic> {
     let mapping = expect_mapping(root, "domain configuration")?;
     ensure_known_keys(
         mapping,
-        &["domain", "entities", "includes"],
+        &[
+            "domain",
+            "entities",
+            "value_objects",
+            "commands",
+            "queries",
+            "pages",
+            "includes",
+        ],
         "domain configuration",
     )?;
     if let Some(includes) = mapping.get("includes") {
@@ -206,14 +232,21 @@ pub(crate) fn decode_domain(root: &Node) -> Result<SurfaceDomain, Diagnostic> {
 
     let domain_node = required(mapping, "domain", &root.span)?;
     let _domain = expect_string(&domain_node.value, "`domain`")?;
-    let entities_node = required(mapping, "entities", &root.span)?;
-    let entities_mapping = expect_mapping(&entities_node.value, "`entities`")?;
-    let mut entities = Vec::with_capacity(entities_mapping.len());
-
-    for (name, entry) in entities_mapping {
-        entities.push(decode_entity(name, entry)?);
+    let mut entities = Vec::new();
+    if let Some(entities_node) = mapping.get("entities") {
+        let entities_mapping = expect_mapping(&entities_node.value, "`entities`")?;
+        entities.reserve(entities_mapping.len());
+        for (name, entry) in entities_mapping {
+            entities.push(decode_entity(name, entry)?);
+        }
     }
-    Ok(SurfaceDomain { entities })
+    Ok(SurfaceDomain {
+        entities,
+        value_objects: extension::decode_value_objects(mapping)?,
+        commands: extension::decode_operations(mapping, "commands")?,
+        queries: extension::decode_operations(mapping, "queries")?,
+        pages: extension::decode_pages(mapping)?,
+    })
 }
 
 fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diagnostic> {
@@ -240,7 +273,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
         fields,
         access: mapping
             .get("access")
-            .map(|access| decode_access(&access.value))
+            .map(|access| access::decode_crud_access(&access.value))
             .transpose()?,
         span: entry.value.span.clone(),
     })
@@ -268,6 +301,7 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             "values",
             "target",
             "on_delete",
+            "ui",
         ],
         "field definition in M0",
     )?;
@@ -325,58 +359,10 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             .transpose()?,
         target: optional_string(mapping, "target", "relation `target`")?,
         on_delete: optional_string(mapping, "on_delete", "relation `on_delete`")?,
+        ui_component: mapping
+            .get("ui")
+            .map(|ui| extension::decode_ui_component(&ui.value))
+            .transpose()?,
         span: entry.value.span.clone(),
     })
-}
-
-fn decode_access(node: &Node) -> Result<SurfaceAccess, Diagnostic> {
-    let mapping = expect_mapping(node, "entity `access`")?;
-    ensure_known_keys(
-        mapping,
-        &["list", "read", "create", "update", "delete"],
-        "entity `access`",
-    )?;
-    Ok(SurfaceAccess {
-        list: optional_access_rule(mapping, "list")?,
-        read: optional_access_rule(mapping, "read")?,
-        create: optional_access_rule(mapping, "create")?,
-        update: optional_access_rule(mapping, "update")?,
-        delete: optional_access_rule(mapping, "delete")?,
-        span: node.span.clone(),
-    })
-}
-
-fn optional_access_rule(
-    mapping: &BTreeMap<String, MappingEntry>,
-    operation: &str,
-) -> Result<Option<Located<SurfaceAccessRule>>, Diagnostic> {
-    mapping
-        .get(operation)
-        .map(|entry| {
-            let rule = expect_mapping(&entry.value, "access rule")?;
-            ensure_known_keys(rule, &["role", "public"], "access rule")?;
-            let value = if let Some(role) = rule.get("role") {
-                SurfaceAccessRule::Role(expect_string(&role.value, "access `role`")?.value)
-            } else if let Some(public) = rule.get("public") {
-                if !expect_bool(&public.value, "access `public`")? {
-                    return Err(Diagnostic::error(
-                        "AS1007",
-                        "`public` must be true when present",
-                        public.value.span.clone(),
-                    ));
-                }
-                SurfaceAccessRule::Public
-            } else {
-                return Err(Diagnostic::error(
-                    "AS1007",
-                    "access rule requires `role` or `public: true`",
-                    entry.value.span.clone(),
-                ));
-            };
-            Ok(Located {
-                value,
-                span: entry.value.span.clone(),
-            })
-        })
-        .transpose()
 }

@@ -2,7 +2,7 @@ import { Boxes } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import type { ResourceDefinition } from "../resource";
 
-export function Layout({ resources }: { resources: ResourceDefinition[] }) {
+export function Layout({ resources, pages }: { resources: ResourceDefinition[]; pages: readonly { name: string; label: string; path: string }[] }) {
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -13,6 +13,7 @@ export function Layout({ resources }: { resources: ResourceDefinition[] }) {
               {resource.label}
             </NavLink>
           ))}
+          {pages.map((page) => <NavLink key={page.name} to={`/${page.path}`}>{page.label}</NavLink>)}
         </nav>
       </aside>
       <div className="workspace">
@@ -22,4 +23,3 @@ export function Layout({ resources }: { resources: ResourceDefinition[] }) {
     </div>
   );
 }
-

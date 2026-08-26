@@ -1,0 +1,75 @@
+domain: project
+
+entities:
+  Project:
+    label: Projects
+    table: projects
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      code:
+        type: string
+        required: true
+        unique: true
+        max_length: 24
+        searchable: true
+      name:
+        type: string
+        required: true
+        max_length: 120
+        searchable: true
+      status:
+        type: enum
+        values: [planned, active, archived]
+        default: planned
+        filterable: true
+      metadata:
+        type: json
+        ui:
+          component: ProjectMetadataEditor
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { public: true }
+      read: { public: true }
+      create: { public: true }
+      update: { public: true }
+      delete: { public: true }
+
+value_objects:
+  ArchiveProjectInput:
+    fields:
+      project_id:
+        type: uuid
+        required: true
+      reason:
+        type: string
+  ProjectMetrics:
+    fields:
+      active:
+        type: integer
+        required: true
+      total:
+        type: integer
+        required: true
+
+commands:
+  ArchiveProject:
+    input: ArchiveProjectInput
+    output: Project
+    access: { public: true }
+
+queries:
+  ProjectMetrics:
+    output: ProjectMetrics
+    access: { public: true }
+
+pages:
+  ProjectDashboard:
+    label: Project dashboard
+    path: project-dashboard
+    component: ProjectDashboard

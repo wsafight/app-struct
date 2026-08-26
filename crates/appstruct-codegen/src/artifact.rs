@@ -38,6 +38,22 @@ pub enum ArtifactKind {
     Web,
 }
 
+impl ArtifactKind {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CanonicalIr => "canonical_ir",
+            Self::DatabaseSchema => "database_schema",
+            Self::Migration => "migration",
+            Self::RustManifest => "rust_manifest",
+            Self::RustSource => "rust_source",
+            Self::OpenApi => "openapi",
+            Self::TypeScript => "typescript",
+            Self::Web => "web",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodegenError {
     message: String,

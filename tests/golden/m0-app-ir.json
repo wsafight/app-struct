@@ -44,7 +44,8 @@
             "searchable": false,
             "filterable": false,
             "sortable": true
-          }
+          },
+          "ui_component": null
         },
         {
           "id": "app::Project.id",
@@ -70,7 +71,8 @@
             "searchable": false,
             "filterable": false,
             "sortable": false
-          }
+          },
+          "ui_component": null
         },
         {
           "id": "app::Project.name",
@@ -96,7 +98,8 @@
             "searchable": true,
             "filterable": false,
             "sortable": true
-          }
+          },
+          "ui_component": null
         },
         {
           "id": "app::Project.owner",
@@ -123,7 +126,8 @@
             "searchable": false,
             "filterable": false,
             "sortable": false
-          }
+          },
+          "ui_component": null
         },
         {
           "id": "app::Project.status",
@@ -154,7 +158,8 @@
             "searchable": false,
             "filterable": true,
             "sortable": false
-          }
+          },
+          "ui_component": null
         }
       ],
       "access": {
@@ -216,7 +221,8 @@
             "searchable": true,
             "filterable": false,
             "sortable": false
-          }
+          },
+          "ui_component": null
         },
         {
           "id": "app::User.id",
@@ -242,7 +248,8 @@
             "searchable": false,
             "filterable": false,
             "sortable": false
-          }
+          },
+          "ui_component": null
         }
       ],
       "access": {

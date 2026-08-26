@@ -29,11 +29,11 @@ pub(crate) fn build_access(
         return None;
     }
     Some(CrudAccessIr {
-        list: convert(access.list.as_ref().expect("validated above")),
-        read: convert(access.read.as_ref().expect("validated above")),
-        create: convert(access.create.as_ref().expect("validated above")),
-        update: convert(access.update.as_ref().expect("validated above")),
-        delete: convert(access.delete.as_ref().expect("validated above")),
+        list: convert_rule(access.list.as_ref().expect("validated above")),
+        read: convert_rule(access.read.as_ref().expect("validated above")),
+        create: convert_rule(access.create.as_ref().expect("validated above")),
+        update: convert_rule(access.update.as_ref().expect("validated above")),
+        delete: convert_rule(access.delete.as_ref().expect("validated above")),
     })
 }
 
@@ -50,7 +50,7 @@ fn missing_operations(access: &SurfaceAccess) -> Vec<&'static str> {
     .collect()
 }
 
-fn convert(rule: &Located<SurfaceAccessRule>) -> AccessRuleIr {
+pub(crate) fn convert_rule(rule: &Located<SurfaceAccessRule>) -> AccessRuleIr {
     match &rule.value {
         SurfaceAccessRule::Public => AccessRuleIr::Public,
         SurfaceAccessRule::Role(role_name) => AccessRuleIr::Role {

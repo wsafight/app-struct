@@ -16,6 +16,7 @@ pub struct FieldViolation {
 pub enum ApiError {
     InvalidId,
     InvalidQuery(String),
+    Forbidden,
     NotFound,
     Validation(Vec<FieldViolation>),
     Database(DbErr),
@@ -58,6 +59,12 @@ impl IntoResponse for ApiError {
                 StatusCode::NOT_FOUND,
                 "NOT_FOUND",
                 "The requested resource was not found".to_owned(),
+                vec![],
+            ),
+            Self::Forbidden => (
+                StatusCode::FORBIDDEN,
+                "FORBIDDEN",
+                "The operation is not allowed".to_owned(),
                 vec![],
             ),
             Self::Validation(fields) => (

@@ -1,3 +1,4 @@
+use crate::naming::is_rust_type_name;
 use crate::surface::SurfaceField;
 use appstruct_ir::{Diagnostic, FieldTypeIr, GeneratedValueIr};
 
@@ -10,6 +11,15 @@ pub(crate) fn validate_field_options(
     validate_numeric_bounds(field, field_type, diagnostics);
     validate_type_specific_options(field, field_type, diagnostics);
     validate_default(field, field_type, diagnostics);
+    if let Some(component) = &field.ui_component
+        && !is_rust_type_name(&component.value)
+    {
+        diagnostics.push(Diagnostic::error(
+            "AS3011",
+            format!("invalid UI component name `{}`", component.value),
+            component.span.clone(),
+        ));
+    }
     if field.flags.primary_key()
         && !matches!(
             field_type,

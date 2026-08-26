@@ -1,13 +1,11 @@
-use appstruct_codegen::Artifact;
 use appstruct_ir::{Diagnostic, Severity};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use std::env;
-use std::fs;
-use std::io;
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod generation;
 mod migration;
 
 #[derive(Debug, Parser)]
@@ -116,107 +114,9 @@ fn run(cli: Cli) -> ExitCode {
                 ExitCode::from(1)
             }
         },
-        Command::Generate { check } => generate(&project, check),
+        Command::Generate { check } => generation::run(&project, check),
         Command::Migrate { command } => migration::run(&project, command),
     }
-}
-
-fn generate(project: &Path, check: bool) -> ExitCode {
-    let ir = match appstruct_compiler::compile_project(project) {
-        Ok(ir) => ir,
-        Err(diagnostics) => {
-            for diagnostic in &diagnostics {
-                render_text_diagnostic(diagnostic);
-            }
-            return ExitCode::from(1);
-        }
-    };
-    let artifacts = match appstruct_codegen::plan(&ir) {
-        Ok(artifacts) => artifacts,
-        Err(error) => {
-            eprintln!("error[AS5001]: {error}");
-            return ExitCode::from(1);
-        }
-    };
-
-    let generated_root = project.join("generated");
-    if check {
-        let stale = stale_artifacts(&generated_root, &artifacts);
-        if stale.is_empty() {
-            println!(
-                "Generated artifacts are current ({} files)",
-                artifacts.len()
-            );
-            return ExitCode::SUCCESS;
-        }
-        for path in stale {
-            eprintln!("stale generated artifact: {}", path.display());
-        }
-        return ExitCode::from(1);
-    }
-
-    match write_artifacts(&generated_root, &artifacts) {
-        Ok(changed) => {
-            println!(
-                "Generated {} artifacts for {} ({changed} changed)",
-                artifacts.len(),
-                ir.app.name
-            );
-            ExitCode::SUCCESS
-        }
-        Err(error) => {
-            eprintln!("error[AS5002]: failed to write generated artifacts: {error}");
-            ExitCode::from(3)
-        }
-    }
-}
-
-fn stale_artifacts(root: &Path, artifacts: &[Artifact]) -> Vec<PathBuf> {
-    artifacts
-        .iter()
-        .filter_map(|artifact| {
-            let path = root.join(&artifact.relative_path);
-            match fs::read(&path) {
-                Ok(content) if content == artifact.content => None,
-                _ => Some(path),
-            }
-        })
-        .collect()
-}
-
-fn write_artifacts(root: &Path, artifacts: &[Artifact]) -> io::Result<usize> {
-    let mut changed = 0;
-    for artifact in artifacts {
-        validate_relative_path(&artifact.relative_path)?;
-        let path = root.join(&artifact.relative_path);
-        if fs::read(&path).is_ok_and(|content| content == artifact.content) {
-            continue;
-        }
-        let parent = path.parent().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "artifact has no parent directory",
-            )
-        })?;
-        fs::create_dir_all(parent)?;
-        fs::write(path, &artifact.content)?;
-        changed += 1;
-    }
-    Ok(changed)
-}
-
-fn validate_relative_path(path: &Path) -> io::Result<()> {
-    if path.is_absolute()
-        || path
-            .components()
-            .any(|component| !matches!(component, Component::Normal(_)))
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("unsafe artifact path `{}`", path.display()),
-        ));
-    }
-    Ok(())
 }
 
 fn render_json_report(valid: bool, entity_count: usize, diagnostics: &[Diagnostic]) {
@@ -231,7 +131,7 @@ fn render_json_report(valid: bool, entity_count: usize, diagnostics: &[Diagnosti
     }
 }
 
-fn render_text_diagnostic(diagnostic: &Diagnostic) {
+pub(crate) fn render_text_diagnostic(diagnostic: &Diagnostic) {
     let span = &diagnostic.primary.span;
     let severity = match diagnostic.severity {
         Severity::Error => "error",

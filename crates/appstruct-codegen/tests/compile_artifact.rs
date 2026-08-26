@@ -46,8 +46,64 @@ fn one_to_one_relation_generates_has_one_inverse() {
     );
 }
 
+#[test]
+fn m3_extensions_require_every_handler_at_compile_time() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m3-project");
+    let ir = compile_project(&fixture).unwrap();
+    let artifacts = plan(&ir).unwrap();
+    let temporary = tempfile::tempdir().unwrap();
+    write_artifacts(temporary.path(), &artifacts);
+
+    let extensions =
+        fs::read_to_string(temporary.path().join("generated/backend/src/extensions.rs")).unwrap();
+    assert!(extensions.contains("pub trait ArchiveProjectHandler"));
+    assert!(extensions.contains("pub trait ProjectMetricsHandler"));
+    assert!(extensions.contains("pub trait ProjectHooks"));
+    assert!(extensions.contains("pub trait ProjectPolicy"));
+    let project_api = artifact_text(&artifacts, "backend/src/api/project.rs");
+    assert!(project_api.contains("after_commit hook failed"));
+    assert!(!project_api.contains("HookOperation::Create, &model).await?"));
+    assert!(artifact_text(&artifacts, "web/src/main.tsx").contains("../../../app/web/registry"));
+    assert!(
+        artifact_text(&artifacts, "web/src/generated/client.ts").contains("archiveProjectCommand")
+    );
+    assert!(
+        artifact_text(&artifacts, "web/src/generated/registry.ts")
+            .contains("ProjectMetadataEditor")
+    );
+    let openapi: Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    assert!(openapi["paths"]["/api/commands/archive-project"]["post"].is_object());
+    assert!(openapi["paths"]["/api/queries/project-metrics"]["get"].is_object());
+
+    let generated_manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert!(cargo_check(&generated_manifest, true).status.success());
+
+    let server = temporary.path().join("server");
+    fs::create_dir_all(server.join("src")).unwrap();
+    fs::write(server.join("Cargo.toml"), server_manifest()).unwrap();
+    fs::write(server.join("src/main.rs"), missing_handler_source()).unwrap();
+    let missing = Command::new("cargo")
+        .args(["check", "--quiet", "--manifest-path"])
+        .arg(server.join("Cargo.toml"))
+        .env("CARGO_TARGET_DIR", temporary.path().join("server-target"))
+        .output()
+        .unwrap();
+    assert!(!missing.status.success());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("ProjectMetricsHandler"));
+
+    fs::write(server.join("src/main.rs"), complete_handler_source()).unwrap();
+    let complete = Command::new("cargo")
+        .args(["check", "--quiet", "--manifest-path"])
+        .arg(server.join("Cargo.toml"))
+        .env("CARGO_TARGET_DIR", temporary.path().join("server-target"))
+        .status()
+        .unwrap();
+    assert!(complete.success());
+}
+
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 30);
+    assert_eq!(artifacts.len(), 33);
     assert!(artifact_text(artifacts, "database/0001_initial.sql").contains("CREATE TABLE"));
     assert!(artifact_text(artifacts, "web/pnpm-lock.yaml").contains("lockfileVersion"));
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("ListResponse"));
@@ -87,4 +143,86 @@ fn artifact_text<'artifacts>(artifacts: &'artifacts [Artifact], path: &str) -> &
         .find(|artifact| artifact.relative_path == Path::new(path))
         .unwrap();
     std::str::from_utf8(&artifact.content).unwrap()
+}
+
+fn write_artifacts(root: &Path, artifacts: &[Artifact]) {
+    for artifact in artifacts {
+        let destination = root.join("generated").join(&artifact.relative_path);
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        fs::write(destination, &artifact.content).unwrap();
+    }
+}
+
+fn cargo_check(manifest: &Path, library_only: bool) -> std::process::Output {
+    let mut command = Command::new("cargo");
+    command
+        .args(["check", "--quiet", "--manifest-path"])
+        .arg(manifest);
+    if library_only {
+        command.arg("--lib");
+    }
+    command
+        .env(
+            "CARGO_TARGET_DIR",
+            manifest.parent().unwrap().join("target"),
+        )
+        .output()
+        .unwrap()
+}
+
+fn server_manifest() -> &'static str {
+    r#"[package]
+name = "appstruct-extension-server"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+appstruct-generated-backend = { path = "../generated/backend" }
+async-trait = "0.1.89"
+"#
+}
+
+fn missing_handler_source() -> &'static str {
+    r"use appstruct_generated_backend::{ApiError, AppExtensions, RequestContext};
+use appstruct_generated_backend::entities::project;
+use appstruct_generated_backend::extensions::{ArchiveProjectHandler, ArchiveProjectInput};
+use async_trait::async_trait;
+
+struct Handlers;
+
+#[async_trait]
+impl ArchiveProjectHandler for Handlers {
+    async fn execute(&self, _ctx: &RequestContext, _input: ArchiveProjectInput) -> Result<project::Model, ApiError> {
+        Err(ApiError::NotFound)
+    }
+}
+
+fn main() { let _extensions = AppExtensions::builder().handlers(Handlers).build(); }
+"
+}
+
+fn complete_handler_source() -> &'static str {
+    r"use appstruct_generated_backend::{ApiError, AppExtensions, RequestContext};
+use appstruct_generated_backend::entities::project;
+use appstruct_generated_backend::extensions::{ArchiveProjectHandler, ArchiveProjectInput, ProjectMetrics, ProjectMetricsHandler};
+use async_trait::async_trait;
+
+struct Handlers;
+
+#[async_trait]
+impl ArchiveProjectHandler for Handlers {
+    async fn execute(&self, _ctx: &RequestContext, _input: ArchiveProjectInput) -> Result<project::Model, ApiError> {
+        Err(ApiError::NotFound)
+    }
+}
+
+#[async_trait]
+impl ProjectMetricsHandler for Handlers {
+    async fn execute(&self, _ctx: &RequestContext) -> Result<ProjectMetrics, ApiError> {
+        Ok(ProjectMetrics { active: 0, total: 0 })
+    }
+}
+
+fn main() { let _extensions = AppExtensions::builder().handlers(Handlers).build(); }
+"
 }

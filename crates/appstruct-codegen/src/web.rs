@@ -3,15 +3,17 @@ use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
 use std::fmt::Write;
 
 pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
+    let main = if requires_registry(ir) {
+        include_str!("../templates/web/main_with_registry.tsx")
+    } else {
+        include_str!("../templates/web/main.tsx")
+    };
     let static_files = [
         (
             "web/index.html",
             include_str!("../templates/web/index.html"),
         ),
-        (
-            "web/src/main.tsx",
-            include_str!("../templates/web/main.tsx"),
-        ),
+        ("web/src/main.tsx", main),
         (
             "web/src/resource.ts",
             include_str!("../templates/web/resource.ts"),
@@ -61,8 +63,22 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
             resources_source(ir),
             ArtifactKind::TypeScript,
         ),
+        Artifact::text(
+            "web/src/generated/registry.ts",
+            registry_source(ir),
+            ArtifactKind::TypeScript,
+        ),
     ]);
     artifacts
+}
+
+fn requires_registry(ir: &AppIr) -> bool {
+    !ir.pages.is_empty()
+        || ir
+            .entities
+            .iter()
+            .flat_map(|entity| &entity.fields)
+            .any(|field| field.ui_component.is_some())
 }
 
 fn tsconfig() -> &'static str {
@@ -79,6 +95,10 @@ fn tsconfig() -> &'static str {
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "paths": {
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react/*": ["./node_modules/@types/react/*"]
+    },
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
@@ -96,6 +116,9 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: { react: new URL("./node_modules/react", import.meta.url).pathname },
+  },
   server: { host: "127.0.0.1", port: 5173 },
 });
 "#
@@ -176,7 +199,49 @@ fn field_source(field: &FieldIr) -> String {
     if let Some(maximum) = &field.validation.maximum {
         properties.push(format!("maximum: {maximum:?}"));
     }
+    if let Some(component) = &field.ui_component {
+        properties.push(format!("uiComponent: {component:?}"));
+    }
     format!("{{ {} }}", properties.join(", "))
+}
+
+fn registry_source(ir: &AppIr) -> String {
+    let field_components = ir
+        .entities
+        .iter()
+        .flat_map(|entity| &entity.fields)
+        .filter_map(|field| field.ui_component.as_deref())
+        .collect::<std::collections::BTreeSet<_>>();
+    let field_members = field_components
+        .iter()
+        .map(|component| format!("    {component}: ComponentType<FieldComponentProps>;"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let page_components = ir
+        .pages
+        .iter()
+        .map(|page| page.component.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let page_members = page_components
+        .iter()
+        .map(|component| format!("    {component}: ComponentType<PageComponentProps>;"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let pages = ir
+        .pages
+        .iter()
+        .map(|page| {
+            format!(
+                "  {{ name: {:?}, label: {:?}, path: {:?}, component: {:?} }},",
+                page.rust_name, page.label, page.path, page.component
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "{}import type {{ ComponentType }} from \"react\";\n\nexport interface FieldComponentProps {{\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport type PageComponentProps = Record<string, never>;\n\nexport interface AppStructRegistry {{\n  fields: {{\n{field_members}\n  }};\n  pages: {{\n{page_members}\n  }};\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages = [\n{pages}\n] as const;\n",
+        generated_header("//")
+    )
 }
 
 fn field_kind(field_type: &FieldTypeIr) -> &'static str {

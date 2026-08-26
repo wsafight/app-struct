@@ -84,6 +84,69 @@ fn migration_dev_accepts_safe_addition_and_blocks_table_deletion() {
     assert_eq!(migration_count(&project), 2);
 }
 
+#[test]
+fn generation_manifest_blocks_modified_and_unknown_files() {
+    let project = temporary_project("m2-project");
+    let initial = run(&project, &["generate"]);
+    assert!(
+        initial.status.success(),
+        "{}",
+        String::from_utf8_lossy(&initial.stderr)
+    );
+    let manifest_path = project.join("generated/.appstruct-manifest.json");
+    let manifest: Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    assert_eq!(manifest["manifest_version"], 1);
+    assert_eq!(manifest["artifacts"].as_array().unwrap().len(), 33);
+
+    let cargo_lock = project.join("generated/backend/Cargo.lock");
+    fs::write(&cargo_lock, "# build-generated lockfile\n").unwrap();
+    let second = run(&project, &["generate"]);
+    assert!(second.status.success());
+    assert!(String::from_utf8_lossy(&second.stdout).contains("0 changed"));
+    assert!(!cargo_lock.exists());
+    assert!(run(&project, &["generate", "--check"]).status.success());
+
+    let owned = project.join("generated/openapi/openapi.json");
+    fs::write(&owned, "manually changed\n").unwrap();
+    let modified = run(&project, &["generate"]);
+    assert!(!modified.status.success());
+    assert!(String::from_utf8_lossy(&modified.stderr).contains("was modified outside AppStruct"));
+    assert_eq!(fs::read_to_string(owned).unwrap(), "manually changed\n");
+
+    let other = temporary_project("m2-project");
+    assert!(run(&other, &["generate"]).status.success());
+    fs::write(other.join("generated/user-code.rs"), "fn user_code() {}\n").unwrap();
+    let unknown = run(&other, &["generate"]);
+    assert!(!unknown.status.success());
+    assert!(String::from_utf8_lossy(&unknown.stderr).contains("unknown file"));
+}
+
+#[test]
+fn generation_never_overwrites_user_extension_directories() {
+    let project = temporary_project("m2-project");
+    let registry = project.join("app/web/registry.ts");
+    fs::create_dir_all(registry.parent().unwrap()).unwrap();
+    fs::write(&registry, "export const userRegistry = true;\n").unwrap();
+
+    assert!(run(&project, &["generate"]).status.success());
+    let spec_path = project.join("spec/project.yaml");
+    let spec = fs::read_to_string(&spec_path).unwrap();
+    fs::write(
+        &spec_path,
+        spec.replacen(
+            "      created_at:\n",
+            "      notes:\n        type: text\n      created_at:\n",
+            1,
+        ),
+    )
+    .unwrap();
+    assert!(run(&project, &["generate"]).status.success());
+    assert_eq!(
+        fs::read_to_string(registry).unwrap(),
+        "export const userRegistry = true;\n"
+    );
+}
+
 fn temporary_project(fixture: &str) -> PathBuf {
     let source = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/fixtures")

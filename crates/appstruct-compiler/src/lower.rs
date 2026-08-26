@@ -1,8 +1,9 @@
 use crate::access::build_access;
+use crate::extension::lower_extensions;
 use crate::field::{build_column, build_field_type, build_relation};
 use crate::field_options::{build_generated, validate_field_options};
 use crate::naming::{pluralize, to_snake_case};
-use crate::surface::{SurfaceEntity, SurfaceField, SurfaceRoot};
+use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceField, SurfaceRoot};
 use crate::validation::{validate_entity_declarations, validate_primary_key};
 use appstruct_ir::{
     AppIr, AppMeta, AuthIr, ConcurrencyIr, DatabaseDevMode, DatabaseIr, DatabaseProvider,
@@ -13,8 +14,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) fn build_ir(
     root: SurfaceRoot,
-    mut surface_entities: Vec<SurfaceEntity>,
+    definitions: SurfaceDomain,
 ) -> Result<AppIr, Vec<Diagnostic>> {
+    let SurfaceDomain {
+        entities: mut surface_entities,
+        value_objects,
+        commands,
+        queries,
+        pages,
+    } = definitions;
     surface_entities.sort_by(|left, right| left.name.value.cmp(&right.name.value));
     let mut diagnostics = validate_entity_declarations(&surface_entities);
     if !diagnostics.is_empty() {
@@ -26,6 +34,19 @@ pub(crate) fn build_ir(
         .collect::<BTreeSet<_>>();
     let (mut entities, mut relations) =
         lower_entities(surface_entities, &known_entities, &mut diagnostics);
+    let resource_paths = entities
+        .iter()
+        .map(|entity| entity.table_name.clone())
+        .collect::<BTreeSet<_>>();
+    let extensions = lower_extensions(
+        value_objects,
+        commands,
+        queries,
+        pages,
+        &known_entities,
+        &resource_paths,
+        &mut diagnostics,
+    );
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
@@ -51,12 +72,12 @@ pub(crate) fn build_ir(
             enabled: root.auth_enabled,
         },
         enums: Vec::new(),
-        value_objects: Vec::new(),
+        value_objects: extensions.value_objects,
         entities,
         relations,
-        commands: Vec::new(),
-        queries: Vec::new(),
-        pages: Vec::new(),
+        commands: extensions.commands,
+        queries: extensions.queries,
+        pages: extensions.pages,
         modules: Vec::new(),
     })
 }
@@ -164,6 +185,10 @@ fn build_field(
                 filterable: field.flags.filterable(),
                 sortable: field.flags.sortable(),
             },
+            ui_component: field
+                .ui_component
+                .as_ref()
+                .map(|component| component.value.clone()),
         },
         relation,
     ))

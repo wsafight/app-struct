@@ -1,0 +1,12 @@
+version: 1
+
+app:
+  name: project-manager-extensions
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+
+includes:
+  - spec/project.yaml

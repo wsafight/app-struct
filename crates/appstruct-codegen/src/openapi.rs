@@ -33,6 +33,7 @@ fn document(ir: &AppIr) -> Value {
         add_entity_paths(&mut paths, entity);
         add_entity_schemas(&mut schemas, entity);
     }
+    extension::add(ir, &mut paths, &mut schemas);
     json!({
         "openapi": "3.1.0",
         "info": {
@@ -289,25 +290,25 @@ fn primary_key_schema(entity: &EntityIr) -> Value {
         )
 }
 
-fn schema_ref(name: &str) -> Value {
+pub(super) fn schema_ref(name: &str) -> Value {
     json!({ "$ref": format!("#/components/schemas/{name}") })
 }
 
-fn request_body(schema: &str) -> Value {
+pub(super) fn request_body(schema: &str) -> Value {
     json!({
         "required": true,
         "content": { "application/json": { "schema": schema_ref(schema) } }
     })
 }
 
-fn response(description: &str, schema: &Value) -> Value {
+pub(super) fn response(description: &str, schema: &Value) -> Value {
     json!({
         "description": description,
         "content": { "application/json": { "schema": schema } }
     })
 }
 
-fn error_response() -> Value {
+pub(super) fn error_response() -> Value {
     response("Error", &schema_ref("Error"))
 }
 
@@ -338,3 +339,4 @@ fn error_schema() -> Value {
         }
     })
 }
+mod extension;

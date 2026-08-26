@@ -1,6 +1,7 @@
 //! `AppStruct` configuration loading, validation, and normalization.
 
 mod access;
+mod extension;
 mod field;
 mod field_options;
 mod loading;
@@ -29,7 +30,7 @@ pub fn compile_project(project_root: &Path) -> Result<AppIr, Vec<Diagnostic>> {
     let surface_root = surface::decode_root(&root_node).map_err(|error| vec![error])?;
     let mut diagnostics = validation::validate_root(&surface_root);
     let mut canonical_includes = BTreeMap::<PathBuf, SourceSpan>::new();
-    let mut entities = Vec::new();
+    let mut application = surface::SurfaceDomain::default();
 
     for include in &surface_root.includes {
         let include_path = match loading::resolve_include(&root, include) {
@@ -56,13 +57,13 @@ pub fn compile_project(project_root: &Path) -> Result<AppIr, Vec<Diagnostic>> {
         match loading::load_yaml(&root, &include_path)
             .and_then(|node| surface::decode_domain(&node).map_err(|error| vec![error]))
         {
-            Ok(domain) => entities.extend(domain.entities),
+            Ok(domain) => application.extend(domain),
             Err(mut errors) => diagnostics.append(&mut errors),
         }
     }
 
     if diagnostics.is_empty() {
-        lower::build_ir(surface_root, entities)
+        lower::build_ir(surface_root, application)
     } else {
         Err(diagnostics)
     }

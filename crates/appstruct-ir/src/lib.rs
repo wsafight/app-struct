@@ -1,5 +1,9 @@
 //! Stable, serialization-friendly intermediate representation for `AppStruct`.
 
+mod extension;
+
+pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -113,6 +117,7 @@ pub struct FieldIr {
     pub default: Option<String>,
     pub validation: ValidationIr,
     pub capabilities: FieldCapabilities,
+    pub ui_component: Option<String>,
 }
 
 /// Field types supported by the first compiler slice.
@@ -220,26 +225,6 @@ pub struct ConcurrencyIr {
 pub struct EnumIr {
     pub name: String,
     pub values: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ValueObjectIr {
-    pub name: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CommandIr {
-    pub name: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct QueryIr {
-    pub name: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PageIr {
-    pub name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

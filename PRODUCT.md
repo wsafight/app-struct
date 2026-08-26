@@ -1,13 +1,13 @@
 # AppStruct 产品需求文档
 
-> 状态：Implementation Baseline v0.5<br>
+> 状态：Implementation Baseline v0.6<br>
 > 日期：2026-08-26<br>
 > 产品类型：配置驱动的 Rust 全栈应用生成框架<br>
 > 文档范围：产品定位、用户体验、功能边界、MVP 和验收标准
 
 ## 0. 当前实现基线
 
-截至 2026-08-26，仓库已完成 M0、M1 和 M2，并在 M1 后完成生成器与编译器的模块化重构：
+截至 2026-08-26，仓库已完成 M0 至 M3，并在 M1 后完成生成器与编译器的模块化重构：
 
 | 里程碑 | 状态 | 已固化能力 |
 | --- | --- | --- |
@@ -15,9 +15,13 @@
 | M1 | 已完成 | PostgreSQL schema、SeaORM/Axum CRUD、OpenAPI、TypeScript client、React 列表与表单 |
 | 重构 | 已完成 | Compiler 和 Backend Generator 按职责拆分，Rust 源文件由测试限制为最多 400 行 |
 | M2 | 已完成 | 默认值、唯一/枚举/数值校验、关系与反向关系、分页/过滤/搜索/排序、详情页、RelationSelect 和 schema diff 风险阻断 |
-| M3 | 下一阶段 | Hook、Command、Query、Policy 扩展边界与 Rust/React registry、生成 ownership manifest |
+| M3 | 已完成 | Value Object、Hook、Command、Query、Policy、Rust/React registry、SHA-256 ownership manifest 和安全目录交换 |
 
 M2 的 `migrate plan` 是纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。数据库历史、checksum、`migrate apply/status` 与自动连接开发数据库仍属于后续工程化范围，不能把 snapshot 解读为数据库已经执行到该版本。
+
+M3 将用户实现固定在 `app/` 边界，生成目录只保存可重复构建的契约和运行时。Rust 端以一个实现全部必需 Command/Query handler trait 的聚合对象完成类型状态注册，缺少任一 trait 时编译失败；Entity Hook 和 Policy 是有安全默认实现的可选注册项。React 端生成字段组件和自定义页面的必需 registry key；存在引用时，生成入口从用户所有的 `app/web/registry.tsx` 导入实现，并通过 TypeScript `satisfies` 在构建期检查完整性。真实 PostgreSQL 验收已覆盖输入 Hook、归档 Command、指标 Query 和拒绝删除 Policy。
+
+当前 ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新生成前会拒绝未知文件和 hash 已变化的生成文件，再通过同级 staging/backup 目录交换提交；`app/` 不进入交换范围。跨进程生成锁、崩溃恢复 journal 和自动恢复未完成目录事务仍是后续工程化能力，当前实现发现遗留 staging/backup 时会明确中止。
 
 ## 1. 产品摘要
 

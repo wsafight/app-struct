@@ -1,6 +1,8 @@
 mod api;
 mod entity;
+mod extensions;
 mod manifest;
+mod operations;
 mod query;
 mod validation;
 
@@ -47,6 +49,16 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             crate::openapi::rust_source(ir)?,
             ArtifactKind::RustSource,
         ),
+        Artifact::text(
+            "backend/src/extensions.rs",
+            extensions::source(ir)?,
+            ArtifactKind::RustSource,
+        ),
+        Artifact::text(
+            "backend/src/operations.rs",
+            operations::source(ir)?,
+            ArtifactKind::RustSource,
+        ),
     ];
     for entity in &ir.entities {
         let module = module_name(entity);
@@ -87,10 +99,13 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
     render(quote! {
         pub mod api;
         pub mod entities;
+        pub mod extensions;
         mod error;
         mod openapi;
+        mod operations;
 
         pub use error::{ApiError, FieldViolation};
+        pub use extensions::{AppExtensions, HookOperation, RequestContext};
 
         use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
         use sea_orm::DatabaseConnection;
@@ -99,16 +114,24 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         #[derive(Clone)]
         pub struct AppState {
             pub database: DatabaseConnection,
+            pub extensions: AppExtensions,
         }
 
-        pub fn router(database: DatabaseConnection) -> Router {
+        impl AppState {
+            pub fn context(&self) -> RequestContext {
+                RequestContext::new(self.database.clone())
+            }
+        }
+
+        pub fn router(database: DatabaseConnection, extensions: AppExtensions) -> Router {
             Router::new()
                 #(#routes)*
+                .merge(operations::router())
                 .route("/health/live", get(health))
                 .route("/openapi.json", get(openapi))
                 .layer(CorsLayer::permissive())
                 .layer(TraceLayer::new_for_http())
-                .with_state(AppState { database })
+                .with_state(AppState { database, extensions })
         }
 
         async fn health() -> StatusCode { StatusCode::NO_CONTENT }

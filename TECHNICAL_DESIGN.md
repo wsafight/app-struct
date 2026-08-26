@@ -1,6 +1,6 @@
 # AppStruct 技术设计文档
 
-> 状态：Implementation Baseline v0.4<br>
+> 状态：Implementation Baseline v0.5<br>
 > 日期：2026-08-26<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
@@ -21,11 +21,17 @@
 
 ### 1.1 当前落地状态
 
-当前实现已经通过 M0、M1 和 M2 验收。编译链保持 `App Spec -> Surface -> Typed IR -> Generators` 单向数据流；M1 后的重构将 Compiler 拆分为加载、命名、字段选项、校验、访问规则和 lowering，将 Backend Generator 拆分为 API、Entity、查询、校验和 manifest，`source_size` 测试对 Rust 源文件执行 400 行上限。
+当前实现已经通过 M0 至 M3 验收。编译链保持 `App Spec -> Surface -> Typed IR -> Generators` 单向数据流；M1 后的重构将 Compiler 拆分为加载、命名、字段选项、校验、访问规则和 lowering，将 Backend Generator 拆分为 API、Entity、查询、校验和 manifest，`source_size` 测试对 Rust 源文件执行 400 行上限。
 
 M2 新增独立的 `appstruct-migrate` crate。它从 IR 提取规范化 PostgreSQL schema，持久化确定性 JSON snapshot，按 schema 风险与执行风险分类 diff，并只为 `NonDestructive + Online` 计划生成 SQL。删除表/列、重命名、类型或主键变化、非空收紧、唯一约束变化、已有表新增外键等变更会在 snapshot 写入前阻断。迁移文件与 snapshot 使用 staging 文件提交，局部提交失败时回滚本地新文件。
 
 当前 `migrate dev --accept` 的职责止于创建可审查迁移文件并推进 snapshot；它尚不写数据库迁移历史，也不执行 `migrate apply/status`。这两个状态不能混用：snapshot 表示磁盘迁移链的目标 schema，不代表数据库已经应用。数据库 runner、checksum 和 drift 检测按第 12.4 节协议在后续工程化里程碑实现。
+
+M3 在 IR 中加入 Value Object、Command、Query、自定义页面和字段 UI component 引用。Backend Generator 生成 DTO、Entity Hook/Policy trait、Command/Query handler trait、路由和类型状态 registry；OpenAPI 与 TypeScript Generator 从同一 IR 生成 operation 契约和客户端。Web Generator 生成必需组件/page key，并在存在引用时让生成入口静态导入用户所有的 `app/web/registry.tsx`；该 registry 通过 TypeScript `satisfies` 完整性检查。M3 fixture 同时验证缺少 Rust handler 或 React page 时构建失败、完整实现可构建，并在真实 PostgreSQL 上验证 Hook、Command、Query 和 Policy 行为。
+
+当前 M3 的 Hook 实现兑现了类型契约、调用顺序、修改后重新校验和 `after_commit` best-effort 错误隔离，但 CRUD 尚未把 before/write/after 阶段放入同一个显式数据库事务，`RequestContext` 也只暴露普通连接。事务锁、revision 条件写入、事务内 Hook connection 和 actor/tenant context 必须在后续 Runtime/权限里程碑一起落地；在此之前不得把 Hook 用于要求原子性的关联写入。
+
+CLI 生成路径已拆到独立模块。`generated/.appstruct-manifest.json` 使用确定性 JSON 保存 Artifact 路径、类别、Generator 版本和 SHA-256；生成前拒绝未知文件或被人工修改的 owned file。`target/`、`node_modules/`、`dist/`、`.vite/` 和 Cargo 自动创建的 `Cargo.lock` 视为可丢弃构建瞬态，不参与 ownership 冲突。写入使用项目目录中的 sibling staging/backup 交换，失败时立即恢复 backup。当前尚未实现跨进程项目锁和崩溃恢复 journal；检测到遗留 staging/backup 时命令中止，不会猜测或覆盖现场。
 
 ## 2. 架构决策摘要
 
@@ -633,6 +639,8 @@ App Spec -> Rust API -> OpenAPI -> 前端
 
 这里的保证是可恢复的目录事务，而不是依赖“用一次 rename 覆盖非空目录”这一不可移植假设。`app/`、`migrations/` 和其他用户目录永远不进入该事务。
 
+当前 M3 实现覆盖 ownership/hash 校验、路径校验、sibling staging/backup 和同步失败回滚。上图中的项目级锁、恢复 journal、staging 内格式化/静态验证和崩溃后自动恢复是下一阶段增量；在这些能力落地前，CLI 对已有 staging/backup 采取失败关闭策略。
+
 ## 12. 数据库模型与迁移
 
 ### 12.1 Schema IR
@@ -959,18 +967,19 @@ Query 是只读业务查询。默认在只读事务或普通连接上执行，�
 
 ### 16.4 扩展注册
 
-生成 crate 暴露带类型状态的聚合注册接口，server 在启动时完成装配：
+生成 crate 暴露带类型状态的聚合注册接口，server 在启动时完成装配。M3 使用一个 handler bundle 承载全部必需 Command/Query trait；`RequiredHandlers` 的 blanket implementation 只有在 bundle 实现全部 trait 时才成立：
 
 ```rust
 let extensions = AppExtensions::builder()
-    .archive_project(ArchiveProjectHandlerImpl::new())
-    .project_hooks(ProjectHooks::new())
+    .handlers(ApplicationHandlers::new())
+    .project_hooks(ProjectHooksImpl::new())
+    .project_policy(ProjectPolicyImpl::new())
     .build();
 
 let app = generated::router(state, extensions);
 ```
 
-每个必需 handler 都对应一个 builder 类型状态；只有全部必需状态为 `Present` 时才提供 `build()`。因此新增 Command 后缺失实现会造成 Rust 编译错误，而不是 server 启动错误或第一次请求时的 500。可选 Hook 和可选 Module 扩展不进入必需状态集合。
+Builder 从 `Missing` 进入 `Present<H>` 后才提供 `build()`，且 `H: RequiredHandlers`。因此新增 Command/Query 后，现有 handler bundle 缺失对应 trait implementation 会造成 Rust 编译错误，而不是 server 启动错误或第一次请求时的 500。Entity Hook 和 Policy 有 no-op/allow 默认实现，可以按实体替换，不进入必需状态集合。
 
 ## 17. React Runtime
 
@@ -1400,6 +1409,8 @@ Pull Request 使用最小必要矩阵；主分支和发布构建运行完整示�
 验收：Project/Task 关系应用完整运行，危险迁移被阻止。
 
 ### M3：扩展边界
+
+状态：已完成。
 
 - Hook、Command、Query 和 Policy trait
 - Rust extension registry

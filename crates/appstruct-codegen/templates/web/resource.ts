@@ -1,4 +1,5 @@
 import type { ApiError, ListQuery, ListResponse } from "./generated/client";
+import type { AppStructRegistry } from "./generated/registry";
 
 export type ResourceRecord = Record<string, unknown>;
 export type ResourceInput = Record<string, unknown>;
@@ -39,6 +40,7 @@ export interface FieldDefinition {
   relation?: string;
   minimum?: string;
   maximum?: string;
+  uiComponent?: keyof AppStructRegistry["fields"];
 }
 
 export interface ResourceDefinition {

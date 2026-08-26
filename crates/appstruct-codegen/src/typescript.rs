@@ -1,5 +1,5 @@
 use crate::{Artifact, ArtifactKind, generated_header};
-use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
+use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, OperationTypeIr, ValueObjectIr};
 
 pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
     vec![Artifact::text(
@@ -11,11 +11,76 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
 
 fn client_source(ir: &AppIr) -> String {
     let mut sections = vec![generated_header("//"), runtime_source().to_owned()];
+    sections.extend(ir.value_objects.iter().map(value_object_type));
     for entity in &ir.entities {
         sections.push(entity_types(entity));
         sections.push(entity_client(entity));
     }
+    sections.extend(operation_clients(ir));
     format!("{}\n", sections.join("\n"))
+}
+
+fn value_object_type(value: &ValueObjectIr) -> String {
+    let fields = value
+        .fields
+        .iter()
+        .map(|field| {
+            let optional = if field.required { "" } else { "?" };
+            let nullable = if field.required { "" } else { " | null" };
+            format!(
+                "  {}{optional}: {}{nullable};",
+                field.rust_name,
+                base_type(&field.ty)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("export interface {} {{\n{fields}\n}}\n", value.rust_name)
+}
+
+fn operation_clients(ir: &AppIr) -> Vec<String> {
+    let mut clients = Vec::new();
+    for command in &ir.commands {
+        let variable = format!("{}Command", lower_camel(&command.rust_name));
+        let input = operation_type_name(ir, &command.input);
+        let output = operation_type_name(ir, &command.output);
+        let path = format!("/api/commands/{}", kebab_name(&command.rust_name));
+        clients.push(format!(
+            "export const {variable} = (input: {input}) => request<{output}>(\"{path}\", {{ method: \"POST\", body: JSON.stringify(input) }});\n"
+        ));
+    }
+    for query in &ir.queries {
+        let variable = format!("{}Query", lower_camel(&query.rust_name));
+        let output = operation_type_name(ir, &query.output);
+        let path = format!("/api/queries/{}", kebab_name(&query.rust_name));
+        clients.push(query.input.as_ref().map_or_else(
+            || format!("export const {variable} = () => request<{output}>(\"{path}\");\n"),
+            |input| {
+                let input = operation_type_name(ir, input);
+                format!(
+                    "export const {variable} = (input: {input}) => request<{output}>(\"{path}\", {{ method: \"POST\", body: JSON.stringify(input) }});\n"
+                )
+            },
+        ));
+    }
+    clients
+}
+
+fn operation_type_name<'ir>(ir: &'ir AppIr, operation_type: &OperationTypeIr) -> &'ir str {
+    match operation_type {
+        OperationTypeIr::Entity { entity } => ir
+            .entities
+            .iter()
+            .find(|candidate| candidate.id == *entity)
+            .map(|entity| entity.rust_name.as_str())
+            .expect("compiler resolved operation entity"),
+        OperationTypeIr::ValueObject { value_object } => ir
+            .value_objects
+            .iter()
+            .find(|candidate| candidate.id == *value_object)
+            .map(|value| value.rust_name.as_str())
+            .expect("compiler resolved operation value object"),
+    }
 }
 
 fn runtime_source() -> &'static str {
@@ -182,4 +247,19 @@ fn lower_camel(value: &str) -> String {
     characters.next().map_or_else(String::new, |first| {
         first.to_lowercase().chain(characters).collect()
     })
+}
+
+fn kebab_name(value: &str) -> String {
+    let mut output = String::new();
+    for (index, character) in value.chars().enumerate() {
+        if character.is_ascii_uppercase() {
+            if index > 0 {
+                output.push('-');
+            }
+            output.push(character.to_ascii_lowercase());
+        } else {
+            output.push(character);
+        }
+    }
+    output
 }

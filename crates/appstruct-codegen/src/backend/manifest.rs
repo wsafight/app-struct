@@ -6,6 +6,7 @@ pub(super) fn cargo() -> &'static str {
         "edition = \"2024\"\n",
         "rust-version = \"1.98\"\n\n",
         "[dependencies]\n",
+        "async-trait = \"0.1.89\"\n",
         "axum = \"0.8.9\"\n",
         "chrono = { version = \"0.4.45\", features = [\"serde\"] }\n",
         "rust_decimal = { version = \"1.42.1\", features = [\"serde-with-str\"] }\n",
