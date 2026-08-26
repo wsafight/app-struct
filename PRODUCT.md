@@ -1,13 +1,13 @@
 # AppStruct 产品需求文档
 
-> 状态：Implementation Baseline v1.1<br>
-> 日期：2026-08-26<br>
+> 状态：Implementation Baseline v1.2<br>
+> 日期：2026-08-27<br>
 > 产品类型：配置驱动的 Rust 全栈应用生成框架<br>
 > 文档范围：产品定位、用户体验、功能边界、MVP 和验收标准
 
 ## 0. 当前实现基线
 
-截至 2026-08-26，仓库已完成 M0 至 M4，并在 M1 后完成生成器与编译器的模块化重构：
+截至 2026-08-27，仓库已完成 M0 至 M6，并在 M1 后完成生成器与编译器的模块化重构：
 
 | 里程碑 | 状态 | 已固化能力 |
 | --- | --- | --- |
@@ -23,11 +23,14 @@
 | M5 Templates | 已完成 | `appstruct new`、`minimal/dashboard`、固定 Rust/Node 依赖和不覆盖的一次性项目骨架 |
 | M5 Build/Doctor | 已完成 | 工具链与数据库模式诊断、JSON 报告、锁定依赖的 Rust/TypeScript 生产构建门禁 |
 | M5 Dev Server | 已完成 | managed/external PostgreSQL 协调、安全迁移、生成与构建、API/Vite 日志聚合、监听重启和 Ctrl-C 清理 |
-| M5 Docs | 已完成 | 源码安装、external/managed 首次运行、显式暂存升级、生产构建/迁移/配置/回滚文档 |
+| M5 Docs | 已完成 | 源码/归档安装、external/managed 首次运行、事务升级、生产构建/迁移/配置/回滚文档 |
 | M5 Quality Gates | 已完成 | 跨目录字节确定性、10/100 实体性能预算、PostgreSQL + Chromium 用户旅程、桌面/移动布局、readiness/request ID |
 | M6 Modules | 已完成 | Tenant、Audit、Mail、Jobs/Outbox 和本地/S3 File 能力及独立 PostgreSQL 验收 |
 | M6 Preset | 已完成 | `appstruct/saas@1` 展开、差异覆盖、摘要/模块 lock 校验和查看 CLI |
 | M6 Template | 已完成 | `saas` 一次性骨架、canonical `examples/saas-demo` 和 PostgreSQL/Chromium 端到端旅程 |
+| TP 契约加固 | 已完成 | Draft 2020-12 App Spec Schema、warning diagnostics、`check --deny-warnings` 和无项目 schema 导出 |
+| TP 升级事务 | 已完成 | staging workspace 全量生成/构建/测试、源文件并发检测及 lock/generated 联合 journal 提交与恢复 |
+| TP 发布准备 | 已完成 | crates.io 元数据与本地 package 验证、macOS/Linux tag 构建、压缩包及 SHA-256 |
 
 M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
@@ -49,7 +52,7 @@ ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新�
 
 `appstruct dev [--api-port <port>] [--web-port <port>]` 已实现完整开发协调。external 模式从进程环境或 `.env` 读取并连接 `DATABASE_URL`；managed 模式只启动 Compose 的 `postgres` service，并只在退出时停止本次 session 启动的 service，命名 volume 保留。启动与重载均先拒绝破坏性或需要人工审查的迁移，只自动提交并应用安全迁移，再生成、构建后端并 frozen install Web 依赖。CLI 监听 App Spec、lockfile、`spec/` 和 `app/backend/`，以 `[api]`/`[web]` 聚合日志；Unix 子进程使用独立进程组，重载或 Ctrl-C 会终止完整进程树。外部 PostgreSQL 17.10 验收已覆盖自定义端口、健康检查、Vite 页面、安全字段变更热重载、破坏性删除阻断、保留上一版服务和端口释放。
 
-M5 交付文档已提供源码安装与工具链前置条件、external/managed PostgreSQL 首次运行、技术预览期显式 staging 升级流程，以及生产 Artifact、运行时变量、迁移顺序、健康验证和回滚边界。文档明确 `appstruct update` 和数据库 down migration 尚未实现，避免把规划命令描述为现有能力。
+M5 交付文档已提供源码与校验后二进制安装、external/managed PostgreSQL 首次运行、事务化 `appstruct update`、生产 Artifact、运行时变量、迁移顺序、健康验证和回滚边界。数据库 down migration 仍未实现，升级后的数据库风险继续由显式 `migrate plan/status` 和人工审查控制。
 
 M5 质量门禁已固化。两个独立项目的完整 `generated/` 树逐字节比较；后端 Entity/API Artifact 按可用 CPU 并行规划但最终统一排序，实测 10 实体 IR 编译 70 ms、编译加生成 518 ms，100 实体编译加生成 7774 ms，分别低于 500/1000/10000 ms 预算。Playwright 1.62.1 由根 pnpm lock 固定，external PostgreSQL 17.10 E2E 从 dashboard Template 启动，覆盖 liveness/readiness、`X-Request-Id` 生成与透传、注册、owner Project 创建与编辑、退出重登录和数据保持；1440x900 dashboard 与 390x844 登录页截图无重叠或水平溢出。启动冷构建期间的 SIGINT 也验证了 Cargo 子进程、临时项目和端口全部回收。
 
@@ -625,7 +628,9 @@ MVP 只支持 PostgreSQL。多数据库抽象会推迟到产品模型稳定之�
 
 ```text
 appstruct new <name> --template <name>
-appstruct check                校验配置和引用
+appstruct schema               输出 App Spec JSON Schema
+appstruct check [--deny-warnings]
+                               校验配置、引用和 CI warning 策略
 appstruct generate             生成代码和 Manifest
 appstruct dev [--api-port <port>] [--web-port <port>]
                                启动开发环境并监听变更
@@ -635,6 +640,7 @@ appstruct migrate apply        只执行已提交迁移
 appstruct migrate status       查看迁移状态
 appstruct build                构建生产产物
 appstruct doctor               检查本地依赖和配置
+appstruct auth bootstrap-admin 初始化首个管理员角色
 appstruct preset show          查看 Preset 及展开结果
 appstruct update               显式更新锁定依赖
 ```
@@ -808,7 +814,7 @@ modules:
 
 `appstruct/saas@1` 只组合已经实现的 Auth、RBAC、Tenant、Audit、Mail、Jobs 和 File。默认启用注册与密码重置，提供 `member/admin` 角色，启用租户和审计，使用开发期 capture Mail、本地文件存储，以及 `default/mail` 两个 Jobs 队列。Billing 和 Admin 不属于版本 1。
 
-Preset 的展开结果进入统一 Typed IR，用户只维护覆盖默认行为的差异配置。映射节点递归合并，标量和列表由用户值整体替换。`appstruct.lock` 锁定 Preset 名称、版本、展开内容 SHA-256，以及精确的模块名和锁步版本；缺失、摘要不匹配或模块集不完整时，`check`、`generate` 和 `build` 都失败关闭。`appstruct preset show` 显示锁定摘要，`--expanded` 输出合并项目覆盖后的规范化有效模块配置。当前不提供自动更新 lock 的命令。
+Preset 的展开结果进入统一 Typed IR，用户只维护覆盖默认行为的差异配置。映射节点递归合并，标量和列表由用户值整体替换。`appstruct.lock` 锁定 Preset 名称、版本、展开内容 SHA-256，以及精确的模块名和锁步版本；缺失、摘要不匹配或模块集不完整时，`check`、`generate` 和 `build` 都失败关闭。`appstruct preset show` 显示锁定摘要，`--expanded` 输出合并项目覆盖后的规范化有效模块配置。只有显式 `appstruct update` 可在完整 staging 验证后规范化并事务提交新 lock；普通命令不隐式升级。
 
 ### 15.3 Template
 

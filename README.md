@@ -6,8 +6,8 @@ OpenAPI, a TypeScript client, and a React/Vite application.
 
 The repository is currently a technical preview. M0-M6 are complete, including production builds,
 the coordinated development server, Tenant/Audit/Mail/Jobs/File modules, the locked
-`appstruct/saas@1` preset, and a runnable SaaS template and example. Billing and Admin remain out
-of scope for preset version 1.
+`appstruct/saas@1` preset, transactional project updates, and a runnable SaaS template and example.
+Billing and Admin remain out of scope for preset version 1.
 
 ## Quick Start
 
@@ -96,13 +96,16 @@ are not part of preset version 1.
 
 ```text
 appstruct new <name> --template minimal|dashboard|saas
-appstruct check [--format text|json]
+appstruct schema
+appstruct check [--deny-warnings] [--format text|json]
 appstruct generate [--check]
 appstruct migrate plan|dev|apply|status
 appstruct dev [--api-port <port>] [--web-port <port>]
 appstruct build
 appstruct doctor [--format text|json]
+appstruct auth bootstrap-admin --email <address>
 appstruct preset show [--expanded]
+appstruct update
 ```
 
 `migrate plan` is read-only. `migrate dev --accept` creates and optionally applies only
@@ -114,6 +117,7 @@ the explicit `migrate apply` command.
 - [Installation](docs/installation.md)
 - [Upgrading](docs/upgrading.md)
 - [Deployment](docs/deployment.md)
+- [Releasing](docs/releasing.md)
 - [Product requirements](PRODUCT.md)
 - [Technical design](TECHNICAL_DESIGN.md)
 

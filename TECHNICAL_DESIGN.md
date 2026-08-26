@@ -1,7 +1,7 @@
 # AppStruct 技术设计文档
 
-> 状态：Implementation Baseline v1.0<br>
-> 日期：2026-08-26<br>
+> 状态：Implementation Baseline v1.1<br>
+> 日期：2026-08-27<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
 
@@ -21,7 +21,7 @@
 
 ### 1.1 当前落地状态
 
-当前实现已经通过 M0 至 M4 验收。编译链保持 `App Spec -> Surface -> Typed IR -> Generators` 单向数据流；M1 后的重构将 Compiler 拆分为加载、命名、字段选项、校验、访问规则和 lowering，将 Backend Generator 拆分为 API、Entity、查询、校验和 manifest，`source_size` 测试对 Rust 源文件执行 400 行上限。
+当前实现已经通过 M0 至 M6 验收。编译链保持 `App Spec -> Surface -> Typed IR -> Generators` 单向数据流；M1 后的重构将 Compiler 拆分为加载、命名、字段选项、校验、访问规则和 lowering，将 Backend Generator 拆分为 API、Entity、查询、校验和 manifest，`source_size` 测试对 Rust 源文件执行 400 行上限。
 
 M2 新增独立的 `appstruct-migrate` crate。它从 IR 提取规范化 PostgreSQL schema，持久化确定性 JSON snapshot，按 schema 风险与执行风险分类 diff，并只为 `NonDestructive + Online` 计划生成 SQL。删除表/列、重命名、类型或主键变化、非空收紧、唯一约束变化、已有表新增外键等变更会在 snapshot 写入前阻断。迁移文件与 snapshot 使用 staging 文件提交，局部提交失败时回滚本地新文件。
 
@@ -41,11 +41,13 @@ M5 build/doctor 已实现。项目 `.env` 使用 dotenv parser 读取但不修�
 
 M5 dev server 已实现。CLI 在 external 模式显式传递从进程环境或 `.env` 得到的数据库 URL，不修改父进程环境；managed 模式只协调 Compose `postgres` service，并记录本次 session 是否拥有其生命周期。启动和输入变化都按“安全迁移 -> canonical generation -> debug backend build -> frozen Web install”执行，迁移拒绝先于生成目录交换。协调器指纹覆盖 `appstruct.yaml`、`appstruct.lock`、`spec/` 与 `app/backend/`；重载时为 API 和 pnpm/Vite 分配独立 Unix 进程组，TERM 整组退出并在超时后 kill，避免包装进程退出后遗留 Vite。Ctrl-C 与 Drop 路径幂等清理子进程，只停止本 session 启动的 managed PostgreSQL。外部 PostgreSQL 17.10 E2E 已验证自定义端口、初始迁移、nullable 字段热重载、破坏性变更阻断、旧服务保留和退出清理。
 
-M5 交付文档已落在根 README 与 `docs/installation.md`、`docs/upgrading.md`、`docs/deployment.md`。安装路径在未发布 crates.io package 前固定为 workspace 根的 `cargo build --release --locked -p appstruct-cli` 后安装二进制；直接对子 crate 执行 `cargo install --path` 不采用根 lockfile，不作为可重复安装协议。升级文档明确当前尚无 `appstruct update`，使用隔离 staging checkout 运行 check/plan/generate/build/status；部署文档把 build-time `VITE_API_URL` 与 backend runtime environment 分开，并规定 migration status/apply、不可变 Artifact、健康/业务 smoke 和无自动 down migration 的回滚边界。
+M5 交付文档已落在根 README 与 `docs/installation.md`、`docs/upgrading.md`、`docs/deployment.md`。安装路径支持 workspace 锁定源码构建，并为发布后的校验和二进制包与 crates.io CLI 保留协议。升级使用显式 `appstruct update` staging 事务，再独立执行数据库 plan/status；部署文档把 build-time `VITE_API_URL` 与 backend runtime environment 分开，并规定 migration status/apply、不可变 Artifact、健康/业务 smoke 和无自动 down migration 的回滚边界。
 
 M5 确定性、性能和浏览器门禁已实现。CLI 集成测试在两个独立 project root 生成并递归比较所有 Artifact bytes；Prettier 依赖按 package/lock SHA-256 缓存在 `.appstruct/cache/web-formatter/`，ready marker 与 executable 同时存在才命中。Backend Generator 按 `available_parallelism` 分块并行规划 Entity/API 文件，顶层 planner 最终按路径排序维持确定性；同一计划的 Rust Artifact 由一次 `rustfmt` 子进程批量完成最终格式化。生成 crate 测试按 manifest 与 `src/` 内容生成隔离包名，并共享 `target/appstruct-generated-tests` 的依赖缓存，避免每个临时项目重复冷编译。性能 gate 计入 Compiler 与 Generator，当前 10 实体为 518 ms、100 实体为 7774 ms。根 pnpm lock 固定 Playwright 1.62.1；`scripts/run-m5-browser-e2e.sh` 从 dashboard Template 创建临时 external project，等待数据库 readiness 后验证 request ID、Auth 和 Project owner CRUD，并对桌面 dashboard 与移动登录页输出截图。生成后端新增数据库 ping `/health/ready`，`SetRequestIdLayer`/`PropagateRequestIdLayer` 为响应提供 `X-Request-Id`。dev signal handler 在所有启动动作前安装，测试脚本以独立进程组运行，冷构建中断也能清理子进程与临时目录。
 
 M6 已完成。Tenant、Audit、Mail、Jobs 和 File Module 以及 `appstruct/saas@1` Preset 已进入 Compiler：Surface 配置先展开官方默认模块映射，再递归合并用户映射覆盖，最后降低到 IR v7 的 `PresetIr` 和模块 IR。Compiler 对 `appstruct.lock` 中的 AppStruct 版本、Preset 名称/版本/内容摘要及精确模块版本集合执行失败关闭校验；CLI 可用 `preset show [--expanded]` 检查契约。`saas` Template 与 `examples/saas-demo` 提供锁定 Preset、managed PostgreSQL、开发 Mail/File 配置和 Tenant/Audit 化的 Project/Task 骨架；专用 external PostgreSQL/Chromium E2E 验证五个模块表、用户旅程、租户隔离、Audit 和桌面/移动布局。
+
+Technical Preview 契约加固已完成。Compiler 内嵌 Draft 2020-12 JSON Schema，`appstruct schema` 无需项目即可输出；编译报告保留非致命 warning，当前 `AS3070` 检测匿名写操作，`check --deny-warnings` 为 CI 提供失败策略。`appstruct update` 同时持有 generation/update lock，在项目内 staging workspace 写候选 lock、全量编译 Spec、生成、执行 release Rust/Web 构建和后端测试，再比对用户文件哈希；最终用独立 journal 联合交换 `appstruct.lock` 与 ownership 管理的 `generated/`。崩溃恢复要么回滚两者，要么完成已安装候选，普通 generate 遇到 update 遗留状态时失败关闭。
 
 ## 2. 架构决策摘要
 
@@ -1316,11 +1318,13 @@ MVP 期间所有官方包锁步版本，避免过早建设复杂模块解析器�
 
 ```text
 appstruct new <name> --template <name>
+appstruct schema
 appstruct check [--deny-warnings] [--format text|json]
 appstruct generate [--check]
 appstruct dev [--api-port <port>] [--web-port <port>]
 appstruct build
 appstruct doctor
+appstruct auth bootstrap-admin --email <address>
 
 appstruct migrate plan
 appstruct migrate dev
@@ -1328,7 +1332,7 @@ appstruct migrate apply
 appstruct migrate status
 
 appstruct preset show [--expanded]
-appstruct update [package]
+appstruct update
 ```
 
 ### 19.2 退出码
@@ -1422,15 +1426,15 @@ MVP 使用锁步发布减少组合数量，但在文件和协议中保留独立�
 
 ```text
 appstruct update
-  -> 解析候选版本
-  -> 展示 breaking change 和配置迁移
-  -> 在 staging workspace 更新 lock 并运行 Spec upgrader
+  -> 从已安装 CLI 解析受支持的候选 lock
+  -> 复制用户输入并在 staging workspace 完整编译 Spec
   -> 在 staging workspace 重新生成
-  -> 执行编译、测试和迁移风险检查
-  -> 一次性提交 lock、Spec 和生成物
+  -> 执行 Rust/Web release 构建和生成后端测试
+  -> 复核用户输入 hash 未并发变化
+  -> 以 journal 联合提交 lock 和生成物
 ```
 
-Spec upgrader 只处理可确定的语法变化。涉及业务语义和危险迁移时必须停止并提供人工步骤。staging 中任何步骤失败时删除 staging，当前 workspace 的 lock、Spec、snapshot 和生成物均保持不变；升级不得以“项目已由 Git 管理”代替自身的失败恢复。
+当前 Technical Preview 不自动重写 Spec、Template、migration 或 snapshot，也不连接数据库；不受支持的未来 Preset/Spec 变化必须停止并提供人工步骤。数据库风险在 update 后通过独立 `migrate plan/status` 审查。staging 中任何步骤失败时删除 staging，当前 workspace 的 lock、Spec、snapshot 和生成物均保持不变；升级不得以“项目已由 Git 管理”代替自身的失败恢复。
 
 ## 23. 安全设计
 

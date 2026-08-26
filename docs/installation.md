@@ -1,7 +1,8 @@
 # Installation
 
-AppStruct is currently installed from a source checkout. A crates.io package and binary
-installer are not published in the technical preview.
+AppStruct is currently installed from a source checkout. The repository is prepared to publish
+crates.io packages and checksummed macOS/Linux archives, but no public package or binary installer
+is assumed to exist during the technical preview.
 
 ## Requirements
 
@@ -48,6 +49,19 @@ pnpm --version
 
 Re-run the locked release build and replace the installed binary after switching this checkout
 to another AppStruct revision.
+
+When a release provides a platform archive, download both the `.tar.gz` and matching `.sha256`
+file into one directory, verify it, and install the contained binary:
+
+```bash
+shasum -a 256 -c appstruct-<version>-<target>.tar.gz.sha256
+tar -xzf appstruct-<version>-<target>.tar.gz
+install -m 0755 appstruct-<version>-<target>/appstruct "$HOME/.local/bin/appstruct"
+```
+
+Linux users may use `sha256sum -c` instead. Do not install an archive when its checksum fails.
+After the crates are published, `cargo install appstruct-cli --version <version> --locked` is the
+registry equivalent; source and binary release versions remain lockstep.
 
 ## Start With External PostgreSQL
 
@@ -129,11 +143,14 @@ environment variables. Keep the generated preset digest and exact module version
 
 ## Troubleshooting
 
-Use structured diagnostics when integrating the check into another tool:
+Export the bundled Draft 2020-12 schema for editor integration, and use structured diagnostics
+or strict warnings in CI:
 
 ```bash
+appstruct schema > appstruct.schema.json
 appstruct doctor --format json
 appstruct check --format json
+appstruct check --deny-warnings
 ```
 
 Common failures are:
