@@ -23,6 +23,7 @@
 | M5 Templates | 已完成 | `appstruct new`、`minimal/dashboard`、固定 Rust/Node 依赖和不覆盖的一次性项目骨架 |
 | M5 Build/Doctor | 已完成 | 工具链与数据库模式诊断、JSON 报告、锁定依赖的 Rust/TypeScript 生产构建门禁 |
 | M5 Dev Server | 已完成 | managed/external PostgreSQL 协调、安全迁移、生成与构建、API/Vite 日志聚合、监听重启和 Ctrl-C 清理 |
+| M5 Docs | 已完成 | 源码安装、external/managed 首次运行、显式暂存升级、生产构建/迁移/配置/回滚文档 |
 
 M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
@@ -43,6 +44,8 @@ ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新�
 `appstruct doctor --format text|json` 检查 1.98 Rust/Cargo、rustfmt、Clippy、固定 pnpm 版本和数据库开发模式。managed 模式验证 Compose 文件及 Docker/Compose 服务；external 模式从进程环境或 `.env` 读取 `DATABASE_URL` 并执行 migration status，不在输出中暴露连接串。`appstruct build` 先生成 canonical Artifact，再对固定 Rust dependency lock 执行 fmt、release Clippy 和 release build，并对 pnpm lock 执行 Prettier check、TypeScript 检查和 Vite build。生成 TypeScript 在 manifest hash 计算前由 lockfile 固定的 Prettier 格式化，`generate --check` 与 build 因此使用同一份字节输出。
 
 `appstruct dev [--api-port <port>] [--web-port <port>]` 已实现完整开发协调。external 模式从进程环境或 `.env` 读取并连接 `DATABASE_URL`；managed 模式只启动 Compose 的 `postgres` service，并只在退出时停止本次 session 启动的 service，命名 volume 保留。启动与重载均先拒绝破坏性或需要人工审查的迁移，只自动提交并应用安全迁移，再生成、构建后端并 frozen install Web 依赖。CLI 监听 App Spec、lockfile、`spec/` 和 `app/backend/`，以 `[api]`/`[web]` 聚合日志；Unix 子进程使用独立进程组，重载或 Ctrl-C 会终止完整进程树。外部 PostgreSQL 17.10 验收已覆盖自定义端口、健康检查、Vite 页面、安全字段变更热重载、破坏性删除阻断、保留上一版服务和端口释放。
+
+M5 交付文档已提供源码安装与工具链前置条件、external/managed PostgreSQL 首次运行、技术预览期显式 staging 升级流程，以及生产 Artifact、运行时变量、迁移顺序、健康验证和回滚边界。文档明确 `appstruct update` 和数据库 down migration 尚未实现，避免把规划命令描述为现有能力。
 
 ## 1. 产品摘要
 

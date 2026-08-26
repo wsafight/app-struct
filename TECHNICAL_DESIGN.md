@@ -41,6 +41,8 @@ M5 build/doctor 已实现。项目 `.env` 使用 dotenv parser 读取但不修�
 
 M5 dev server 已实现。CLI 在 external 模式显式传递从进程环境或 `.env` 得到的数据库 URL，不修改父进程环境；managed 模式只协调 Compose `postgres` service，并记录本次 session 是否拥有其生命周期。启动和输入变化都按“安全迁移 -> canonical generation -> debug backend build -> frozen Web install”执行，迁移拒绝先于生成目录交换。协调器指纹覆盖 `appstruct.yaml`、`appstruct.lock`、`spec/` 与 `app/backend/`；重载时为 API 和 pnpm/Vite 分配独立 Unix 进程组，TERM 整组退出并在超时后 kill，避免包装进程退出后遗留 Vite。Ctrl-C 与 Drop 路径幂等清理子进程，只停止本 session 启动的 managed PostgreSQL。外部 PostgreSQL 17.10 E2E 已验证自定义端口、初始迁移、nullable 字段热重载、破坏性变更阻断、旧服务保留和退出清理。
 
+M5 交付文档已落在根 README 与 `docs/installation.md`、`docs/upgrading.md`、`docs/deployment.md`。安装路径在未发布 crates.io package 前固定为 workspace 根的 `cargo build --release --locked -p appstruct-cli` 后安装二进制；直接对子 crate 执行 `cargo install --path` 不采用根 lockfile，不作为可重复安装协议。升级文档明确当前尚无 `appstruct update`，使用隔离 staging checkout 运行 check/plan/generate/build/status；部署文档把 build-time `VITE_API_URL` 与 backend runtime environment 分开，并规定 migration status/apply、不可变 Artifact、健康/业务 smoke 和无自动 down migration 的回滚边界。
+
 ## 2. 架构决策摘要
 
 | 主题 | 首版决策 |
