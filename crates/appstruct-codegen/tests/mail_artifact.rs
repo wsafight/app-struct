@@ -1,7 +1,10 @@
+mod support;
+
 use appstruct_codegen::{Artifact, plan};
 use appstruct_compiler::compile_project;
 use appstruct_ir::MailProviderIr;
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path};
+use support::{assert_rustfmt, cargo_check};
 
 #[test]
 fn mail_contract_generates_a_compilable_backend() {
@@ -27,7 +30,9 @@ fn mail_contract_generates_a_compilable_backend() {
     assert!(manifest.contains("minijinja = \"=2.12.0\""));
     assert!(!manifest.contains("reqwest"));
 
-    let checked = cargo_check(&temporary.path().join("generated/backend/Cargo.toml"));
+    let manifest_path = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest_path);
+    let checked = cargo_check(&manifest_path, true);
     assert!(
         checked.status.success(),
         "{}",
@@ -65,7 +70,9 @@ fn assert_provider_compiles(
         manifest.contains("reqwest"),
         provider == MailProviderIr::Resend
     );
-    let checked = cargo_check(&root.join("generated/backend/Cargo.toml"));
+    let manifest_path = root.join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest_path);
+    let checked = cargo_check(&manifest_path, true);
     assert!(
         checked.status.success(),
         "{name}: {}",
@@ -87,17 +94,4 @@ fn write_artifacts(root: &Path, artifacts: &[Artifact]) {
         fs::create_dir_all(destination.parent().unwrap()).unwrap();
         fs::write(destination, &artifact.content).unwrap();
     }
-}
-
-fn cargo_check(manifest: &Path) -> std::process::Output {
-    Command::new("cargo")
-        .args(["check", "--quiet", "--manifest-path"])
-        .arg(manifest)
-        .arg("--lib")
-        .env(
-            "CARGO_TARGET_DIR",
-            manifest.parent().unwrap().join("target"),
-        )
-        .output()
-        .unwrap()
 }

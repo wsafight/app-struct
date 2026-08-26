@@ -43,7 +43,7 @@ M5 dev server 已实现。CLI 在 external 模式显式传递从进程环境或 
 
 M5 交付文档已落在根 README 与 `docs/installation.md`、`docs/upgrading.md`、`docs/deployment.md`。安装路径在未发布 crates.io package 前固定为 workspace 根的 `cargo build --release --locked -p appstruct-cli` 后安装二进制；直接对子 crate 执行 `cargo install --path` 不采用根 lockfile，不作为可重复安装协议。升级文档明确当前尚无 `appstruct update`，使用隔离 staging checkout 运行 check/plan/generate/build/status；部署文档把 build-time `VITE_API_URL` 与 backend runtime environment 分开，并规定 migration status/apply、不可变 Artifact、健康/业务 smoke 和无自动 down migration 的回滚边界。
 
-M5 确定性、性能和浏览器门禁已实现。CLI 集成测试在两个独立 project root 生成并递归比较所有 Artifact bytes；Prettier 依赖按 package/lock SHA-256 缓存在 `.appstruct/cache/web-formatter/`，ready marker 与 executable 同时存在才命中。Backend Generator 按 `available_parallelism` 分块并行规划 Entity/API 文件，顶层 planner 最终按路径排序维持确定性。性能 gate 计入 Compiler 与 Generator，当前 10 实体为 518 ms、100 实体为 7774 ms。根 pnpm lock 固定 Playwright 1.62.1；`scripts/run-m5-browser-e2e.sh` 从 dashboard Template 创建临时 external project，等待数据库 readiness 后验证 request ID、Auth 和 Project owner CRUD，并对桌面 dashboard 与移动登录页输出截图。生成后端新增数据库 ping `/health/ready`，`SetRequestIdLayer`/`PropagateRequestIdLayer` 为响应提供 `X-Request-Id`。dev signal handler 在所有启动动作前安装，测试脚本以独立进程组运行，冷构建中断也能清理子进程与临时目录。
+M5 确定性、性能和浏览器门禁已实现。CLI 集成测试在两个独立 project root 生成并递归比较所有 Artifact bytes；Prettier 依赖按 package/lock SHA-256 缓存在 `.appstruct/cache/web-formatter/`，ready marker 与 executable 同时存在才命中。Backend Generator 按 `available_parallelism` 分块并行规划 Entity/API 文件，顶层 planner 最终按路径排序维持确定性；同一计划的 Rust Artifact 由一次 `rustfmt` 子进程批量完成最终格式化。生成 crate 测试按 manifest 与 `src/` 内容生成隔离包名，并共享 `target/appstruct-generated-tests` 的依赖缓存，避免每个临时项目重复冷编译。性能 gate 计入 Compiler 与 Generator，当前 10 实体为 518 ms、100 实体为 7774 ms。根 pnpm lock 固定 Playwright 1.62.1；`scripts/run-m5-browser-e2e.sh` 从 dashboard Template 创建临时 external project，等待数据库 readiness 后验证 request ID、Auth 和 Project owner CRUD，并对桌面 dashboard 与移动登录页输出截图。生成后端新增数据库 ping `/health/ready`，`SetRequestIdLayer`/`PropagateRequestIdLayer` 为响应提供 `X-Request-Id`。dev signal handler 在所有启动动作前安装，测试脚本以独立进程组运行，冷构建中断也能清理子进程与临时目录。
 
 M6 已完成。Tenant、Audit、Mail、Jobs 和 File Module 以及 `appstruct/saas@1` Preset 已进入 Compiler：Surface 配置先展开官方默认模块映射，再递归合并用户映射覆盖，最后降低到 IR v7 的 `PresetIr` 和模块 IR。Compiler 对 `appstruct.lock` 中的 AppStruct 版本、Preset 名称/版本/内容摘要及精确模块版本集合执行失败关闭校验；CLI 可用 `preset show [--expanded]` 检查契约。`saas` Template 与 `examples/saas-demo` 提供锁定 Preset、managed PostgreSQL、开发 Mail/File 配置和 Tenant/Audit 化的 Project/Task 骨架；专用 external PostgreSQL/Chromium E2E 验证五个模块表、用户旅程、租户隔离、Audit 和桌面/移动布局。
 
@@ -598,7 +598,7 @@ Generator 返回内存中的 Artifact 计划，不直接写最终目录。这使
 
 - 使用 `proc_macro2` 和 `quote` 构建 Rust token。
 - 通过 `syn` 重新解析，确保生成语法有效。
-- 先使用作为 AppStruct 依赖锁定的 `prettyplease` 规范化语法树，再使用项目 `rust-toolchain.toml` 固定的 `rustfmt` 完成最终格式化。
+- 先使用作为 AppStruct 依赖锁定的 `prettyplease` 规范化语法树，再将同一计划的全部 Rust Artifact 交给一次由 `rust-toolchain.toml` 固定的 `rustfmt` 进程完成最终格式化。
 - 模板只用于 Cargo.toml 等静态骨架，不拼接复杂 Rust 语法。
 
 生成内容包括：

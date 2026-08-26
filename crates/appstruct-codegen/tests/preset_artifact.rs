@@ -1,6 +1,9 @@
+mod support;
+
 use appstruct_codegen::plan;
 use appstruct_compiler::compile_project;
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path};
+use support::{assert_rustfmt, cargo_check};
 
 #[test]
 fn saas_preset_generates_a_compilable_backend() {
@@ -20,13 +23,8 @@ fn saas_preset_generates_a_compilable_backend() {
     }
 
     let manifest = temporary.path().join("generated/backend/Cargo.toml");
-    let checked = Command::new("cargo")
-        .args(["check", "--quiet", "--manifest-path"])
-        .arg(manifest)
-        .arg("--lib")
-        .env("CARGO_TARGET_DIR", temporary.path().join("target"))
-        .output()
-        .unwrap();
+    assert_rustfmt(&manifest);
+    let checked = cargo_check(&manifest, true);
     assert!(
         checked.status.success(),
         "{}",

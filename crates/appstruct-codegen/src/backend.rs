@@ -246,7 +246,7 @@ pub(super) fn parse_ident(value: &str) -> Result<Ident, CodegenError> {
 pub(super) fn render(tokens: TokenStream) -> Result<String, CodegenError> {
     let syntax = syn::parse2(tokens)
         .map_err(|error| CodegenError::new(format!("generated Rust did not parse: {error}")))?;
-    format_rust(&format!(
+    Ok(format!(
         "{}{}",
         generated_header("//"),
         prettyplease::unparse(&syntax)

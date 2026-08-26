@@ -1,6 +1,9 @@
+mod support;
+
 use appstruct_codegen::{Artifact, plan};
 use appstruct_compiler::compile_project;
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path};
+use support::{assert_rustfmt, cargo_check};
 
 #[test]
 fn jobs_contract_generates_a_compilable_backend() {
@@ -33,7 +36,9 @@ fn jobs_contract_generates_a_compilable_backend() {
     assert!(main.contains("Application::from_env"));
     assert!(main.contains("application.serve(listener)"));
 
-    let checked = cargo_check(&temporary.path().join("generated/backend/Cargo.toml"));
+    let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest);
+    let checked = cargo_check(&manifest, false);
     assert!(
         checked.status.success(),
         "{}",
@@ -55,16 +60,4 @@ fn write_artifacts(root: &Path, artifacts: &[Artifact]) {
         fs::create_dir_all(destination.parent().unwrap()).unwrap();
         fs::write(destination, &artifact.content).unwrap();
     }
-}
-
-fn cargo_check(manifest: &Path) -> std::process::Output {
-    Command::new("cargo")
-        .args(["check", "--quiet", "--manifest-path"])
-        .arg(manifest)
-        .env(
-            "CARGO_TARGET_DIR",
-            manifest.parent().unwrap().join("target"),
-        )
-        .output()
-        .unwrap()
 }

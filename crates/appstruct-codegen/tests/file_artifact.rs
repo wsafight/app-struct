@@ -1,7 +1,10 @@
+mod support;
+
 use appstruct_codegen::{Artifact, plan};
 use appstruct_compiler::compile_project;
 use appstruct_ir::FileProviderIr;
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path};
+use support::{assert_rustfmt, cargo_check};
 
 #[test]
 fn file_contract_generates_compilable_local_and_s3_backends() {
@@ -55,10 +58,9 @@ fn assert_provider(
     );
     assert!(manifest.contains("infer = \"=0.19.0\""));
 
-    let checked = cargo_check(
-        &root.join("generated/backend/Cargo.toml"),
-        &temporary.join("target"),
-    );
+    let manifest = root.join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest);
+    let checked = cargo_check(&manifest, true);
     assert!(
         checked.status.success(),
         "{name}: {}",
@@ -80,14 +82,4 @@ fn write_artifacts(root: &Path, artifacts: &[Artifact]) {
         fs::create_dir_all(destination.parent().unwrap()).unwrap();
         fs::write(destination, &artifact.content).unwrap();
     }
-}
-
-fn cargo_check(manifest: &Path, target: &Path) -> std::process::Output {
-    Command::new("cargo")
-        .args(["check", "--quiet", "--manifest-path"])
-        .arg(manifest)
-        .arg("--lib")
-        .env("CARGO_TARGET_DIR", target)
-        .output()
-        .unwrap()
 }

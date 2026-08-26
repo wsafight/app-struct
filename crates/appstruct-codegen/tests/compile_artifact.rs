@@ -1,10 +1,12 @@
+mod support;
+
 use appstruct_codegen::{Artifact, plan};
 use appstruct_compiler::compile_project;
 use appstruct_ir::Cardinality;
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use support::{assert_rustfmt, cargo_check, prepare_generated_package};
 
 #[test]
 fn generated_fixture_is_a_compilable_rust_crate() {
@@ -24,13 +26,13 @@ fn generated_fixture_is_a_compilable_rust_crate() {
     }
 
     let manifest = temporary.path().join("generated/backend/Cargo.toml");
-    let status = Command::new("cargo")
-        .args(["check", "--quiet", "--manifest-path"])
-        .arg(manifest)
-        .env("CARGO_TARGET_DIR", temporary.path().join("target"))
-        .status()
-        .unwrap();
-    assert!(status.success());
+    assert_rustfmt(&manifest);
+    let checked = cargo_check(&manifest, false);
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
 }
 
 #[test]
@@ -77,29 +79,25 @@ fn m3_extensions_require_every_handler_at_compile_time() {
     assert!(openapi["paths"]["/api/queries/project-metrics"]["get"].is_object());
 
     let generated_manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&generated_manifest);
+    let generated_package = prepare_generated_package(&generated_manifest).unwrap();
     assert!(cargo_check(&generated_manifest, true).status.success());
 
     let server = temporary.path().join("server");
     fs::create_dir_all(server.join("src")).unwrap();
-    fs::write(server.join("Cargo.toml"), server_manifest()).unwrap();
+    fs::write(
+        server.join("Cargo.toml"),
+        server_manifest(&generated_package),
+    )
+    .unwrap();
     fs::write(server.join("src/main.rs"), missing_handler_source()).unwrap();
-    let missing = Command::new("cargo")
-        .args(["check", "--quiet", "--manifest-path"])
-        .arg(server.join("Cargo.toml"))
-        .env("CARGO_TARGET_DIR", temporary.path().join("server-target"))
-        .output()
-        .unwrap();
+    let missing = cargo_check(&server.join("Cargo.toml"), false);
     assert!(!missing.status.success());
     assert!(String::from_utf8_lossy(&missing.stderr).contains("ProjectMetricsHandler"));
 
     fs::write(server.join("src/main.rs"), complete_handler_source()).unwrap();
-    let complete = Command::new("cargo")
-        .args(["check", "--quiet", "--manifest-path"])
-        .arg(server.join("Cargo.toml"))
-        .env("CARGO_TARGET_DIR", temporary.path().join("server-target"))
-        .status()
-        .unwrap();
-    assert!(complete.success());
+    let complete = cargo_check(&server.join("Cargo.toml"), false);
+    assert!(complete.status.success());
 }
 
 #[test]
@@ -128,6 +126,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert_m4_openapi_contract(&artifacts);
 
     let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest);
     let checked = cargo_check(&manifest, true);
     assert!(
         checked.status.success(),
@@ -200,6 +199,7 @@ fn m6_tenant_contract_generates_a_compilable_backend() {
     assert!(openapi["paths"]["/api/tenant/organizations"]["post"].is_object());
 
     let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest);
     let checked = cargo_check(&manifest, true);
     assert!(
         checked.status.success(),
@@ -307,33 +307,18 @@ fn write_artifacts(root: &Path, artifacts: &[Artifact]) {
     }
 }
 
-fn cargo_check(manifest: &Path, library_only: bool) -> std::process::Output {
-    let mut command = Command::new("cargo");
-    command
-        .args(["check", "--quiet", "--manifest-path"])
-        .arg(manifest);
-    if library_only {
-        command.arg("--lib");
-    }
-    command
-        .env(
-            "CARGO_TARGET_DIR",
-            manifest.parent().unwrap().join("target"),
-        )
-        .output()
-        .unwrap()
-}
-
-fn server_manifest() -> &'static str {
-    r#"[package]
+fn server_manifest(generated_package: &str) -> String {
+    format!(
+        r#"[package]
 name = "appstruct-extension-server"
 version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-appstruct-generated-backend = { path = "../generated/backend" }
+appstruct-generated-backend = {{ package = {generated_package:?}, path = "../generated/backend" }}
 async-trait = "0.1.89"
 "#
+    )
 }
 
 fn missing_handler_source() -> &'static str {

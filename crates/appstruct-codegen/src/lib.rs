@@ -30,6 +30,7 @@ pub fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     artifacts.extend(openapi::plan(ir)?);
     artifacts.extend(typescript::plan(ir));
     artifacts.extend(web::plan(ir));
+    format_rust_artifacts(&mut artifacts)?;
     artifacts.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     ensure_unique_paths(&artifacts)?;
     Ok(artifacts)
@@ -52,6 +53,53 @@ pub(crate) fn generated_header(comment: &str) -> String {
 }
 
 pub(crate) fn format_rust(source: &str) -> Result<String, CodegenError> {
+    let syntax = syn::parse_file(source)
+        .map_err(|error| CodegenError::new(format!("generated Rust did not parse: {error}")))?;
+    Ok(format!(
+        "{}{}",
+        generated_header("//"),
+        prettyplease::unparse(&syntax)
+    ))
+}
+
+fn format_rust_artifacts(artifacts: &mut [Artifact]) -> Result<(), CodegenError> {
+    let rust_indexes = artifacts
+        .iter()
+        .enumerate()
+        .filter_map(|(index, artifact)| {
+            (artifact.kind == ArtifactKind::RustSource).then_some(index)
+        })
+        .collect::<Vec<_>>();
+    if rust_indexes.is_empty() {
+        return Ok(());
+    }
+    let mut input = String::new();
+    for index in &rust_indexes {
+        let source = std::str::from_utf8(&artifacts[*index].content)
+            .map_err(|error| CodegenError::new(format!("generated Rust is not UTF-8: {error}")))?;
+        input.push_str(&start_marker(*index));
+        input.push_str(source);
+        if !source.ends_with('\n') {
+            input.push('\n');
+        }
+        input.push_str(&end_marker(*index));
+    }
+    let output = run_rustfmt(&input)?;
+    for index in rust_indexes {
+        let start = start_marker(index);
+        let end = end_marker(index);
+        let (_, remainder) = output
+            .split_once(&start)
+            .ok_or_else(|| CodegenError::new("rustfmt removed an artifact start marker"))?;
+        let (source, _) = remainder
+            .split_once(&end)
+            .ok_or_else(|| CodegenError::new("rustfmt removed an artifact end marker"))?;
+        artifacts[index].content = format!("{}\n", source.trim_matches('\n')).into_bytes();
+    }
+    Ok(())
+}
+
+fn run_rustfmt(source: &str) -> Result<String, CodegenError> {
     let mut child = Command::new("rustfmt")
         .args(["--emit", "stdout", "--edition", "2024"])
         .stdin(Stdio::piped())
@@ -76,4 +124,12 @@ pub(crate) fn format_rust(source: &str) -> Result<String, CodegenError> {
     }
     String::from_utf8(output.stdout)
         .map_err(|error| CodegenError::new(format!("rustfmt returned invalid UTF-8: {error}")))
+}
+
+fn start_marker(index: usize) -> String {
+    format!("// __APPSTRUCT_ARTIFACT_{index}_START__\n")
+}
+
+fn end_marker(index: usize) -> String {
+    format!("// __APPSTRUCT_ARTIFACT_{index}_END__\n")
 }
