@@ -5,20 +5,23 @@ use std::env;
 use std::path::Path;
 use std::process::ExitCode;
 
-pub(super) fn apply(project: &Path) -> ExitCode {
-    let Some(database_url) = database_url() else {
+pub(super) fn apply(project: &Path, configured_url: Option<&str>) -> ExitCode {
+    let Some(database_url) = database_url(configured_url) else {
         eprintln!("error[AS4107]: DATABASE_URL is required for migrate apply");
         return ExitCode::from(3);
     };
     apply_with_url(project, &database_url)
 }
 
-pub(super) fn apply_if_configured(project: &Path) -> Option<ExitCode> {
-    database_url().map(|database_url| apply_with_url(project, &database_url))
+pub(super) fn apply_if_configured(
+    project: &Path,
+    configured_url: Option<&str>,
+) -> Option<ExitCode> {
+    database_url(configured_url).map(|database_url| apply_with_url(project, &database_url))
 }
 
-pub(super) fn status(project: &Path) -> ExitCode {
-    let Some(database_url) = database_url() else {
+pub(super) fn status(project: &Path, configured_url: Option<&str>) -> ExitCode {
+    let Some(database_url) = database_url(configured_url) else {
         eprintln!("error[AS4107]: DATABASE_URL is required for migrate status");
         return ExitCode::from(3);
     };
@@ -35,9 +38,10 @@ fn apply_with_url(project: &Path, database_url: &str) -> ExitCode {
     }
 }
 
-fn database_url() -> Option<String> {
-    env::var("DATABASE_URL")
-        .ok()
+fn database_url(configured_url: Option<&str>) -> Option<String> {
+    configured_url
+        .map(str::to_owned)
+        .or_else(|| env::var("DATABASE_URL").ok())
         .filter(|value| !value.trim().is_empty())
 }
 

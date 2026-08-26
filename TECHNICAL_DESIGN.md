@@ -39,6 +39,8 @@ M5 Template 初始化已进入 CLI。`new` 在项目发现前执行，以当前�
 
 M5 build/doctor 已实现。项目 `.env` 使用 dotenv parser 读取但不修改 CLI 进程环境，显式环境变量始终优先；错误和诊断只报告变量名或连接结果。doctor 根据 IR 的 `database.dev.mode` 选择 Docker/Compose 或 PostgreSQL migration status 检查，并提供 text/JSON 两种确定性结构。build 先完成生成事务，若缺少 backend `Cargo.lock` 则生成一次，之后目录交换在 Cargo.toml 未变化时保留该 transient lock；Clippy 与 release build 均使用 `--locked` 和 `.appstruct/cache/backend-target`。Web Artifact 在 ownership manifest 计算前由临时目录内、pnpm lock 固定的 Prettier 3.9.6 格式化；build 再运行 frozen install、format check、`tsc --noEmit` 与 Vite build。
 
+M5 dev server 已实现。CLI 在 external 模式显式传递从进程环境或 `.env` 得到的数据库 URL，不修改父进程环境；managed 模式只协调 Compose `postgres` service，并记录本次 session 是否拥有其生命周期。启动和输入变化都按“安全迁移 -> canonical generation -> debug backend build -> frozen Web install”执行，迁移拒绝先于生成目录交换。协调器指纹覆盖 `appstruct.yaml`、`appstruct.lock`、`spec/` 与 `app/backend/`；重载时为 API 和 pnpm/Vite 分配独立 Unix 进程组，TERM 整组退出并在超时后 kill，避免包装进程退出后遗留 Vite。Ctrl-C 与 Drop 路径幂等清理子进程，只停止本 session 启动的 managed PostgreSQL。外部 PostgreSQL 17.10 E2E 已验证自定义端口、初始迁移、nullable 字段热重载、破坏性变更阻断、旧服务保留和退出清理。
+
 ## 2. 架构决策摘要
 
 | 主题 | 首版决策 |
@@ -1159,7 +1161,7 @@ MVP 期间所有官方包锁步版本，避免过早建设复杂模块解析器�
 appstruct new <name> --template <name>
 appstruct check [--deny-warnings] [--format text|json]
 appstruct generate [--check]
-appstruct dev
+appstruct dev [--api-port <port>] [--web-port <port>]
 appstruct build
 appstruct doctor
 
@@ -1198,21 +1200,20 @@ CI 中检测到非 TTY 时：
 
 职责：
 
-- 检查工具链和环境变量
-- 初次生成并启动后端和 Vite
-- 根据 `database.dev.mode` 协调 managed PostgreSQL 或检查 external PostgreSQL
-- 监听 App Spec 与用户代码
-- 配置变化时触发编译和生成；实现支持时复用增量缓存
-- 生成失败时保持上一次成功产物运行
-- 聚合日志并标明服务来源
-- 优雅终止所有子进程
+- 加载环境变量并要求 API/Web 端口不同
+- 根据 `database.dev.mode` 协调 managed PostgreSQL 或连接 external PostgreSQL
+- 初次启动与重载先执行只接受安全变更的开发迁移，再生成、构建后端和安装 Web 依赖
+- 监听 App Spec、lockfile、`spec/` 与用户 Rust；用户 React 交由 Vite 监听
+- 迁移、生成或构建失败时不重启上一版服务
+- 聚合日志并以 `[api]`/`[web]` 标明来源
+- 使用独立进程组优雅终止完整子进程树
 
 数据库开发模式：
 
 | 模式 | 启动行为 | 退出行为 | 前置条件 |
 | --- | --- | --- | --- |
 | `managed` | 调用 Template 提供的 `docker compose up` 启动 PostgreSQL | 停止本次 session 启动的容器，保留命名 volume | Docker 与 Compose 可用 |
-| `external` | 校验 `DATABASE_URL`、连通性和迁移状态 | 不管理数据库进程 | 外部 PostgreSQL 可连接 |
+| `external` | 从进程环境或 `.env` 读取 `DATABASE_URL`，连接并执行安全迁移 | 不管理数据库进程 | 外部 PostgreSQL 可连接 |
 
 `dashboard` Template 默认使用 managed 模式；生产环境没有 managed 模式。数据库密码只从运行时环境读取，不进入 Surface Spec、IR、日志或构建指纹。`appstruct doctor` 根据所选模式检查依赖，并在 Docker 不可用时给出 external 模式配置指引。
 
@@ -1220,11 +1221,12 @@ CI 中检测到非 TTY 时：
 
 | 变化 | 动作 |
 | --- | --- |
-| App Spec | 重新编译 IR；MVP 可重新规划全部 Artifact，但只提交内容变化的文件 |
-| 用户 Rust | 交给 Cargo watch/rebuild |
+| App Spec / `appstruct.lock` | 协调安全迁移、完整生成与服务重启，只提交内容变化的 Artifact |
+| 用户 Rust | 完整 debug build 并重启 API/Web |
 | 用户 React | 交给 Vite HMR |
-| Module/Preset lock | 完整重新生成 |
-| migrations | 刷新状态，不自动执行危险变更 |
+| migrations | 不作为 watch 输入；下次启动或其他输入重载时校验并应用 pending migration |
+
+实现使用 400 ms polling 指纹，不监听 `generated/`、`.appstruct/cache/` 或构建输出。API 与 Web 默认端口分别为 3000/5173，可由 CLI flag 覆盖；Vite 使用 strict port，端口冲突直接失败。当前重载为完整生成与 debug build，后续可在保持相同生命周期协议的前提下引入增量缓存。
 
 MVP 可以先完整重新生成，在输出确定后再通过 IR 节点 hash 做增量优化。
 

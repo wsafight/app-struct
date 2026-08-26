@@ -28,9 +28,17 @@ pub(crate) enum MigrateCommand {
 }
 
 pub(crate) fn run(project: &Path, command: MigrateCommand) -> ExitCode {
+    run_with_database(project, command, None)
+}
+
+pub(crate) fn run_with_database(
+    project: &Path,
+    command: MigrateCommand,
+    database_url: Option<&str>,
+) -> ExitCode {
     match command {
-        MigrateCommand::Apply => return database::apply(project),
-        MigrateCommand::Status => return database::status(project),
+        MigrateCommand::Apply => return database::apply(project, database_url),
+        MigrateCommand::Status => return database::status(project, database_url),
         MigrateCommand::Plan | MigrateCommand::Dev { .. } => {}
     }
     let target = match appstruct_compiler::compile_project(project) {
@@ -52,7 +60,9 @@ pub(crate) fn run(project: &Path, command: MigrateCommand) -> ExitCode {
     render_plan(&plan);
     match command {
         MigrateCommand::Plan => ExitCode::SUCCESS,
-        MigrateCommand::Dev { accept } => accept_plan(project, &target, &plan, accept),
+        MigrateCommand::Dev { accept } => {
+            accept_plan(project, &target, &plan, accept, database_url)
+        }
         MigrateCommand::Apply | MigrateCommand::Status => unreachable!(),
     }
 }
@@ -62,10 +72,11 @@ fn accept_plan(
     target: &DatabaseSchema,
     plan: &MigrationPlan,
     accept: bool,
+    database_url: Option<&str>,
 ) -> ExitCode {
     if plan.is_empty() {
         println!("Schema snapshot is current");
-        return database::apply_if_configured(project).unwrap_or(ExitCode::SUCCESS);
+        return database::apply_if_configured(project, database_url).unwrap_or(ExitCode::SUCCESS);
     }
     if plan.is_blocked() {
         eprintln!("error[AS4102]: migration contains destructive or review-required changes");
@@ -93,7 +104,7 @@ fn accept_plan(
     match write_plan(project, &sql, &snapshot) {
         Ok(path) => {
             println!("Created safe migration {}", path.display());
-            database::apply_if_configured(project).unwrap_or_else(|| {
+            database::apply_if_configured(project, database_url).unwrap_or_else(|| {
                 println!("Migration is pending; set DATABASE_URL to apply it");
                 ExitCode::SUCCESS
             })

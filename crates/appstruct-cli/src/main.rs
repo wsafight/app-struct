@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 mod build;
+mod development;
 mod doctor;
 mod environment;
 mod generation;
@@ -41,6 +42,13 @@ enum Command {
     Doctor {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
+    },
+    /// Start PostgreSQL coordination, the API, and the Vite development server.
+    Dev {
+        #[arg(long, default_value_t = 3000)]
+        api_port: u16,
+        #[arg(long, default_value_t = 5173)]
+        web_port: u16,
     },
     /// Validate the App Spec and build normalized IR in memory.
     Check {
@@ -96,6 +104,7 @@ fn run(cli: Cli) -> ExitCode {
         Command::Check { format } | Command::Doctor { format } => *format,
         Command::New { .. }
         | Command::Build
+        | Command::Dev { .. }
         | Command::Generate { .. }
         | Command::Migrate { .. } => OutputFormat::Text,
     };
@@ -126,6 +135,7 @@ fn run(cli: Cli) -> ExitCode {
         Command::New { .. } => unreachable!(),
         Command::Build => build::run(&project),
         Command::Doctor { format } => doctor::run(&project, format == OutputFormat::Json),
+        Command::Dev { api_port, web_port } => development::run(&project, api_port, web_port),
         Command::Check { format } => match appstruct_compiler::compile_project(&project) {
             Ok(ir) => {
                 match format {

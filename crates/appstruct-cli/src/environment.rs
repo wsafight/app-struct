@@ -4,7 +4,7 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct ProjectEnvironment {
     file_values: BTreeMap<String, String>,
 }
