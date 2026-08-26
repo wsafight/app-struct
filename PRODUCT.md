@@ -808,7 +808,7 @@ modules:
 
 `appstruct/saas@1` 只组合已经实现的 Auth、RBAC、Tenant、Audit、Mail、Jobs 和 File。默认启用注册与密码重置，提供 `member/admin` 角色，启用租户和审计，使用开发期 capture Mail、本地文件存储，以及 `default/mail` 两个 Jobs 队列。Billing 和 Admin 不属于版本 1。
 
-Preset 的展开结果进入统一 Typed IR，用户只维护覆盖默认行为的差异配置。映射节点递归合并，标量和列表由用户值整体替换。`appstruct.lock` 锁定 Preset 名称、版本、展开内容 SHA-256，以及精确的模块名和锁步版本；缺失、摘要不匹配或模块集不完整时，`check`、`generate` 和 `build` 都失败关闭。`appstruct preset show` 显示锁定摘要，`--expanded` 输出规范化默认模块配置。当前不提供自动更新 lock 的命令。
+Preset 的展开结果进入统一 Typed IR，用户只维护覆盖默认行为的差异配置。映射节点递归合并，标量和列表由用户值整体替换。`appstruct.lock` 锁定 Preset 名称、版本、展开内容 SHA-256，以及精确的模块名和锁步版本；缺失、摘要不匹配或模块集不完整时，`check`、`generate` 和 `build` 都失败关闭。`appstruct preset show` 显示锁定摘要，`--expanded` 输出合并项目覆盖后的规范化有效模块配置。当前不提供自动更新 lock 的命令。
 
 ### 15.3 Template
 

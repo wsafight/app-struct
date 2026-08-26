@@ -1,4 +1,4 @@
-use appstruct_compiler::{compile_project, preset_info};
+use appstruct_compiler::{compile_project, expanded_preset, preset_info, project_lock};
 use appstruct_ir::{FileProviderIr, MailProviderIr};
 use std::{
     fs,
@@ -52,6 +52,25 @@ fn user_module_values_override_preset_defaults() {
     assert_eq!(ir.jobs.queues.len(), 2);
     assert_eq!(ir.file.max_bytes, 2048);
     assert_eq!(ir.file.allowed_content_types.len(), 4);
+    let expanded = expanded_preset(temporary.path()).unwrap().unwrap();
+    assert!(expanded.starts_with("modules:\n  audit:\n"));
+    assert!(expanded.contains("registration: false"));
+    assert!(expanded.contains("password_reset: true"));
+    assert!(expanded.contains("poll_interval_ms: 500"));
+    assert!(expanded.contains("max_bytes: 2048"));
+}
+
+#[test]
+fn canonical_template_lock_matches_the_checked_in_saas_example() {
+    let expected = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/saas-demo/appstruct.lock"),
+    )
+    .unwrap();
+    assert_eq!(
+        project_lock("saas", Some(("appstruct/saas", 1))).unwrap(),
+        expected
+    );
+    assert!(project_lock("saas", Some(("unknown", 1))).is_none());
 }
 
 #[test]

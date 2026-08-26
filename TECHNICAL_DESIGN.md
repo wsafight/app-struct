@@ -1282,7 +1282,7 @@ modules:
   file: { enabled: true, provider: local }
 ```
 
-版本 1 不包含 Billing 或 Admin。默认 Mail 同时提供 invitation/welcome 模板；Jobs 提供 default/mail 队列；File 限制为 10 MiB 和明确的 MIME allowlist。完整默认值由 `appstruct preset show --expanded` 输出。
+版本 1 不包含 Billing 或 Admin。默认 Mail 同时提供 invitation/welcome 模板；Jobs 提供 default/mail 队列；File 限制为 10 MiB 和明确的 MIME allowlist。合并项目覆盖后的完整有效配置由 `appstruct preset show --expanded` 输出。
 
 用户 `modules` 映射在 Preset 默认值之上递归合并；标量和序列整体替换。所有模块仍执行普通 Compiler 依赖与安全校验，因此覆盖不能绕过 Auth、Tenant 或 Audit 契约。`appstruct.lock` 必须包含锁步 AppStruct 版本、Preset 名称/版本、展开文本 SHA-256，以及七个模块的精确版本；编译器不在普通命令中隐式补锁或升级。
 

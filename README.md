@@ -88,8 +88,9 @@ preset:
 
 The project must commit an `appstruct.lock` containing the preset digest and exact module versions.
 User `modules` mappings override defaults recursively; scalar and list values replace their defaults.
-Inspect the locked contract with `appstruct preset show` or print all defaults with
-`appstruct preset show --expanded`. Billing and Admin are not part of preset version 1.
+Inspect the locked contract with `appstruct preset show` or print the effective module
+configuration after project overrides with `appstruct preset show --expanded`. Billing and Admin
+are not part of preset version 1.
 
 ## Commands
 

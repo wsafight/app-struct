@@ -61,7 +61,7 @@ fn create(parent: &Path, name: &str, template: ProjectTemplate) -> io::Result<Pa
             format!("staging directory `{}` already exists", staging.display()),
         ));
     }
-    if let Err(error) = write_template(&staging, name, template_files(template)) {
+    if let Err(error) = write_template(&staging, name, template, template_files(template)) {
         let _ = fs::remove_dir_all(&staging);
         return Err(error);
     }
@@ -82,7 +82,12 @@ fn create(parent: &Path, name: &str, template: ProjectTemplate) -> io::Result<Pa
     Ok(destination)
 }
 
-fn write_template(root: &Path, name: &str, files: &[TemplateFile]) -> io::Result<()> {
+fn write_template(
+    root: &Path,
+    name: &str,
+    template: ProjectTemplate,
+    files: &[TemplateFile],
+) -> io::Result<()> {
     fs::create_dir(root)?;
     for file in files {
         let relative = Path::new(file.path);
@@ -94,7 +99,27 @@ fn write_template(root: &Path, name: &str, files: &[TemplateFile]) -> io::Result
         fs::create_dir_all(parent)?;
         fs::write(destination, file.content.replace(PROJECT_NAME_MARKER, name))?;
     }
+    let lock = appstruct_compiler::project_lock(template.name(), template.preset())
+        .ok_or_else(|| invalid("template selects an unsupported preset"))?;
+    fs::write(root.join("appstruct.lock"), lock)?;
     Ok(())
+}
+
+impl ProjectTemplate {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Minimal => "minimal",
+            Self::Dashboard => "dashboard",
+            Self::Saas => "saas",
+        }
+    }
+
+    const fn preset(self) -> Option<(&'static str, u64)> {
+        match self {
+            Self::Saas => Some(("appstruct/saas", 1)),
+            Self::Minimal | Self::Dashboard => None,
+        }
+    }
 }
 
 fn validate_name(name: &str) -> io::Result<()> {
@@ -158,10 +183,6 @@ const MINIMAL_FILES: &[TemplateFile] = &[
         content: include_str!("../templates/minimal/README.md"),
     },
     TemplateFile {
-        path: "appstruct.lock",
-        content: include_str!("../templates/minimal/appstruct.lock"),
-    },
-    TemplateFile {
         path: "appstruct.yaml",
         content: include_str!("../templates/minimal/appstruct.yaml"),
     },
@@ -187,10 +208,6 @@ const DASHBOARD_FILES: &[TemplateFile] = &[
     TemplateFile {
         path: "README.md",
         content: include_str!("../templates/dashboard/README.md"),
-    },
-    TemplateFile {
-        path: "appstruct.lock",
-        content: include_str!("../templates/dashboard/appstruct.lock"),
     },
     TemplateFile {
         path: "appstruct.yaml",
@@ -226,10 +243,6 @@ const SAAS_FILES: &[TemplateFile] = &[
     TemplateFile {
         path: "README.md",
         content: include_str!("../templates/saas/README.md"),
-    },
-    TemplateFile {
-        path: "appstruct.lock",
-        content: include_str!("../templates/saas/appstruct.lock"),
     },
     TemplateFile {
         path: "appstruct.yaml",

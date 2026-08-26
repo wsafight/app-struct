@@ -19,7 +19,7 @@ mod validation;
 mod yaml;
 
 pub use loading::discover_project;
-pub use preset::{PresetInfo, preset_info};
+pub use preset::{PresetInfo, preset_info, project_lock};
 
 use appstruct_ir::{AppIr, Diagnostic, SourceSpan};
 use std::collections::BTreeMap;
@@ -76,6 +76,27 @@ pub fn compile_project(project_root: &Path) -> Result<AppIr, Vec<Diagnostic>> {
     } else {
         Err(diagnostics)
     }
+}
+
+/// Return the selected preset's effective module configuration after project overrides.
+///
+/// # Errors
+///
+/// Returns root parsing, validation, or preset lock diagnostics.
+pub fn expanded_preset(project_root: &Path) -> Result<Option<String>, Vec<Diagnostic>> {
+    let root = canonical_project_root(project_root)?;
+    let root_node = loading::load_yaml(&root, &root.join("appstruct.yaml"))?;
+    let surface_root = surface::decode_root(&root_node).map_err(|error| vec![error])?;
+    let mut diagnostics = validation::validate_root(&surface_root);
+    diagnostics.extend(preset::validate_lock(&root, &surface_root));
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+    Ok(surface_root
+        .preset
+        .as_ref()
+        .and(surface_root.expanded_modules.as_ref())
+        .map(preset::render_expanded_modules))
 }
 
 fn canonical_project_root(project_root: &Path) -> Result<PathBuf, Vec<Diagnostic>> {

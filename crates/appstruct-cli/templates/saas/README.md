@@ -12,8 +12,8 @@ The API listens on `http://127.0.0.1:3000` and the Web application on
 tenant-isolated projects and tasks. Entity changes are recorded by Audit; the default Audit reader
 role is `admin`.
 
-New accounts receive the `member` role. Preset version 1 has no Admin UI, so provision initial
-operators through a trusted migration or deployment process before exposing admin-only surfaces.
+New accounts receive the `member` role. After the first operator registers, run
+`appstruct auth bootstrap-admin --email admin@example.com` from a trusted host.
 
 Development uses capture mail, PostgreSQL Jobs/Outbox, and local file storage under
 `.appstruct/files`. Set production Mail/File provider credentials through environment variables;

@@ -113,11 +113,15 @@ appstruct dev
 
 After registration, create an organization and use the generated Project and Task resources. Both
 are tenant-isolated and audited. Development defaults to capture mail and local files under
-`.appstruct/files`; Jobs/Outbox uses PostgreSQL. Inspect the complete defaults with
+`.appstruct/files`; Jobs/Outbox uses PostgreSQL. Inspect the effective module configuration with
 `appstruct preset show --expanded`.
 
-New registrations use the `member` role. Because preset version 1 does not include the Admin UI,
-provision initial `admin` operators through a trusted deployment or migration process.
+New registrations use the `member` role. After the first operator registers, provision that
+account exactly once from a trusted host:
+
+```bash
+appstruct auth bootstrap-admin --email admin@example.com
+```
 
 For production, replace capture/local providers through reviewed App Spec overrides and runtime
 environment variables. Keep the generated preset digest and exact module versions in

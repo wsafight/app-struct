@@ -31,7 +31,18 @@ pub(crate) fn run(project: &Path, command: &PresetCommand) -> ExitCode {
         return ExitCode::from(1);
     };
     match command {
-        PresetCommand::Show { expanded: true } => print!("{}", info.expanded),
+        PresetCommand::Show { expanded: true } => {
+            match appstruct_compiler::expanded_preset(project) {
+                Ok(Some(expanded)) => print!("{expanded}"),
+                Ok(None) => unreachable!("compiled IR selected a preset"),
+                Err(diagnostics) => {
+                    for diagnostic in &diagnostics {
+                        crate::render_text_diagnostic(diagnostic);
+                    }
+                    return ExitCode::from(1);
+                }
+            }
+        }
         PresetCommand::Show { expanded: false } => {
             println!("{} {}", info.name, info.version);
             println!("digest: {}", info.digest);

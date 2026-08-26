@@ -1,14 +1,15 @@
-use crate::loading::synthetic_span;
+mod lock;
+
 use crate::surface::{SurfacePreset, SurfaceRoot};
 use crate::yaml::{self, MappingEntry, Node, NodeKind};
 use appstruct_ir::Diagnostic;
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, fs, path::Path};
+use std::fmt::Write;
+use std::path::Path;
 
 const SAAS_NAME: &str = "appstruct/saas";
 const SAAS_VERSION: u64 = 1;
-const MODULE_VERSION: &str = "0.1.0";
+pub(super) const MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MODULES: &[&str] = &["audit", "auth", "file", "jobs", "mail", "rbac", "tenant"];
 const EXPANDED: &str = concat!(
     "modules:\n",
@@ -57,7 +58,7 @@ pub struct PresetInfo {
     pub version: u64,
     pub digest: String,
     pub modules: &'static [&'static str],
-    pub expanded: &'static str,
+    pub defaults: &'static str,
 }
 
 #[must_use]
@@ -67,12 +68,18 @@ pub fn preset_info(name: &str, version: u64) -> Option<PresetInfo> {
         version: SAAS_VERSION,
         digest: preset_digest(),
         modules: MODULES,
-        expanded: EXPANDED,
+        defaults: EXPANDED,
     })
 }
 
 pub(crate) fn preset_digest() -> String {
     format!("sha256:{:x}", Sha256::digest(EXPANDED.as_bytes()))
+}
+
+/// Build the canonical project lock used by official templates.
+#[must_use]
+pub fn project_lock(template: &str, preset: Option<(&str, u64)>) -> Option<String> {
+    lock::source(template, preset)
 }
 
 pub(crate) fn expand_modules(
@@ -114,98 +121,94 @@ fn merge(defaults: &mut Node, overrides: &Node) {
 }
 
 pub(crate) fn validate_lock(project: &Path, root: &SurfaceRoot) -> Vec<Diagnostic> {
-    let Some(preset) = &root.preset else {
-        return Vec::new();
-    };
-    if !supported(&preset.name.value, preset.version.value) {
-        return vec![
-            Diagnostic::error(
-                "AS3058",
-                format!(
-                    "unsupported preset `{}@{}`",
-                    preset.name.value, preset.version.value
-                ),
-                preset.name.span.clone(),
-            )
-            .with_help("this compiler supports `appstruct/saas` version 1"),
-        ];
-    }
-    let path = project.join("appstruct.lock");
-    let source = match fs::read_to_string(&path) {
-        Ok(source) => source,
-        Err(error) => {
-            return vec![lock_error(
-                "AS3059",
-                format!("cannot read preset lock `appstruct.lock`: {error}"),
-            )];
-        }
-    };
-    let lock: ProjectLock = match toml::from_str(&source) {
-        Ok(lock) => lock,
-        Err(error) => {
-            return vec![lock_error(
-                "AS3059",
-                format!("invalid preset lock `appstruct.lock`: {error}"),
-            )];
-        }
-    };
-    validate_lock_contract(&lock)
+    lock::validate(project, root)
 }
 
-fn validate_lock_contract(lock: &ProjectLock) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-    if lock.lock_version != 1 || lock.appstruct != env!("CARGO_PKG_VERSION") {
-        diagnostics.push(lock_error(
-            "AS3060",
-            "preset lock version or AppStruct version does not match this compiler",
-        ));
-    }
-    let expected_digest = preset_digest();
-    if lock.preset.as_ref().is_none_or(|preset| {
-        preset.name != SAAS_NAME
-            || preset.version != SAAS_VERSION
-            || preset.digest != expected_digest
-    }) {
-        diagnostics.push(lock_error(
-            "AS3060",
-            "locked preset name, version, or digest does not match `appstruct/saas@1`",
-        ));
-    }
-    let expected_modules = MODULES
-        .iter()
-        .map(|name| ((*name).to_owned(), MODULE_VERSION.to_owned()))
-        .collect::<BTreeMap<_, _>>();
-    if lock.modules != expected_modules {
-        diagnostics.push(lock_error(
-            "AS3061",
-            "locked preset module set or version is incomplete",
-        ));
-    }
-    diagnostics
+pub(crate) fn render_expanded_modules(modules: &MappingEntry) -> String {
+    let mut output = "modules:\n".to_owned();
+    render_node(&modules.value, 2, &mut output);
+    output
 }
 
 fn supported(name: &str, version: u64) -> bool {
     name == SAAS_NAME && version == SAAS_VERSION
 }
 
-fn lock_error(code: &str, message: impl Into<String>) -> Diagnostic {
-    Diagnostic::error(code, message, synthetic_span("appstruct.lock"))
+fn render_node(node: &Node, indent: usize, output: &mut String) {
+    match &node.kind {
+        NodeKind::Mapping(entries) => {
+            for (key, entry) in entries {
+                let _ = write!(output, "{}{key}:", " ".repeat(indent));
+                match entry.value.kind {
+                    NodeKind::Scalar { .. } => {
+                        output.push(' ');
+                        render_scalar(&entry.value, output);
+                        output.push('\n');
+                    }
+                    NodeKind::Mapping(ref entries) if entries.is_empty() => {
+                        output.push_str(" {}\n");
+                    }
+                    NodeKind::Sequence(ref items)
+                        if items
+                            .iter()
+                            .all(|item| matches!(item.kind, NodeKind::Scalar { .. })) =>
+                    {
+                        output.push_str(" [");
+                        for (index, item) in items.iter().enumerate() {
+                            if index > 0 {
+                                output.push_str(", ");
+                            }
+                            render_scalar(item, output);
+                        }
+                        output.push_str("]\n");
+                    }
+                    _ => {
+                        output.push('\n');
+                        render_node(&entry.value, indent + 2, output);
+                    }
+                }
+            }
+        }
+        NodeKind::Sequence(items) => {
+            for item in items {
+                let _ = write!(output, "{}- ", " ".repeat(indent));
+                if matches!(item.kind, NodeKind::Scalar { .. }) {
+                    render_scalar(item, output);
+                    output.push('\n');
+                } else {
+                    output.push('\n');
+                    render_node(item, indent + 2, output);
+                }
+            }
+        }
+        NodeKind::Scalar { .. } => {
+            let _ = write!(output, "{}", " ".repeat(indent));
+            render_scalar(node, output);
+            output.push('\n');
+        }
+    }
 }
 
-#[derive(Debug, Deserialize)]
-struct ProjectLock {
-    lock_version: u64,
-    appstruct: String,
-    preset: Option<LockedPreset>,
-    #[serde(default)]
-    modules: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct LockedPreset {
-    name: String,
-    version: u64,
-    digest: String,
+fn render_scalar(node: &Node, output: &mut String) {
+    let Some((value, plain)) = node.scalar() else {
+        return;
+    };
+    if plain && !value.is_empty() {
+        output.push_str(value);
+    } else {
+        output.push('"');
+        for character in value.chars() {
+            match character {
+                '"' => output.push_str("\\\""),
+                '\\' => output.push_str("\\\\"),
+                '\n' => output.push_str("\\n"),
+                '\r' => output.push_str("\\r"),
+                '\t' => output.push_str("\\t"),
+                other => output.push(other),
+            }
+        }
+        output.push('"');
+    }
 }
 
 #[cfg(test)]

@@ -19,9 +19,32 @@ fn preset_show_reports_lock_and_expanded_defaults() {
     let expanded = run(&project, &["preset", "show", "--expanded"]);
     assert!(expanded.status.success());
     let stdout = String::from_utf8_lossy(&expanded.stdout);
-    assert!(stdout.starts_with("modules:\n  auth:\n"));
+    assert!(stdout.starts_with("modules:\n  audit:\n"));
     assert!(stdout.contains("provider: capture"));
     assert!(stdout.contains("allowed_content_types:"));
+}
+
+#[test]
+fn preset_show_expanded_includes_project_overrides() {
+    let project = copied_fixture();
+    let path = project.path().join("appstruct.yaml");
+    let source = fs::read_to_string(&path).unwrap();
+    fs::write(
+        path,
+        source.replacen(
+            "includes:\n",
+            "modules:\n  auth:\n    registration: false\n  jobs:\n    poll_interval_ms: 750\n\nincludes:\n",
+            1,
+        ),
+    )
+    .unwrap();
+
+    let expanded = run(project.path(), &["preset", "show", "--expanded"]);
+    assert!(expanded.status.success());
+    let stdout = String::from_utf8_lossy(&expanded.stdout);
+    assert!(stdout.contains("registration: false"));
+    assert!(stdout.contains("password_reset: true"));
+    assert!(stdout.contains("poll_interval_ms: 750"));
 }
 
 #[test]

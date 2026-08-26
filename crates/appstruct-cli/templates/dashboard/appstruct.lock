@@ -1,6 +1,0 @@
-lock_version = 1
-appstruct = "0.1.0"
-
-[template]
-name = "dashboard"
-version = "0.1.0"
