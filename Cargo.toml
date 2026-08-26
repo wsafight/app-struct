@@ -13,12 +13,13 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.98"
 license = "MIT OR Apache-2.0"
+readme = "README.md"
 
 [workspace.dependencies]
-appstruct-codegen = { path = "crates/appstruct-codegen" }
-appstruct-compiler = { path = "crates/appstruct-compiler" }
-appstruct-ir = { path = "crates/appstruct-ir" }
-appstruct-migrate = { path = "crates/appstruct-migrate" }
+appstruct-codegen = { version = "0.1.0", path = "crates/appstruct-codegen" }
+appstruct-compiler = { version = "0.1.0", path = "crates/appstruct-compiler" }
+appstruct-ir = { version = "0.1.0", path = "crates/appstruct-ir" }
+appstruct-migrate = { version = "0.1.0", path = "crates/appstruct-migrate" }
 clap = { version = "4.6.6", features = ["derive"] }
 ctrlc = "3.5.2"
 dotenvy = "0.15.7"

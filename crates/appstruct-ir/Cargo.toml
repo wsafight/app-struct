@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme.workspace = true
+description = "Stable typed intermediate representation and diagnostics for AppStruct"
+documentation = "https://docs.rs/appstruct-ir"
+keywords = ["codegen", "compiler", "ir", "rust"]
+categories = ["development-tools"]
 
 [dependencies]
 serde.workspace = true

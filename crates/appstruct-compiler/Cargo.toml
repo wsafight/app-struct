@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme.workspace = true
+description = "Parser, validator, and typed IR compiler for AppStruct application specifications"
+documentation = "https://docs.rs/appstruct-compiler"
+keywords = ["compiler", "configuration", "codegen", "rust", "yaml"]
+categories = ["config", "development-tools"]
 
 [dependencies]
 appstruct-ir.workspace = true

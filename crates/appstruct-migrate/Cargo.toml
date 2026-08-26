@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme.workspace = true
+description = "PostgreSQL schema diffing and migration execution for AppStruct"
+documentation = "https://docs.rs/appstruct-migrate"
+keywords = ["database", "migration", "postgresql", "schema", "sql"]
+categories = ["database"]
 
 [dependencies]
 appstruct-ir.workspace = true

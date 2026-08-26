@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme.workspace = true
+description = "Deterministic Rust, SQL, OpenAPI, TypeScript, and React generation for AppStruct"
+documentation = "https://docs.rs/appstruct-codegen"
+keywords = ["codegen", "openapi", "postgresql", "rust", "typescript"]
+categories = ["development-tools"]
 
 [dependencies]
 appstruct-ir.workspace = true
