@@ -6,8 +6,8 @@ OpenAPI, a TypeScript client, and a React/Vite application.
 
 The repository is currently a technical preview. M0-M5 are complete, including templates,
 production builds, environment diagnostics, and the coordinated development server. The M6
-Tenant, Audit, Mail, Jobs, and File modules are available as previews; the SaaS preset remains
-in development.
+Tenant, Audit, Mail, Jobs, and File modules and the locked `appstruct/saas@1` preset are available
+as previews; the SaaS template and end-to-end example remain in development.
 
 ## Quick Start
 
@@ -77,6 +77,19 @@ Mail supports compile-time validated templates and `capture`, SMTP, or Resend pr
 credentials remain in server environment variables, and business handlers can call the generated
 `RequestContext::send_mail` capability. Capture is development-only and rejected in production.
 
+Select the official SaaS preset to enable the implemented modules with one versioned contract:
+
+```yaml
+preset:
+  name: appstruct/saas
+  version: 1
+```
+
+The project must commit an `appstruct.lock` containing the preset digest and exact module versions.
+User `modules` mappings override defaults recursively; scalar and list values replace their defaults.
+Inspect the locked contract with `appstruct preset show` or print all defaults with
+`appstruct preset show --expanded`. Billing and Admin are not part of preset version 1.
+
 ## Commands
 
 ```text
@@ -87,6 +100,7 @@ appstruct migrate plan|dev|apply|status
 appstruct dev [--api-port <port>] [--web-port <port>]
 appstruct build
 appstruct doctor [--format text|json]
+appstruct preset show [--expanded]
 ```
 
 `migrate plan` is read-only. `migrate dev --accept` creates and optionally applies only

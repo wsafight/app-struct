@@ -45,6 +45,8 @@ M5 交付文档已落在根 README 与 `docs/installation.md`、`docs/upgrading.
 
 M5 确定性、性能和浏览器门禁已实现。CLI 集成测试在两个独立 project root 生成并递归比较所有 Artifact bytes；Prettier 依赖按 package/lock SHA-256 缓存在 `.appstruct/cache/web-formatter/`，ready marker 与 executable 同时存在才命中。Backend Generator 按 `available_parallelism` 分块并行规划 Entity/API 文件，顶层 planner 最终按路径排序维持确定性。性能 gate 计入 Compiler 与 Generator，当前 10 实体为 518 ms、100 实体为 7774 ms。根 pnpm lock 固定 Playwright 1.62.1；`scripts/run-m5-browser-e2e.sh` 从 dashboard Template 创建临时 external project，等待数据库 readiness 后验证 request ID、Auth 和 Project owner CRUD，并对桌面 dashboard 与移动登录页输出截图。生成后端新增数据库 ping `/health/ready`，`SetRequestIdLayer`/`PropagateRequestIdLayer` 为响应提供 `X-Request-Id`。dev signal handler 在所有启动动作前安装，测试脚本以独立进程组运行，冷构建中断也能清理子进程与临时目录。
 
+M6 的 Tenant、Audit、Mail、Jobs 和 File Module 已实现。`appstruct/saas@1` Preset 也已进入 Compiler：Surface 配置先展开官方默认模块映射，再递归合并用户映射覆盖，最后降低到 IR v7 的 `PresetIr` 和模块 IR。Compiler 对 `appstruct.lock` 中的 AppStruct 版本、Preset 名称/版本/内容摘要及精确模块版本集合执行失败关闭校验；CLI 可用 `preset show [--expanded]` 检查契约。M6 剩余交付是 `saas` Template 和端到端示例。
+
 ## 2. 架构决策摘要
 
 | 主题 | 首版决策 |
@@ -1271,17 +1273,18 @@ name: appstruct/saas
 version: 1
 
 modules:
-  auth: {}
-  rbac: {}
-  tenant: {}
-  billing: {}
-  mail: {}
-  jobs: {}
-  audit: {}
-  admin: {}
+  auth: { enabled: true, user_entity: User, registration: true, password_reset: true }
+  rbac: { roles: [member, admin], default_role: member }
+  tenant: { enabled: true }
+  audit: { enabled: true, reader_roles: [admin] }
+  mail: { enabled: true, provider: capture }
+  jobs: { enabled: true }
+  file: { enabled: true, provider: local }
 ```
 
-用户配置可以覆盖 schema 标记为 overridable 的值，也可以禁用标记为 optional 的模块。必需模块不能在不满足依赖的情况下关闭。
+版本 1 不包含 Billing 或 Admin。默认 Mail 同时提供 invitation/welcome 模板；Jobs 提供 default/mail 队列；File 限制为 10 MiB 和明确的 MIME allowlist。完整默认值由 `appstruct preset show --expanded` 输出。
+
+用户 `modules` 映射在 Preset 默认值之上递归合并；标量和序列整体替换。所有模块仍执行普通 Compiler 依赖与安全校验，因此覆盖不能绕过 Auth、Tenant 或 Audit 契约。`appstruct.lock` 必须包含锁步 AppStruct 版本、Preset 名称/版本、展开文本 SHA-256，以及七个模块的精确版本；编译器不在普通命令中隐式补锁或升级。
 
 ### 18.3 Template
 
@@ -1607,6 +1610,8 @@ Pull Request 使用最小必要矩阵；主分支和发布构建运行完整示�
 验收：新用户在 15 分钟内运行示例，并在 30 分钟内新增带权限实体。
 
 ### M6：SaaS 基础
+
+状态：进行中，Module 和 Preset 已完成，Template 与端到端示例待完成。
 
 - Tenant、Audit、Mail、Jobs 和 File Module
 - `appstruct/saas` Preset 初版

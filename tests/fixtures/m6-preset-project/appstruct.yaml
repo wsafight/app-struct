@@ -1,0 +1,17 @@
+version: 1
+
+app:
+  name: preset-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+
+preset:
+  name: appstruct/saas
+  version: 1
+
+includes:
+  - spec/project.yaml
+  - spec/identity.yaml

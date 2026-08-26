@@ -1,0 +1,117 @@
+use appstruct_compiler::{compile_project, preset_info};
+use appstruct_ir::{FileProviderIr, MailProviderIr};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+fn fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-preset-project")
+}
+
+#[test]
+fn expands_and_locks_official_saas_preset() {
+    let ir = compile_project(&fixture()).unwrap();
+    let preset = ir.preset.as_ref().unwrap();
+    assert_eq!(preset.name, "appstruct/saas");
+    assert_eq!(preset.version, 1);
+    assert_eq!(
+        preset.digest,
+        preset_info("appstruct/saas", 1).unwrap().digest
+    );
+    assert!(ir.auth.enabled);
+    assert!(ir.tenant.enabled);
+    assert!(ir.audit.enabled);
+    assert_eq!(ir.mail.provider, MailProviderIr::Capture);
+    assert_eq!(ir.jobs.queues.len(), 2);
+    assert_eq!(ir.file.provider, FileProviderIr::Local);
+    assert_eq!(ir.file.max_bytes, 10_485_760);
+}
+
+#[test]
+fn user_module_values_override_preset_defaults() {
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("appstruct.yaml"),
+        "includes:\n",
+        concat!(
+            "modules:\n",
+            "  auth:\n",
+            "    registration: false\n",
+            "  jobs:\n",
+            "    poll_interval_ms: 500\n",
+            "  file:\n",
+            "    max_bytes: 2048\n\n",
+            "includes:\n",
+        ),
+    );
+    let ir = compile_project(temporary.path()).unwrap();
+    assert!(!ir.auth.registration_enabled);
+    assert!(ir.auth.password_reset_enabled);
+    assert_eq!(ir.jobs.poll_interval_ms, 500);
+    assert_eq!(ir.jobs.queues.len(), 2);
+    assert_eq!(ir.file.max_bytes, 2048);
+    assert_eq!(ir.file.allowed_content_types.len(), 4);
+}
+
+#[test]
+fn rejects_missing_or_tampered_preset_lock() {
+    let temporary = copied_fixture();
+    fs::remove_file(temporary.path().join("appstruct.lock")).unwrap();
+    assert_diagnostic(temporary.path(), "AS3059");
+
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("appstruct.lock"),
+        "sha256:7267c3a362b328d5b162f4536ac7115c72ab81cf9f3e17542a8d9b6eba7965c5",
+        "sha256:0000",
+    );
+    assert_diagnostic(temporary.path(), "AS3060");
+
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("appstruct.lock"),
+        "tenant = \"0.1.0\"\n",
+        "",
+    );
+    assert_diagnostic(temporary.path(), "AS3061");
+}
+
+#[test]
+fn rejects_unknown_preset_before_lowering() {
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("appstruct.yaml"),
+        "name: appstruct/saas",
+        "name: appstruct/enterprise",
+    );
+    assert_diagnostic(temporary.path(), "AS3058");
+}
+
+fn copied_fixture() -> tempfile::TempDir {
+    let temporary = tempfile::tempdir().unwrap();
+    fs::create_dir(temporary.path().join("spec")).unwrap();
+    for relative in [
+        "appstruct.yaml",
+        "appstruct.lock",
+        "spec/identity.yaml",
+        "spec/project.yaml",
+    ] {
+        fs::copy(fixture().join(relative), temporary.path().join(relative)).unwrap();
+    }
+    temporary
+}
+
+fn replace(path: &Path, old: &str, new: &str) {
+    let source = fs::read_to_string(path).unwrap();
+    assert!(source.contains(old));
+    fs::write(path, source.replacen(old, new, 1)).unwrap();
+}
+
+fn assert_diagnostic(project: &Path, code: &str) {
+    let diagnostics = compile_project(project).unwrap_err();
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic.code == code),
+        "expected {code}, got {diagnostics:#?}"
+    );
+}

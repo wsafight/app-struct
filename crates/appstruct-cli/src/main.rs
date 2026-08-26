@@ -11,6 +11,7 @@ mod doctor;
 mod environment;
 mod generation;
 mod migration;
+mod preset;
 mod project_new;
 
 #[derive(Debug, Parser)]
@@ -66,6 +67,11 @@ enum Command {
         #[command(subcommand)]
         command: migration::MigrateCommand,
     },
+    /// Inspect the locked official preset and its expanded module defaults.
+    Preset {
+        #[command(subcommand)]
+        command: preset::PresetCommand,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
@@ -106,7 +112,8 @@ fn run(cli: Cli) -> ExitCode {
         | Command::Build
         | Command::Dev { .. }
         | Command::Generate { .. }
-        | Command::Migrate { .. } => OutputFormat::Text,
+        | Command::Migrate { .. }
+        | Command::Preset { .. } => OutputFormat::Text,
     };
     let start = match cli.project {
         Some(path) => path,
@@ -162,6 +169,7 @@ fn run(cli: Cli) -> ExitCode {
         },
         Command::Generate { check } => generation::run(&project, check),
         Command::Migrate { command } => migration::run(&project, command),
+        Command::Preset { command } => preset::run(&project, &command),
     }
 }
 

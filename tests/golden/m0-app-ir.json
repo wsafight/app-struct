@@ -1,5 +1,5 @@
 {
-  "ir_version": 6,
+  "ir_version": 7,
   "app": {
     "name": "project-hub"
   },
@@ -7,6 +7,7 @@
     "provider": "postgres",
     "dev_mode": "managed"
   },
+  "preset": null,
   "auth": {
     "enabled": true,
     "user_entity": "app::User",

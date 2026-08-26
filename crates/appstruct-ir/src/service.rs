@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+/// Locked official preset selected by the root App Spec.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PresetIr {
+    pub name: String,
+    pub version: u32,
+    pub digest: String,
+}
+
 /// Tenant module settings normalized by the compiler.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TenantIr {

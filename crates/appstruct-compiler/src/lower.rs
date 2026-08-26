@@ -94,6 +94,11 @@ pub(crate) fn build_ir(
                 DatabaseDevMode::Managed
             },
         },
+        preset: root.preset.map(|preset| appstruct_ir::PresetIr {
+            name: preset.name.value,
+            version: u32::try_from(preset.version.value).unwrap_or(u32::MAX),
+            digest: crate::preset::preset_digest(),
+        }),
         auth,
         tenant,
         audit,

@@ -1,6 +1,12 @@
 use super::Located;
 use appstruct_ir::SourceSpan;
 
+#[derive(Clone, Debug)]
+pub(crate) struct SurfacePreset {
+    pub name: Located<String>,
+    pub version: Located<u64>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SurfaceAuth {
     pub enabled: bool,

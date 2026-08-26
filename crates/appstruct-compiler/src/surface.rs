@@ -6,13 +6,14 @@ mod file;
 mod jobs;
 mod mail;
 mod modules;
+mod preset;
 mod tenant;
 mod value;
 
 pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
 pub(crate) use modules::{
     SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobQueue, SurfaceJobs, SurfaceMail,
-    SurfaceMailTemplate, SurfaceTenant,
+    SurfaceMailTemplate, SurfacePreset, SurfaceTenant,
 };
 
 use self::value::{
@@ -34,6 +35,7 @@ pub(crate) struct SurfaceRoot {
     pub app_name: Located<String>,
     pub database_provider: Located<String>,
     pub database_mode: Located<String>,
+    pub preset: Option<SurfacePreset>,
     pub auth: SurfaceAuth,
     pub tenant: SurfaceTenant,
     pub audit: SurfaceAudit,
@@ -159,7 +161,9 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
     let mapping = expect_mapping(root, "root configuration")?;
     ensure_known_keys(
         mapping,
-        &["version", "app", "database", "modules", "includes"],
+        &[
+            "version", "app", "database", "preset", "modules", "includes",
+        ],
         "root configuration",
     )?;
     let version_node = required(mapping, "version", &root.span)?;
@@ -201,18 +205,21 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
         .map(|node| expect_string(node, "include path"))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let auth = auth::decode(mapping.get("modules"))?;
-    let tenant = tenant::decode(mapping.get("modules"))?;
-    let audit = audit::decode(mapping.get("modules"))?;
-    let mail = mail::decode(mapping.get("modules"))?;
-    let jobs = jobs::decode(mapping.get("modules"))?;
-    let file = file::decode(mapping.get("modules"))?;
+    let preset = preset::decode(mapping.get("preset"))?;
+    let modules = crate::preset::expand_modules(preset.as_ref(), mapping.get("modules"))?;
+    let auth = auth::decode(modules.as_ref())?;
+    let tenant = tenant::decode(modules.as_ref())?;
+    let audit = audit::decode(modules.as_ref())?;
+    let mail = mail::decode(modules.as_ref())?;
+    let jobs = jobs::decode(modules.as_ref())?;
+    let file = file::decode(modules.as_ref())?;
 
     Ok(SurfaceRoot {
         version,
         app_name,
         database_provider,
         database_mode: dev_mode,
+        preset,
         auth,
         tenant,
         audit,

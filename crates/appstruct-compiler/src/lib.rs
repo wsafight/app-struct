@@ -12,11 +12,13 @@ mod loading;
 mod lower;
 mod mail;
 mod naming;
+mod preset;
 mod surface;
 mod validation;
 mod yaml;
 
 pub use loading::discover_project;
+pub use preset::{PresetInfo, preset_info};
 
 use appstruct_ir::{AppIr, Diagnostic, SourceSpan};
 use std::collections::BTreeMap;
@@ -34,6 +36,7 @@ pub fn compile_project(project_root: &Path) -> Result<AppIr, Vec<Diagnostic>> {
     let root_node = loading::load_yaml(&root, &root.join("appstruct.yaml"))?;
     let surface_root = surface::decode_root(&root_node).map_err(|error| vec![error])?;
     let mut diagnostics = validation::validate_root(&surface_root);
+    diagnostics.extend(preset::validate_lock(&root, &surface_root));
     let mut canonical_includes = BTreeMap::<PathBuf, SourceSpan>::new();
     let mut application = surface::SurfaceDomain::default();
 

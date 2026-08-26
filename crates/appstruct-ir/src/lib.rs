@@ -6,14 +6,14 @@ mod service;
 pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
 pub use service::{
     AuditIr, FileIr, FileProviderIr, JobQueueIr, JobsIr, MailIr, MailProviderIr, MailTemplateIr,
-    TenantIr,
+    PresetIr, TenantIr,
 };
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Current serialized IR format version.
-pub const IR_VERSION: u32 = 6;
+pub const IR_VERSION: u32 = 7;
 
 /// Fully normalized application model consumed by generators.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,6 +21,7 @@ pub struct AppIr {
     pub ir_version: u32,
     pub app: AppMeta,
     pub database: DatabaseIr,
+    pub preset: Option<PresetIr>,
     pub auth: AuthIr,
     pub tenant: TenantIr,
     pub audit: AuditIr,
