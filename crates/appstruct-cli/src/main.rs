@@ -14,6 +14,7 @@ mod generation;
 mod migration;
 mod preset;
 mod project_new;
+mod schema;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -78,6 +79,8 @@ enum Command {
         #[command(subcommand)]
         command: preset::PresetCommand,
     },
+    /// Print the App Spec JSON Schema for editor integration.
+    Schema,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
@@ -112,6 +115,9 @@ fn run(cli: Cli) -> ExitCode {
         };
         return project_new::run(&parent, name, *template);
     }
+    if matches!(&cli.command, Command::Schema) {
+        return schema::run();
+    }
     let diagnostic_format = match &cli.command {
         Command::Check { format } | Command::Doctor { format } => *format,
         Command::New { .. }
@@ -120,7 +126,8 @@ fn run(cli: Cli) -> ExitCode {
         | Command::Dev { .. }
         | Command::Generate { .. }
         | Command::Migrate { .. }
-        | Command::Preset { .. } => OutputFormat::Text,
+        | Command::Preset { .. }
+        | Command::Schema => OutputFormat::Text,
     };
     let start = match cli.project {
         Some(path) => path,
@@ -146,7 +153,7 @@ fn run(cli: Cli) -> ExitCode {
     };
 
     match cli.command {
-        Command::New { .. } => unreachable!(),
+        Command::New { .. } | Command::Schema => unreachable!(),
         Command::Auth { command } => auth_admin::run(&project, &command),
         Command::Build => build::run(&project),
         Command::Doctor { format } => doctor::run(&project, format == OutputFormat::Json),

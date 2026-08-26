@@ -46,6 +46,21 @@ fn project_discovery_failure_honors_json_format() {
 }
 
 #[test]
+fn schema_is_available_without_a_project() {
+    let temporary = tempfile::tempdir().unwrap();
+    let output = run(temporary.path(), &["schema"]);
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let schema: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        schema["$schema"],
+        "https://json-schema.org/draft/2020-12/schema"
+    );
+    assert!(schema["$defs"]["root"].is_object());
+    assert!(schema["$defs"]["domain"].is_object());
+}
+
+#[test]
 fn migration_dev_accepts_safe_addition_and_blocks_table_deletion() {
     let project = temporary_project("m2-project");
     let initial = run(&project, &["migrate", "dev", "--accept"]);

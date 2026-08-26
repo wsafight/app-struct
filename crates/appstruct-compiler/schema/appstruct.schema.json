@@ -1,0 +1,437 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://appstruct.dev/schemas/appstruct-v1.schema.json",
+  "title": "AppStruct App Spec v1",
+  "description": "Configuration schema for AppStruct root and domain YAML documents. Cross-file and semantic constraints are enforced by appstruct check.",
+  "oneOf": [
+    { "$ref": "#/$defs/root" },
+    { "$ref": "#/$defs/domain" }
+  ],
+  "$defs": {
+    "appName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "typeName": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Za-z0-9]*$"
+    },
+    "fieldName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "roleName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "scalar": {
+      "type": ["string", "number", "boolean"]
+    },
+    "root": {
+      "type": "object",
+      "required": ["version", "app", "database", "includes"],
+      "properties": {
+        "version": { "const": 1 },
+        "app": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "$ref": "#/$defs/appName" }
+          },
+          "additionalProperties": false
+        },
+        "database": {
+          "type": "object",
+          "required": ["provider"],
+          "properties": {
+            "provider": { "const": "postgres" },
+            "dev": {
+              "type": "object",
+              "properties": {
+                "mode": { "enum": ["managed", "external"] }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "preset": { "$ref": "#/$defs/preset" },
+        "modules": { "$ref": "#/$defs/modules" },
+        "includes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "preset": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "appstruct/saas" },
+        "version": { "const": 1 }
+      },
+      "additionalProperties": false
+    },
+    "modules": {
+      "type": "object",
+      "properties": {
+        "auth": { "$ref": "#/$defs/authModule" },
+        "rbac": { "$ref": "#/$defs/rbacModule" },
+        "tenant": { "$ref": "#/$defs/tenantModule" },
+        "audit": { "$ref": "#/$defs/auditModule" },
+        "mail": { "$ref": "#/$defs/mailModule" },
+        "jobs": { "$ref": "#/$defs/jobsModule" },
+        "file": { "$ref": "#/$defs/fileModule" }
+      },
+      "additionalProperties": false
+    },
+    "authModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "user_entity": { "$ref": "#/$defs/typeName" },
+        "registration": { "type": "boolean" },
+        "password_reset": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "rbacModule": {
+      "type": "object",
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/roleName" },
+          "uniqueItems": true
+        },
+        "default_role": { "$ref": "#/$defs/roleName" }
+      },
+      "additionalProperties": false
+    },
+    "tenantModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "auditModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "reader_roles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/roleName" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "mailModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "provider": { "enum": ["capture", "smtp", "resend"] },
+        "from": { "type": "string", "minLength": 1 },
+        "templates": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z0-9_-]+$" },
+          "additionalProperties": { "$ref": "#/$defs/mailTemplate" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "mailTemplate": {
+      "type": "object",
+      "required": ["subject", "text"],
+      "properties": {
+        "subject": { "type": "string" },
+        "text": { "type": "string" },
+        "html": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "jobsModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "poll_interval_ms": { "type": "integer", "minimum": 10, "maximum": 60000 },
+        "lease_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "queues": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z0-9_-]+$" },
+          "additionalProperties": { "$ref": "#/$defs/jobQueue" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "jobQueue": {
+      "type": "object",
+      "properties": {
+        "max_attempts": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "backoff_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+      },
+      "additionalProperties": false
+    },
+    "fileModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "provider": { "enum": ["local", "s3"] },
+        "local_root": { "type": "string", "minLength": 1 },
+        "max_bytes": { "type": "integer", "minimum": 1, "maximum": 104857600 },
+        "allowed_content_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9!#$&^_.+-]+/(\\*|[a-z0-9!#$&^_.+-]+)$"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "domain": {
+      "type": "object",
+      "required": ["domain"],
+      "properties": {
+        "domain": { "type": "string", "minLength": 1 },
+        "entities": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/typeName" },
+          "additionalProperties": { "$ref": "#/$defs/entity" }
+        },
+        "value_objects": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/typeName" },
+          "additionalProperties": { "$ref": "#/$defs/valueObject" }
+        },
+        "commands": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/typeName" },
+          "additionalProperties": { "$ref": "#/$defs/command" }
+        },
+        "queries": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/typeName" },
+          "additionalProperties": { "$ref": "#/$defs/query" }
+        },
+        "pages": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/typeName" },
+          "additionalProperties": { "$ref": "#/$defs/page" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "entity": {
+      "type": "object",
+      "required": ["fields"],
+      "properties": {
+        "label": { "type": "string" },
+        "table": { "$ref": "#/$defs/fieldName" },
+        "fields": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/fieldName" },
+          "additionalProperties": { "$ref": "#/$defs/field" }
+        },
+        "access": { "$ref": "#/$defs/crudAccess" },
+        "tenant": { "type": "boolean" },
+        "audit": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "field": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": [
+            "uuid",
+            "string",
+            "text",
+            "integer",
+            "bigint",
+            "decimal",
+            "boolean",
+            "date",
+            "datetime",
+            "json",
+            "enum",
+            "relation"
+          ]
+        },
+        "column": { "$ref": "#/$defs/fieldName" },
+        "primary_key": { "type": "boolean" },
+        "required": { "type": "boolean" },
+        "unique": { "type": "boolean" },
+        "generated": { "enum": ["uuid_v7", "now", "auto_increment"] },
+        "default": { "$ref": "#/$defs/scalar" },
+        "min_length": { "type": "integer", "minimum": 0 },
+        "max_length": { "type": "integer", "minimum": 0 },
+        "minimum": { "type": ["string", "number"] },
+        "maximum": { "type": ["string", "number"] },
+        "searchable": { "type": "boolean" },
+        "filterable": { "type": "boolean" },
+        "sortable": { "type": "boolean" },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "target": {
+          "type": "string",
+          "pattern": "^(app::)?[A-Z][A-Za-z0-9]*$"
+        },
+        "on_delete": { "enum": ["restrict", "cascade", "set_null"] },
+        "ui": {
+          "type": "object",
+          "required": ["component"],
+          "properties": {
+            "component": { "$ref": "#/$defs/typeName" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "crudAccess": {
+      "type": "object",
+      "properties": {
+        "list": { "$ref": "#/$defs/accessRule" },
+        "read": { "$ref": "#/$defs/accessRule" },
+        "create": { "$ref": "#/$defs/accessRule" },
+        "update": { "$ref": "#/$defs/accessRule" },
+        "delete": { "$ref": "#/$defs/accessRule" }
+      },
+      "additionalProperties": false
+    },
+    "accessRule": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["public"],
+          "properties": { "public": { "const": true } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["authenticated"],
+          "properties": { "authenticated": { "const": true } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["role"],
+          "properties": { "role": { "$ref": "#/$defs/roleName" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["owner"],
+          "properties": { "owner": { "$ref": "#/$defs/fieldName" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["any"],
+          "properties": {
+            "any": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/accessRule" }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["all"],
+          "properties": {
+            "all": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/accessRule" }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "valueObject": {
+      "type": "object",
+      "required": ["fields"],
+      "properties": {
+        "fields": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/fieldName" },
+          "additionalProperties": { "$ref": "#/$defs/valueField" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "valueField": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": [
+            "uuid",
+            "string",
+            "text",
+            "integer",
+            "bigint",
+            "decimal",
+            "boolean",
+            "date",
+            "datetime",
+            "json",
+            "enum"
+          ]
+        },
+        "required": { "type": "boolean" },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "operationBase": {
+      "type": "object",
+      "required": ["output", "access"],
+      "properties": {
+        "input": { "$ref": "#/$defs/typeName" },
+        "output": { "$ref": "#/$defs/typeName" },
+        "access": { "$ref": "#/$defs/accessRule" }
+      },
+      "additionalProperties": false
+    },
+    "command": {
+      "allOf": [
+        { "$ref": "#/$defs/operationBase" },
+        { "required": ["input"] }
+      ]
+    },
+    "query": { "$ref": "#/$defs/operationBase" },
+    "page": {
+      "type": "object",
+      "required": ["path", "component"],
+      "properties": {
+        "label": { "type": "string" },
+        "path": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$"
+        },
+        "component": { "$ref": "#/$defs/typeName" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

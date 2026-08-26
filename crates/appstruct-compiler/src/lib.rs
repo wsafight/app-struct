@@ -21,6 +21,9 @@ mod yaml;
 pub use loading::discover_project;
 pub use preset::{PresetInfo, preset_info, project_lock};
 
+/// Draft 2020-12 schema for root and domain App Spec YAML documents.
+pub const APP_SPEC_SCHEMA: &str = include_str!("../schema/appstruct.schema.json");
+
 use appstruct_ir::{AppIr, Diagnostic, SourceSpan};
 use std::collections::BTreeMap;
 use std::fs;
