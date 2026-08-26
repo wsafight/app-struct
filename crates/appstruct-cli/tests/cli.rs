@@ -56,6 +56,9 @@ fn migration_dev_accepts_safe_addition_and_blocks_table_deletion() {
     );
     let snapshot = project.join(".appstruct/schema.snapshot.json");
     let initial_snapshot = fs::read(&snapshot).unwrap();
+    let initial_migration =
+        fs::read_to_string(project.join("migrations/0001_appstruct.sql")).unwrap();
+    assert!(initial_migration.contains("-- appstruct:schema-sha256="));
 
     let spec_path = project.join("spec/project.yaml");
     let spec = fs::read_to_string(&spec_path).unwrap();
@@ -82,6 +85,16 @@ fn migration_dev_accepts_safe_addition_and_blocks_table_deletion() {
     assert!(String::from_utf8_lossy(&blocked.stderr).contains("AS4102"));
     assert_eq!(fs::read(snapshot).unwrap(), safe_snapshot);
     assert_eq!(migration_count(&project), 2);
+}
+
+#[test]
+fn database_migration_commands_require_database_url() {
+    let project = temporary_project("m2-project");
+    for command in ["apply", "status"] {
+        let output = run(&project, &["migrate", command]);
+        assert_eq!(output.status.code(), Some(3));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("AS4107"));
+    }
 }
 
 #[test]
@@ -174,6 +187,7 @@ fn run(project: &Path, arguments: &[&str]) -> std::process::Output {
         .arg("--project")
         .arg(project)
         .args(arguments)
+        .env_remove("DATABASE_URL")
         .output()
         .unwrap()
 }

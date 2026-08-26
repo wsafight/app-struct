@@ -1,6 +1,6 @@
 # AppStruct 技术设计文档
 
-> 状态：Implementation Baseline v0.6<br>
+> 状态：Implementation Baseline v0.7<br>
 > 日期：2026-08-26<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
@@ -25,7 +25,7 @@
 
 M2 新增独立的 `appstruct-migrate` crate。它从 IR 提取规范化 PostgreSQL schema，持久化确定性 JSON snapshot，按 schema 风险与执行风险分类 diff，并只为 `NonDestructive + Online` 计划生成 SQL。删除表/列、重命名、类型或主键变化、非空收紧、唯一约束变化、已有表新增外键等变更会在 snapshot 写入前阻断。迁移文件与 snapshot 使用 staging 文件提交，局部提交失败时回滚本地新文件。
 
-当前 `migrate dev --accept` 的职责止于创建可审查迁移文件并推进 snapshot；它尚不写数据库迁移历史，也不执行 `migrate apply/status`。这两个状态不能混用：snapshot 表示磁盘迁移链的目标 schema，不代表数据库已经应用。数据库 runner、checksum 和 drift 检测按第 12.4 节协议在后续工程化里程碑实现。
+Migration Runner 已实现第 12.4 节协议。`migrate dev --accept` 先原子提交迁移与 snapshot；存在 `DATABASE_URL` 时继续 apply，否则报告 pending。`migrate apply/status` 加载有序 SQL 文件，校验最新 migration 绑定的 snapshot SHA-256，并与 `_appstruct_migrations` 的 ID、文件 checksum 和状态协调。runner 使用 PostgreSQL advisory lock，默认在同一事务提交 SQL 与 history；`transaction=off` 迁移以 `applying/failed` 状态阻止崩溃或失败后的盲目重试。无 pending migration 时，catalog introspection 检查受管表、列、约束和外键 drift。
 
 M3 在 IR 中加入 Value Object、Command、Query、自定义页面和字段 UI component 引用。Backend Generator 生成 DTO、Entity Hook/Policy trait、Command/Query handler trait、路由和类型状态 registry；OpenAPI 与 TypeScript Generator 从同一 IR 生成 operation 契约和客户端。Web Generator 生成必需组件/page key，并在存在引用时让生成入口静态导入用户所有的 `app/web/registry.tsx`；该 registry 通过 TypeScript `satisfies` 完整性检查。M3 fixture 同时验证缺少 Rust handler 或 React page 时构建失败、完整实现可构建，并在真实 PostgreSQL 上验证 Hook、Command、Query 和 Policy 行为。
 
@@ -729,9 +729,11 @@ name:
 - CI/生产环境不允许从未提交的 Spec 直接同步数据库。
 - 非 TTY 环境没有 `--accept` 时不得创建迁移文件；危险或需要输入的变更不能只靠通用 `--accept` 绕过所需参数。
 
+当前实现使用 migration 文件名作为稳定 ID，并按文件名字典序执行。最新生成迁移包含 `-- appstruct:schema-sha256=<sha256>`，将磁盘迁移链绑定到 `.appstruct/schema.snapshot.json`。默认迁移在事务中执行，成功后在同一事务插入 `_appstruct_migrations`；经审查的 `-- appstruct:transaction=off` 文件先持久化 `applying`，成功后转为 `applied`，失败则转为 `failed` 并阻止后续自动 apply。apply 期间持有 session advisory lock。PostgreSQL URL 的 `sslmode=disable` 使用明文连接，其他 SSL mode 使用系统证书 TLS。
+
 ### 12.5 数据库漂移
 
-`migrate status` 对比 snapshot、磁盘迁移、迁移历史表和目标数据库。历史表记录 migration ID 和内容 checksum；已经执行的迁移文件被修改时必须报错。数据库实际 schema introspection 用于诊断漂移，不作为覆盖 App Spec 的自动修复来源。
+`migrate status` 对比 snapshot、磁盘迁移、迁移历史表和目标数据库。历史表记录 migration ID、内容 checksum、`applying/applied/failed` 状态和时间；已经执行的迁移文件被修改、文件缺失/乱序或 history dirty 时直接失败。存在 pending 时 drift 标记为 deferred；全部 applied 后，introspection 比较受管 table、column type/null/default/identity、primary/unique、enum CHECK 和 foreign key，并报告 missing/unexpected/changed 项。数据库 catalog 只用于诊断，不覆盖 App Spec 或 snapshot。
 
 ## 13. 后端 Runtime
 

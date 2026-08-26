@@ -1,6 +1,6 @@
 # AppStruct 产品需求文档
 
-> 状态：Implementation Baseline v0.7<br>
+> 状态：Implementation Baseline v0.8<br>
 > 日期：2026-08-26<br>
 > 产品类型：配置驱动的 Rust 全栈应用生成框架<br>
 > 文档范围：产品定位、用户体验、功能边界、MVP 和验收标准
@@ -18,8 +18,9 @@
 | M3 | 已完成 | Value Object、Hook、Command、Query、Policy、Rust/React registry、SHA-256 ownership manifest 和安全目录交换 |
 | 一致性加固 | 已完成 | 显式写事务、事务内 Hook connection、final-state Policy、revision/ETag 乐观并发和冲突恢复 UI |
 | M4 | 已完成 | 邮箱密码认证、opaque session、CSRF/Origin、密码重置、RBAC/owner scope、认证 UI 和 OpenAPI 安全契约 |
+| Migration Runner | 已完成 | apply/status、数据库历史、checksum、事务边界、dirty-state 阻断和 PostgreSQL schema drift 检测 |
 
-M2 的 `migrate plan` 是纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。数据库历史、checksum、`migrate apply/status` 与自动连接开发数据库仍属于后续工程化范围，不能把 snapshot 解读为数据库已经执行到该版本。
+M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
 M3 将用户实现固定在 `app/` 边界，生成目录只保存可重复构建的契约和运行时。Rust 端以一个实现全部必需 Command/Query handler trait 的聚合对象完成类型状态注册，缺少任一 trait 时编译失败；Entity Hook 和 Policy 是有安全默认实现的可选注册项。React 端生成字段组件和自定义页面的必需 registry key；存在引用时，生成入口从用户所有的 `app/web/registry.tsx` 导入实现，并通过 TypeScript `satisfies` 在构建期检查完整性。真实 PostgreSQL 验收已覆盖输入 Hook、归档 Command、指标 Query 和拒绝删除 Policy。
 
@@ -28,6 +29,8 @@ CRUD 写路径已在显式 SeaORM 事务内执行：`before_create/update/delete
 M4 已将 `modules.auth` 和 `modules.rbac` 纳入 Surface、Typed IR、Compiler 校验与全部生成器。启用认证的应用会生成注册、登录、退出、当前用户和可选密码重置流程，使用 Argon2id 密码哈希、只保存 hash 的 opaque session/reset token、`HttpOnly` session Cookie、CSRF token 和 Origin 校验。Actor 被注入普通及事务内 `RequestContext`，`public/authenticated/role/owner/any/all` 规则在后端执行；列表和按 ID 读取会将 owner/RBAC 转换为 SeaORM 查询条件。React 生成物包含认证状态、登录/注册/密码重置页面、路由守卫和退出入口，TypeScript client 默认携带 Cookie 并自动发送 CSRF，OpenAPI 同步发布 Cookie security scheme 和启用的 Auth endpoint。
 
 M4 已通过独立本地 PostgreSQL 数据库验收：覆盖匿名 401、注册与 Cookie、CSRF 403、owner 数据隔离、admin 跨 owner 访问、member 删除 403、ETag `rev-1/rev-2`、缺少 `If-Match` 的 428、陈旧 revision 的 412，以及密码重置 token 单次使用、旧 session 撤销和新密码登录。验收数据库在测试后已回收。
+
+Migration Runner 使用 `_appstruct_migrations` 保存 migration ID、文件 SHA-256、`applying/applied/failed` 状态和时间；session advisory lock 阻止同一数据库并发 apply。迁移默认与历史写入共享事务；带 `-- appstruct:transaction=off` 的审查后迁移在事务外执行，失败会留下 dirty history 并要求人工恢复。每次 `migrate dev` 生成的最新迁移都绑定 schema snapshot checksum；已执行文件被修改、历史缺失/乱序或 snapshot 不匹配时 apply/status 会拒绝继续。全部迁移完成后，status 从 PostgreSQL catalog 校验业务表、列类型/null/default/identity、主键/唯一、enum CHECK 和外键；存在 pending 时明确延后 drift 判断，避免把尚未执行的目标 schema 误报为漂移。
 
 当前 ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新生成前会拒绝未知文件和 hash 已变化的生成文件，再通过同级 staging/backup 目录交换提交；`app/` 不进入交换范围。跨进程生成锁、崩溃恢复 journal 和自动恢复未完成目录事务仍是后续工程化能力，当前实现发现遗留 staging/backup 时会明确中止。
 
@@ -581,9 +584,9 @@ MVP 只支持 PostgreSQL。多数据库抽象会推迟到产品模型稳定之�
 
 生产环境的迁移必须生成可审查文件，不提供不可见的运行时自动同步。
 
-`migrate plan` 只计算和展示差异，不写迁移文件或 snapshot。`migrate dev` 在开发者交互确认或显式 `--accept` 后，将迁移文件和 snapshot 作为同一次本地事务提交，再尝试应用到开发数据库；若数据库执行失败，已接受文件保留为 pending，snapshot 不回退，后续命令继续应用该迁移而不重复生成。`migrate apply` 只执行已提交迁移并更新数据库历史表，不修改 Spec 或 snapshot。
+`migrate plan` 只计算和展示差异，不写迁移文件或 snapshot。`migrate dev` 在开发者交互确认或显式 `--accept` 后，将迁移文件和 snapshot 作为同一次本地事务提交；存在 `DATABASE_URL` 时继续应用，未配置时明确报告 pending。若数据库执行失败，已接受文件保留，snapshot 不回退，后续命令根据 migration history 恢复或报告 dirty state，而不从同一 diff 重复生成。`migrate apply` 只执行已提交迁移并更新数据库历史表，不修改 Spec 或 snapshot。
 
-迁移历史必须保存文件 checksum。已执行迁移被修改、迁移目录与 snapshot 不一致、或数据库实际结构发生漂移时，`migrate status` 和 `migrate apply` 必须明确失败或报告漂移，不得静默重写历史。Schema inspect、diff、plan、lint 和 apply 是可独立测试的阶段；AppStruct 可以用 Atlas 建立行为基线，但首版正确性不依赖外部 Atlas CLI。
+迁移历史保存文件 checksum。已执行迁移被修改、迁移目录与 snapshot 不一致、或数据库实际结构发生漂移时，`migrate status` 和 `migrate apply` 明确失败或报告漂移，不静默重写历史。事务外迁移以显式文件指令启用，并在执行前记录 `applying`，失败后记录 `failed`。Schema inspect、diff、plan、lint 和 apply 是可独立测试的阶段；首版 runner 直接使用 PostgreSQL driver 与 catalog，不依赖外部 Atlas 或 `psql` CLI。
 
 ## 13. CLI 产品体验
 

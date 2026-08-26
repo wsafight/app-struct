@@ -1,12 +1,15 @@
 use appstruct_ir::{DatabaseProvider, Diagnostic};
 use appstruct_migrate::{
-    DatabaseSchema, MigrationPlan, SchemaChange, diff, extract, from_json, migration_sql, to_json,
+    DatabaseSchema, MigrationPlan, SchemaChange, diff, extract, from_json, migration_sql,
+    stamp_schema_checksum, to_json,
 };
 use clap::Subcommand;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+mod database;
 
 #[derive(Clone, Copy, Debug, Subcommand)]
 pub(crate) enum MigrateCommand {
@@ -18,9 +21,18 @@ pub(crate) enum MigrateCommand {
         #[arg(long)]
         accept: bool,
     },
+    /// Apply pending migration files to the configured PostgreSQL database.
+    Apply,
+    /// Compare migration files, database history, and the live PostgreSQL schema.
+    Status,
 }
 
 pub(crate) fn run(project: &Path, command: MigrateCommand) -> ExitCode {
+    match command {
+        MigrateCommand::Apply => return database::apply(project),
+        MigrateCommand::Status => return database::status(project),
+        MigrateCommand::Plan | MigrateCommand::Dev { .. } => {}
+    }
     let target = match appstruct_compiler::compile_project(project) {
         Ok(ir) => extract(&ir),
         Err(diagnostics) => {
@@ -41,6 +53,7 @@ pub(crate) fn run(project: &Path, command: MigrateCommand) -> ExitCode {
     match command {
         MigrateCommand::Plan => ExitCode::SUCCESS,
         MigrateCommand::Dev { accept } => accept_plan(project, &target, &plan, accept),
+        MigrateCommand::Apply | MigrateCommand::Status => unreachable!(),
     }
 }
 
@@ -52,7 +65,7 @@ fn accept_plan(
 ) -> ExitCode {
     if plan.is_empty() {
         println!("Schema snapshot is current");
-        return ExitCode::SUCCESS;
+        return database::apply_if_configured(project).unwrap_or(ExitCode::SUCCESS);
     }
     if plan.is_blocked() {
         eprintln!("error[AS4102]: migration contains destructive or review-required changes");
@@ -76,10 +89,14 @@ fn accept_plan(
             return ExitCode::from(1);
         }
     };
+    let sql = stamp_schema_checksum(&sql, &snapshot);
     match write_plan(project, &sql, &snapshot) {
         Ok(path) => {
             println!("Created safe migration {}", path.display());
-            ExitCode::SUCCESS
+            database::apply_if_configured(project).unwrap_or_else(|| {
+                println!("Migration is pending; set DATABASE_URL to apply it");
+                ExitCode::SUCCESS
+            })
         }
         Err(error) => {
             eprintln!("error[AS4106]: cannot commit migration plan: {error}");
@@ -117,6 +134,14 @@ fn write_plan(project: &Path, sql: &str, snapshot: &str) -> io::Result<PathBuf> 
     let migration_staging = migration.with_extension("sql.tmp");
     let snapshot_path = state.join("schema.snapshot.json");
     let snapshot_staging = state.join("schema.snapshot.json.tmp");
+    for path in [&migration, &migration_staging, &snapshot_staging] {
+        if path.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("staging target `{}` already exists", path.display()),
+            ));
+        }
+    }
     fs::write(&migration_staging, sql)?;
     if let Err(error) = fs::write(&snapshot_staging, snapshot) {
         let _ = fs::remove_file(&migration_staging);
@@ -131,11 +156,26 @@ fn write_plan(project: &Path, sql: &str, snapshot: &str) -> io::Result<PathBuf> 
 }
 
 fn next_migration_name(directory: &Path) -> io::Result<String> {
-    let count = fs::read_dir(directory)?
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().is_some_and(|value| value == "sql"))
-        .count();
-    Ok(format!("{:04}_appstruct.sql", count + 1))
+    let mut last = 0_u32;
+    for entry in fs::read_dir(directory)? {
+        let path = entry?.path();
+        if path.extension().is_none_or(|value| value != "sql") {
+            continue;
+        }
+        let Some(sequence) = path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.split('_').next())
+            .and_then(|value| value.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        last = last.max(sequence);
+    }
+    let next = last
+        .checked_add(1)
+        .ok_or_else(|| io::Error::other("migration sequence exhausted"))?;
+    Ok(format!("{next:04}_appstruct.sql"))
 }
 
 fn render_plan(plan: &MigrationPlan) {
@@ -182,5 +222,36 @@ fn change_label(change: &SchemaChange) -> String {
 fn render_diagnostics(diagnostics: &[Diagnostic]) {
     for diagnostic in diagnostics {
         eprintln!("error[{}]: {}", diagnostic.code, diagnostic.message);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migration_sequence_uses_highest_existing_prefix() {
+        let temporary = tempfile::tempdir().unwrap();
+        fs::write(temporary.path().join("0001_first.sql"), "").unwrap();
+        fs::write(temporary.path().join("0003_third.sql"), "").unwrap();
+        fs::write(temporary.path().join("notes.txt"), "").unwrap();
+
+        assert_eq!(
+            next_migration_name(temporary.path()).unwrap(),
+            "0004_appstruct.sql"
+        );
+    }
+
+    #[test]
+    fn migration_commit_refuses_existing_staging_files() {
+        let temporary = tempfile::tempdir().unwrap();
+        fs::create_dir(temporary.path().join("migrations")).unwrap();
+        fs::create_dir(temporary.path().join(".appstruct")).unwrap();
+        let staging = temporary.path().join("migrations/0001_appstruct.sql.tmp");
+        fs::write(&staging, "preserve me\n").unwrap();
+
+        let error = write_plan(temporary.path(), "SELECT 1;\n", "{}\n").unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read_to_string(staging).unwrap(), "preserve me\n");
     }
 }

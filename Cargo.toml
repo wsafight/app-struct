@@ -20,7 +20,10 @@ appstruct-compiler = { path = "crates/appstruct-compiler" }
 appstruct-ir = { path = "crates/appstruct-ir" }
 appstruct-migrate = { path = "crates/appstruct-migrate" }
 clap = { version = "4.6.6", features = ["derive"] }
+native-tls = "0.2.14"
 prettyplease = "0.2.37"
+postgres = "0.19.12"
+postgres-native-tls = "0.5.3"
 proc-macro2 = "1.0.101"
 quote = "1.0.40"
 saphyr-parser = "0.0.12"
