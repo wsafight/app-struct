@@ -8,8 +8,8 @@ mod jobs;
 mod mail;
 mod tenant;
 
-pub const SCHEMA_VERSION: u32 = 2;
-pub const MIN_COMPATIBLE_SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = appstruct_contracts::DATABASE_SCHEMA.current;
+pub const MIN_COMPATIBLE_SCHEMA_VERSION: u32 = appstruct_contracts::DATABASE_SCHEMA.minimum;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatabaseSchema {

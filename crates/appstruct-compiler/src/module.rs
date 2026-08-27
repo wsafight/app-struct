@@ -6,6 +6,7 @@ use appstruct_ir::{
 use appstruct_module_sdk::{
     ModuleGraphError, ModuleManifest, resolve_modules, validate_manifest, validate_relative_path,
 };
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path};
@@ -19,6 +20,8 @@ const MAX_MODULE_ARTIFACT_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Clone, Debug)]
 pub(crate) struct LoadedModule {
     manifest: ModuleManifest,
+    manifest_path: String,
+    content_sha256: String,
     artifacts: Vec<ModuleArtifactIr>,
 }
 
@@ -82,6 +85,10 @@ fn load_local_module(
     })?;
     let mut total_bytes = 0_usize;
     let mut artifacts = Vec::with_capacity(manifest.artifacts.len());
+    let module_relative_directory = Path::new(&declaration.value)
+        .parent()
+        .and_then(Path::to_str)
+        .ok_or_else(|| module_path_error(declaration, "has a non-portable containing directory"))?;
     for artifact in &manifest.artifacts {
         let content = read_isolated_file(module_directory, &artifact.source, MAX_ARTIFACT_BYTES)
             .map_err(|reason| {
@@ -107,6 +114,9 @@ fn load_local_module(
                 declaration.span.clone(),
             ));
         }
+        let byte_len = u64::try_from(content.len())
+            .map_err(|_| module_path_error(declaration, "artifact byte count overflowed"))?;
+        let sha256 = content_sha256(&content);
         let content = String::from_utf8(content).map_err(|error| {
             Diagnostic::error(
                 "AS1013",
@@ -119,13 +129,22 @@ fn load_local_module(
         })?;
         artifacts.push(ModuleArtifactIr {
             path: artifact.path.clone(),
+            source: Some(format!("{module_relative_directory}/{}", artifact.source)),
+            sha256,
+            byte_len,
             content,
         });
     }
     Ok(LoadedModule {
         manifest,
+        manifest_path: declaration.value.clone(),
+        content_sha256: content_sha256(&bytes),
         artifacts,
     })
+}
+
+fn content_sha256(content: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(content))
 }
 
 fn module_path_error(declaration: &Located<String>, reason: &str) -> Diagnostic {
@@ -187,28 +206,32 @@ pub(crate) fn resolve_modules_for_app(
     let mut manifests = official_manifests(auth, tenant, audit, mail, jobs, file);
     manifests.extend(local_modules.iter().map(|module| module.manifest.clone()));
     let resolved = resolve_modules(manifests)?;
-    let local_artifacts = local_modules
+    let local_modules = local_modules
         .into_iter()
-        .map(|module| (module.manifest.name, module.artifacts))
+        .map(|module| (module.manifest.name.clone(), module))
         .collect::<BTreeMap<_, _>>();
     Ok(resolved
         .into_iter()
         .map(|module| {
             let name = module.manifest.name;
-            let origin = if local_artifacts.contains_key(&name) {
+            let origin = if local_modules.contains_key(&name) {
                 ModuleOrigin::Local
             } else {
                 ModuleOrigin::Official
             };
-            let artifacts = local_artifacts.get(&name).cloned().unwrap_or_default();
+            let local = local_modules.get(&name);
             ResolvedModule {
                 name,
                 version: module.manifest.version,
                 origin,
+                manifest_path: local.map(|module| module.manifest_path.clone()),
+                content_sha256: local.map(|module| module.content_sha256.clone()),
                 provides: module.manifest.provides,
                 requires: module.manifest.requires,
                 startup_order: module.startup_order,
-                artifacts,
+                artifacts: local
+                    .map(|module| module.artifacts.clone())
+                    .unwrap_or_default(),
             }
         })
         .collect())

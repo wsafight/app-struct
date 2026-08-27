@@ -15,8 +15,12 @@ pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
     let transaction = match GenerationTransaction::acquire(project) {
         Ok(transaction) => transaction,
         Err(error) => {
-            eprintln!("error[AS5005]: cannot start generated directory transaction: {error}");
-            return ExitCode::from(3);
+            return crate::report::fail(
+                "AS5005",
+                crate::report::ErrorCategory::Transaction,
+                format!("cannot start generated directory transaction: {error}"),
+                crate::report::ExitClass::Environment,
+            );
         }
     };
     let root = project.join("generated");
@@ -37,29 +41,41 @@ pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
         }
         Ok(None) => {}
         Err(error) => {
-            eprintln!("error[AS5004]: generated ownership check failed: {error}");
-            return ExitCode::from(1);
+            return crate::report::fail(
+                "AS5004",
+                crate::report::ErrorCategory::Generation,
+                format!("generated ownership check failed: {error}"),
+                crate::report::ExitClass::Validation,
+            );
         }
     }
     let ir = match appstruct_compiler::compile_project(project) {
         Ok(ir) => ir,
         Err(diagnostics) => {
-            for diagnostic in &diagnostics {
-                super::render_text_diagnostic(diagnostic);
-            }
-            return ExitCode::from(1);
+            return crate::report::fail_diagnostics(
+                crate::report::ErrorCategory::Validation,
+                diagnostics,
+            );
         }
     };
     let mut artifacts = match appstruct_codegen::plan(&ir) {
         Ok(artifacts) => artifacts,
         Err(error) => {
-            eprintln!("error[AS5001]: {error}");
-            return ExitCode::from(1);
+            return crate::report::fail(
+                "AS5001",
+                crate::report::ErrorCategory::Generation,
+                error.to_string(),
+                crate::report::ExitClass::Validation,
+            );
         }
     };
     if let Err(error) = web_format::format(project, &mut artifacts) {
-        eprintln!("error[AS5006]: cannot format generated web artifacts: {error}");
-        return ExitCode::from(3);
+        return crate::report::fail(
+            "AS5006",
+            crate::report::ErrorCategory::Tooling,
+            format!("cannot format generated web artifacts: {error}"),
+            crate::report::ExitClass::Environment,
+        );
     }
     if check {
         return check_artifacts(&root, &artifacts);
@@ -67,7 +83,11 @@ pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
     match write_artifacts(&transaction, &root, &artifacts) {
         Ok(changed) => {
             if let Err(error) = cache::record(project, &root, &ir.app.name, artifacts.len()) {
-                eprintln!("warning[AS5007]: cannot update generation cache: {error}");
+                crate::report::warning(
+                    "AS5007",
+                    crate::report::ErrorCategory::Generation,
+                    &format!("cannot update generation cache: {error}"),
+                );
             }
             println!(
                 "Generated {} artifacts for {} ({changed} changed)",
@@ -76,10 +96,12 @@ pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
             );
             ExitCode::SUCCESS
         }
-        Err(error) => {
-            eprintln!("error[AS5002]: failed to write generated artifacts: {error}");
-            ExitCode::from(3)
-        }
+        Err(error) => crate::report::fail(
+            "AS5002",
+            crate::report::ErrorCategory::Transaction,
+            format!("failed to write generated artifacts: {error}"),
+            crate::report::ExitClass::Environment,
+        ),
     }
 }
 
@@ -87,13 +109,21 @@ fn check_artifacts(root: &Path, artifacts: &[Artifact]) -> ExitCode {
     let expected = match ownership::expected_files(artifacts) {
         Ok(expected) => expected,
         Err(error) => {
-            eprintln!("error[AS5002]: cannot plan ownership manifest: {error}");
-            return ExitCode::from(1);
+            return crate::report::fail(
+                "AS5002",
+                crate::report::ErrorCategory::Generation,
+                format!("cannot plan ownership manifest: {error}"),
+                crate::report::ExitClass::Validation,
+            );
         }
     };
     if let Err(error) = ownership::validate_existing(root, &expected) {
-        eprintln!("error[AS5004]: generated ownership check failed: {error}");
-        return ExitCode::from(1);
+        return crate::report::fail(
+            "AS5004",
+            crate::report::ErrorCategory::Generation,
+            format!("generated ownership check failed: {error}"),
+            crate::report::ExitClass::Validation,
+        );
     }
     let stale = expected
         .iter()

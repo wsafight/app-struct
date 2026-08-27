@@ -24,17 +24,21 @@ pub(crate) fn run(project: &Path, json: bool) -> ExitCode {
     let ir = match appstruct_compiler::compile_project(project) {
         Ok(ir) => ir,
         Err(diagnostics) => {
-            for diagnostic in &diagnostics {
-                super::render_text_diagnostic(diagnostic);
-            }
-            return ExitCode::from(1);
+            return crate::report::fail_diagnostics(
+                crate::report::ErrorCategory::Validation,
+                diagnostics,
+            );
         }
     };
     let environment = match ProjectEnvironment::load(project) {
         Ok(environment) => environment,
         Err(error) => {
-            eprintln!("error[AS6003]: {error}");
-            return ExitCode::from(3);
+            return crate::report::fail(
+                "AS6003",
+                crate::report::ErrorCategory::Configuration,
+                error.to_string(),
+                crate::report::ExitClass::Environment,
+            );
         }
     };
     let mut checks = vec![

@@ -1,4 +1,4 @@
-use appstruct_ir::{DatabaseProvider, Diagnostic};
+use appstruct_ir::DatabaseProvider;
 use appstruct_migrate::{
     DatabaseSchema, MigrationPlan, SCHEMA_VERSION, SchemaChange, diff, extract, from_json,
     migration_sql, stamp_schema_checksum, to_json,
@@ -8,6 +8,12 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+mod transaction;
+
+use transaction::MigrationTransaction;
+#[cfg(test)]
+use transaction::next_migration_name;
 
 mod database;
 
@@ -44,16 +50,22 @@ pub(crate) fn run_with_database(
     let target = match appstruct_compiler::compile_project(project) {
         Ok(ir) => extract(&ir),
         Err(diagnostics) => {
-            render_diagnostics(&diagnostics);
-            return ExitCode::from(1);
+            return crate::report::fail_diagnostics(
+                crate::report::ErrorCategory::Validation,
+                diagnostics,
+            );
         }
     };
     let before = match read_snapshot(project) {
         Ok(Some(schema)) => schema,
         Ok(None) => empty_schema(),
         Err(error) => {
-            eprintln!("error[AS4101]: cannot read schema snapshot: {error}");
-            return ExitCode::from(1);
+            return crate::report::fail(
+                "AS4101",
+                crate::report::ErrorCategory::Migration,
+                format!("cannot read schema snapshot: {error}"),
+                crate::report::ExitClass::Validation,
+            );
         }
     };
     let plan = diff(&before, &target);
@@ -79,25 +91,41 @@ fn accept_plan(
         return database::apply_if_configured(project, database_url).unwrap_or(ExitCode::SUCCESS);
     }
     if plan.is_blocked() {
-        eprintln!("error[AS4102]: migration contains destructive or review-required changes");
-        return ExitCode::from(1);
+        return crate::report::fail(
+            "AS4102",
+            crate::report::ErrorCategory::Migration,
+            "migration contains destructive or review-required changes",
+            crate::report::ExitClass::Validation,
+        );
     }
     if !accept {
-        eprintln!("error[AS4103]: pass `--accept` to create this development migration");
-        return ExitCode::from(2);
+        return crate::report::fail(
+            "AS4103",
+            crate::report::ErrorCategory::Migration,
+            "pass `--accept` to create this development migration",
+            crate::report::ExitClass::Usage,
+        );
     }
     let sql = match migration_sql(plan) {
         Ok(sql) => sql,
         Err(error) => {
-            eprintln!("error[AS4104]: cannot render migration: {error}");
-            return ExitCode::from(1);
+            return crate::report::fail(
+                "AS4104",
+                crate::report::ErrorCategory::Migration,
+                format!("cannot render migration: {error}"),
+                crate::report::ExitClass::Validation,
+            );
         }
     };
     let snapshot = match to_json(target) {
         Ok(snapshot) => snapshot,
         Err(error) => {
-            eprintln!("error[AS4105]: cannot serialize schema snapshot: {error}");
-            return ExitCode::from(1);
+            return crate::report::fail(
+                "AS4105",
+                crate::report::ErrorCategory::Migration,
+                format!("cannot serialize schema snapshot: {error}"),
+                crate::report::ExitClass::Validation,
+            );
         }
     };
     let sql = stamp_schema_checksum(&sql, &snapshot);
@@ -109,10 +137,12 @@ fn accept_plan(
                 ExitCode::SUCCESS
             })
         }
-        Err(error) => {
-            eprintln!("error[AS4106]: cannot commit migration plan: {error}");
-            ExitCode::from(3)
-        }
+        Err(error) => crate::report::fail(
+            "AS4106",
+            crate::report::ErrorCategory::Transaction,
+            format!("cannot commit migration plan: {error}"),
+            crate::report::ExitClass::Environment,
+        ),
     }
 }
 
@@ -138,56 +168,7 @@ fn empty_schema() -> DatabaseSchema {
 }
 
 fn write_plan(project: &Path, sql: &str, snapshot: &str) -> io::Result<PathBuf> {
-    let migrations = project.join("migrations");
-    let state = project.join(".appstruct");
-    fs::create_dir_all(&migrations)?;
-    fs::create_dir_all(&state)?;
-    let migration = migrations.join(next_migration_name(&migrations)?);
-    let migration_staging = migration.with_extension("sql.tmp");
-    let snapshot_path = state.join("schema.snapshot.json");
-    let snapshot_staging = state.join("schema.snapshot.json.tmp");
-    for path in [&migration, &migration_staging, &snapshot_staging] {
-        if path.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                format!("staging target `{}` already exists", path.display()),
-            ));
-        }
-    }
-    fs::write(&migration_staging, sql)?;
-    if let Err(error) = fs::write(&snapshot_staging, snapshot) {
-        let _ = fs::remove_file(&migration_staging);
-        return Err(error);
-    }
-    fs::rename(&migration_staging, &migration)?;
-    if let Err(error) = fs::rename(&snapshot_staging, &snapshot_path) {
-        let _ = fs::remove_file(&migration);
-        return Err(error);
-    }
-    Ok(migration)
-}
-
-fn next_migration_name(directory: &Path) -> io::Result<String> {
-    let mut last = 0_u32;
-    for entry in fs::read_dir(directory)? {
-        let path = entry?.path();
-        if path.extension().is_none_or(|value| value != "sql") {
-            continue;
-        }
-        let Some(sequence) = path
-            .file_stem()
-            .and_then(|name| name.to_str())
-            .and_then(|name| name.split('_').next())
-            .and_then(|value| value.parse::<u32>().ok())
-        else {
-            continue;
-        };
-        last = last.max(sequence);
-    }
-    let next = last
-        .checked_add(1)
-        .ok_or_else(|| io::Error::other("migration sequence exhausted"))?;
-    Ok(format!("{next:04}_appstruct.sql"))
+    MigrationTransaction::acquire(project)?.commit(sql, snapshot)
 }
 
 fn render_plan(plan: &MigrationPlan) {
@@ -237,15 +218,10 @@ fn change_label(change: &SchemaChange) -> String {
     }
 }
 
-fn render_diagnostics(diagnostics: &[Diagnostic]) {
-    for diagnostic in diagnostics {
-        eprintln!("error[{}]: {}", diagnostic.code, diagnostic.message);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transaction::TransactionFault;
 
     #[test]
     fn migration_sequence_uses_highest_existing_prefix() {
@@ -271,5 +247,58 @@ mod tests {
         let error = write_plan(temporary.path(), "SELECT 1;\n", "{}\n").unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
         assert_eq!(fs::read_to_string(staging).unwrap(), "preserve me\n");
+    }
+
+    #[test]
+    fn injected_migration_failures_recover_snapshot_and_plan_together() {
+        for (fault, installed) in [
+            (TransactionFault::AfterPrepared, false),
+            (TransactionFault::AfterBackup, false),
+            (TransactionFault::AfterInstall, true),
+        ] {
+            let project = tempfile::tempdir().unwrap();
+            fs::create_dir(project.path().join(".appstruct")).unwrap();
+            fs::write(
+                project.path().join(".appstruct/schema.snapshot.json"),
+                "old snapshot\n",
+            )
+            .unwrap();
+
+            let transaction = MigrationTransaction::acquire(project.path()).unwrap();
+            assert!(
+                transaction
+                    .commit_with_fault("SELECT 1;\n", "new snapshot\n", fault)
+                    .is_err()
+            );
+
+            let expected = if installed {
+                "new snapshot\n"
+            } else {
+                "old snapshot\n"
+            };
+            assert_eq!(
+                fs::read_to_string(project.path().join(".appstruct/schema.snapshot.json")).unwrap(),
+                expected
+            );
+            let migrations = fs::read_dir(project.path().join("migrations"))
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.path().extension().is_some_and(|value| value == "sql"))
+                .count();
+            assert_eq!(migrations, usize::from(installed));
+            assert!(!project.path().join(".appstruct/migration.journal").exists());
+            assert!(
+                !project
+                    .path()
+                    .join(".appstruct/schema.snapshot.json.appstruct-backup")
+                    .exists()
+            );
+            assert!(
+                !project
+                    .path()
+                    .join(".appstruct/schema.snapshot.json.tmp")
+                    .exists()
+            );
+        }
     }
 }

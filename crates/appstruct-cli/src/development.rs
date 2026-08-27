@@ -20,24 +20,34 @@ const MANAGED_DATABASE_URL: &str =
 
 pub(crate) fn run(project: &Path, api_port: u16, web_port: u16) -> ExitCode {
     if api_port == 0 || web_port == 0 || api_port == web_port {
-        eprintln!("error[AS6005]: API and web ports must be non-zero and different");
-        return ExitCode::from(2);
+        return crate::report::fail(
+            "AS6005",
+            crate::report::ErrorCategory::Development,
+            "API and web ports must be non-zero and different",
+            crate::report::ExitClass::Usage,
+        );
     }
     let stopping = Arc::new(AtomicBool::new(false));
     let signal = Arc::clone(&stopping);
     if let Err(error) = ctrlc::set_handler(move || signal.store(true, Ordering::SeqCst)) {
-        eprintln!("error[AS6005]: cannot install Ctrl-C handler: {error}");
-        return ExitCode::from(3);
+        return crate::report::fail(
+            "AS6005",
+            crate::report::ErrorCategory::Development,
+            format!("cannot install Ctrl-C handler: {error}"),
+            crate::report::ExitClass::Environment,
+        );
     }
     match DevSession::start(project, api_port, web_port, stopping)
         .and_then(|mut session| session.run())
     {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) if error.kind() == io::ErrorKind::Interrupted => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("error[AS6005]: development server failed: {error}");
-            ExitCode::from(3)
-        }
+        Err(error) => crate::report::fail(
+            "AS6005",
+            crate::report::ErrorCategory::Development,
+            format!("development server failed: {error}"),
+            crate::report::ExitClass::Environment,
+        ),
     }
 }
 
@@ -45,6 +55,7 @@ struct DevSession<'project> {
     project: &'project Path,
     environment: ProjectEnvironment,
     database_url: String,
+    database_mode: DatabaseDevMode,
     database: ManagedDatabase,
     processes: DevProcesses,
     fingerprint: SourceFingerprint,
@@ -63,7 +74,8 @@ impl<'project> DevSession<'project> {
         check_stopping(&stopping)?;
         let ir = compile(project)?;
         let environment = ProjectEnvironment::load(project)?;
-        let (database, database_url) = match ir.database.dev_mode {
+        let database_mode = ir.database.dev_mode;
+        let (database, database_url) = match database_mode {
             DatabaseDevMode::Managed => {
                 let database = ManagedDatabase::start(project, &environment)?;
                 let url = environment
@@ -95,6 +107,7 @@ impl<'project> DevSession<'project> {
             project,
             environment,
             database_url,
+            database_mode,
             database,
             processes,
             fingerprint,
@@ -122,27 +135,59 @@ impl<'project> DevSession<'project> {
 
     fn reload(&mut self) {
         println!("[appstruct] project inputs changed; rebuilding");
-        let result = prepare(
-            self.project,
-            &self.database_url,
-            &self.environment,
-            &self.stopping,
-        )
-        .and_then(|()| {
-            self.processes.restart(
-                self.project,
-                &self.environment,
-                &self.database_url,
-                self.api_port,
-                self.web_port,
-            )
-        });
+        let result = self
+            .refresh_environment()
+            .and_then(|()| {
+                prepare(
+                    self.project,
+                    &self.database_url,
+                    &self.environment,
+                    &self.stopping,
+                )
+            })
+            .and_then(|()| {
+                self.processes.restart(
+                    self.project,
+                    &self.environment,
+                    &self.database_url,
+                    self.api_port,
+                    self.web_port,
+                )
+            });
         match result {
             Ok(()) => println!("[appstruct] services restarted"),
             Err(error) => {
                 eprintln!("[appstruct] rebuild failed; services were not restarted: {error}");
             }
         }
+    }
+
+    fn refresh_environment(&mut self) -> io::Result<()> {
+        let ir = compile(self.project)?;
+        if ir.database.dev_mode != self.database_mode {
+            return Err(io::Error::other(
+                "database development mode changed; restart `appstruct dev` to reconfigure it",
+            ));
+        }
+        let environment = ProjectEnvironment::load(self.project)?;
+        let database_url = match self.database_mode {
+            DatabaseDevMode::Managed => environment
+                .get("DATABASE_URL")
+                .unwrap_or_else(|| MANAGED_DATABASE_URL.to_owned()),
+            DatabaseDevMode::External => environment.get("DATABASE_URL").ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "DATABASE_URL is required for external database mode",
+                )
+            })?,
+        };
+        if self.database_mode == DatabaseDevMode::Managed {
+            wait_for_database(self.project, &database_url, &self.stopping)?;
+        }
+        self.database.update_environment(environment.clone());
+        self.environment = environment;
+        self.database_url = database_url;
+        Ok(())
     }
 }
 
@@ -192,7 +237,7 @@ fn prepare(
 }
 
 fn build_backend(project: &Path, environment: &ProjectEnvironment) -> io::Result<()> {
-    if build_cache::backend_current(project)? {
+    if build_cache::backend_current(project, environment)? {
         println!("[appstruct] backend inputs unchanged; reusing debug build");
         return Ok(());
     }
@@ -212,11 +257,11 @@ fn build_backend(project: &Path, environment: &ProjectEnvironment) -> io::Result
     command.args(["--manifest-path"]).arg(backend);
     environment.apply(&mut command);
     status(command, "build generated backend")?;
-    build_cache::record_backend(project)
+    build_cache::record_backend(project, environment)
 }
 
 fn install_web(project: &Path, environment: &ProjectEnvironment) -> io::Result<()> {
-    if build_cache::web_dependencies_current(project)? {
+    if build_cache::web_dependencies_current(project, environment)? {
         println!("[appstruct] web dependencies unchanged; reusing installation");
         return Ok(());
     }
@@ -226,7 +271,7 @@ fn install_web(project: &Path, environment: &ProjectEnvironment) -> io::Result<(
         .args(["install", "--frozen-lockfile"]);
     environment.apply(&mut command);
     status(command, "install generated web dependencies")?;
-    build_cache::record_web_dependencies(project)
+    build_cache::record_web_dependencies(project, environment)
 }
 
 fn wait_for_database(project: &Path, database_url: &str, stopping: &AtomicBool) -> io::Result<()> {

@@ -16,7 +16,12 @@ pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, 
             routing::get,
         };
         use sea_orm::DatabaseConnection;
-        use std::{future::IntoFuture, io};
+        use std::{
+            future::IntoFuture,
+            io,
+            sync::{Arc, RwLock, atomic::{AtomicU8, Ordering}},
+            time::Duration,
+        };
         use tokio::net::TcpListener;
         use tower_http::{
             request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
@@ -40,6 +45,7 @@ fn contract_source() -> TokenStream {
             pub auth: AuthState,
             pub mail: MailState,
             pub file: FileState,
+            health: ApplicationHealth,
         }
         impl AppState {
             pub async fn context(&self, headers: &HeaderMap) -> Result<RequestContext<'_>, ApiError> {
@@ -50,21 +56,65 @@ fn contract_source() -> TokenStream {
                 ))
             }
         }
+
+        const HEALTH_STARTING: u8 = 0;
+        const HEALTH_READY: u8 = 1;
+        const HEALTH_DRAINING: u8 = 2;
+        const HEALTH_FAILED: u8 = 3;
+
+        #[derive(Clone)]
+        pub struct ApplicationHealth {
+            state: Arc<AtomicU8>,
+            failure: Arc<RwLock<Option<String>>>,
+        }
+
+        impl ApplicationHealth {
+            fn with_state(state: u8) -> Self {
+                Self {
+                    state: Arc::new(AtomicU8::new(state)),
+                    failure: Arc::new(RwLock::new(None)),
+                }
+            }
+            fn starting() -> Self { Self::with_state(HEALTH_STARTING) }
+            fn ready() -> Self { Self::with_state(HEALTH_READY) }
+            fn mark_ready(&self) { self.state.store(HEALTH_READY, Ordering::Release); }
+            fn mark_draining(&self) { self.state.store(HEALTH_DRAINING, Ordering::Release); }
+            pub fn mark_failed(&self, message: impl Into<String>) {
+                if self.state.load(Ordering::Acquire) == HEALTH_DRAINING { return; }
+                let message = message.into();
+                if let Ok(mut failure) = self.failure.write() { *failure = Some(message.clone()); }
+                self.state.store(HEALTH_FAILED, Ordering::Release);
+                tracing::error!(%message, "application health failed");
+            }
+            fn is_ready(&self) -> bool {
+                let no_failure = self.failure.read().is_ok_and(|failure| failure.is_none());
+                self.state.load(Ordering::Acquire) == HEALTH_READY && no_failure
+            }
+        }
     }
 }
 
 fn application_source() -> TokenStream {
     quote! {
-        pub struct Application { router: Router, runtime: ModuleRuntime }
+        pub struct Application {
+            router: Router,
+            runtime: ModuleRuntime,
+            health: ApplicationHealth,
+        }
         impl Application {
             pub async fn from_env(
                 database: DatabaseConnection, extensions: AppExtensions,
             ) -> Result<Self, StartupError> {
-                let started = start_application_modules(database, extensions).await?;
-                let router = router_with_services(
+                let health = ApplicationHealth::starting();
+                let started = start_application_modules(
+                    database, extensions, health.clone(),
+                ).await?;
+                health.mark_ready();
+                let router = router_with_services_and_health(
                     started.database, started.extensions, started.auth, started.mail, started.file,
+                    health.clone(),
                 );
-                Ok(Self { router, runtime: started.runtime })
+                Ok(Self { router, runtime: started.runtime, health })
             }
 
             pub fn with_services(
@@ -72,15 +122,21 @@ fn application_source() -> TokenStream {
                 mail: MailState, file: FileState,
             ) -> Self {
                 let mut runtime = ModuleRuntime::default();
-                if let Some(worker) = start_job_worker(&database, &extensions, &mail) {
+                let health = ApplicationHealth::starting();
+                if let Some(worker) = start_job_worker(
+                    &database, &extensions, &mail, health.clone(),
+                ) {
                     runtime.push_service("appstruct/jobs", worker);
                 }
-                let router = router_with_services(database, extensions, auth, mail, file);
-                Self { router, runtime }
+                health.mark_ready();
+                let router = router_with_services_and_health(
+                    database, extensions, auth, mail, file, health.clone(),
+                );
+                Self { router, runtime, health }
             }
 
             pub async fn serve(self, listener: TcpListener) -> io::Result<()> {
-                let Self { router, mut runtime } = self;
+                let Self { router, mut runtime, health } = self;
                 let (shutdown, receiver) = tokio::sync::oneshot::channel::<()>();
                 let server = axum::serve(listener, router).with_graceful_shutdown(async move {
                     let _ = receiver.await;
@@ -89,12 +145,20 @@ fn application_source() -> TokenStream {
                 let result = tokio::select! {
                     result = &mut server => result,
                     signal = shutdown_signal() => {
+                        health.mark_draining();
                         if signal.is_ok() {
                             tracing::info!("shutdown signal received");
                         }
                         let _ = shutdown.send(());
-                        stop_modules(&mut runtime).await;
-                        let server_result = server.await;
+                        let server_result = match tokio::time::timeout(
+                            Duration::from_secs(30), server.as_mut(),
+                        ).await {
+                            Ok(result) => result,
+                            Err(_) => Err(io::Error::new(
+                                io::ErrorKind::TimedOut,
+                                "HTTP server did not drain within 30 seconds",
+                            )),
+                        };
                         match signal {
                             Ok(()) => server_result,
                             Err(error) => {
@@ -104,8 +168,13 @@ fn application_source() -> TokenStream {
                         }
                     }
                 };
-                stop_modules(&mut runtime).await;
-                result
+                health.mark_draining();
+                let shutdown = stop_modules(&mut runtime).await;
+                match (result, shutdown) {
+                    (Err(error), _) => Err(error),
+                    (Ok(()), Err(error)) => Err(error),
+                    (Ok(()), Ok(())) => Ok(()),
+                }
             }
         }
         pub fn router(
@@ -134,20 +203,31 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
             database: DatabaseConnection, extensions: AppExtensions, auth: AuthState,
             mail: MailState, file: FileState,
         ) -> Router {
+            router_with_services_and_health(
+                database, extensions, auth, mail, file, ApplicationHealth::ready(),
+            )
+        }
+
+        fn router_with_services_and_health(
+            database: DatabaseConnection, extensions: AppExtensions, auth: AuthState,
+            mail: MailState, file: FileState, health: ApplicationHealth,
+        ) -> Router {
             let cors = auth.cors_layer();
             Router::new()
                 #(#routes)*
                 .merge(operations::router()).merge(audit::router())
                 .merge(auth::router()).merge(tenant::router())
-                .route("/health/live", get(health)).route("/health/ready", get(readiness))
+                .route("/health/live", get(liveness)).route("/health/ready", get(readiness))
                 .route("/openapi.json", get(openapi)).layer(cors)
                 .layer(PropagateRequestIdLayer::x_request_id()).layer(TraceLayer::new_for_http())
                 .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-                .with_state(AppState { database, extensions, auth, mail, file })
+                .with_state(AppState { database, extensions, auth, mail, file, health })
         }
-        async fn health() -> StatusCode { StatusCode::NO_CONTENT }
+        async fn liveness() -> StatusCode { StatusCode::NO_CONTENT }
         async fn readiness(State(state): State<AppState>) -> StatusCode {
-            if state.database.ping().await.is_ok() { StatusCode::NO_CONTENT }
+            if state.health.is_ready() && state.database.ping().await.is_ok() {
+                StatusCode::NO_CONTENT
+            }
             else { StatusCode::SERVICE_UNAVAILABLE }
         }
         async fn openapi() -> impl IntoResponse {
@@ -158,10 +238,20 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
 
 fn lifecycle_source() -> TokenStream {
     quote! {
-        async fn stop_modules(runtime: &mut ModuleRuntime) {
-            for module in runtime.shutdown_reverse().await {
+        async fn stop_modules(runtime: &mut ModuleRuntime) -> io::Result<()> {
+            let report = runtime.shutdown_reverse().await;
+            for module in &report.attempted {
                 tracing::info!(module, "module stopped");
             }
+            for failure in &report.failures {
+                tracing::error!(
+                    service = %failure.service,
+                    kind = ?failure.kind,
+                    detail = %failure.message,
+                    "module shutdown failed",
+                );
+            }
+            if report.is_success() { Ok(()) } else { Err(io::Error::other(report.to_string())) }
         }
 
         async fn shutdown_signal() -> io::Result<()> {
@@ -186,6 +276,7 @@ fn start_worker(ir: &AppIr) -> TokenStream {
         return quote! {
             fn start_job_worker(
                 _database: &DatabaseConnection, _extensions: &AppExtensions, _mail: &MailState,
+                _health: ApplicationHealth,
             ) -> Option<JobWorkerHandle> { None }
         };
     }
@@ -193,6 +284,7 @@ fn start_worker(ir: &AppIr) -> TokenStream {
         quote! {
             fn start_job_worker(
                 database: &DatabaseConnection, extensions: &AppExtensions, mail: &MailState,
+                health: ApplicationHealth,
             ) -> Option<JobWorkerHandle> {
                 let worker = if let Some(handler) = extensions.job_handler() {
                     JobWorker::new(database.clone(), handler)
@@ -203,19 +295,20 @@ fn start_worker(ir: &AppIr) -> TokenStream {
                         "mail.send",
                     )
                 };
-                Some(worker.spawn())
+                Some(worker.spawn_with_health(health))
             }
         }
     } else {
         quote! {
             fn start_job_worker(
                 database: &DatabaseConnection, extensions: &AppExtensions, _mail: &MailState,
+                health: ApplicationHealth,
             ) -> Option<JobWorkerHandle> {
                 let Some(handler) = extensions.job_handler() else {
                     tracing::warn!("jobs enabled without a registered job handler; worker not started");
                     return None;
                 };
-                Some(JobWorker::new(database.clone(), handler).spawn())
+                Some(JobWorker::new(database.clone(), handler).spawn_with_health(health))
             }
         }
     }

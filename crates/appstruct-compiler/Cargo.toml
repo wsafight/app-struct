@@ -11,6 +11,7 @@ keywords = ["compiler", "configuration", "codegen", "rust", "yaml"]
 categories = ["config", "development-tools"]
 
 [dependencies]
+appstruct-contracts.workspace = true
 appstruct-ir.workspace = true
 appstruct-module-sdk.workspace = true
 minijinja.workspace = true

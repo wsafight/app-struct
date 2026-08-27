@@ -1,18 +1,16 @@
+use crate::cache::{CacheKey, command_identity};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
-const CACHE_VERSION: u32 = 1;
 const STATE_PATH: &str = ".appstruct/cache/generation-state.json";
 const MANIFEST_PATH: &str = ".appstruct-manifest.json";
 
 #[derive(Debug, Deserialize, Serialize)]
 struct GenerationState {
-    version: u32,
-    input_sha256: String,
-    executable_sha256: String,
     manifest_sha256: String,
     app_name: String,
     artifact_count: usize,
@@ -24,18 +22,11 @@ pub(super) struct CacheHit {
 }
 
 pub(super) fn load_hit(project: &Path, generated: &Path) -> io::Result<Option<CacheHit>> {
-    let state = match fs::read(project.join(STATE_PATH))
-        .ok()
-        .and_then(|source| serde_json::from_slice::<GenerationState>(&source).ok())
-    {
-        Some(state) if state.version == CACHE_VERSION => state,
-        Some(_) | None => return Ok(None),
-    };
-    if state.input_sha256 != input_fingerprint(project)?
-        || state.executable_sha256 != executable_fingerprint()?
-    {
+    let key = generation_key(project)?;
+    let Some(state) = crate::cache::load::<GenerationState>(&project.join(STATE_PATH), &key)?
+    else {
         return Ok(None);
-    }
+    };
     if !generated.is_dir() {
         return Ok(None);
     }
@@ -57,21 +48,18 @@ pub(super) fn record(
     artifact_count: usize,
 ) -> io::Result<()> {
     let state = GenerationState {
-        version: CACHE_VERSION,
-        input_sha256: input_fingerprint(project)?,
-        executable_sha256: executable_fingerprint()?,
         manifest_sha256: file_fingerprint(&generated.join(MANIFEST_PATH))?,
         app_name: app_name.to_owned(),
         artifact_count,
     };
-    let path = project.join(STATE_PATH);
-    fs::create_dir_all(
-        path.parent()
-            .ok_or_else(|| io::Error::other("generation cache has no parent"))?,
-    )?;
-    let mut source = serde_json::to_vec_pretty(&state).map_err(io::Error::other)?;
-    source.push(b'\n');
-    fs::write(path, source)
+    crate::cache::store(&project.join(STATE_PATH), generation_key(project)?, state)
+}
+
+fn generation_key(project: &Path) -> io::Result<CacheKey> {
+    let pnpm = command_identity(Command::new("pnpm").arg("--version"), "pnpm")?;
+    Ok(CacheKey::new("generation", input_fingerprint(project)?)
+        .with_tool("appstruct", executable_fingerprint()?)
+        .with_tool("pnpm", pnpm))
 }
 
 fn input_fingerprint(project: &Path) -> io::Result<String> {

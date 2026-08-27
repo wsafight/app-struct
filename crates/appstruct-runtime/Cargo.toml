@@ -11,12 +11,11 @@ keywords = ["axum", "codegen", "runtime", "saas"]
 categories = ["web-programming"]
 
 [dependencies]
+appstruct-contracts.workspace = true
 async-trait.workspace = true
 serde.workspace = true
-uuid.workspace = true
-
-[dev-dependencies]
 tokio.workspace = true
+uuid.workspace = true
 
 [lints]
 workspace = true

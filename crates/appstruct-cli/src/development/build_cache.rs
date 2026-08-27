@@ -1,58 +1,101 @@
+use crate::cache::{CacheKey, command_identity};
+use crate::environment::{CacheEnvironment, ProjectEnvironment};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-
-const STATE_VERSION: u32 = 1;
+use std::process::Command;
 
 #[derive(Debug, Deserialize, Serialize)]
-struct BuildState {
-    version: u32,
-    fingerprint: String,
-}
+struct CacheMarker;
 
-pub(super) fn backend_current(project: &Path) -> io::Result<bool> {
+pub(super) fn backend_current(
+    project: &Path,
+    environment: &ProjectEnvironment,
+) -> io::Result<bool> {
     let binary = project
         .join(".appstruct/cache/backend-target/debug")
         .join(crate::build::backend_binary_name(project)?);
     current(
         &project.join(".appstruct/cache/backend-build.json"),
-        &backend_fingerprint(project)?,
+        &backend_key(project, environment)?,
         binary.is_file(),
     )
 }
 
-pub(super) fn record_backend(project: &Path) -> io::Result<()> {
+pub(super) fn record_backend(project: &Path, environment: &ProjectEnvironment) -> io::Result<()> {
     record(
         &project.join(".appstruct/cache/backend-build.json"),
-        backend_fingerprint(project)?,
+        backend_key(project, environment)?,
     )
 }
 
-pub(super) fn web_dependencies_current(project: &Path) -> io::Result<bool> {
+pub(super) fn web_dependencies_current(
+    project: &Path,
+    environment: &ProjectEnvironment,
+) -> io::Result<bool> {
     let web = project.join("generated/web");
     current(
         &project.join(".appstruct/cache/web-install.json"),
-        &files_fingerprint(&[web.join("package.json"), web.join("pnpm-lock.yaml")])?,
+        &web_key(project, environment)?,
         web.join("node_modules/.pnpm").is_dir(),
     )
 }
 
-pub(super) fn record_web_dependencies(project: &Path) -> io::Result<()> {
-    let web = project.join("generated/web");
+pub(super) fn record_web_dependencies(
+    project: &Path,
+    environment: &ProjectEnvironment,
+) -> io::Result<()> {
     record(
         &project.join(".appstruct/cache/web-install.json"),
-        files_fingerprint(&[web.join("package.json"), web.join("pnpm-lock.yaml")])?,
+        web_key(project, environment)?,
     )
 }
 
-fn backend_fingerprint(project: &Path) -> io::Result<String> {
+fn backend_key(project: &Path, environment: &ProjectEnvironment) -> io::Result<CacheKey> {
     let mut files = Vec::new();
     for directory in ["generated/backend", "generated/server", "app/backend"] {
         collect_files(&project.join(directory), &mut files)?;
     }
-    files_fingerprint(&files)
+    collect_files(&project.join(".cargo"), &mut files)?;
+    for relative in ["rust-toolchain.toml", "rust-toolchain"] {
+        let path = project.join(relative);
+        if path.is_file() {
+            files.push(path);
+        }
+    }
+    let mut cargo = Command::new("cargo");
+    cargo.current_dir(project).arg("-Vv");
+    environment.apply(&mut cargo);
+    let mut rustc = Command::new("rustc");
+    rustc.current_dir(project).arg("-vV");
+    environment.apply(&mut rustc);
+    Ok(
+        CacheKey::new("backend-debug-build", files_fingerprint(&files)?)
+            .with_tool("cargo", command_identity(&mut cargo, "cargo")?)
+            .with_tool("rustc", command_identity(&mut rustc, "rustc")?)
+            .with_environment(environment.cache_fingerprint(CacheEnvironment::Rust)),
+    )
+}
+
+fn web_key(project: &Path, environment: &ProjectEnvironment) -> io::Result<CacheKey> {
+    let web = project.join("generated/web");
+    let mut files = vec![web.join("package.json"), web.join("pnpm-lock.yaml")];
+    for relative in [".npmrc", "pnpm-workspace.yaml"] {
+        let path = project.join(relative);
+        if path.is_file() {
+            files.push(path);
+        }
+    }
+    let mut pnpm = Command::new("pnpm");
+    pnpm.current_dir(project).arg("--version");
+    environment.apply(&mut pnpm);
+    Ok(
+        CacheKey::new("web-dependency-install", files_fingerprint(&files)?)
+            .with_tool("pnpm", command_identity(&mut pnpm, "pnpm")?)
+            .with_environment(environment.cache_fingerprint(CacheEnvironment::Node)),
+    )
 }
 
 fn collect_files(directory: &Path, files: &mut Vec<PathBuf>) -> io::Result<()> {
@@ -103,39 +146,21 @@ fn files_fingerprint(files: &[PathBuf]) -> io::Result<String> {
     Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
-fn current(path: &Path, fingerprint: &str, output_exists: bool) -> io::Result<bool> {
+fn current(path: &Path, key: &CacheKey, output_exists: bool) -> io::Result<bool> {
     if !output_exists {
         return Ok(false);
     }
-    let source = match fs::read(path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => return Err(error),
-    };
-    let state: BuildState = match serde_json::from_slice(&source) {
-        Ok(state) => state,
-        Err(_) => return Ok(false),
-    };
-    Ok(state.version == STATE_VERSION && state.fingerprint == fingerprint)
+    crate::cache::load::<CacheMarker>(path, key).map(|state| state.is_some())
 }
 
-fn record(path: &Path, fingerprint: String) -> io::Result<()> {
-    fs::create_dir_all(
-        path.parent()
-            .ok_or_else(|| io::Error::other("build cache state has no parent"))?,
-    )?;
-    let state = BuildState {
-        version: STATE_VERSION,
-        fingerprint,
-    };
-    let mut source = serde_json::to_vec_pretty(&state).map_err(io::Error::other)?;
-    source.push(b'\n');
-    fs::write(path, source)
+fn record(path: &Path, key: CacheKey) -> io::Result<()> {
+    crate::cache::store(path, key, CacheMarker)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{backend_current, record_backend};
+    use crate::environment::ProjectEnvironment;
     use std::fs;
 
     #[test]
@@ -155,15 +180,16 @@ mod tests {
             "binary",
         )
         .unwrap();
+        let environment = ProjectEnvironment::default();
 
-        assert!(!backend_current(project.path()).unwrap());
-        record_backend(project.path()).unwrap();
-        assert!(backend_current(project.path()).unwrap());
+        assert!(!backend_current(project.path(), &environment).unwrap());
+        record_backend(project.path(), &environment).unwrap();
+        assert!(backend_current(project.path(), &environment).unwrap());
         fs::write(
             project.path().join("generated/backend/src/lib.rs"),
             "pub fn value() -> u32 { 2 }\n",
         )
         .unwrap();
-        assert!(!backend_current(project.path()).unwrap());
+        assert!(!backend_current(project.path(), &environment).unwrap());
     }
 }

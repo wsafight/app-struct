@@ -11,6 +11,7 @@ keywords = ["database", "migration", "postgresql", "schema", "sql"]
 categories = ["database"]
 
 [dependencies]
+appstruct-contracts.workspace = true
 appstruct-ir.workspace = true
 native-tls.workspace = true
 postgres.workspace = true

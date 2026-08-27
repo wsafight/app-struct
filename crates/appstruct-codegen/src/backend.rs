@@ -35,12 +35,18 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             ArtifactKind::RustManifest,
         ),
         Artifact::text(
+            "backend/contracts/Cargo.toml",
+            manifest::contracts_cargo(),
+            ArtifactKind::RustManifest,
+        ),
+        Artifact::text(
+            "backend/contracts/src/lib.rs",
+            embedded_crate_source(include_str!("../../appstruct-contracts/src/lib.rs")),
+            ArtifactKind::RustSource,
+        ),
+        Artifact::text(
             "backend/runtime/src/lib.rs",
-            format!(
-                "{}{}",
-                generated_header("//"),
-                include_str!("../../appstruct-runtime/src/lib.rs")
-            ),
+            embedded_crate_source(include_str!("../../appstruct-runtime/src/lib.rs")),
             ArtifactKind::RustSource,
         ),
         Artifact::text(
@@ -111,6 +117,18 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     artifacts.extend(tenant::plan(ir)?);
     artifacts.extend(entity_artifacts(ir)?);
     Ok(artifacts)
+}
+
+fn embedded_crate_source(source: &str) -> String {
+    let source = source
+        .lines()
+        .map(|line| {
+            line.strip_prefix("//!")
+                .map_or(line.to_owned(), |line| format!("//{line}"))
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{}{}\n", generated_header("//"), source)
 }
 
 fn entity_artifacts(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
@@ -211,7 +229,8 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub use appstruct_runtime::{
             Actor, ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase, ModulePlan,
             ModuleRuntime, ModuleStarter, RUNTIME_API_VERSION, ServiceHandle, ServiceHandles,
-            StartupError, TenantId,
+            ShutdownError, ShutdownFailure, ShutdownFailureKind, ShutdownReport, StartupError,
+            TenantId,
         };
         pub const GENERATED_RUNTIME_API_VERSION: u32 = #runtime_api_version;
         const _: [(); GENERATED_RUNTIME_API_VERSION as usize] =

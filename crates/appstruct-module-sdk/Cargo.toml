@@ -11,6 +11,7 @@ keywords = ["capabilities", "codegen", "modules", "rust"]
 categories = ["development-tools"]
 
 [dependencies]
+appstruct-contracts.workspace = true
 serde.workspace = true
 
 [lints]

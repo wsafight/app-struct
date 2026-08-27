@@ -7,8 +7,12 @@ use std::process::ExitCode;
 
 pub(super) fn apply(project: &Path, configured_url: Option<&str>) -> ExitCode {
     let Some(database_url) = database_url(configured_url) else {
-        eprintln!("error[AS4107]: DATABASE_URL is required for migrate apply");
-        return ExitCode::from(3);
+        return crate::report::fail(
+            "AS4107",
+            crate::report::ErrorCategory::Configuration,
+            "DATABASE_URL is required for migrate apply",
+            crate::report::ExitClass::Environment,
+        );
     };
     apply_with_url(project, &database_url)
 }
@@ -22,8 +26,12 @@ pub(super) fn apply_if_configured(
 
 pub(super) fn status(project: &Path, configured_url: Option<&str>) -> ExitCode {
     let Some(database_url) = database_url(configured_url) else {
-        eprintln!("error[AS4107]: DATABASE_URL is required for migrate status");
-        return ExitCode::from(3);
+        return crate::report::fail(
+            "AS4107",
+            crate::report::ErrorCategory::Configuration,
+            "DATABASE_URL is required for migrate status",
+            crate::report::ExitClass::Environment,
+        );
     };
     match status_project(project, &database_url) {
         Ok(status) => render_status(&status),
@@ -70,22 +78,25 @@ fn render_drift(drift: &DriftStatus) -> ExitCode {
             println!("- drift: deferred until pending migrations are applied");
             ExitCode::SUCCESS
         }
-        DriftStatus::Detected(issues) => {
-            eprintln!("error[AS4111]: database schema drift detected");
-            for issue in issues {
-                eprintln!("- {issue}");
-            }
-            ExitCode::from(4)
-        }
+        DriftStatus::Detected(issues) => crate::report::fail(
+            "AS4111",
+            crate::report::ErrorCategory::Database,
+            format!("database schema drift detected: {}", issues.join("; ")),
+            crate::report::ExitClass::Database,
+        ),
     }
 }
 
 fn render_error(error: &MigrationError) -> ExitCode {
     let (code, exit) = match error {
-        MigrationError::Project(_) => ("AS4108", 1),
-        MigrationError::Database(_) => ("AS4109", 4),
-        MigrationError::Integrity(_) => ("AS4110", 4),
+        MigrationError::Project(_) => ("AS4108", crate::report::ExitClass::Validation),
+        MigrationError::Database(_) => ("AS4109", crate::report::ExitClass::Database),
+        MigrationError::Integrity(_) => ("AS4110", crate::report::ExitClass::Database),
     };
-    eprintln!("error[{code}]: {error}");
-    ExitCode::from(exit)
+    crate::report::fail(
+        code,
+        crate::report::ErrorCategory::Database,
+        error.to_string(),
+        exit,
+    )
 }

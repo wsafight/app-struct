@@ -77,6 +77,7 @@ fn journal_free_legacy_backup_is_recovered() {
 #[test]
 fn injected_swap_failures_recover_to_a_complete_generation() {
     for (fault, expected) in [
+        (GenerationFault::AfterPrepared, "old"),
         (GenerationFault::AfterBackup, "old"),
         (GenerationFault::AfterInstall, "new"),
     ] {

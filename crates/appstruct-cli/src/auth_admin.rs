@@ -25,34 +25,46 @@ fn bootstrap_admin(project: &Path, email: &str) -> ExitCode {
     let ir = match appstruct_compiler::compile_project(project) {
         Ok(ir) => ir,
         Err(diagnostics) => {
-            for diagnostic in &diagnostics {
-                crate::render_text_diagnostic(diagnostic);
-            }
-            return ExitCode::from(1);
+            return crate::report::fail_diagnostics(
+                crate::report::ErrorCategory::Validation,
+                diagnostics,
+            );
         }
     };
     let Some(user) = bootstrap_user(&ir) else {
-        eprintln!(
-            "error[AS6201]: auth bootstrap requires enabled Auth and a declared `admin` role"
+        return crate::report::fail(
+            "AS6201",
+            crate::report::ErrorCategory::Authentication,
+            "auth bootstrap requires enabled Auth and a declared `admin` role",
+            crate::report::ExitClass::Validation,
         );
-        return ExitCode::from(1);
     };
     let Some(email) = normalize_email(email) else {
-        eprintln!("error[AS6202]: invalid administrator email address");
-        return ExitCode::from(2);
+        return crate::report::fail(
+            "AS6202",
+            crate::report::ErrorCategory::Authentication,
+            "invalid administrator email address",
+            crate::report::ExitClass::Usage,
+        );
     };
     let environment = match ProjectEnvironment::load(project) {
         Ok(environment) => environment,
         Err(error) => {
-            eprintln!("error[AS6203]: cannot load project environment: {error}");
-            return ExitCode::from(3);
+            return crate::report::fail(
+                "AS6203",
+                crate::report::ErrorCategory::Configuration,
+                format!("cannot load project environment: {error}"),
+                crate::report::ExitClass::Environment,
+            );
         }
     };
     let Some(database_url) = environment.get("DATABASE_URL") else {
-        eprintln!(
-            "error[AS6203]: DATABASE_URL is required; set it or add it to the project .env file"
+        return crate::report::fail(
+            "AS6203",
+            crate::report::ErrorCategory::Configuration,
+            "DATABASE_URL is required; set it or add it to the project .env file",
+            crate::report::ExitClass::Environment,
         );
-        return ExitCode::from(3);
     };
     match promote(&database_url, &ir, user, &email) {
         Ok(BootstrapResult::Promoted) => {
@@ -63,10 +75,12 @@ fn bootstrap_admin(project: &Path, email: &str) -> ExitCode {
             println!("Administrator `{email}` is already bootstrapped");
             ExitCode::SUCCESS
         }
-        Err(error) => {
-            eprintln!("error[AS6204]: {error}");
-            ExitCode::from(1)
-        }
+        Err(error) => crate::report::fail(
+            "AS6204",
+            crate::report::ErrorCategory::Authentication,
+            error,
+            crate::report::ExitClass::Validation,
+        ),
     }
 }
 

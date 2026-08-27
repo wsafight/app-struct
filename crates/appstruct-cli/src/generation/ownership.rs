@@ -7,7 +7,7 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 
 const MANIFEST_NAME: &str = ".appstruct-manifest.json";
-const MANIFEST_VERSION: u32 = 1;
+const MANIFEST_VERSION: u32 = appstruct_contracts::OWNERSHIP_MANIFEST.current;
 const TRANSIENT_DIRECTORIES: &[&str] = &["target", "node_modules", "dist", ".vite"];
 const TRANSIENT_FILES: &[&str] = &["Cargo.lock"];
 

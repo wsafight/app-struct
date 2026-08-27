@@ -9,10 +9,12 @@ pub(super) fn source(ir: &AppIr) -> Result<TokenStream, CodegenError> {
     let mail = disabled_default(ir.mail.enabled, &quote! { MailState::default() });
     let file = disabled_default(ir.file.enabled, &quote! { FileState::default() });
     let module_plan = module_plan(ir)?;
+    let observer = observer_source();
     Ok(quote! {
         struct StartupContext {
             database: DatabaseConnection,
             extensions: AppExtensions,
+            health: ApplicationHealth,
             auth: Option<AuthState>,
             mail: Option<MailState>,
             file: Option<FileState>,
@@ -36,10 +38,15 @@ pub(super) fn source(ir: &AppIr) -> Result<TokenStream, CodegenError> {
         }
 
         impl StartupContext {
-            fn new(database: DatabaseConnection, extensions: AppExtensions) -> Self {
+            fn new(
+                database: DatabaseConnection,
+                extensions: AppExtensions,
+                health: ApplicationHealth,
+            ) -> Self {
                 Self {
                     database,
                     extensions,
+                    health,
                     auth: #auth,
                     mail: #mail,
                     file: #file,
@@ -47,6 +54,7 @@ pub(super) fn source(ir: &AppIr) -> Result<TokenStream, CodegenError> {
             }
 
             fn finish(self) -> Result<ApplicationParts, StartupError> {
+                let _health = self.health;
                 Ok(ApplicationParts {
                     database: self.database,
                     extensions: self.extensions,
@@ -61,12 +69,45 @@ pub(super) fn source(ir: &AppIr) -> Result<TokenStream, CodegenError> {
             StartupError::configuration(module, "runtime plan did not initialize module state")
         }
 
+        #observer
+
+        async fn start_application_modules(
+            database: DatabaseConnection,
+            extensions: AppExtensions,
+            health: ApplicationHealth,
+        ) -> Result<StartedApplication, StartupError> {
+            let mut context = StartupContext::new(database, extensions, health);
+            let mut runtime = startup_plan().start(&mut context).await?;
+            let parts = match context.finish() {
+                Ok(parts) => parts,
+                Err(error) => {
+                    let service = error.service().to_owned();
+                    let rollback = runtime.rollback_reverse().await;
+                    return Err(error.with_runtime_context(vec![service], rollback));
+                }
+            };
+            Ok(StartedApplication {
+                database: parts.database,
+                extensions: parts.extensions,
+                auth: parts.auth,
+                mail: parts.mail,
+                file: parts.file,
+                runtime,
+            })
+        }
+
+        #module_plan
+    })
+}
+
+fn observer_source() -> TokenStream {
+    quote! {
         struct TracingModuleObserver;
 
         impl ModuleObserver for TracingModuleObserver {
             fn observe(&self, event: &ModuleEvent) {
                 match event.phase {
-                    ModulePhase::Failed => tracing::error!(
+                    ModulePhase::Failed | ModulePhase::StopFailed | ModulePhase::RollbackFailed => tracing::error!(
                         module = %event.module,
                         detail = event.detail.as_deref().unwrap_or_default(),
                         "module lifecycle failure",
@@ -84,33 +125,7 @@ pub(super) fn source(ir: &AppIr) -> Result<TokenStream, CodegenError> {
                 }
             }
         }
-
-        async fn start_application_modules(
-            database: DatabaseConnection,
-            extensions: AppExtensions,
-        ) -> Result<StartedApplication, StartupError> {
-            let mut context = StartupContext::new(database, extensions);
-            let mut runtime = startup_plan().start(&mut context).await?;
-            let parts = match context.finish() {
-                Ok(parts) => parts,
-                Err(error) => {
-                    let service = error.service().to_owned();
-                    let rolled_back = runtime.rollback_reverse().await;
-                    return Err(error.with_runtime_context(vec![service], rolled_back));
-                }
-            };
-            Ok(StartedApplication {
-                database: parts.database,
-                extensions: parts.extensions,
-                auth: parts.auth,
-                mail: parts.mail,
-                file: parts.file,
-                runtime,
-            })
-        }
-
-        #module_plan
-    })
+    }
 }
 
 fn disabled_default(enabled: bool, value: &TokenStream) -> TokenStream {
@@ -238,7 +253,9 @@ fn starter_arm(module: &ResolvedModule, variant: &Ident) -> Result<TokenStream, 
         "appstruct/jobs" => quote! {
             let mail = context.mail.as_ref()
                 .ok_or_else(|| missing_module_state("appstruct/mail"))?;
-            let handle = start_job_worker(&context.database, &context.extensions, mail)
+            let handle = start_job_worker(
+                &context.database, &context.extensions, mail, context.health.clone(),
+            )
                 .map(|handle| Box::new(handle) as Box<dyn ServiceHandle>);
             Ok(handle)
         },

@@ -1,6 +1,7 @@
 use super::transaction::UpdateTransaction;
 use super::workspace::CandidateWorkspace;
 use crate::generation::{ownership, transaction::GenerationTransaction};
+use crate::transaction::TransactionFault;
 use appstruct_codegen::{Artifact, ArtifactKind};
 use std::collections::BTreeMap;
 use std::fs;
@@ -65,6 +66,40 @@ fn invalid_candidate_leaves_current_project_unchanged() {
         "old lock\n"
     );
     assert_clean(project.path());
+}
+
+#[test]
+fn injected_update_failures_recover_lock_and_generation_together() {
+    for (fault, expected) in [
+        (TransactionFault::AfterPrepared, "old"),
+        (TransactionFault::AfterBackup, "old"),
+        (TransactionFault::AfterInstall, "new"),
+    ] {
+        let project = tempfile::tempdir().unwrap();
+        fs::write(project.path().join("appstruct.lock"), "old lock\n").unwrap();
+        install(project.path(), "old");
+        let candidate = tempfile::tempdir().unwrap();
+        write_tree(candidate.path(), "new");
+
+        let transaction = UpdateTransaction::acquire(project.path()).unwrap();
+        assert!(
+            transaction
+                .commit_with_fault(candidate.path(), b"new lock\n", fault)
+                .is_err()
+        );
+
+        assert_eq!(read_value(&project.path().join("generated")), expected);
+        let expected_lock = if expected == "new" {
+            "new lock\n"
+        } else {
+            "old lock\n"
+        };
+        assert_eq!(
+            fs::read_to_string(project.path().join("appstruct.lock")).unwrap(),
+            expected_lock
+        );
+        assert_clean(project.path());
+    }
 }
 
 #[test]

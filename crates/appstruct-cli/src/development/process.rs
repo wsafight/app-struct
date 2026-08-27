@@ -203,6 +203,12 @@ impl ManagedDatabase {
             )))
         }
     }
+
+    pub(super) fn update_environment(&mut self, environment: ProjectEnvironment) {
+        if self.project.is_some() {
+            self.environment = Some(environment);
+        }
+    }
 }
 
 impl Drop for ManagedDatabase {

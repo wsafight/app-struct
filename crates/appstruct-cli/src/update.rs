@@ -13,55 +13,79 @@ pub(crate) fn run(project: &Path) -> ExitCode {
     let transaction = match UpdateTransaction::acquire(project) {
         Ok(transaction) => transaction,
         Err(error) => {
-            eprintln!("error[AS6008]: cannot start project update: {error}");
-            return ExitCode::from(3);
+            return crate::report::fail(
+                "AS6008",
+                crate::report::ErrorCategory::Transaction,
+                format!("cannot start project update: {error}"),
+                crate::report::ExitClass::Environment,
+            );
         }
     };
     let candidate = match CandidateWorkspace::prepare(project) {
         Ok(candidate) => candidate,
-        Err(error) => return update_error("cannot stage project files", &error, 3),
+        Err(error) => {
+            return update_error(
+                "cannot stage project files",
+                &error,
+                crate::report::ExitClass::Environment,
+            );
+        }
     };
     let lock = match appstruct_compiler::updated_project_lock(project) {
         Ok(lock) => lock,
         Err(diagnostics) => {
-            for diagnostic in &diagnostics {
-                crate::render_text_diagnostic(diagnostic);
-            }
-            return ExitCode::from(1);
+            return crate::report::fail_diagnostics(
+                crate::report::ErrorCategory::Validation,
+                diagnostics,
+            );
         }
     };
     if let Err(error) = fs::write(candidate.path().join("appstruct.lock"), &lock) {
-        return update_error("cannot stage project lock", &error, 3);
+        return update_error(
+            "cannot stage project lock",
+            &error,
+            crate::report::ExitClass::Environment,
+        );
     }
     let ir = match appstruct_compiler::compile_project(candidate.path()) {
         Ok(ir) => ir,
         Err(diagnostics) => {
-            for diagnostic in &diagnostics {
-                crate::render_text_diagnostic(diagnostic);
-            }
-            return ExitCode::from(1);
+            return crate::report::fail_diagnostics(
+                crate::report::ErrorCategory::Validation,
+                diagnostics,
+            );
         }
     };
     if crate::generation::run(candidate.path(), false) != ExitCode::SUCCESS {
-        eprintln!("error[AS6008]: staged project generation failed; no project files changed");
-        return ExitCode::from(1);
+        return crate::report::fail(
+            "AS6008",
+            crate::report::ErrorCategory::Project,
+            "staged project generation failed; no project files changed",
+            crate::report::ExitClass::Validation,
+        );
     }
     if let Err(error) = crate::build::verify_update(candidate.path()) {
         let exit = if error.kind() == io::ErrorKind::NotFound {
-            3
+            crate::report::ExitClass::Environment
         } else {
-            1
+            crate::report::ExitClass::Validation
         };
         return update_error("staged build or test failed", &error, exit);
     }
     if let Err(error) = candidate.ensure_source_unchanged(project) {
-        return update_error("cannot commit project update", &error, 1);
+        return update_error(
+            "cannot commit project update",
+            &error,
+            crate::report::ExitClass::Validation,
+        );
     }
     if let Err(error) = transaction.commit(&candidate.path().join("generated"), lock.as_bytes()) {
-        eprintln!(
-            "error[AS6008]: cannot commit project update: {error}; preserve update recovery paths"
+        return crate::report::fail(
+            "AS6008",
+            crate::report::ErrorCategory::Transaction,
+            format!("cannot commit project update: {error}; preserve update recovery paths"),
+            crate::report::ExitClass::Environment,
         );
-        return ExitCode::from(3);
     }
     match ir.preset {
         Some(preset) => println!(
@@ -75,9 +99,13 @@ pub(crate) fn run(project: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn update_error(context: &str, error: &io::Error, exit: u8) -> ExitCode {
-    eprintln!("error[AS6008]: {context}: {error}; no project files changed");
-    ExitCode::from(exit)
+fn update_error(context: &str, error: &io::Error, exit: crate::report::ExitClass) -> ExitCode {
+    crate::report::fail(
+        "AS6008",
+        crate::report::ErrorCategory::Transaction,
+        format!("{context}: {error}; no project files changed"),
+        exit,
+    )
 }
 
 #[cfg(test)]

@@ -36,6 +36,25 @@ pub(super) fn ensure_known_keys(
     .with_help("remove the key or use a compiler version that supports this feature"))
 }
 
+pub(super) fn unknown_key_diagnostics(
+    mapping: &BTreeMap<String, MappingEntry>,
+    allowed: &[&str],
+    context: &str,
+) -> Vec<Diagnostic> {
+    mapping
+        .iter()
+        .filter(|(key, _)| !allowed.contains(&key.as_str()))
+        .map(|(key, entry)| {
+            Diagnostic::error(
+                "AS1012",
+                format!("unknown key `{key}` in {context}"),
+                entry.key_span.clone(),
+            )
+            .with_help("remove the key or use a compiler version that supports this feature")
+        })
+        .collect()
+}
+
 pub(super) fn expect_mapping<'node>(
     node: &'node Node,
     context: &str,

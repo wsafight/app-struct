@@ -12,7 +12,7 @@ use std::path::Path;
 const SAAS_NAME: &str = "appstruct/saas";
 const SAAS_VERSION: u64 = 1;
 pub(super) const MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const CURRENT_PROJECT_LAYOUT_VERSION: u64 = ProjectLayout::CompositionRoot as u64;
+pub const CURRENT_PROJECT_LAYOUT_VERSION: u64 = appstruct_contracts::PROJECT_LAYOUT.current as u64;
 const MODULES: &[&str] = &["audit", "auth", "file", "jobs", "mail", "rbac", "tenant"];
 const EXPANDED: &str = concat!(
     "modules:\n",

@@ -3,6 +3,10 @@ use crate::{Artifact, ArtifactKind, CodegenError};
 use appstruct_ir::AppIr;
 use quote::quote;
 
+mod disabled;
+
+use disabled::disabled_source;
+
 pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     let source = if ir.jobs.enabled {
         enabled_source(ir)?
@@ -27,7 +31,11 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         use async_trait::async_trait;
         use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
         use serde::Serialize;
-        use std::{fmt, sync::Arc, time::Duration};
+        use std::{
+            fmt,
+            sync::{Arc, atomic::{AtomicBool, Ordering}},
+            time::Duration,
+        };
         #contract
         #queues
         #enqueue
@@ -147,6 +155,7 @@ fn enqueue_source() -> proc_macro2::TokenStream {
 
 fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::TokenStream {
     let lease_seconds = i64::try_from(lease_seconds).unwrap_or(30);
+    let lifecycle = worker_lifecycle_source();
     quote! {
         pub struct JobWorker {
             database: DatabaseConnection,
@@ -181,8 +190,21 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
                 Ok(true)
             }
             pub fn spawn(self) -> JobWorkerHandle {
+                self.spawn_inner(None)
+            }
+            pub(crate) fn spawn_with_health(
+                self, health: crate::ApplicationHealth,
+            ) -> JobWorkerHandle {
+                self.spawn_inner(Some(health))
+            }
+            fn spawn_inner(
+                self, health: Option<crate::ApplicationHealth>,
+            ) -> JobWorkerHandle {
                 let (shutdown, mut receiver) = tokio::sync::watch::channel(false);
+                let expected_shutdown = Arc::new(AtomicBool::new(false));
+                let task_expected_shutdown = Arc::clone(&expected_shutdown);
                 let task = tokio::spawn(async move {
+                    let _exit = WorkerExitGuard { health, expected_shutdown: task_expected_shutdown };
                     loop {
                         if *receiver.borrow() { break; }
                         match self.run_once().await {
@@ -196,25 +218,48 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
                         }
                     }
                 });
-                JobWorkerHandle { shutdown, task }
+                JobWorkerHandle { shutdown, task, expected_shutdown }
+            }
+        }
+        #lifecycle
+    }
+}
+
+fn worker_lifecycle_source() -> proc_macro2::TokenStream {
+    quote! {
+        struct WorkerExitGuard {
+            health: Option<crate::ApplicationHealth>,
+            expected_shutdown: Arc<AtomicBool>,
+        }
+        impl Drop for WorkerExitGuard {
+            fn drop(&mut self) {
+                if !self.expected_shutdown.load(Ordering::Acquire) {
+                    if let Some(health) = &self.health {
+                        health.mark_failed("job worker exited unexpectedly");
+                    }
+                }
             }
         }
         pub struct JobWorkerHandle {
             shutdown: tokio::sync::watch::Sender<bool>,
             task: tokio::task::JoinHandle<()>,
+            expected_shutdown: Arc<AtomicBool>,
         }
         impl JobWorkerHandle {
-            pub async fn shutdown(self) {
-                let _ = self.shutdown.send(true);
-                if let Err(error) = self.task.await {
-                    tracing::error!(%error, "job worker task failed");
-                }
+            pub async fn shutdown(self) -> Result<(), appstruct_runtime::ShutdownError> {
+                self.expected_shutdown.store(true, Ordering::Release);
+                self.shutdown.send(true).map_err(appstruct_runtime::ShutdownError::new)?;
+                self.task.await.map_err(appstruct_runtime::ShutdownError::new)
             }
         }
         #[async_trait]
         impl appstruct_runtime::ServiceHandle for JobWorkerHandle {
             fn service(&self) -> &'static str { "appstruct/jobs" }
-            async fn shutdown(self: Box<Self>) { JobWorkerHandle::shutdown(*self).await; }
+            async fn shutdown(
+                self: Box<Self>,
+            ) -> Result<(), appstruct_runtime::ShutdownError> {
+                JobWorkerHandle::shutdown(*self).await
+            }
         }
     }
 }
@@ -306,49 +351,4 @@ fn mail_source() -> proc_macro2::TokenStream {
             }
         }
     }
-}
-
-fn disabled_source() -> Result<String, CodegenError> {
-    render(quote! {
-        use async_trait::async_trait;
-        use sea_orm::{ConnectionTrait, DatabaseConnection};
-        use serde::Serialize;
-        use std::{fmt, sync::Arc};
-        #[derive(Clone, Debug)] pub struct Job;
-        #[derive(Clone, Debug, PartialEq, Eq)]
-        pub struct JobReceipt { pub id: uuid::Uuid, pub deduplicated: bool }
-        #[derive(Clone, Debug)] pub struct JobHandlerError(pub String);
-        #[derive(Debug)] pub enum JobError { Disabled }
-        impl fmt::Display for JobError {
-            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("jobs module is disabled")
-            }
-        }
-        impl std::error::Error for JobError {}
-        #[async_trait]
-        pub trait JobHandler: Send + Sync {
-            async fn handle(&self, job: &Job) -> Result<(), JobHandlerError>;
-        }
-        pub struct JobWorker;
-        impl JobWorker {
-            pub fn new(_database: DatabaseConnection, _handler: Arc<dyn JobHandler>) -> Self { Self }
-            pub fn for_kind(
-                _database: DatabaseConnection, _handler: Arc<dyn JobHandler>, _kind: &str,
-            ) -> Self { Self }
-            pub async fn run_once(&self) -> Result<bool, JobError> { Err(JobError::Disabled) }
-            pub fn spawn(self) -> JobWorkerHandle { JobWorkerHandle }
-        }
-        pub struct JobWorkerHandle;
-        impl JobWorkerHandle { pub async fn shutdown(self) {} }
-        #[async_trait]
-        impl appstruct_runtime::ServiceHandle for JobWorkerHandle {
-            fn service(&self) -> &'static str { "appstruct/jobs" }
-            async fn shutdown(self: Box<Self>) { JobWorkerHandle::shutdown(*self).await; }
-        }
-        pub(crate) async fn enqueue<C: ConnectionTrait, T: Serialize>(
-            _database: &C, _queue: &str, _kind: &str, _payload: &T,
-            _idempotency_key: Option<&str>, _run_at: Option<chrono::DateTime<chrono::Utc>>,
-            _tenant_id: Option<uuid::Uuid>,
-        ) -> Result<JobReceipt, JobError> { Err(JobError::Disabled) }
-    })
 }

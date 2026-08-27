@@ -135,7 +135,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 50);
+    assert_eq!(artifacts.len(), 52);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -262,7 +262,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 44);
+    assert_eq!(artifacts.len(), 46);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")
@@ -275,8 +275,16 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
             .contains("pub struct ModulePlan")
     );
     let backend = artifact_text(artifacts, "backend/src/lib.rs");
-    assert!(backend.contains("pub const GENERATED_RUNTIME_API_VERSION: u32 = 1"));
+    assert!(backend.contains("pub const GENERATED_RUNTIME_API_VERSION: u32 = 2"));
     assert!(backend.contains("startup_plan().start(&mut context).await?"));
+    assert!(backend.contains("state.health.is_ready() && state.database.ping().await.is_ok()"));
+    assert!(backend.contains("mark_draining"));
+    let drained_http = backend.find("server_result = match").unwrap();
+    let stopped_modules = backend[drained_http..]
+        .find("stop_modules(&mut runtime).await;")
+        .map(|offset| offset + drained_http)
+        .unwrap();
+    assert!(drained_http < stopped_modules);
     assert!(
         artifact_text(artifacts, "server/Cargo.toml")
             .contains("appstruct-app-backend = { path = \"../../app/backend\" }")

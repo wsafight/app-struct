@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 appstruct-codegen.workspace = true
 appstruct-compiler.workspace = true
+appstruct-contracts.workspace = true
 appstruct-ir.workspace = true
 appstruct-migrate.workspace = true
 clap.workspace = true

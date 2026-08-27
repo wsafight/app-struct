@@ -58,7 +58,7 @@ pub fn compile_project(project_root: &Path) -> Result<AppIr, Vec<Diagnostic>> {
 pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<Diagnostic>> {
     let root = canonical_project_root(project_root)?;
     let root_node = loading::load_yaml(&root, &root.join("appstruct.yaml"))?;
-    let surface_root = surface::decode_root(&root_node).map_err(|error| vec![error])?;
+    let surface_root = surface::decode_root(&root_node)?;
     let mut diagnostics = validation::validate_root(&surface_root);
     diagnostics.extend(preset::validate_lock(&root, &surface_root));
     let (local_modules, module_diagnostics) =
@@ -90,7 +90,7 @@ pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<
         }
 
         match loading::load_yaml(&root, &include_path)
-            .and_then(|node| surface::decode_domain(&node).map_err(|error| vec![error]))
+            .and_then(|node| surface::decode_domain(&node))
         {
             Ok(domain) => application.extend(domain),
             Err(mut errors) => diagnostics.append(&mut errors),
@@ -115,7 +115,7 @@ pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<
 pub fn expanded_preset(project_root: &Path) -> Result<Option<String>, Vec<Diagnostic>> {
     let root = canonical_project_root(project_root)?;
     let root_node = loading::load_yaml(&root, &root.join("appstruct.yaml"))?;
-    let surface_root = surface::decode_root(&root_node).map_err(|error| vec![error])?;
+    let surface_root = surface::decode_root(&root_node)?;
     let mut diagnostics = validation::validate_root(&surface_root);
     diagnostics.extend(preset::validate_lock(&root, &surface_root));
     if !diagnostics.is_empty() {
@@ -140,7 +140,7 @@ pub fn expanded_preset(project_root: &Path) -> Result<Option<String>, Vec<Diagno
 pub fn updated_project_lock(project_root: &Path) -> Result<String, Vec<Diagnostic>> {
     let root = canonical_project_root(project_root)?;
     let root_node = loading::load_yaml(&root, &root.join("appstruct.yaml"))?;
-    let surface_root = surface::decode_root(&root_node).map_err(|error| vec![error])?;
+    let surface_root = surface::decode_root(&root_node)?;
     let diagnostics = validation::validate_root(&surface_root);
     if !diagnostics.is_empty() {
         return Err(diagnostics);

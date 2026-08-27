@@ -35,7 +35,8 @@ fn isolates_local_artifacts_and_generates_a_noop_runtime_starter() {
     )
     .unwrap();
 
-    let artifacts = plan(&compile_project(temporary.path()).unwrap()).unwrap();
+    let mut ir = compile_project(temporary.path()).unwrap();
+    let artifacts = plan(&ir).unwrap();
     let module_artifact = artifacts
         .iter()
         .find(|artifact| {
@@ -52,6 +53,15 @@ fn isolates_local_artifacts_and_generates_a_noop_runtime_starter() {
     let library = std::str::from_utf8(&library.content).unwrap();
     assert!(library.contains("Local2"));
     assert!(library.contains("Self::Local2 => Ok(None)"));
+
+    let local = ir
+        .modules
+        .iter_mut()
+        .find(|module| module.name == "local/example")
+        .unwrap();
+    local.artifacts[0].content.push_str("tampered\n");
+    let error = plan(&ir).unwrap_err();
+    assert!(error.to_string().contains("does not match its SHA-256"));
 }
 
 fn copy_fixture(source: &Path, destination: &Path) {

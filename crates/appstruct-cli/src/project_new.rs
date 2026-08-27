@@ -26,15 +26,20 @@ pub(crate) fn run(parent: &Path, name: &str, template: ProjectTemplate) -> ExitC
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("error[AS6002]: cannot create project: {error}");
-            if matches!(
+            let exit = if matches!(
                 error.kind(),
                 io::ErrorKind::InvalidInput | io::ErrorKind::AlreadyExists
             ) {
-                ExitCode::from(1)
+                crate::report::ExitClass::Validation
             } else {
-                ExitCode::from(3)
-            }
+                crate::report::ExitClass::Environment
+            };
+            crate::report::fail(
+                "AS6002",
+                crate::report::ErrorCategory::Project,
+                format!("cannot create project: {error}"),
+                exit,
+            )
         }
     }
 }

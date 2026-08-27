@@ -2,7 +2,7 @@ use crate::ModuleGraphError;
 use serde::{Deserialize, Serialize};
 
 /// Current local module manifest format version.
-pub const MODULE_API_VERSION: u32 = 1;
+pub const MODULE_API_VERSION: u32 = appstruct_contracts::MODULE_API.current;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

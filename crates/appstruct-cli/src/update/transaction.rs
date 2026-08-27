@@ -1,7 +1,11 @@
 use crate::generation::{ownership, transaction::GenerationTransaction};
+use crate::transaction::{
+    JOURNAL_VERSION, RecoveryJournal, TransactionFault, TransactionLock, TransactionPhase,
+    read_latest, remove_dir_all, remove_file, rename, sync_tree, write_new,
+};
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File, OpenOptions, TryLockError};
-use std::io::{self, Write};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 const JOURNAL_NAME: &str = "update.journal";
@@ -14,7 +18,7 @@ const LOCK_BACKUP: &str = ".appstruct.lock.appstruct-update-backup";
 pub(super) struct UpdateTransaction {
     paths: UpdatePaths,
     _generation: GenerationTransaction,
-    _lock: File,
+    _lock: TransactionLock,
 }
 
 struct UpdatePaths {
@@ -28,19 +32,17 @@ struct UpdatePaths {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum Phase {
-    Prepared,
-    BackedUp,
-    Installed,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 struct JournalRecord {
     version: u32,
-    phase: Phase,
+    phase: TransactionPhase,
     had_lock: bool,
     had_generated: bool,
+}
+
+impl crate::transaction::JournalRecord for JournalRecord {
+    fn version(&self) -> u32 {
+        self.version
+    }
 }
 
 impl UpdateTransaction {
@@ -49,19 +51,7 @@ impl UpdateTransaction {
         let state = project.join(".appstruct");
         fs::create_dir_all(&state)?;
         let lock_path = state.join(LOCK_NAME);
-        let lock = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&lock_path)?;
-        lock.try_lock().map_err(|error| match error {
-            TryLockError::WouldBlock => invalid(format!(
-                "another update process holds `{}`",
-                lock_path.display()
-            )),
-            TryLockError::Error(error) => error,
-        })?;
+        let lock = TransactionLock::acquire(&lock_path, "update")?;
         let transaction = Self {
             paths: UpdatePaths::new(project, &state),
             _generation: generation,
@@ -72,6 +62,25 @@ impl UpdateTransaction {
     }
 
     pub(super) fn commit(&self, candidate: &Path, lock: &[u8]) -> io::Result<()> {
+        self.commit_inner(candidate, lock, TransactionFault::Disabled)
+    }
+
+    #[cfg(test)]
+    pub(super) fn commit_with_fault(
+        &self,
+        candidate: &Path,
+        lock: &[u8],
+        fault: TransactionFault,
+    ) -> io::Result<()> {
+        self.commit_inner(candidate, lock, fault)
+    }
+
+    fn commit_inner(
+        &self,
+        candidate: &Path,
+        lock: &[u8],
+        fault: TransactionFault,
+    ) -> io::Result<()> {
         self.ensure_clean()?;
         if self.paths.generated.exists() {
             ownership::validate_owned_tree(&self.paths.generated)?;
@@ -80,17 +89,18 @@ impl UpdateTransaction {
             self.remove_staging_best_effort();
             return Err(error);
         }
-        if let Err(error) = write_file(&self.paths.lock_staging, lock) {
+        sync_tree(&self.paths.generated_staging)?;
+        if let Err(error) = write_new(&self.paths.lock_staging, lock) {
             self.remove_staging_best_effort();
             return Err(error);
         }
         let record = JournalRecord {
-            version: 1,
-            phase: Phase::Prepared,
+            version: JOURNAL_VERSION,
+            phase: TransactionPhase::Prepared,
             had_lock: self.paths.lock.is_file(),
             had_generated: self.paths.generated.is_dir(),
         };
-        if let Err(error) = self.swap(record) {
+        if let Err(error) = self.swap(record, fault) {
             return match self.recover() {
                 Ok(()) => Err(error),
                 Err(recovery) => Err(invalid(format!(
@@ -101,28 +111,33 @@ impl UpdateTransaction {
         Ok(())
     }
 
-    fn swap(&self, record: JournalRecord) -> io::Result<()> {
-        let mut journal = RecoveryJournal::start(&self.paths.journal, record)?;
+    fn swap(&self, mut record: JournalRecord, fault: TransactionFault) -> io::Result<()> {
+        let mut journal = RecoveryJournal::start(&self.paths.journal, &record)?;
+        fault.check(TransactionPhase::Prepared, "update")?;
         rename_if_exists(&self.paths.lock, &self.paths.lock_backup)?;
         rename_if_exists(&self.paths.generated, &self.paths.generated_backup)?;
-        journal.record(Phase::BackedUp)?;
-        fs::rename(&self.paths.lock_staging, &self.paths.lock)?;
-        fs::rename(&self.paths.generated_staging, &self.paths.generated)?;
-        journal.record(Phase::Installed)?;
+        record.phase = TransactionPhase::BackedUp;
+        journal.record(&record)?;
+        fault.check(TransactionPhase::BackedUp, "update")?;
+        rename(&self.paths.lock_staging, &self.paths.lock)?;
+        rename(&self.paths.generated_staging, &self.paths.generated)?;
+        record.phase = TransactionPhase::Installed;
+        journal.record(&record)?;
+        fault.check(TransactionPhase::Installed, "update")?;
         self.remove_backups()?;
         journal.finish()
     }
 
     fn recover(&self) -> io::Result<()> {
-        match read_record(&self.paths.journal)? {
+        match read_latest::<JournalRecord>(&self.paths.journal, "update")? {
             Some(record) => match record.phase {
-                Phase::Prepared => self.recover_prepared(record)?,
-                Phase::BackedUp => self.recover_backed_up(record)?,
-                Phase::Installed => self.recover_installed()?,
+                TransactionPhase::Prepared => self.recover_prepared(record)?,
+                TransactionPhase::BackedUp => self.recover_backed_up(record)?,
+                TransactionPhase::Installed => self.recover_installed()?,
             },
             None => self.recover_without_journal()?,
         }
-        remove_file_if_exists(&self.paths.journal)
+        remove_file(&self.paths.journal)
     }
 
     fn recover_prepared(&self, record: JournalRecord) -> io::Result<()> {
@@ -178,10 +193,10 @@ impl UpdateTransaction {
     }
 
     fn remove_staging(&self) -> io::Result<()> {
-        remove_file_if_exists(&self.paths.lock_staging)?;
+        remove_file(&self.paths.lock_staging)?;
         if self.paths.generated_staging.exists() {
             ownership::validate_owned_tree(&self.paths.generated_staging)?;
-            fs::remove_dir_all(&self.paths.generated_staging)?;
+            remove_dir_all(&self.paths.generated_staging)?;
         }
         Ok(())
     }
@@ -191,10 +206,10 @@ impl UpdateTransaction {
     }
 
     fn remove_backups(&self) -> io::Result<()> {
-        remove_file_if_exists(&self.paths.lock_backup)?;
+        remove_file(&self.paths.lock_backup)?;
         if self.paths.generated_backup.exists() {
             ownership::validate_owned_tree(&self.paths.generated_backup)?;
-            fs::remove_dir_all(&self.paths.generated_backup)?;
+            remove_dir_all(&self.paths.generated_backup)?;
         }
         Ok(())
     }
@@ -214,72 +229,12 @@ impl UpdatePaths {
     }
 }
 
-struct RecoveryJournal {
-    path: PathBuf,
-    file: File,
-    record: JournalRecord,
-}
-
-impl RecoveryJournal {
-    fn start(path: &Path, record: JournalRecord) -> io::Result<Self> {
-        let file = OpenOptions::new()
-            .create_new(true)
-            .append(true)
-            .open(path)?;
-        let mut journal = Self {
-            path: path.to_path_buf(),
-            file,
-            record,
-        };
-        journal.write().map(|()| journal)
-    }
-
-    fn record(&mut self, phase: Phase) -> io::Result<()> {
-        self.record.phase = phase;
-        self.write()
-    }
-
-    fn write(&mut self) -> io::Result<()> {
-        serde_json::to_writer(&mut self.file, &self.record).map_err(io::Error::other)?;
-        self.file.write_all(b"\n")?;
-        self.file.flush()?;
-        self.file.sync_all()
-    }
-
-    fn finish(self) -> io::Result<()> {
-        drop(self.file);
-        fs::remove_file(self.path)
-    }
-}
-
-fn read_record(path: &Path) -> io::Result<Option<JournalRecord>> {
-    let source = match fs::read_to_string(path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error),
-    };
-    let mut latest = None;
-    for line in source.lines().filter(|line| !line.trim().is_empty()) {
-        let Ok(record) = serde_json::from_str::<JournalRecord>(line) else {
-            break;
-        };
-        if record.version != 1 {
-            return Err(invalid(format!(
-                "unsupported update journal version {}",
-                record.version
-            )));
-        }
-        latest = Some(record);
-    }
-    Ok(latest)
-}
-
 fn restore_if_backed_up(current: &Path, backup: &Path, expected: bool) -> io::Result<()> {
     if backup.exists() {
         if current.exists() {
             return Err(ambiguous());
         }
-        fs::rename(backup, current)?;
+        rename(backup, current)?;
     } else if expected && !current.exists() {
         return Err(invalid("update lock disappeared during recovery"));
     }
@@ -292,7 +247,7 @@ fn restore_generated_if_backed_up(current: &Path, backup: &Path, expected: bool)
         if current.exists() {
             return Err(ambiguous());
         }
-        fs::rename(backup, current)?;
+        rename(backup, current)?;
     } else if expected && !current.exists() {
         return Err(invalid("generated tree disappeared during update recovery"));
     }
@@ -300,14 +255,14 @@ fn restore_generated_if_backed_up(current: &Path, backup: &Path, expected: bool)
 }
 
 fn rollback_file(current: &Path, backup: &Path, expected: bool) -> io::Result<()> {
-    remove_file_if_exists(current)?;
+    remove_file(current)?;
     if expected {
         if !backup.is_file() {
             return Err(invalid("update lock backup is missing"));
         }
-        fs::rename(backup, current)?;
+        rename(backup, current)?;
     } else {
-        remove_file_if_exists(backup)?;
+        remove_file(backup)?;
     }
     Ok(())
 }
@@ -315,11 +270,11 @@ fn rollback_file(current: &Path, backup: &Path, expected: bool) -> io::Result<()
 fn rollback_generated(current: &Path, backup: &Path, expected: bool) -> io::Result<()> {
     if current.exists() {
         ownership::validate_owned_tree(current)?;
-        fs::remove_dir_all(current)?;
+        remove_dir_all(current)?;
     }
     if expected {
         ownership::validate_owned_tree(backup)?;
-        fs::rename(backup, current)?;
+        rename(backup, current)?;
     } else if backup.exists() {
         return Err(ambiguous());
     }
@@ -328,23 +283,9 @@ fn rollback_generated(current: &Path, backup: &Path, expected: bool) -> io::Resu
 
 fn rename_if_exists(source: &Path, destination: &Path) -> io::Result<()> {
     if source.exists() {
-        fs::rename(source, destination)?;
+        rename(source, destination)?;
     }
     Ok(())
-}
-
-fn write_file(path: &Path, content: &[u8]) -> io::Result<()> {
-    let mut file = OpenOptions::new().create_new(true).write(true).open(path)?;
-    file.write_all(content)?;
-    file.sync_all()
-}
-
-fn remove_file_if_exists(path: &Path) -> io::Result<()> {
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error),
-    }
 }
 
 fn ambiguous() -> io::Error {

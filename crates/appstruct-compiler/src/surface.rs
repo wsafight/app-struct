@@ -1,6 +1,7 @@
 mod access;
 mod audit;
 mod auth;
+mod context;
 mod extension;
 mod file;
 mod jobs;
@@ -21,16 +22,18 @@ pub(crate) use modules::{
     SurfaceMailTemplate, SurfacePreset, SurfaceTenant,
 };
 
+use self::context::DecodeContext;
 use self::value::{
     ensure_known_keys, expect_mapping, expect_scalar_string, expect_sequence, expect_string,
-    expect_u64, optional_bool, optional_string, optional_u64, required,
+    expect_u64, optional_bool, optional_string, optional_u64, required, unknown_key_diagnostics,
 };
 use crate::yaml::{MappingEntry, Node};
 use appstruct_ir::Diagnostic;
 
-pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
-    let mapping = expect_mapping(root, "root configuration")?;
-    ensure_known_keys(
+pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
+    let mapping = expect_mapping(root, "root configuration").map_err(|error| vec![error])?;
+    let mut context = DecodeContext::default();
+    context.extend(unknown_key_diagnostics(
         mapping,
         &[
             "version",
@@ -42,22 +45,129 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
             "includes",
         ],
         "root configuration",
-    )?;
-    let version_node = required(mapping, "version", &root.span)?;
-    let version = expect_u64(&version_node.value, "`version`")?;
+    ));
+    let version = context.capture(decode_version(mapping, root));
+    let app_name = context.capture(decode_app_name(mapping, root));
+    let database = context.capture(decode_database(mapping, root));
+    let includes = context.capture(decode_string_list(mapping, "includes", true, root));
+    let module_manifests =
+        context.capture(decode_string_list(mapping, "module_manifests", false, root));
+    let preset = context.capture(preset::decode(mapping.get("preset")));
+    let modules = preset.as_ref().and_then(|preset| {
+        context.capture(crate::preset::expand_modules(
+            preset.as_ref(),
+            mapping.get("modules"),
+        ))
+    });
+    let decoded_modules = modules.as_ref().map(|modules| {
+        (
+            context.capture(auth::decode(modules.as_ref())),
+            context.capture(tenant::decode(modules.as_ref())),
+            context.capture(audit::decode(modules.as_ref())),
+            context.capture(mail::decode(modules.as_ref())),
+            context.capture(jobs::decode(modules.as_ref())),
+            context.capture(file::decode(modules.as_ref())),
+        )
+    });
 
-    let app_node = required(mapping, "app", &root.span)?;
-    let app = expect_mapping(&app_node.value, "`app`")?;
+    let value = (|| {
+        let (database_provider, database_mode) = database?;
+        let (auth, tenant, audit, mail, jobs, file) = decoded_modules?;
+        Some(SurfaceRoot {
+            version: version?,
+            app_name: app_name?,
+            database_provider,
+            database_mode,
+            preset: preset?,
+            expanded_modules: modules?,
+            auth: auth?,
+            tenant: tenant?,
+            audit: audit?,
+            mail: mail?,
+            jobs: jobs?,
+            file: file?,
+            includes: includes?,
+            module_manifests: module_manifests?,
+        })
+    })();
+    context.finish(value)
+}
+
+pub(crate) fn decode_domain(root: &Node) -> Result<SurfaceDomain, Vec<Diagnostic>> {
+    let mapping = expect_mapping(root, "domain configuration").map_err(|error| vec![error])?;
+    let mut context = DecodeContext::default();
+    context.extend(unknown_key_diagnostics(
+        mapping,
+        &[
+            "domain",
+            "entities",
+            "value_objects",
+            "commands",
+            "queries",
+            "pages",
+            "includes",
+        ],
+        "domain configuration",
+    ));
+    if let Some(includes) = mapping.get("includes") {
+        context.extend([Diagnostic::error(
+            "AS1006",
+            "domain files cannot include other files",
+            includes.key_span.clone(),
+        )
+        .with_help("list every domain file in the root `appstruct.yaml`")]);
+    }
+
+    let domain = context.capture(
+        required(mapping, "domain", &root.span)
+            .and_then(|node| expect_string(&node.value, "`domain`")),
+    );
+    let entities = context.capture_many(decode_entities(mapping));
+    let value_objects = context.capture_many(extension::decode_value_objects(mapping));
+    let commands = context.capture_many(extension::decode_operations(mapping, "commands"));
+    let queries = context.capture_many(extension::decode_operations(mapping, "queries"));
+    let pages = context.capture_many(extension::decode_pages(mapping));
+    let value = domain.and_then(|_| {
+        Some(SurfaceDomain {
+            entities: entities?,
+            value_objects: value_objects?,
+            commands: commands?,
+            queries: queries?,
+            pages: pages?,
+        })
+    });
+    context.finish(value)
+}
+
+fn decode_version(
+    mapping: &std::collections::BTreeMap<String, MappingEntry>,
+    root: &Node,
+) -> Result<Located<u64>, Diagnostic> {
+    let node = required(mapping, "version", &root.span)?;
+    expect_u64(&node.value, "`version`")
+}
+
+fn decode_app_name(
+    mapping: &std::collections::BTreeMap<String, MappingEntry>,
+    root: &Node,
+) -> Result<Located<String>, Diagnostic> {
+    let node = required(mapping, "app", &root.span)?;
+    let app = expect_mapping(&node.value, "`app`")?;
     ensure_known_keys(app, &["name"], "`app`")?;
-    let name_node = required(app, "name", &app_node.value.span)?;
-    let app_name = expect_string(&name_node.value, "`app.name`")?;
+    let name = required(app, "name", &node.value.span)?;
+    expect_string(&name.value, "`app.name`")
+}
 
-    let database_config = required(mapping, "database", &root.span)?;
-    let database = expect_mapping(&database_config.value, "`database`")?;
+fn decode_database(
+    mapping: &std::collections::BTreeMap<String, MappingEntry>,
+    root: &Node,
+) -> Result<(Located<String>, Located<String>), Diagnostic> {
+    let node = required(mapping, "database", &root.span)?;
+    let database = expect_mapping(&node.value, "`database`")?;
     ensure_known_keys(database, &["provider", "dev"], "`database`")?;
-    let provider_node = required(database, "provider", &database_config.value.span)?;
-    let database_provider = expect_string(&provider_node.value, "`database.provider`")?;
-    let dev_mode = if let Some(dev_node) = database.get("dev") {
+    let provider_node = required(database, "provider", &node.value.span)?;
+    let provider = expect_string(&provider_node.value, "`database.provider`")?;
+    let mode = if let Some(dev_node) = database.get("dev") {
         let dev = expect_mapping(&dev_node.value, "`database.dev`")?;
         ensure_known_keys(dev, &["mode"], "`database.dev`")?;
         if let Some(mode_node) = dev.get("mode") {
@@ -71,95 +181,52 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
     } else {
         Located {
             value: "managed".to_owned(),
-            span: database_config.value.span.clone(),
+            span: node.value.span.clone(),
         }
     };
-
-    let includes_node = required(mapping, "includes", &root.span)?;
-    let include_nodes = expect_sequence(&includes_node.value, "`includes`")?;
-    let includes = include_nodes
-        .iter()
-        .map(|node| expect_string(node, "include path"))
-        .collect::<Result<Vec<_>, _>>()?;
-    let module_manifests = mapping
-        .get("module_manifests")
-        .map(|entry| {
-            expect_sequence(&entry.value, "`module_manifests`")?
-                .iter()
-                .map(|node| expect_string(node, "module manifest path"))
-                .collect::<Result<Vec<_>, _>>()
-        })
-        .transpose()?
-        .unwrap_or_default();
-
-    let preset = preset::decode(mapping.get("preset"))?;
-    let modules = crate::preset::expand_modules(preset.as_ref(), mapping.get("modules"))?;
-    let auth = auth::decode(modules.as_ref())?;
-    let tenant = tenant::decode(modules.as_ref())?;
-    let audit = audit::decode(modules.as_ref())?;
-    let mail = mail::decode(modules.as_ref())?;
-    let jobs = jobs::decode(modules.as_ref())?;
-    let file = file::decode(modules.as_ref())?;
-
-    Ok(SurfaceRoot {
-        version,
-        app_name,
-        database_provider,
-        database_mode: dev_mode,
-        preset,
-        expanded_modules: modules,
-        auth,
-        tenant,
-        audit,
-        mail,
-        jobs,
-        file,
-        includes,
-        module_manifests,
-    })
+    Ok((provider, mode))
 }
 
-pub(crate) fn decode_domain(root: &Node) -> Result<SurfaceDomain, Diagnostic> {
-    let mapping = expect_mapping(root, "domain configuration")?;
-    ensure_known_keys(
-        mapping,
-        &[
-            "domain",
-            "entities",
-            "value_objects",
-            "commands",
-            "queries",
-            "pages",
-            "includes",
-        ],
-        "domain configuration",
-    )?;
-    if let Some(includes) = mapping.get("includes") {
-        return Err(Diagnostic::error(
-            "AS1006",
-            "domain files cannot include other files",
-            includes.key_span.clone(),
-        )
-        .with_help("list every domain file in the root `appstruct.yaml`"));
-    }
+fn decode_string_list(
+    mapping: &std::collections::BTreeMap<String, MappingEntry>,
+    key: &str,
+    required_key: bool,
+    root: &Node,
+) -> Result<Vec<Located<String>>, Diagnostic> {
+    let entry = if required_key {
+        Some(required(mapping, key, &root.span)?)
+    } else {
+        mapping.get(key)
+    };
+    let Some(entry) = entry else {
+        return Ok(Vec::new());
+    };
+    expect_sequence(&entry.value, &format!("`{key}`"))?
+        .iter()
+        .map(|node| expect_string(node, &format!("{key} path")))
+        .collect()
+}
 
-    let domain_node = required(mapping, "domain", &root.span)?;
-    let _domain = expect_string(&domain_node.value, "`domain`")?;
-    let mut entities = Vec::new();
-    if let Some(entities_node) = mapping.get("entities") {
-        let entities_mapping = expect_mapping(&entities_node.value, "`entities`")?;
-        entities.reserve(entities_mapping.len());
-        for (name, entry) in entities_mapping {
-            entities.push(decode_entity(name, entry)?);
+fn decode_entities(
+    mapping: &std::collections::BTreeMap<String, MappingEntry>,
+) -> Result<Vec<SurfaceEntity>, Vec<Diagnostic>> {
+    let Some(node) = mapping.get("entities") else {
+        return Ok(Vec::new());
+    };
+    let definitions = expect_mapping(&node.value, "`entities`").map_err(|error| vec![error])?;
+    let mut entities = Vec::with_capacity(definitions.len());
+    let mut diagnostics = Vec::new();
+    for (name, entry) in definitions {
+        match decode_entity(name, entry) {
+            Ok(entity) => entities.push(entity),
+            Err(diagnostic) => diagnostics.push(diagnostic),
         }
     }
-    Ok(SurfaceDomain {
-        entities,
-        value_objects: extension::decode_value_objects(mapping)?,
-        commands: extension::decode_operations(mapping, "commands")?,
-        queries: extension::decode_operations(mapping, "queries")?,
-        pages: extension::decode_pages(mapping)?,
-    })
+    if diagnostics.is_empty() {
+        Ok(entities)
+    } else {
+        Err(diagnostics)
+    }
 }
 
 fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diagnostic> {

@@ -12,6 +12,11 @@ impl SourceFingerprint {
         for candidate in [
             project.join("appstruct.yaml"),
             project.join("appstruct.lock"),
+            project.join(".env"),
+            project.join(".npmrc"),
+            project.join("pnpm-workspace.yaml"),
+            project.join("rust-toolchain.toml"),
+            project.join("rust-toolchain"),
         ] {
             if candidate.is_file() {
                 files.push(candidate);
@@ -21,6 +26,8 @@ impl SourceFingerprint {
             project.join("spec"),
             project.join("modules"),
             project.join("app/backend"),
+            project.join("app/web"),
+            project.join(".cargo"),
         ] {
             collect_files(&directory, &mut files)?;
         }
@@ -77,6 +84,17 @@ mod tests {
         fs::create_dir(temporary.path().join("spec")).unwrap();
         fs::write(temporary.path().join("spec/main.yaml"), "domain: main\n").unwrap();
         assert_ne!(first, SourceFingerprint::read(temporary.path()).unwrap());
+
+        let before_environment = SourceFingerprint::read(temporary.path()).unwrap();
+        fs::write(
+            temporary.path().join(".env"),
+            "APPSTRUCT_BIND=127.0.0.1:3001\n",
+        )
+        .unwrap();
+        assert_ne!(
+            before_environment,
+            SourceFingerprint::read(temporary.path()).unwrap()
+        );
 
         let before_module = SourceFingerprint::read(temporary.path()).unwrap();
         fs::create_dir(temporary.path().join("modules")).unwrap();

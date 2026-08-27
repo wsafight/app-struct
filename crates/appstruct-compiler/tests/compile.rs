@@ -1,5 +1,6 @@
 use appstruct_compiler::{compile_project, compile_project_report};
 use appstruct_ir::{ModuleOrigin, OperationTypeIr, to_canonical_json};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -81,18 +82,19 @@ fn loads_local_modules_and_artifacts_into_the_capability_graph() {
     copy_fixture(&fixture(), temporary.path());
     add_module_declaration(temporary.path(), "modules/example/module.toml");
     fs::create_dir_all(temporary.path().join("modules/example/assets")).unwrap();
+    let manifest = concat!(
+        "api_version = 1\n",
+        "name = \"local/example\"\n",
+        "version = \"0.1.0\"\n",
+        "provides = [\"example.docs\"]\n",
+        "requires = [\"auth.identity\"]\n\n",
+        "[[artifacts]]\n",
+        "path = \"docs/README.md\"\n",
+        "source = \"assets/README.md\"\n",
+    );
     fs::write(
         temporary.path().join("modules/example/module.toml"),
-        concat!(
-            "api_version = 1\n",
-            "name = \"local/example\"\n",
-            "version = \"0.1.0\"\n",
-            "provides = [\"example.docs\"]\n",
-            "requires = [\"auth.identity\"]\n\n",
-            "[[artifacts]]\n",
-            "path = \"docs/README.md\"\n",
-            "source = \"assets/README.md\"\n",
-        ),
+        manifest,
     )
     .unwrap();
     fs::write(
@@ -108,8 +110,25 @@ fn loads_local_modules_and_artifacts_into_the_capability_graph() {
         .find(|module| module.name == "local/example")
         .unwrap();
     assert_eq!(module.origin, ModuleOrigin::Local);
+    assert_eq!(
+        module.manifest_path.as_deref(),
+        Some("modules/example/module.toml")
+    );
+    assert_eq!(
+        module.content_sha256.as_deref(),
+        Some(format!("sha256:{:x}", Sha256::digest(manifest.as_bytes())).as_str())
+    );
     assert_eq!(module.requires, ["auth.identity"]);
     assert_eq!(module.artifacts[0].path, "docs/README.md");
+    assert_eq!(
+        module.artifacts[0].source.as_deref(),
+        Some("modules/example/assets/README.md")
+    );
+    assert_eq!(module.artifacts[0].byte_len, 15);
+    assert_eq!(
+        module.artifacts[0].sha256,
+        format!("sha256:{:x}", Sha256::digest(b"# Local module\n"))
+    );
     assert_eq!(module.artifacts[0].content, "# Local module\n");
     assert!(module.startup_order > ir.modules[0].startup_order);
 }

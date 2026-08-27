@@ -65,11 +65,21 @@ pub(super) fn runtime_cargo() -> &'static str {
         "edition = \"2024\"\n",
         "rust-version = \"1.98\"\n\n",
         "[dependencies]\n",
+        "appstruct-contracts = { path = \"../contracts\" }\n",
         "async-trait = \"=0.1.89\"\n",
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
+        "tokio = { version = \"=1.53.1\", features = [\"rt\", \"time\"] }\n",
         "uuid = { version = \"=1.25.0\", features = [\"serde\", \"v7\"] }\n",
-        "\n[dev-dependencies]\n",
-        "tokio = { version = \"=1.53.1\", features = [\"macros\", \"rt-multi-thread\", \"sync\"] }\n",
+    )
+}
+
+pub(super) fn contracts_cargo() -> &'static str {
+    concat!(
+        "[package]\n",
+        "name = \"appstruct-contracts\"\n",
+        "version = \"0.1.0\"\n",
+        "edition = \"2024\"\n",
+        "rust-version = \"1.98\"\n",
     )
 }
 

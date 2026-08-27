@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Current serialized IR format version.
-pub const IR_VERSION: u32 = 9;
+pub const IR_VERSION: u32 = appstruct_contracts::IR.current;
 
 /// Fully normalized application model consumed by generators.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -258,6 +258,10 @@ pub struct ResolvedModule {
     pub name: String,
     pub version: String,
     pub origin: ModuleOrigin,
+    /// Project-relative manifest path for a local module.
+    pub manifest_path: Option<String>,
+    /// SHA-256 of the exact local manifest bytes loaded by the compiler.
+    pub content_sha256: Option<String>,
     pub provides: Vec<String>,
     pub requires: Vec<String>,
     pub startup_order: u32,
@@ -274,6 +278,10 @@ pub enum ModuleOrigin {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleArtifactIr {
     pub path: String,
+    /// Project-relative source path, or `None` for migrated legacy IR.
+    pub source: Option<String>,
+    pub sha256: String,
+    pub byte_len: u64,
     pub content: String,
 }
 

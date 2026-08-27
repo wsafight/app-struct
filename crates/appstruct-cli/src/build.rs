@@ -7,15 +7,23 @@ pub(crate) fn run(project: &Path) -> ExitCode {
     let backend = match backend_manifest(project) {
         Ok(backend) => backend,
         Err(error) => {
-            eprintln!("error[AS6004]: cannot resolve project layout: {error}");
-            return ExitCode::from(1);
+            return crate::report::fail(
+                "AS6004",
+                crate::report::ErrorCategory::Build,
+                format!("cannot resolve project layout: {error}"),
+                crate::report::ExitClass::Validation,
+            );
         }
     };
     let binary = match backend_binary_name(project) {
         Ok(binary) => binary,
         Err(error) => {
-            eprintln!("error[AS6004]: cannot resolve project layout: {error}");
-            return ExitCode::from(1);
+            return crate::report::fail(
+                "AS6004",
+                crate::report::ErrorCategory::Build,
+                format!("cannot resolve project layout: {error}"),
+                crate::report::ExitClass::Validation,
+            );
         }
     };
     if super::generation::run(project, false) != ExitCode::SUCCESS {
@@ -24,20 +32,28 @@ pub(crate) fn run(project: &Path) -> ExitCode {
     let environment = match ProjectEnvironment::load(project) {
         Ok(environment) => environment,
         Err(error) => {
-            eprintln!("error[AS6003]: {error}");
-            return ExitCode::from(3);
+            return crate::report::fail(
+                "AS6003",
+                crate::report::ErrorCategory::Configuration,
+                error.to_string(),
+                crate::report::ExitClass::Environment,
+            );
         }
     };
     let web = project.join("generated/web");
     let target = project.join(".appstruct/cache/backend-target");
     if let Err(error) = build_steps(project, &backend, &web, &target, &environment) {
         let exit = if error.kind() == io::ErrorKind::NotFound {
-            3
+            crate::report::ExitClass::Environment
         } else {
-            1
+            crate::report::ExitClass::Validation
         };
-        eprintln!("error[AS6004]: production build failed: {error}");
-        return ExitCode::from(exit);
+        return crate::report::fail(
+            "AS6004",
+            crate::report::ErrorCategory::Build,
+            format!("production build failed: {error}"),
+            exit,
+        );
     }
     println!("Production build completed:");
     println!("- backend: .appstruct/cache/backend-target/release/{binary}");

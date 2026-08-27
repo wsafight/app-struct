@@ -1,5 +1,5 @@
 {
-  "ir_version": 9,
+  "ir_version": 10,
   "app": {
     "name": "project-hub"
   },
@@ -434,6 +434,8 @@
       "name": "appstruct/auth",
       "version": "0.1.0",
       "origin": "official",
+      "manifest_path": null,
+      "content_sha256": null,
       "provides": [
         "auth.identity"
       ],
@@ -445,6 +447,8 @@
       "name": "appstruct/rbac",
       "version": "0.1.0",
       "origin": "official",
+      "manifest_path": null,
+      "content_sha256": null,
       "provides": [
         "auth.roles"
       ],

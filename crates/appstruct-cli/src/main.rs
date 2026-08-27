@@ -1,5 +1,5 @@
-use appstruct_ir::{Diagnostic, Severity};
-use clap::{Parser, Subcommand, ValueEnum};
+use appstruct_ir::Diagnostic;
+use clap::{Parser, Subcommand};
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
@@ -7,6 +7,7 @@ use std::process::ExitCode;
 
 mod auth_admin;
 mod build;
+mod cache;
 mod development;
 mod doctor;
 mod environment;
@@ -14,7 +15,9 @@ mod generation;
 mod migration;
 mod preset;
 mod project_new;
+mod report;
 mod schema;
+mod transaction;
 mod update;
 
 #[derive(Debug, Parser)]
@@ -27,6 +30,10 @@ struct Cli {
     /// Project directory or a path within the project.
     #[arg(long, global = true)]
     project: Option<PathBuf>,
+
+    /// Select human-readable or machine-readable command output.
+    #[arg(long, global = true, value_enum, default_value_t = report::OutputFormat::Text)]
+    format: report::OutputFormat,
 
     #[command(subcommand)]
     command: Command,
@@ -48,10 +55,7 @@ enum Command {
         command: auth_admin::AuthCommand,
     },
     /// Check the local toolchain, database mode, and project configuration.
-    Doctor {
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        format: OutputFormat,
-    },
+    Doctor {},
     /// Start PostgreSQL coordination, the API, and the Vite development server.
     Dev {
         #[arg(long, default_value_t = 3000)]
@@ -61,8 +65,6 @@ enum Command {
     },
     /// Validate the App Spec and build normalized IR in memory.
     Check {
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        format: OutputFormat,
         /// Treat non-fatal App Spec diagnostics as errors.
         #[arg(long)]
         deny_warnings: bool,
@@ -89,13 +91,6 @@ enum Command {
     Update,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
-enum OutputFormat {
-    #[default]
-    Text,
-    Json,
-}
-
 #[derive(Serialize)]
 struct CheckReport<'diagnostic> {
     valid: bool,
@@ -108,14 +103,19 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> ExitCode {
+    report::set_output_format(cli.format);
     if let Command::New { name, template } = &cli.command {
         let parent = match cli.project {
             Some(ref path) => path.clone(),
             None => match env::current_dir() {
                 Ok(path) => path,
                 Err(error) => {
-                    eprintln!("error[AS6001]: cannot read current directory: {error}");
-                    return ExitCode::from(3);
+                    return report::fail(
+                        "AS6001",
+                        report::ErrorCategory::Project,
+                        format!("cannot read current directory: {error}"),
+                        report::ExitClass::Environment,
+                    );
                 }
             },
         };
@@ -124,38 +124,30 @@ fn run(cli: Cli) -> ExitCode {
     if matches!(&cli.command, Command::Schema) {
         return schema::run();
     }
-    let diagnostic_format = match &cli.command {
-        Command::Check { format, .. } | Command::Doctor { format } => *format,
-        Command::New { .. }
-        | Command::Auth { .. }
-        | Command::Build
-        | Command::Dev { .. }
-        | Command::Generate { .. }
-        | Command::Migrate { .. }
-        | Command::Preset { .. }
-        | Command::Schema
-        | Command::Update => OutputFormat::Text,
-    };
     let start = match cli.project {
         Some(path) => path,
         None => match env::current_dir() {
             Ok(path) => path,
             Err(error) => {
-                eprintln!("error[AS6001]: cannot read current directory: {error}");
-                return ExitCode::from(3);
+                return report::fail(
+                    "AS6001",
+                    report::ErrorCategory::Project,
+                    format!("cannot read current directory: {error}"),
+                    report::ExitClass::Environment,
+                );
             }
         },
     };
     let project = match appstruct_compiler::discover_project(&start) {
         Ok(project) => project,
         Err(diagnostic) => {
-            match diagnostic_format {
-                OutputFormat::Text => render_text_diagnostic(&diagnostic),
-                OutputFormat::Json => {
-                    render_json_report(false, 0, std::slice::from_ref(&diagnostic));
-                }
+            if matches!(&cli.command, Command::Check { .. })
+                && cli.format == report::OutputFormat::Json
+            {
+                render_json_report(false, 0, std::slice::from_ref(&diagnostic));
+                return ExitCode::from(1);
             }
-            return ExitCode::from(1);
+            return report::fail_diagnostics(report::ErrorCategory::Project, vec![diagnostic]);
         }
     };
 
@@ -163,12 +155,9 @@ fn run(cli: Cli) -> ExitCode {
         Command::New { .. } | Command::Schema => unreachable!(),
         Command::Auth { command } => auth_admin::run(&project, &command),
         Command::Build => build::run(&project),
-        Command::Doctor { format } => doctor::run(&project, format == OutputFormat::Json),
+        Command::Doctor {} => doctor::run(&project, cli.format == report::OutputFormat::Json),
         Command::Dev { api_port, web_port } => development::run(&project, api_port, web_port),
-        Command::Check {
-            format,
-            deny_warnings,
-        } => run_check(&project, format, deny_warnings),
+        Command::Check { deny_warnings } => run_check(&project, cli.format, deny_warnings),
         Command::Generate { check } => generation::run(&project, check),
         Command::Migrate { command } => migration::run(&project, command),
         Command::Preset { command } => preset::run(&project, &command),
@@ -176,14 +165,18 @@ fn run(cli: Cli) -> ExitCode {
     }
 }
 
-fn run_check(project: &std::path::Path, format: OutputFormat, deny_warnings: bool) -> ExitCode {
+fn run_check(
+    project: &std::path::Path,
+    format: report::OutputFormat,
+    deny_warnings: bool,
+) -> ExitCode {
     match appstruct_compiler::compile_project_report(project) {
         Ok(report) => {
             let denied = deny_warnings && !report.diagnostics.is_empty();
             match format {
-                OutputFormat::Text => {
+                report::OutputFormat::Text => {
                     for diagnostic in &report.diagnostics {
-                        render_text_diagnostic(diagnostic);
+                        report::render_text_diagnostic(diagnostic);
                     }
                     if !denied {
                         println!(
@@ -193,7 +186,7 @@ fn run_check(project: &std::path::Path, format: OutputFormat, deny_warnings: boo
                         );
                     }
                 }
-                OutputFormat::Json => {
+                report::OutputFormat::Json => {
                     render_json_report(!denied, report.ir.entities.len(), &report.diagnostics);
                 }
             }
@@ -205,12 +198,12 @@ fn run_check(project: &std::path::Path, format: OutputFormat, deny_warnings: boo
         }
         Err(diagnostics) => {
             match format {
-                OutputFormat::Text => {
+                report::OutputFormat::Text => {
                     for diagnostic in &diagnostics {
-                        render_text_diagnostic(diagnostic);
+                        report::render_text_diagnostic(diagnostic);
                     }
                 }
-                OutputFormat::Json => render_json_report(false, 0, &diagnostics),
+                report::OutputFormat::Json => render_json_report(false, 0, &diagnostics),
             }
             ExitCode::from(1)
         }
@@ -225,30 +218,13 @@ fn render_json_report(valid: bool, entity_count: usize, diagnostics: &[Diagnosti
     };
     match serde_json::to_string_pretty(&report) {
         Ok(output) => println!("{output}"),
-        Err(error) => eprintln!("error[AS5003]: failed to serialize diagnostics: {error}"),
-    }
-}
-
-pub(crate) fn render_text_diagnostic(diagnostic: &Diagnostic) {
-    let span = &diagnostic.primary.span;
-    let severity = match diagnostic.severity {
-        Severity::Error => "error",
-        Severity::Warning => "warning",
-    };
-    eprintln!(
-        "{}:{}:{}: {severity}[{}]: {}",
-        span.file, span.line, span.column, diagnostic.code, diagnostic.message
-    );
-    if !diagnostic.primary.message.is_empty() {
-        eprintln!("  = {}", diagnostic.primary.message);
-    }
-    for secondary in &diagnostic.secondary {
-        eprintln!(
-            "  = {}:{}:{}: {}",
-            secondary.span.file, secondary.span.line, secondary.span.column, secondary.message
-        );
-    }
-    if let Some(help) = &diagnostic.help {
-        eprintln!("  help: {help}");
+        Err(error) => {
+            let _ = report::fail(
+                "AS5003",
+                report::ErrorCategory::Validation,
+                format!("failed to serialize diagnostics: {error}"),
+                report::ExitClass::Environment,
+            );
+        }
     }
 }

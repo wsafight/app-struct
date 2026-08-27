@@ -44,42 +44,56 @@ pub(crate) struct SurfacePage {
 
 pub(super) fn decode_value_objects(
     domain: &BTreeMap<String, MappingEntry>,
-) -> Result<Vec<SurfaceValueObject>, Diagnostic> {
+) -> Result<Vec<SurfaceValueObject>, Vec<Diagnostic>> {
     let Some(node) = domain.get("value_objects") else {
         return Ok(Vec::new());
     };
-    let definitions = expect_mapping(&node.value, "`value_objects`")?;
-    definitions
-        .iter()
-        .map(|(name, entry)| decode_value_object(name, entry))
-        .collect()
+    let definitions =
+        expect_mapping(&node.value, "`value_objects`").map_err(|error| vec![error])?;
+    collect_definitions(definitions, decode_value_object)
 }
 
 pub(super) fn decode_operations(
     domain: &BTreeMap<String, MappingEntry>,
     key: &str,
-) -> Result<Vec<SurfaceOperation>, Diagnostic> {
+) -> Result<Vec<SurfaceOperation>, Vec<Diagnostic>> {
     let Some(node) = domain.get(key) else {
         return Ok(Vec::new());
     };
-    let definitions = expect_mapping(&node.value, &format!("`{key}`"))?;
-    definitions
-        .iter()
-        .map(|(name, entry)| decode_operation(name, entry, key))
-        .collect()
+    let definitions =
+        expect_mapping(&node.value, &format!("`{key}`")).map_err(|error| vec![error])?;
+    collect_definitions(definitions, |name, entry| {
+        decode_operation(name, entry, key)
+    })
 }
 
 pub(super) fn decode_pages(
     domain: &BTreeMap<String, MappingEntry>,
-) -> Result<Vec<SurfacePage>, Diagnostic> {
+) -> Result<Vec<SurfacePage>, Vec<Diagnostic>> {
     let Some(node) = domain.get("pages") else {
         return Ok(Vec::new());
     };
-    let definitions = expect_mapping(&node.value, "`pages`")?;
-    definitions
-        .iter()
-        .map(|(name, entry)| decode_page(name, entry))
-        .collect()
+    let definitions = expect_mapping(&node.value, "`pages`").map_err(|error| vec![error])?;
+    collect_definitions(definitions, decode_page)
+}
+
+fn collect_definitions<T>(
+    definitions: &BTreeMap<String, MappingEntry>,
+    mut decode: impl FnMut(&str, &MappingEntry) -> Result<T, Diagnostic>,
+) -> Result<Vec<T>, Vec<Diagnostic>> {
+    let mut values = Vec::with_capacity(definitions.len());
+    let mut diagnostics = Vec::new();
+    for (name, entry) in definitions {
+        match decode(name, entry) {
+            Ok(value) => values.push(value),
+            Err(diagnostic) => diagnostics.push(diagnostic),
+        }
+    }
+    if diagnostics.is_empty() {
+        Ok(values)
+    } else {
+        Err(diagnostics)
+    }
 }
 
 pub(super) fn decode_ui_component(node: &Node) -> Result<Located<String>, Diagnostic> {
