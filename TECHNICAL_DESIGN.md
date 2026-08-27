@@ -1,6 +1,6 @@
 # AppStruct 技术设计文档
 
-> 状态：Implementation Baseline v1.1<br>
+> 状态：Implementation Baseline v1.2<br>
 > 日期：2026-08-27<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
@@ -35,7 +35,7 @@ M4 将 `modules.auth`/`modules.rbac` 降低为 `AuthIr` 和规范化 `AccessRule
 
 CLI 生成路径已拆为 orchestration、ownership 和 transaction 模块。`generated/.appstruct-manifest.json` 使用确定性 JSON 保存 Artifact 路径、类别、Generator 版本和 SHA-256；生成前拒绝未知文件或被人工修改的 owned file。`target/`、`node_modules/`、`dist/`、`.vite/` 和 Cargo 自动创建的 `Cargo.lock` 视为可丢弃构建瞬态，不参与 ownership 冲突。项目级排他文件锁覆盖恢复、编译、规划与提交；追加式 journal 在每个目录交换 phase 后 `sync_all`。下一次命令会验证候选树的 manifest/hash，再完成提交或恢复 backup；歧义状态保留全部目录并失败关闭。
 
-M5 Template 初始化已进入 CLI。`new` 在项目发现前执行，以当前目录或全局 `--project` 指定目录为 parent；名称限制为可移植的小写 ASCII package/directory name。内置 `minimal/dashboard` 文件表在编译期嵌入二进制，通过固定 sibling staging 写完后提交，目标或 staging 存在时不覆盖。Template 产物归用户所有，包含 `appstruct.lock`、固定 1.98.0 的 `rust-toolchain.toml`、环境示例和本地状态 ignore；`generate` 仍只拥有 `generated/`。
+M5 Template 初始化已进入 CLI。`new` 在项目发现前执行，以当前目录或全局 `--project` 指定目录为 parent；名称限制为可移植的小写 ASCII package/directory name。内置 `minimal/dashboard/saas` 文件表在编译期嵌入二进制，通过固定 sibling staging 写完后提交，目标或 staging 存在时不覆盖。Template 产物归用户所有，包含 `appstruct.lock`、固定 1.98.0 的 `rust-toolchain.toml`、`app/backend` 用户扩展 crate、环境示例和本地状态 ignore；`generate` 仍只拥有 `generated/`。
 
 M5 build/doctor 已实现。项目 `.env` 使用 dotenv parser 读取但不修改 CLI 进程环境，显式环境变量始终优先；错误和诊断只报告变量名或连接结果。doctor 根据 IR 的 `database.dev.mode` 选择 Docker/Compose 或 PostgreSQL migration status 检查，并提供 text/JSON 两种确定性结构。build 先完成生成事务，若缺少 backend `Cargo.lock` 则生成一次，之后目录交换在 Cargo.toml 未变化时保留该 transient lock；Clippy 与 release build 均使用 `--locked` 和 `.appstruct/cache/backend-target`。Web Artifact 在 ownership manifest 计算前由临时目录内、pnpm lock 固定的 Prettier 3.9.6 格式化；build 再运行 frozen install、format check、`tsc --noEmit` 与 Vite build。
 
@@ -45,7 +45,9 @@ M5 交付文档已落在根 README 与 `docs/installation.md`、`docs/upgrading.
 
 M5 确定性、性能和浏览器门禁已实现。CLI 集成测试在两个独立 project root 生成并递归比较所有 Artifact bytes；Prettier 依赖按 package/lock SHA-256 缓存在 `.appstruct/cache/web-formatter/`，ready marker 与 executable 同时存在才命中。Backend Generator 按 `available_parallelism` 分块并行规划 Entity/API 文件，顶层 planner 最终按路径排序维持确定性；同一计划的 Rust Artifact 由一次 `rustfmt` 子进程批量完成最终格式化。生成 crate 测试按 manifest 与 `src/` 内容生成隔离包名，并共享 `target/appstruct-generated-tests` 的依赖缓存，避免每个临时项目重复冷编译。性能 gate 计入 Compiler 与 Generator，当前 10 实体为 518 ms、100 实体为 7774 ms。根 pnpm lock 固定 Playwright 1.62.1；`scripts/run-m5-browser-e2e.sh` 从 dashboard Template 创建临时 external project，等待数据库 readiness 后验证 request ID、Auth 和 Project owner CRUD，并对桌面 dashboard 与移动登录页输出截图。生成后端新增数据库 ping `/health/ready`，`SetRequestIdLayer`/`PropagateRequestIdLayer` 为响应提供 `X-Request-Id`。dev signal handler 在所有启动动作前安装，测试脚本以独立进程组运行，冷构建中断也能清理子进程与临时目录。
 
-M6 已完成。Tenant、Audit、Mail、Jobs 和 File Module 以及 `appstruct/saas@1` Preset 已进入 Compiler：Surface 配置先展开官方默认模块映射，再递归合并用户映射覆盖，最后降低到 IR v7 的 `PresetIr` 和模块 IR。Compiler 对 `appstruct.lock` 中的 AppStruct 版本、Preset 名称/版本/内容摘要及精确模块版本集合执行失败关闭校验；CLI 可用 `preset show [--expanded]` 检查契约。`saas` Template 与 `examples/saas-demo` 提供锁定 Preset、managed PostgreSQL、开发 Mail/File 配置和 Tenant/Audit 化的 Project/Task 骨架；专用 external PostgreSQL/Chromium E2E 验证五个模块表、用户旅程、租户隔离、Audit 和桌面/移动布局。
+M6 已完成。Tenant、Audit、Mail、Jobs 和 File Module 以及 `appstruct/saas@1` Preset 已进入 Compiler：Surface 配置先展开官方默认模块映射，再递归合并用户映射覆盖，最后降低到 IR v9 的 `PresetIr` 和模块 IR。IR 中的 `modules` 包含每个启用模块的来源、精确版本、provides/requires capability、确定性启动顺序和隔离静态 Artifact。Compiler 对 `appstruct.lock` 中的 AppStruct 版本、Preset 名称/版本/内容摘要及精确模块版本集合执行失败关闭校验；CLI 可用 `preset show [--expanded]` 检查契约。`saas` Template 与 `examples/saas-demo` 提供锁定 Preset、managed PostgreSQL、开发 Mail/File 配置和 Tenant/Audit 化的 Project/Task 骨架；专用 external PostgreSQL/Chromium E2E 验证五个模块表、用户旅程、租户隔离、Audit 和桌面/移动布局。
+
+内部契约加固已完成。IR v7 的空模块图和 IR v8 官方模块图可在内存迁移到 v9，未来版本和语义不安全的旧模块图失败关闭。根 `module_manifests` 只加载 `modules/` 内的本地 TOML，拒绝 traversal、symlink、非 UTF-8 和超限文件；本地 Artifact 输出到模块专属 generated namespace，本地 Runtime starter 为 no-op。`appstruct.lock` 的 `project_layout_version` 明确区分 v1 generated backend 与 v2 server composition root，目录探测仅用于显式 update 迁移未版本化旧项目。生成和 dev build/install 使用内容缓存但仍执行 ownership 校验；Module Runtime 发出结构化 lifecycle phase，生成后端用 tracing 记录启动、失败、回滚和停止。generation transaction 的测试 failpoint 覆盖备份后与安装后恢复。
 
 Technical Preview 契约加固已完成。Compiler 内嵌 Draft 2020-12 JSON Schema，`appstruct schema` 无需项目即可输出；编译报告保留非致命 warning，当前 `AS3070` 检测匿名写操作，`check --deny-warnings` 为 CI 提供失败策略。`appstruct update` 同时持有 generation/update lock，在项目内 staging workspace 写候选 lock、全量编译 Spec、生成、执行 release Rust/Web 构建和后端测试，再比对用户文件哈希；最终用独立 journal 联合交换 `appstruct.lock` 与 ownership 管理的 `generated/`。崩溃恢复要么回滚两者，要么完成已安装候选，普通 generate 遇到 update 遗留状态时失败关闭。
 
@@ -140,12 +142,12 @@ appstruct/
     saas/
 
   examples/
-    project-manager/
     saas-demo/
 
   tests/
     fixtures/
-      kitchen-sink/
+      m0-project/
+      m6-*-project/
     golden/
     e2e/
 ```
@@ -201,14 +203,12 @@ MVP 前不为每个 Generator 建立独立 crate。只有当编译时间、依�
 
 ### 5.7 `appstruct-module-sdk`
 
-- Module manifest schema
+- Module manifest v1 schema、可移植路径校验和 collision-free namespace
 - 模块 `provides`/`requires` capability 与依赖图声明
-- IR fragment 注入协议
-- 后端扩展和前端 registry 的兼容性接口
 - typed service 装配、Module 启停和资源清理协议
 - Generator 扩展权限与 Artifact ownership 约束
 
-该 crate 在 Technical Preview 可以只包含 manifest 类型，待官方第三方模块协议稳定后再公开为 SDK。
+当前 crate 提供 manifest 类型、静态 Artifact 声明和 capability graph 解析；Compiler 只加载项目 `modules/` 内的本地 manifest，Codegen 将其 Artifact 隔离到 `generated/modules/`。本地模块不注入 IR fragment 或可执行代码；远程 artifact 分发、签名和第三方兼容矩阵仍属于后续 Module API 工作。
 
 ## 6. 生成应用结构
 
@@ -234,7 +234,11 @@ project-hub/
     .appstruct-manifest.json
     backend/
       Cargo.toml
+      runtime/
       src/
+    server/
+      Cargo.toml
+      src/main.rs
     web/
       manifest.ts
       routes.tsx
@@ -245,13 +249,9 @@ project-hub/
   app/
     backend/
       Cargo.toml
-      src/
+      src/lib.rs
     web/
       src/
-
-  server/
-    Cargo.toml
-    src/main.rs
 
   web/
     package.json
@@ -271,10 +271,10 @@ appstruct-runtime <- generated-backend <- app-backend
 - `server` 是 composition root，将用户实现注册给生成路由。
 - 生成 crate 不直接引用用户模块路径，因此不存在 crate 循环依赖。
 
-前端依赖方向：
+前端依赖方向（当前实现将 Runtime 源码随生成 Web Artifact 一起交付）：
 
 ```text
-@appstruct/react <- generated/web <- app/web registry
+generated/web React runtime <- app/web registry
                          ^               ^
                          +---- web ------+
 ```
@@ -312,6 +312,7 @@ includes:
 - 数据库 Provider
 - Template 来源记录
 - Preset 和 Module 配置
+- `module_manifests` 本地 manifest 路径
 - `includes`
 - 应用级默认访问策略
 
@@ -679,7 +680,7 @@ pub struct DatabaseSchema {
 
 | 文件 | 是否提交 | 作用 |
 | --- | --- | --- |
-| `appstruct.lock` | 是 | 锁定 AppStruct、Preset、Module 和模板来源版本 |
+| `appstruct.lock` | 是 | 锁定 AppStruct、项目布局、Preset、Module 和模板来源版本 |
 | `.appstruct/schema.snapshot.json` | 是 | 保存已接受迁移链对应的规范化目标 schema，不表示数据库执行进度 |
 | `generated/.appstruct-manifest.json` | 是 | 确定性记录生成文件 ownership、内容 hash 和 Generator 版本 |
 | `.appstruct/cache/` | 否 | 增量编译缓存 |
@@ -1364,7 +1365,7 @@ CI 中检测到非 TTY 时：
 - 加载环境变量并要求 API/Web 端口不同
 - 根据 `database.dev.mode` 协调 managed PostgreSQL 或连接 external PostgreSQL
 - 初次启动与重载先执行只接受安全变更的开发迁移，再生成、构建后端和安装 Web 依赖
-- 监听 App Spec、lockfile、`spec/` 与用户 Rust；用户 React 交由 Vite 监听
+- 监听 App Spec、lockfile、`spec/`、本地 `modules/` 与用户 Rust；用户 React 交由 Vite 监听
 - 迁移、生成或构建失败时不重启上一版服务
 - 聚合日志并以 `[api]`/`[web]` 标明来源
 - 使用独立进程组优雅终止完整子进程树
@@ -1387,9 +1388,7 @@ CI 中检测到非 TTY 时：
 | 用户 React | 交给 Vite HMR |
 | migrations | 不作为 watch 输入；下次启动或其他输入重载时校验并应用 pending migration |
 
-实现使用 400 ms polling 指纹，不监听 `generated/`、`.appstruct/cache/` 或构建输出。API 与 Web 默认端口分别为 3000/5173，可由 CLI flag 覆盖；Vite 使用 strict port，端口冲突直接失败。当前重载为完整生成与 debug build，后续可在保持相同生命周期协议的前提下引入增量缓存。
-
-MVP 可以先完整重新生成，在输出确定后再通过 IR 节点 hash 做增量优化。
+实现使用 400 ms polling 指纹，不监听 `generated/`、`.appstruct/cache/` 或构建输出。API 与 Web 默认端口分别为 3000/5173，可由 CLI flag 覆盖；Vite 使用 strict port，端口冲突直接失败。generation 输入和 ownership tree 未变时跳过 Compiler/Codegen/formatter/目录事务；Rust 输入和 debug binary 未变时复用 backend build，Web package/lock 和 `.pnpm` 未变时复用安装。任一 cache state 缺失、损坏或输出缺失都回退完整流程。
 
 ## 21. 缓存与构建指纹
 
@@ -1405,7 +1404,7 @@ MVP 可以先完整重新生成，在输出确定后再通过 IR 节点 hash 做
 - Template/Module 静态资源 hash
 - 影响该 Artifact 的 IR 节点 hash
 
-缓存只提升速度，不参与正确性。删除 `.appstruct/cache` 后必须能够完整重建。
+当前 generation key 覆盖 App Spec、lock、`spec/`、`modules/`、CLI executable 和 ownership manifest；命中前仍验证 generated tree 的未知文件和内容 hash。backend key 覆盖 generated backend/server 与 `app/backend`，Web install key 覆盖 package/lock。目录 symlink 只将链接本身计入 generation 指纹，不跟随读取。缓存只提升速度，不参与正确性；删除 `.appstruct/cache` 后必须能够完整重建。
 
 ## 22. 版本与升级
 
@@ -1416,6 +1415,7 @@ AppStruct CLI/Compiler version
 App Spec schema version
 Typed IR version
 Module API version
+Project layout version
 React Manifest version
 Runtime API version
 ```
@@ -1441,8 +1441,8 @@ appstruct update
 ### 23.1 编译期安全
 
 - include 和 Template 路径必须留在允许根目录内。
-- Artifact 路径必须为规范化相对路径，禁止 `..` 和符号链接逃逸。
-- Module 安装阶段校验 checksum；普通 generate 不联网。
+- Artifact 路径必须为规范化相对路径，禁止 `..` 和符号链接逃逸；本地 Module source 还执行 UTF-8、单文件和总大小限制。
+- 本地 Module Artifact 只能进入 `generated/modules/<namespace>/`，starter 固定为 no-op；普通 generate 不联网或执行模块代码。
 - Spec 不展开 shell、环境变量模板或任意表达式。
 - secret 只以运行时环境变量引用存在，不写入 IR、OpenAPI 和 Manifest。
 
@@ -1461,15 +1461,16 @@ appstruct update
 - Rust 和 Node lockfile 进入版本控制。
 - 官方 Template 固定依赖版本范围。
 - CI 生成 SBOM 并执行依赖漏洞扫描。
-- Module manifest 记录来源和 checksum。
+- 本地 Module manifest、source 内容、CLI executable 和生成 ownership hash 共同进入可复算指纹。
 
 ## 24. 可观测性
 
 生成后端默认使用 `tracing`：
 
-- JSON 结构化日志
+- 可由 subscriber 选择 text/JSON 的结构化日志
 - request ID span
 - route、status、latency 和 actor/tenant 的安全标识
+- Module `starting/started/failed/rolling_back/rolled_back/stopping/stopped` phase
 - 数据库慢查询 span，不记录敏感参数
 - `/health/live` 与 `/health/ready`
 
@@ -1515,7 +1516,7 @@ Golden 更新必须显式执行，测试运行不得自动覆盖期望文件。
 
 ### 25.5 端到端测试
 
-`examples/project-manager` 作为 MVP 主验收应用，覆盖：
+`examples/saas-demo` 和独立模块 fixtures 作为当前验收入口，覆盖：
 
 - 注册和登录
 - 列表、筛选、创建、编辑和删除
@@ -1610,6 +1611,7 @@ Pull Request 使用最小必要矩阵；主分支和发布构建运行完整示�
 - dev server、doctor、JSON diagnostics
 - 确定性、性能和 E2E 门禁
 - 安装、升级和部署文档
+- `server` composition root、`app/backend` 用户扩展边界和 vendored Runtime
 
 验收：新用户在 15 分钟内运行示例，并在 30 分钟内新增带权限实体。
 
@@ -1620,6 +1622,7 @@ Pull Request 使用最小必要矩阵；主分支和发布构建运行完整示�
 - Tenant、Audit、Mail、Jobs 和 File Module
 - `appstruct/saas` Preset 初版
 - `saas` Template 和端到端示例
+- 官方 capability graph、`appstruct-module-sdk` 和 `appstruct-runtime`
 
 Billing 和运营 Admin 在对应模块达到生产安全标准后加入完整 SaaS Template，不阻塞 Core MVP。
 
@@ -1647,7 +1650,7 @@ Billing 和运营 Admin 在对应模块达到生产安全标准后加入完整 S
 
 ### 29.3 Rust 扩展类型循环
 
-若生成 crate 直接依赖用户 crate，会产生循环。必须坚持 generated -> app -> server 的 composition root 方向，并在 M3 用真实 Command 验证。
+生成 crate 不依赖用户 crate；当前方向是 `generated/backend` + vendored Runtime -> `app/backend` -> `generated/server` composition root，并由 M3/M6 编译测试验证。
 
 ### 29.4 前后端契约漂移
 
@@ -1655,7 +1658,7 @@ OpenAPI、Rust API 和 UI 必须在同一次 IR 编译中生成。禁止从运�
 
 ### 29.5 模块协议过早泛化
 
-MVP 只支持 monorepo 官方模块和锁步版本。先验证 Auth、Tenant 和 Billing 三类差异明显的模块，再冻结第三方 SDK。
+MVP 只执行 monorepo 官方模块代码；项目本地 manifest 仅能贡献 capability 和隔离 UTF-8 静态 Artifact，starter 为 no-op。远程分发、签名、可执行第三方模块和非锁步兼容矩阵必须在独立安全模型稳定后再开放。
 
 ### 29.6 SaaS Template 范围膨胀
 
@@ -1663,15 +1666,13 @@ MVP 只支持 monorepo 官方模块和锁步版本。先验证 Auth、Tenant 和
 
 ## 30. 需要 ADR 的问题
 
-以下问题在对应里程碑开始前形成独立 ADR：
+以下是后续需要单独 ADR 的问题；已落地的首版协议不再作为阻塞项：
 
-1. YAML span parser 最终选型。
-2. SeaORM Entity 生成形式和 Repository trait 边界。
-3. 自定义 Query 是否直接暴露 SeaORM connection。
-4. Session 存储使用 PostgreSQL、Redis Provider 还是两者接口。
-5. 可靠 `after_commit` 的 Outbox 与 Jobs 协议。
-6. Module artifact 的本地布局和远程分发格式。
-7. `.appstruct/schema.snapshot.json` 的兼容迁移策略。
+1. 大型项目是否需要远程或包级 Spec 依赖。
+2. Session 是否增加 Redis Provider。
+3. Module artifact 的远程分发、签名和兼容矩阵。
+4. `.appstruct/schema.snapshot.json` 的跨版本兼容迁移策略。
+5. 游标分页与批量写入的授权、缓存和迁移语义。
 
 ## 31. Definition of Done
 

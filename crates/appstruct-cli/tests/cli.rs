@@ -239,17 +239,30 @@ fn generation_manifest_blocks_modified_and_unknown_files() {
     let manifest_path = project.join("generated/.appstruct-manifest.json");
     let manifest: Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     assert_eq!(manifest["manifest_version"], 1);
-    assert_eq!(manifest["artifacts"].as_array().unwrap().len(), 39);
+    assert_eq!(manifest["artifacts"].as_array().unwrap().len(), 44);
 
-    let cargo_lock = project.join("generated/backend/Cargo.lock");
-    fs::write(&cargo_lock, "# build-generated lockfile\n").unwrap();
+    let cargo_locks = [
+        project.join("generated/backend/Cargo.lock"),
+        project.join("generated/server/Cargo.lock"),
+    ];
+    for cargo_lock in &cargo_locks {
+        fs::write(cargo_lock, "# build-generated lockfile\n").unwrap();
+    }
     let second = run(&project, &["generate"]);
     assert!(second.status.success());
     assert!(String::from_utf8_lossy(&second.stdout).contains("0 changed"));
-    assert_eq!(
-        fs::read_to_string(&cargo_lock).unwrap(),
-        "# build-generated lockfile\n"
+    assert!(String::from_utf8_lossy(&second.stdout).contains("cache hit"));
+    assert!(
+        project
+            .join(".appstruct/cache/generation-state.json")
+            .is_file()
     );
+    for cargo_lock in &cargo_locks {
+        assert_eq!(
+            fs::read_to_string(cargo_lock).unwrap(),
+            "# build-generated lockfile\n"
+        );
+    }
     assert!(run(&project, &["generate", "--check"]).status.success());
 
     let owned = project.join("generated/openapi/openapi.json");

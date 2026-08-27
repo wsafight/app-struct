@@ -211,6 +211,11 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
                 }
             }
         }
+        #[async_trait]
+        impl appstruct_runtime::ServiceHandle for JobWorkerHandle {
+            fn service(&self) -> &'static str { "appstruct/jobs" }
+            async fn shutdown(self: Box<Self>) { JobWorkerHandle::shutdown(*self).await; }
+        }
     }
 }
 
@@ -335,6 +340,11 @@ fn disabled_source() -> Result<String, CodegenError> {
         }
         pub struct JobWorkerHandle;
         impl JobWorkerHandle { pub async fn shutdown(self) {} }
+        #[async_trait]
+        impl appstruct_runtime::ServiceHandle for JobWorkerHandle {
+            fn service(&self) -> &'static str { "appstruct/jobs" }
+            async fn shutdown(self: Box<Self>) { JobWorkerHandle::shutdown(*self).await; }
+        }
         pub(crate) async fn enqueue<C: ConnectionTrait, T: Serialize>(
             _database: &C, _queue: &str, _kind: &str, _payload: &T,
             _idempotency_key: Option<&str>, _run_at: Option<chrono::DateTime<chrono::Utc>>,

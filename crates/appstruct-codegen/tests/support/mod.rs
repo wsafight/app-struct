@@ -93,3 +93,65 @@ fn hash_sources(directory: &Path, hasher: &mut DefaultHasher) {
         }
     }
 }
+
+#[allow(dead_code)]
+pub fn server_manifest(generated_package: &str) -> String {
+    format!(
+        r#"[package]
+name = "appstruct-extension-server"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+appstruct-generated-backend = {{ package = {generated_package:?}, path = "../generated/backend" }}
+async-trait = "0.1.89"
+"#
+    )
+}
+
+#[allow(dead_code)]
+pub fn missing_handler_source() -> &'static str {
+    r"use appstruct_generated_backend::{ApiError, AppExtensions, RequestContext};
+use appstruct_generated_backend::entities::project;
+use appstruct_generated_backend::extensions::{ArchiveProjectHandler, ArchiveProjectInput};
+use async_trait::async_trait;
+
+struct Handlers;
+
+#[async_trait]
+impl ArchiveProjectHandler for Handlers {
+    async fn execute(&self, _ctx: &RequestContext, _input: ArchiveProjectInput) -> Result<project::Model, ApiError> {
+        Err(ApiError::NotFound)
+    }
+}
+
+fn main() { let _extensions = AppExtensions::builder().handlers(Handlers).build(); }
+"
+}
+
+#[allow(dead_code)]
+pub fn complete_handler_source() -> &'static str {
+    r"use appstruct_generated_backend::{ApiError, AppExtensions, RequestContext};
+use appstruct_generated_backend::entities::project;
+use appstruct_generated_backend::extensions::{ArchiveProjectHandler, ArchiveProjectInput, ProjectMetrics, ProjectMetricsHandler};
+use async_trait::async_trait;
+
+struct Handlers;
+
+#[async_trait]
+impl ArchiveProjectHandler for Handlers {
+    async fn execute(&self, _ctx: &RequestContext, _input: ArchiveProjectInput) -> Result<project::Model, ApiError> {
+        Err(ApiError::NotFound)
+    }
+}
+
+#[async_trait]
+impl ProjectMetricsHandler for Handlers {
+    async fn execute(&self, _ctx: &RequestContext) -> Result<ProjectMetrics, ApiError> {
+        Ok(ProjectMetrics { active: 0, total: 0 })
+    }
+}
+
+fn main() { let _extensions = AppExtensions::builder().handlers(Handlers).build(); }
+"
+}

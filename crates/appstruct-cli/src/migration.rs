@@ -1,7 +1,7 @@
 use appstruct_ir::{DatabaseProvider, Diagnostic};
 use appstruct_migrate::{
-    DatabaseSchema, MigrationPlan, SchemaChange, diff, extract, from_json, migration_sql,
-    stamp_schema_checksum, to_json,
+    DatabaseSchema, MigrationPlan, SCHEMA_VERSION, SchemaChange, diff, extract, from_json,
+    migration_sql, stamp_schema_checksum, to_json,
 };
 use clap::Subcommand;
 use std::fs;
@@ -129,7 +129,7 @@ fn read_snapshot(project: &Path) -> io::Result<Option<DatabaseSchema>> {
 
 fn empty_schema() -> DatabaseSchema {
     DatabaseSchema {
-        schema_version: 2,
+        schema_version: SCHEMA_VERSION,
         provider: DatabaseProvider::Postgres,
         tables: Vec::new(),
         unique_constraints: Vec::new(),

@@ -1,4 +1,5 @@
 lock_version = 1
+project_layout_version = 1
 appstruct = "0.1.0"
 
 [preset]

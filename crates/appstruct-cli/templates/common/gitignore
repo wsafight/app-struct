@@ -2,6 +2,8 @@
 target/
 dist/
 generated/backend/target/
+generated/server/target/
+app/backend/target/
 generated/web/node_modules/
 generated/web/dist/
 .appstruct/cache/

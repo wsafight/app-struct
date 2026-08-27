@@ -12,6 +12,7 @@ mod manifest;
 mod operations;
 mod query;
 mod runtime;
+mod startup;
 mod tenant;
 mod validation;
 
@@ -27,6 +28,39 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             "backend/Cargo.toml",
             manifest::cargo(ir),
             ArtifactKind::RustManifest,
+        ),
+        Artifact::text(
+            "backend/runtime/Cargo.toml",
+            manifest::runtime_cargo(),
+            ArtifactKind::RustManifest,
+        ),
+        Artifact::text(
+            "backend/runtime/src/lib.rs",
+            format!(
+                "{}{}",
+                generated_header("//"),
+                include_str!("../../appstruct-runtime/src/lib.rs")
+            ),
+            ArtifactKind::RustSource,
+        ),
+        Artifact::text(
+            "backend/runtime/src/lifecycle.rs",
+            format!(
+                "{}{}",
+                generated_header("//"),
+                include_str!("../../appstruct-runtime/src/lifecycle.rs")
+            ),
+            ArtifactKind::RustSource,
+        ),
+        Artifact::text(
+            "server/Cargo.toml",
+            manifest::server_cargo(),
+            ArtifactKind::RustManifest,
+        ),
+        Artifact::text(
+            "server/src/main.rs",
+            rust_template(include_str!("../templates/backend/server_main.rs"))?,
+            ArtifactKind::RustSource,
         ),
         Artifact::text(
             "backend/src/main.rs",
@@ -157,7 +191,8 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         quote! { pub use auth::AuthState; }
     };
     let service_exports = service_exports(ir);
-    let runtime = runtime::source(ir, &routes);
+    let runtime = runtime::source(ir, &routes)?;
+    let runtime_api_version = appstruct_runtime::RUNTIME_API_VERSION;
     render(quote! {
         pub mod api;
         pub mod entities;
@@ -173,7 +208,15 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod tenant;
 
         pub use error::{ApiError, FieldViolation};
-        pub use extensions::{Actor, AppExtensions, HookOperation, RequestContext, TenantId};
+        pub use appstruct_runtime::{
+            Actor, ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase, ModulePlan,
+            ModuleRuntime, ModuleStarter, RUNTIME_API_VERSION, ServiceHandle, ServiceHandles,
+            StartupError, TenantId,
+        };
+        pub const GENERATED_RUNTIME_API_VERSION: u32 = #runtime_api_version;
+        const _: [(); GENERATED_RUNTIME_API_VERSION as usize] =
+            [(); appstruct_runtime::RUNTIME_API_VERSION as usize];
+        pub use extensions::{AppExtensions, HookOperation, RequestContext};
         #service_exports
         #auth_exports
         #runtime

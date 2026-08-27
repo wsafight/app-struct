@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = Database::connect(database_url).await?;
     let extensions = AppExtensions::builder().build();
     let listener = TcpListener::bind(address).await?;
-    let application = Application::from_env(database, extensions)?;
+    let application = Application::from_env(database, extensions).await?;
     tracing::info!(%address, "AppStruct API listening");
     application.serve(listener).await?;
     Ok(())

@@ -30,6 +30,32 @@ enum Phase {
     Installed,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum GenerationFault {
+    Disabled,
+    #[cfg(test)]
+    AfterBackup,
+    #[cfg(test)]
+    AfterInstall,
+}
+
+impl GenerationFault {
+    #[allow(clippy::unnecessary_wraps)]
+    fn check(self, phase: Phase) -> io::Result<()> {
+        #[cfg(test)]
+        if matches!(
+            (self, phase),
+            (Self::AfterBackup, Phase::BackedUp) | (Self::AfterInstall, Phase::Installed)
+        ) {
+            return Err(io::Error::other(format!(
+                "injected generation failure after {phase:?}"
+            )));
+        }
+        let _ = (self, phase);
+        Ok(())
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct JournalRecord {
     version: u32,
@@ -81,6 +107,23 @@ impl GenerationTransaction {
     }
 
     pub(crate) fn replace(&self, files: &BTreeMap<PathBuf, Vec<u8>>) -> io::Result<()> {
+        self.replace_inner(files, GenerationFault::Disabled)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn replace_with_fault(
+        &self,
+        files: &BTreeMap<PathBuf, Vec<u8>>,
+        fault: GenerationFault,
+    ) -> io::Result<()> {
+        self.replace_inner(files, fault)
+    }
+
+    fn replace_inner(
+        &self,
+        files: &BTreeMap<PathBuf, Vec<u8>>,
+        fault: GenerationFault,
+    ) -> io::Result<()> {
         if self.paths.staging.exists() || self.paths.backup.exists() || self.paths.journal.exists()
         {
             return Err(invalid(
@@ -91,7 +134,7 @@ impl GenerationTransaction {
             let _ = fs::remove_dir_all(&self.paths.staging);
             return Err(error);
         }
-        if let Err(error) = preserve_cargo_lock(&self.paths.root, &self.paths.staging) {
+        if let Err(error) = preserve_cargo_locks(&self.paths.root, &self.paths.staging) {
             let _ = fs::remove_dir_all(&self.paths.staging);
             return Err(error);
         }
@@ -99,7 +142,7 @@ impl GenerationTransaction {
             let _ = fs::remove_dir_all(&self.paths.staging);
             return Err(error);
         }
-        if let Err(error) = self.swap() {
+        if let Err(error) = self.swap(fault) {
             return match self.recover() {
                 Ok(()) => Err(error),
                 Err(recovery) => Err(invalid(format!(
@@ -110,14 +153,16 @@ impl GenerationTransaction {
         Ok(())
     }
 
-    fn swap(&self) -> io::Result<()> {
+    fn swap(&self, fault: GenerationFault) -> io::Result<()> {
         let mut journal = RecoveryJournal::start(&self.paths.journal)?;
         if self.paths.root.exists() {
             fs::rename(&self.paths.root, &self.paths.backup)?;
         }
         journal.record(Phase::BackedUp)?;
+        fault.check(Phase::BackedUp)?;
         fs::rename(&self.paths.staging, &self.paths.root)?;
         journal.record(Phase::Installed)?;
+        fault.check(Phase::Installed)?;
         if self.paths.backup.exists() {
             fs::remove_dir_all(&self.paths.backup)?;
         }
@@ -303,14 +348,16 @@ fn write_staging(staging: &Path, files: &BTreeMap<PathBuf, Vec<u8>>) -> io::Resu
     Ok(())
 }
 
-fn preserve_cargo_lock(root: &Path, staging: &Path) -> io::Result<()> {
-    let source = root.join("backend/Cargo.lock");
-    let manifest_unchanged = fs::read(root.join("backend/Cargo.toml"))
-        .ok()
-        .zip(fs::read(staging.join("backend/Cargo.toml")).ok())
-        .is_some_and(|(old, new)| old == new);
-    if source.is_file() && manifest_unchanged {
-        fs::copy(source, staging.join("backend/Cargo.lock"))?;
+fn preserve_cargo_locks(root: &Path, staging: &Path) -> io::Result<()> {
+    for package in ["backend", "server"] {
+        let source = root.join(package).join("Cargo.lock");
+        let manifest_unchanged = fs::read(root.join(package).join("Cargo.toml"))
+            .ok()
+            .zip(fs::read(staging.join(package).join("Cargo.toml")).ok())
+            .is_some_and(|(old, new)| old == new);
+        if source.is_file() && manifest_unchanged {
+            fs::copy(source, staging.join(package).join("Cargo.lock"))?;
+        }
     }
     Ok(())
 }

@@ -33,7 +33,13 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
     ensure_known_keys(
         mapping,
         &[
-            "version", "app", "database", "preset", "modules", "includes",
+            "version",
+            "app",
+            "database",
+            "preset",
+            "modules",
+            "module_manifests",
+            "includes",
         ],
         "root configuration",
     )?;
@@ -75,6 +81,16 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
         .iter()
         .map(|node| expect_string(node, "include path"))
         .collect::<Result<Vec<_>, _>>()?;
+    let module_manifests = mapping
+        .get("module_manifests")
+        .map(|entry| {
+            expect_sequence(&entry.value, "`module_manifests`")?
+                .iter()
+                .map(|node| expect_string(node, "module manifest path"))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
 
     let preset = preset::decode(mapping.get("preset"))?;
     let modules = crate::preset::expand_modules(preset.as_ref(), mapping.get("modules"))?;
@@ -99,6 +115,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Diagnostic> {
         jobs,
         file,
         includes,
+        module_manifests,
     })
 }
 

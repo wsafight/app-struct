@@ -23,6 +23,7 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
                 "queues": { "mail": { "max_attempts": 8, "backoff_seconds": 5 } }
             }
         },
+        "module_manifests": ["modules/example/module.toml"],
         "includes": ["spec/project.yaml"]
     });
     assert!(validator.is_valid(&root));

@@ -1,0 +1,22 @@
+[package]
+name = "appstruct-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Stable request identity and service lifecycle contracts for AppStruct applications"
+documentation = "https://docs.rs/appstruct-runtime"
+keywords = ["axum", "codegen", "runtime", "saas"]
+categories = ["web-programming"]
+
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

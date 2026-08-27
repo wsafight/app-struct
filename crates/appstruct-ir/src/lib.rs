@@ -1,8 +1,10 @@
 //! Stable, serialization-friendly intermediate representation for `AppStruct`.
 
+mod compatibility;
 mod extension;
 mod service;
 
+pub use compatibility::{IrCompatibilityError, from_compatible_json};
 pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
 pub use service::{
     AuditIr, FileIr, FileProviderIr, JobQueueIr, JobsIr, MailIr, MailProviderIr, MailTemplateIr,
@@ -13,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Current serialized IR format version.
-pub const IR_VERSION: u32 = 7;
+pub const IR_VERSION: u32 = 9;
 
 /// Fully normalized application model consumed by generators.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -255,6 +257,24 @@ pub struct EnumIr {
 pub struct ResolvedModule {
     pub name: String,
     pub version: String,
+    pub origin: ModuleOrigin,
+    pub provides: Vec<String>,
+    pub requires: Vec<String>,
+    pub startup_order: u32,
+    pub artifacts: Vec<ModuleArtifactIr>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleOrigin {
+    Official,
+    Local,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleArtifactIr {
+    pub path: String,
+    pub content: String,
 }
 
 /// Byte offsets plus user-facing line and column for a source range.

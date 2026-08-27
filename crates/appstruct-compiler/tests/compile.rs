@@ -1,5 +1,5 @@
 use appstruct_compiler::{compile_project, compile_project_report};
-use appstruct_ir::{OperationTypeIr, to_canonical_json};
+use appstruct_ir::{ModuleOrigin, OperationTypeIr, to_canonical_json};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -58,6 +58,114 @@ fn compiles_m3_extension_contracts() {
             .as_deref(),
         Some("ProjectMetadataEditor")
     );
+}
+
+#[test]
+fn resolves_official_module_capabilities_into_ir() {
+    let ir = compile_project(&fixture()).unwrap();
+    assert_eq!(
+        ir.modules
+            .iter()
+            .map(|module| module.name.as_str())
+            .collect::<Vec<_>>(),
+        ["appstruct/auth", "appstruct/rbac"]
+    );
+    assert_eq!(ir.modules[0].provides, ["auth.identity"]);
+    assert_eq!(ir.modules[1].requires, ["auth.identity"]);
+    assert_eq!(ir.modules[1].startup_order, 1);
+}
+
+#[test]
+fn loads_local_modules_and_artifacts_into_the_capability_graph() {
+    let temporary = tempfile::tempdir().unwrap();
+    copy_fixture(&fixture(), temporary.path());
+    add_module_declaration(temporary.path(), "modules/example/module.toml");
+    fs::create_dir_all(temporary.path().join("modules/example/assets")).unwrap();
+    fs::write(
+        temporary.path().join("modules/example/module.toml"),
+        concat!(
+            "api_version = 1\n",
+            "name = \"local/example\"\n",
+            "version = \"0.1.0\"\n",
+            "provides = [\"example.docs\"]\n",
+            "requires = [\"auth.identity\"]\n\n",
+            "[[artifacts]]\n",
+            "path = \"docs/README.md\"\n",
+            "source = \"assets/README.md\"\n",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        temporary.path().join("modules/example/assets/README.md"),
+        "# Local module\n",
+    )
+    .unwrap();
+
+    let ir = compile_project(temporary.path()).unwrap();
+    let module = ir
+        .modules
+        .iter()
+        .find(|module| module.name == "local/example")
+        .unwrap();
+    assert_eq!(module.origin, ModuleOrigin::Local);
+    assert_eq!(module.requires, ["auth.identity"]);
+    assert_eq!(module.artifacts[0].path, "docs/README.md");
+    assert_eq!(module.artifacts[0].content, "# Local module\n");
+    assert!(module.startup_order > ir.modules[0].startup_order);
+}
+
+#[test]
+fn rejects_unsafe_or_unsupported_local_module_manifests() {
+    let traversal = tempfile::tempdir().unwrap();
+    copy_fixture(&fixture(), traversal.path());
+    add_module_declaration(traversal.path(), "../module.toml");
+    let diagnostics = compile_project(traversal.path()).unwrap_err();
+    assert_eq!(diagnostics[0].code, "AS1013");
+
+    let future = tempfile::tempdir().unwrap();
+    copy_fixture(&fixture(), future.path());
+    add_module_declaration(future.path(), "modules/example/module.toml");
+    fs::create_dir_all(future.path().join("modules/example")).unwrap();
+    fs::write(
+        future.path().join("modules/example/module.toml"),
+        "api_version = 2\nname = \"local/example\"\nversion = \"1.0.0\"\n",
+    )
+    .unwrap();
+    let diagnostics = compile_project(future.path()).unwrap_err();
+    assert_eq!(diagnostics[0].code, "AS3063");
+}
+
+#[cfg(unix)]
+#[test]
+fn rejects_symlinked_local_module_artifacts() {
+    use std::os::unix::fs::symlink;
+
+    let temporary = tempfile::tempdir().unwrap();
+    copy_fixture(&fixture(), temporary.path());
+    add_module_declaration(temporary.path(), "modules/example/module.toml");
+    fs::create_dir_all(temporary.path().join("modules/example/assets")).unwrap();
+    fs::write(
+        temporary.path().join("modules/example/module.toml"),
+        concat!(
+            "api_version = 1\n",
+            "name = \"local/example\"\n",
+            "version = \"1.0.0\"\n\n",
+            "[[artifacts]]\n",
+            "path = \"README.md\"\n",
+            "source = \"assets/README.md\"\n",
+        ),
+    )
+    .unwrap();
+    fs::write(temporary.path().join("outside.md"), "outside\n").unwrap();
+    symlink(
+        temporary.path().join("outside.md"),
+        temporary.path().join("modules/example/assets/README.md"),
+    )
+    .unwrap();
+
+    let diagnostics = compile_project(temporary.path()).unwrap_err();
+    assert_eq!(diagnostics[0].code, "AS1013");
+    assert!(diagnostics[0].message.contains("symbolic link"));
 }
 
 #[test]
@@ -213,4 +321,14 @@ fn copy_fixture(source: &Path, destination: &Path) {
     for relative in ["appstruct.yaml", "spec/identity.yaml", "spec/project.yaml"] {
         fs::copy(source.join(relative), destination.join(relative)).unwrap();
     }
+}
+
+fn add_module_declaration(project: &Path, manifest: &str) {
+    let root_file = project.join("appstruct.yaml");
+    let source = fs::read_to_string(&root_file).unwrap();
+    fs::write(
+        root_file,
+        format!("{source}\nmodule_manifests:\n  - {manifest}\n"),
+    )
+    .unwrap();
 }

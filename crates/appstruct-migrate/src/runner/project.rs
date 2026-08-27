@@ -1,5 +1,5 @@
 use super::{MigrationError, SCHEMA_CHECKSUM_PREFIX, TRANSACTION_PREFIX, checksum, history};
-use crate::{DatabaseSchema, from_json};
+use crate::{DatabaseSchema, SCHEMA_VERSION, from_json};
 use appstruct_ir::DatabaseProvider;
 use std::fs;
 use std::path::Path;
@@ -212,7 +212,7 @@ pub(super) fn reconcile(
 
 pub(super) fn empty_schema() -> DatabaseSchema {
     DatabaseSchema {
-        schema_version: 2,
+        schema_version: SCHEMA_VERSION,
         provider: DatabaseProvider::Postgres,
         tables: Vec::new(),
         unique_constraints: Vec::new(),

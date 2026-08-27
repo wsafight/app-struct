@@ -1,0 +1,9 @@
+[package]
+name = "appstruct-app-backend"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+
+[dependencies]
+appstruct-generated-backend = { path = "../../generated/backend" }

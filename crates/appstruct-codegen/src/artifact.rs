@@ -36,6 +36,7 @@ pub enum ArtifactKind {
     OpenApi,
     TypeScript,
     Web,
+    Module,
 }
 
 impl ArtifactKind {
@@ -50,6 +51,7 @@ impl ArtifactKind {
             Self::OpenApi => "openapi",
             Self::TypeScript => "typescript",
             Self::Web => "web",
+            Self::Module => "module",
         }
     }
 }

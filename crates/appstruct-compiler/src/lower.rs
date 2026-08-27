@@ -7,6 +7,7 @@ use crate::field_options::{build_generated, validate_field_options};
 use crate::file::lower_file;
 use crate::jobs::lower_jobs;
 use crate::mail::lower_mail;
+use crate::module::{LoadedModule, resolve_modules_for_app};
 use crate::naming::{pluralize, to_snake_case};
 use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceField, SurfaceRoot};
 use crate::tenant::lower_tenant;
@@ -21,6 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(crate) fn build_ir(
     root: SurfaceRoot,
     definitions: SurfaceDomain,
+    local_modules: Vec<LoadedModule>,
 ) -> Result<AppIr, Vec<Diagnostic>> {
     let SurfaceDomain {
         entities: mut surface_entities,
@@ -76,11 +78,16 @@ pub(crate) fn build_ir(
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
-    for entity in &mut entities {
-        entity.fields.sort_by(|left, right| left.id.cmp(&right.id));
-    }
-    entities.sort_by(|left, right| left.id.cmp(&right.id));
-    relations.sort_by(|left, right| left.id.cmp(&right.id));
+    let modules =
+        resolve_modules_for_app(&auth, &tenant, &audit, &mail, &jobs, &file, local_modules)
+            .map_err(|error| {
+                vec![Diagnostic::error(
+                    "AS3062",
+                    error.to_string(),
+                    root.app_name.span.clone(),
+                )]
+            })?;
+    canonicalize_entities(&mut entities, &mut relations);
     Ok(AppIr {
         ir_version: IR_VERSION,
         app: AppMeta {
@@ -112,8 +119,16 @@ pub(crate) fn build_ir(
         commands: extensions.commands,
         queries: extensions.queries,
         pages: extensions.pages,
-        modules: Vec::new(),
+        modules,
     })
+}
+
+fn canonicalize_entities(entities: &mut [EntityIr], relations: &mut [RelationIr]) {
+    for entity in &mut *entities {
+        entity.fields.sort_by(|left, right| left.id.cmp(&right.id));
+    }
+    entities.sort_by(|left, right| left.id.cmp(&right.id));
+    relations.sort_by(|left, right| left.id.cmp(&right.id));
 }
 
 fn lower_entities(

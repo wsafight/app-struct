@@ -5,8 +5,6 @@ pub(super) fn contract() -> TokenStream {
     let methods = methods();
     let connection = connection_trait();
     quote! {
-        pub type TenantId = uuid::Uuid;
-
         #[derive(Clone, Copy)]
         enum RequestDatabase<'db> {
             Connection(&'db DatabaseConnection),

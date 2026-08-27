@@ -92,9 +92,11 @@ pub(crate) fn copy_owned_tree(source: &Path, destination: &Path) -> io::Result<(
     {
         copy_file(source, destination, relative)?;
     }
-    let cargo_lock = Path::new("backend/Cargo.lock");
-    if source.join(cargo_lock).is_file() {
-        copy_file(source, destination, cargo_lock)?;
+    for cargo_lock in ["backend/Cargo.lock", "server/Cargo.lock"] {
+        let cargo_lock = Path::new(cargo_lock);
+        if source.join(cargo_lock).is_file() {
+            copy_file(source, destination, cargo_lock)?;
+        }
     }
     validate_owned_tree(destination)
 }

@@ -8,6 +8,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         "edition = \"2024\"\n",
         "rust-version = \"1.98\"\n\n",
         "[dependencies]\n",
+        "appstruct-runtime = { path = \"runtime\" }\n",
         "async-trait = \"=0.1.89\"\n",
         "axum = \"=0.8.9\"\n",
         "chrono = { version = \"=0.4.45\", features = [\"serde\"] }\n",
@@ -54,4 +55,37 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         );
     }
     manifest
+}
+
+pub(super) fn runtime_cargo() -> &'static str {
+    concat!(
+        "[package]\n",
+        "name = \"appstruct-runtime\"\n",
+        "version = \"0.1.0\"\n",
+        "edition = \"2024\"\n",
+        "rust-version = \"1.98\"\n\n",
+        "[dependencies]\n",
+        "async-trait = \"=0.1.89\"\n",
+        "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
+        "uuid = { version = \"=1.25.0\", features = [\"serde\", \"v7\"] }\n",
+        "\n[dev-dependencies]\n",
+        "tokio = { version = \"=1.53.1\", features = [\"macros\", \"rt-multi-thread\", \"sync\"] }\n",
+    )
+}
+
+pub(super) fn server_cargo() -> &'static str {
+    concat!(
+        "[package]\n",
+        "name = \"appstruct-generated-server\"\n",
+        "version = \"0.0.0\"\n",
+        "edition = \"2024\"\n",
+        "rust-version = \"1.98\"\n\n",
+        "[dependencies]\n",
+        "appstruct-app-backend = { path = \"../../app/backend\" }\n",
+        "appstruct-generated-backend = { path = \"../backend\" }\n",
+        "sea-orm = { version = \"=2.0.2\", default-features = false, features = [\"runtime-tokio-rustls\", \"sqlx-postgres\"] }\n",
+        "tokio = { version = \"=1.53.1\", features = [\"macros\", \"net\", \"rt-multi-thread\"] }\n",
+        "tracing = \"=0.1.44\"\n",
+        "tracing-subscriber = { version = \"=0.3.22\", features = [\"env-filter\", \"fmt\"] }\n",
+    )
 }

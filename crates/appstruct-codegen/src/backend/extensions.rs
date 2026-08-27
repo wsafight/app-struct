@@ -26,26 +26,13 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
     let handler_traits = handler_traits(ir)?;
     let registry = registry::source(ir);
     render(quote! {
-        use crate::{ApiError, api, entities};
+        use crate::{Actor, ApiError, TenantId, api, entities};
         use async_trait::async_trait;
         use sea_orm::{
             ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr,
             ExecResult, QueryResult, Statement,
         };
         use std::sync::Arc;
-
-        #[derive(Clone, Debug, serde::Serialize)]
-        pub struct Actor {
-            pub id: uuid::Uuid,
-            pub email: String,
-            pub roles: Vec<String>,
-        }
-
-        impl Actor {
-            pub fn has_role(&self, role: &str) -> bool {
-                self.roles.iter().any(|candidate| candidate == role)
-            }
-        }
 
         #request_context
 

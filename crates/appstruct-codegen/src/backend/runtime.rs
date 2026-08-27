@@ -1,20 +1,22 @@
+use crate::CodegenError;
 use appstruct_ir::AppIr;
 use proc_macro2::TokenStream;
 use quote::quote;
 
-pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> TokenStream {
+pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, CodegenError> {
     let contract = contract_source();
     let application = application_source();
     let routing = router_source(routes);
     let start_worker = start_worker(ir);
+    let startup = super::startup::source(ir)?;
     let lifecycle = lifecycle_source();
-    quote! {
+    Ok(quote! {
         use axum::{
             Router, extract::State, http::{HeaderMap, StatusCode}, response::IntoResponse,
             routing::get,
         };
         use sea_orm::DatabaseConnection;
-        use std::{fmt, future::IntoFuture, io};
+        use std::{future::IntoFuture, io};
         use tokio::net::TcpListener;
         use tower_http::{
             request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
@@ -24,26 +26,13 @@ pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> TokenStream {
         #application
         #routing
         #start_worker
+        #startup
         #lifecycle
-    }
+    })
 }
 
 fn contract_source() -> TokenStream {
     quote! {
-        #[derive(Debug)]
-        pub struct StartupError { service: &'static str, message: String }
-        impl StartupError {
-            fn configuration(service: &'static str, error: impl fmt::Display) -> Self {
-                Self { service, message: error.to_string() }
-            }
-            pub fn service(&self) -> &'static str { self.service }
-        }
-        impl fmt::Display for StartupError {
-            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(formatter, "failed to initialize {}: {}", self.service, self.message)
-            }
-        }
-        impl std::error::Error for StartupError {}
         #[derive(Clone)]
         pub struct AppState {
             pub database: DatabaseConnection,
@@ -66,31 +55,32 @@ fn contract_source() -> TokenStream {
 
 fn application_source() -> TokenStream {
     quote! {
-        pub struct Application { router: Router, worker: Option<JobWorkerHandle> }
+        pub struct Application { router: Router, runtime: ModuleRuntime }
         impl Application {
-            pub fn from_env(
+            pub async fn from_env(
                 database: DatabaseConnection, extensions: AppExtensions,
             ) -> Result<Self, StartupError> {
-                let auth = AuthState::from_env()
-                    .map_err(|error| StartupError::configuration("auth", error))?;
-                let mail = MailState::from_env(database.clone())
-                    .map_err(|error| StartupError::configuration("mail", error))?;
-                let file = FileState::from_env(database.clone())
-                    .map_err(|error| StartupError::configuration("file", error))?;
-                Ok(Self::with_services(database, extensions, auth, mail, file))
+                let started = start_application_modules(database, extensions).await?;
+                let router = router_with_services(
+                    started.database, started.extensions, started.auth, started.mail, started.file,
+                );
+                Ok(Self { router, runtime: started.runtime })
             }
 
             pub fn with_services(
                 database: DatabaseConnection, extensions: AppExtensions, auth: AuthState,
                 mail: MailState, file: FileState,
             ) -> Self {
-                let worker = start_job_worker(&database, &extensions, &mail);
+                let mut runtime = ModuleRuntime::default();
+                if let Some(worker) = start_job_worker(&database, &extensions, &mail) {
+                    runtime.push_service("appstruct/jobs", worker);
+                }
                 let router = router_with_services(database, extensions, auth, mail, file);
-                Self { router, worker }
+                Self { router, runtime }
             }
 
             pub async fn serve(self, listener: TcpListener) -> io::Result<()> {
-                let Self { router, mut worker } = self;
+                let Self { router, mut runtime } = self;
                 let (shutdown, receiver) = tokio::sync::oneshot::channel::<()>();
                 let server = axum::serve(listener, router).with_graceful_shutdown(async move {
                     let _ = receiver.await;
@@ -103,7 +93,7 @@ fn application_source() -> TokenStream {
                             tracing::info!("shutdown signal received");
                         }
                         let _ = shutdown.send(());
-                        stop_worker(worker.take()).await;
+                        stop_modules(&mut runtime).await;
                         let server_result = server.await;
                         match signal {
                             Ok(()) => server_result,
@@ -114,7 +104,7 @@ fn application_source() -> TokenStream {
                         }
                     }
                 };
-                stop_worker(worker).await;
+                stop_modules(&mut runtime).await;
                 result
             }
         }
@@ -168,10 +158,9 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
 
 fn lifecycle_source() -> TokenStream {
     quote! {
-        async fn stop_worker(worker: Option<JobWorkerHandle>) {
-            if let Some(worker) = worker {
-                worker.shutdown().await;
-                tracing::info!("job worker stopped");
+        async fn stop_modules(runtime: &mut ModuleRuntime) {
+            for module in runtime.shutdown_reverse().await {
+                tracing::info!(module, "module stopped");
             }
         }
 

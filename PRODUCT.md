@@ -1,6 +1,6 @@
 # AppStruct 产品需求文档
 
-> 状态：Implementation Baseline v1.2<br>
+> 状态：Implementation Baseline v1.3<br>
 > 日期：2026-08-27<br>
 > 产品类型：配置驱动的 Rust 全栈应用生成框架<br>
 > 文档范围：产品定位、用户体验、功能边界、MVP 和验收标准
@@ -31,6 +31,8 @@
 | TP 契约加固 | 已完成 | Draft 2020-12 App Spec Schema、warning diagnostics、`check --deny-warnings` 和无项目 schema 导出 |
 | TP 升级事务 | 已完成 | staging workspace 全量生成/构建/测试、源文件并发检测及 lock/generated 联合 journal 提交与恢复 |
 | TP 发布准备 | 已完成 | crates.io 元数据与本地 package 验证、macOS/Linux tag 构建、压缩包及 SHA-256 |
+| Runtime/Module 边界 | 已完成 | 独立 `appstruct-runtime` 与 `appstruct-module-sdk`、官方 capability graph、生成 server composition root |
+| 内部契约加固 | 已完成 | Runtime/Module 版本、IR v9 兼容迁移、本地 manifest Artifact 隔离、增量缓存、布局 v1/v2 和故障恢复注入测试 |
 
 M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
@@ -46,11 +48,13 @@ Migration Runner 使用 `_appstruct_migrations` 保存 migration ID、文件 SHA
 
 ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新生成先获取 `.appstruct/generation.lock` 的跨进程排他锁，再拒绝未知文件和 hash 已变化的生成文件。完整 staging 通过 manifest 校验后，CLI 向 `.appstruct/generation.journal` 追加并持久化 `prepared/backed_up/installed` phase，随后交换同级 staging/backup 目录。下次生成在持锁状态下根据 journal 和三个目录的实际组合完成提交或回滚；缺少 journal 的旧版遗留目录也能恢复，歧义组合则保留现场并失败。`app/` 不进入该事务。
 
-`appstruct new <name> --template minimal|dashboard|saas` 已提供不覆盖的一次性项目创建。`minimal` 生成 external PostgreSQL 的公开 Note 应用；`dashboard` 生成 managed PostgreSQL Compose、Auth/RBAC/owner 和 User/Project/Task 三实体项目管理应用；`saas` 锁定 `appstruct/saas@1`，生成 Tenant/Audit 化的 Project/Task 骨架和 Mail/Jobs/File 开发配置。三个模板都提交 `appstruct.lock`、`rust-toolchain.toml`、`.env.example` 和本地状态忽略规则，首次 generate 再产生固定的 `pnpm-lock.yaml`；目标或 sibling staging 已存在时创建会中止。
+无输入变化时，generation cache 在重新编译前校验输入、CLI executable、ownership manifest 和完整 generated tree hash，命中后跳过 Compiler、Codegen、Prettier 与目录事务。dev backend build cache 覆盖 generated backend/server 和用户 `app/backend` Rust 输入；Web install cache 覆盖 package/lock 和 `.pnpm` 安装状态。缓存删除后可完整重建，不能绕过 ownership 或未知文件检查。事务测试可在 backed-up 与 installed phase 注入失败，分别验证回滚旧树和完成新树。
+
+`appstruct new <name> --template minimal|dashboard|saas` 已提供不覆盖的一次性项目创建。`minimal` 生成 external PostgreSQL 的公开 Note 应用；`dashboard` 生成 managed PostgreSQL Compose、Auth/RBAC/owner 和 User/Project/Task 三实体项目管理应用；`saas` 锁定 `appstruct/saas@1`，生成 Tenant/Audit 化的 Project/Task 骨架和 Mail/Jobs/File 开发配置。三个模板都提交带 `project_layout_version = 2` 的 `appstruct.lock`、`rust-toolchain.toml`、`.env.example` 和本地状态忽略规则，首次 generate 再产生固定的 `pnpm-lock.yaml`；目标或 sibling staging 已存在时创建会中止。布局 v1 直接运行 generated backend，v2 使用 server composition root；普通 build/dev 只按 lock 协议选择，未版本化 lock 由显式 update 一次性迁移。
 
 `appstruct doctor --format text|json` 检查 1.98 Rust/Cargo、rustfmt、Clippy、固定 pnpm 版本和数据库开发模式。managed 模式验证 Compose 文件及 Docker/Compose 服务；external 模式从进程环境或 `.env` 读取 `DATABASE_URL` 并执行 migration status，不在输出中暴露连接串。`appstruct build` 先生成 canonical Artifact，再对固定 Rust dependency lock 执行 fmt、release Clippy 和 release build，并对 pnpm lock 执行 Prettier check、TypeScript 检查和 Vite build。生成 TypeScript 在 manifest hash 计算前由 lockfile 固定的 Prettier 格式化，`generate --check` 与 build 因此使用同一份字节输出。
 
-`appstruct dev [--api-port <port>] [--web-port <port>]` 已实现完整开发协调。external 模式从进程环境或 `.env` 读取并连接 `DATABASE_URL`；managed 模式只启动 Compose 的 `postgres` service，并只在退出时停止本次 session 启动的 service，命名 volume 保留。启动与重载均先拒绝破坏性或需要人工审查的迁移，只自动提交并应用安全迁移，再生成、构建后端并 frozen install Web 依赖。CLI 监听 App Spec、lockfile、`spec/` 和 `app/backend/`，以 `[api]`/`[web]` 聚合日志；Unix 子进程使用独立进程组，重载或 Ctrl-C 会终止完整进程树。外部 PostgreSQL 17.10 验收已覆盖自定义端口、健康检查、Vite 页面、安全字段变更热重载、破坏性删除阻断、保留上一版服务和端口释放。
+`appstruct dev [--api-port <port>] [--web-port <port>]` 已实现完整开发协调。external 模式从进程环境或 `.env` 读取并连接 `DATABASE_URL`；managed 模式只启动 Compose 的 `postgres` service，并只在退出时停止本次 session 启动的 service，命名 volume 保留。启动与重载均先拒绝破坏性或需要人工审查的迁移，只自动提交并应用安全迁移，再生成、构建后端并 frozen install Web 依赖。CLI 监听 App Spec、lockfile、`spec/`、`modules/` 和 `app/backend/`，以 `[api]`/`[web]` 聚合日志；Unix 子进程使用独立进程组，重载或 Ctrl-C 会终止完整进程树。外部 PostgreSQL 17.10 验收已覆盖自定义端口、健康检查、Vite 页面、安全字段变更热重载、破坏性删除阻断、保留上一版服务和端口释放。
 
 M5 交付文档已提供源码与校验后二进制安装、external/managed PostgreSQL 首次运行、事务化 `appstruct update`、生产 Artifact、运行时变量、迁移顺序、健康验证和回滚边界。数据库 down migration 仍未实现，升级后的数据库风险继续由显式 `migrate plan/status` 和人工审查控制。
 
@@ -597,7 +601,7 @@ MVP 只支持 PostgreSQL。多数据库抽象会推迟到产品模型稳定之�
 
 依赖解析和数据库迁移使用不同状态文件：
 
-- `appstruct.lock` 锁定 AppStruct、Preset、Module 和 Template 来源版本。
+- `appstruct.lock` 锁定 AppStruct、项目布局、Preset、Module 和 Template 来源版本。
 - `.appstruct/schema.snapshot.json` 保存已由迁移文件承载的最新规范化目标 schema；它描述磁盘迁移链的目标，不代表某个数据库已经执行到该状态。
 - `generated/.appstruct-manifest.json` 以确定性格式记录生成文件 ownership 和内容 hash，与生成物一起进入版本控制。
 - `.appstruct/cache/` 只保存本地增量缓存，不进入版本控制，也不参与正确性判断。
@@ -674,7 +678,7 @@ help: did you mean `User`?
 - 初次启动和输入变化时先规划迁移；只自动接受 `NonDestructive + Online` 变更，危险迁移失败关闭。
 - 迁移通过后完整重新编译和生成，只提交内容发生变化的 Artifact，再构建后端并启动 API/Vite。
 - 配置、迁移、生成或构建失败时不重启服务；上一版进程保持运行。
-- `appstruct.yaml`、`appstruct.lock`、`spec/` 和 `app/backend/` 变化触发协调重载，用户 React 变化由 Vite 处理。
+- `appstruct.yaml`、`appstruct.lock`、`spec/`、`modules/` 和 `app/backend/` 变化触发协调重载，用户 React 变化由 Vite 处理。
 - API 和 Web 日志分别带 `[api]`、`[web]` 前缀；`--api-port` 与 `--web-port` 必须不同。
 - Ctrl-C 优雅终止 API 和 Web 的完整子进程树。
 
@@ -747,6 +751,8 @@ project-hub/
 | Admin | 用户、租户和系统运营后台 | V2 |
 
 模块通过明确的配置 schema、运行时接口和迁移安装，不允许任意修改其他模块的生成模板。Module manifest 必须声明 `provides` 和 `requires` capability；Compiler 在生成前检查缺失 provider、重复 provider 和依赖环。模块间只通过窄化、类型化 capability 协作，例如 Auth 依赖 `AuthMailSender`，而不是依赖整个 Mail Module。
+
+项目可以通过根配置的 `module_manifests` 引用 `modules/` 下的本地 TOML manifest。首版只接受 `api_version = 1`、命名空间化名称、capability 和 UTF-8 静态 Artifact；manifest、source 和输出路径禁止绝对路径、`..`、非可移植分隔符与 symlink，且执行单文件和总大小限制。Artifact 只能写入 `generated/modules/<collision-free-namespace>/...`。本地 Module 的 Runtime starter 固定为 no-op，不加载动态库、不编译或执行模块目录中的 Rust 代码，也不联网。
 
 Audit Module 通过 `modules.audit.enabled: true` 启用，并要求 Auth 和至少一个声明过的
 `reader_roles`。业务实体用 `audit: true` 选择记录 create、update 和 delete。每条事件保存实体、记录
@@ -908,13 +914,13 @@ Template 可以包含初始领域配置、用户可修改的 React 页面、邮�
 - `minimal` 和 `dashboard` Template
 - 开发服务器和示例应用
 
-### 18.2 不包含
+### 18.2 不包含（MVP 历史边界）
 
 - 可视化拖拽配置器
 - PostgreSQL 以外的数据库
 - React 以外的前端框架
 - 支付订阅
-- 完整多租户
+- 完整多租户（原 MVP 不包含，已在 M6 交付）
 - 工作流编排器
 - 在线托管平台
 - 任意 SQL 或任意代码表达式 DSL
@@ -922,11 +928,11 @@ Template 可以包含初始领域配置、用户可修改的 React 页面、邮�
 
 ## 19. MVP 验收标准
 
-使用一个“项目管理”示例应用进行端到端验收，包含 `User`、`Project` 和 `Task` 三个实体。该应用验证真实用户旅程；另维护一份 kitchen-sink fixture，集中覆盖 App Spec 语法、关系形态和生成器兼容性，不要求它承担产品演示职责。
+使用 `examples/saas-demo` 和独立模块 fixtures 进行端到端验收，覆盖 `User`、`Project` 和 `Task` 三个实体及 Tenant/Audit/Mail/Jobs/File 模块。模块 fixtures 集中覆盖 App Spec 语法、关系形态和生成器兼容性，不要求它承担产品演示职责。
 
 ### 19.1 初始化和运行
 
-- 在干净环境执行 `appstruct new project-manager --template dashboard` 后可以按照生成说明启动应用。
+- 在干净环境执行 `appstruct new saas-demo --template saas` 后可以按照生成说明启动应用。
 - `appstruct dev` 能同时启动 API 和 Web，并输出访问地址。
 - 首次迁移后可以注册、登录并进入后台。
 
@@ -971,7 +977,7 @@ Template 可以包含初始领域配置、用户可修改的 React 页面、邮�
 ### 19.6 质量
 
 - 示例应用通过 Rust 单元测试、API 集成测试和前端关键流程测试。
-- kitchen-sink fixture 生成的 Rust、OpenAPI、TypeScript 和 UI Manifest 均通过格式化、解析或编译验证，不能只比较文本快照。
+- 模块 fixtures 生成的 Rust、OpenAPI、TypeScript 和 UI Manifest 均通过格式化、解析或编译验证，不能只比较文本快照。
 - 完整生成两次后 Git 工作区不出现差异。
 - 生成的 Rust 代码通过项目锁定 toolchain 的 `cargo fmt` 和 `cargo clippy`。
 - 生成的 TypeScript 通过 lockfile 固定版本的格式化、类型检查和 lint。
@@ -993,7 +999,7 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 
 ## 21. 路线图
 
-### 阶段 0：技术验证
+### 阶段 0：技术验证（已完成）
 
 - App Spec 到 Typed IR
 - 单实体 CRUD 后端生成
@@ -1001,19 +1007,20 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 - 确定生成代码与用户代码边界
 - 发布仅用于验证的 `minimal` Template
 
-### 阶段 1：MVP
+### 阶段 1：MVP（已完成）
 
 - 完成第 18 节范围
 - 发布项目管理示例
 - 发布可创建真实后台项目的 `dashboard` Template
 - 提供本地开发文档和升级指南
 
-### 阶段 2：V1
+### 阶段 2：V1（已完成）
 
 - 多租户、审计、文件、邮件和任务模块
-- 更完整的资源级 Policy
-- 数据库 schema 反向生成 App Spec
-- 模块和自定义字段组件开发协议
+- `appstruct/saas@1` Preset、SaaS Template 和端到端示例
+- 官方 Module capability graph 与生成 Runtime/server 边界
+- 数据库 schema 反向生成 App Spec（后续）
+- 第三方模块和自定义字段组件分发协议（后续）
 - 发布不含完整 Billing/Admin 的 AppStruct SaaS Preview
 
 ### 阶段 3：V2
@@ -1070,18 +1077,18 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 
 ## 23. 待决策问题
 
-以下问题需要在技术验证阶段形成 ADR：
+以下是历史待决策清单；带“已决策”的项目已经固化在代码和测试中，保留在这里用于追踪决策来源：
 
-1. SeaORM 是否能满足复杂关联需求，以及 Repository 需要提供多大的底层逃生口。
-2. 大型项目是否需要本地 `includes` 之外的远程或包级 Spec 依赖。
-3. 资源级 Policy 使用生成枚举、trait，还是单独的策略 IR。
-4. Session 默认存储使用 PostgreSQL，还是同时提供 Redis Provider。
-5. 第三方 Module API 在哪些官方模块验证后冻结。
-6. Module capability、作用域、启动失败回滚和资源清理协议。
-7. UI Resource、DataProvider、Controller、缓存 key 和 RelationInput 的稳定契约。
-8. 授权一致性模型如何覆盖各 CRUD 操作、关系展开、Command 和未来批量操作。
-9. 迁移行为基线如何固定 rename、checksum、非事务步骤和 drift 诊断。
-10. Module 可注入哪些 IR fragment 和 Artifact，以及 Generator 必须拒绝哪些跨所有权修改。
+1. 已决策：SeaORM 作为标准 CRUD ORM，Repository 保留 SeaQuery/自定义 Query 逃生口。
+2. 后续：大型项目是否需要本地 `includes` 之外的远程或包级 Spec 依赖。
+3. 已决策：资源级 Policy 使用生成 trait 和统一 Access IR。
+4. 后续：Session 是否增加 Redis Provider。
+5. 后续：第三方 Module API 和远程分发协议的冻结范围。
+6. 已决策：Module capability graph、provider 唯一性、拓扑启动顺序和逆序清理。
+7. 部分完成：当前 Web 资源契约已稳定；完整可复用 headless Controller 仍是后续 Runtime 演进项。
+8. 已决策：CRUD、关系和 Command/Query 统一经过后端授权入口；批量操作尚未实现。
+9. 已决策：迁移 rename/危险变更阻断、checksum、非事务步骤和 drift 诊断协议。
+10. 后续：第三方 Module 可注入的 IR fragment 和 Artifact ownership 边界。
 
 ## 24. 产品决策记录
 

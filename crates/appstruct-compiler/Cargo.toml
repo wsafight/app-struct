@@ -12,6 +12,7 @@ categories = ["config", "development-tools"]
 
 [dependencies]
 appstruct-ir.workspace = true
+appstruct-module-sdk.workspace = true
 minijinja.workspace = true
 saphyr-parser.workspace = true
 serde.workspace = true

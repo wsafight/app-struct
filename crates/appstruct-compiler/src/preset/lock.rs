@@ -8,9 +8,20 @@ use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 
-pub(super) fn source(template: &str, preset: Option<(&str, u64)>) -> Option<String> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProjectLayout {
+    LegacyGeneratedBackend = 1,
+    CompositionRoot = 2,
+}
+
+pub(super) fn source(
+    template: &str,
+    preset: Option<(&str, u64)>,
+    layout: ProjectLayout,
+) -> Option<String> {
     let mut output = format!(
-        "lock_version = 1\nappstruct = {:?}\n\n[template]\nname = {template:?}\nversion = {:?}\n",
+        "lock_version = 1\nproject_layout_version = {}\nappstruct = {:?}\n\n[template]\nname = {template:?}\nversion = {:?}\n",
+        layout as u64,
         env!("CARGO_PKG_VERSION"),
         env!("CARGO_PKG_VERSION"),
     );
@@ -29,7 +40,44 @@ pub(super) fn source(template: &str, preset: Option<(&str, u64)>) -> Option<Stri
     Some(output)
 }
 
+pub(super) fn layout(project: &Path) -> Result<ProjectLayout, Diagnostic> {
+    let path = project.join("appstruct.lock");
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ProjectLayout::LegacyGeneratedBackend);
+        }
+        Err(error) => {
+            return Err(lock_error(
+                "AS3064",
+                format!("cannot read project layout from `appstruct.lock`: {error}"),
+            ));
+        }
+    };
+    let lock = toml::from_str::<ProjectLock>(&source).map_err(|error| {
+        lock_error(
+            "AS3064",
+            format!("invalid project lock `appstruct.lock`: {error}"),
+        )
+    })?;
+    if lock.lock_version != 1 || lock.appstruct != env!("CARGO_PKG_VERSION") {
+        return Err(lock_error(
+            "AS3064",
+            "project lock version or AppStruct version does not match this compiler; run `appstruct update`",
+        ));
+    }
+    parse_layout(lock.project_layout_version).ok_or_else(|| {
+        lock_error(
+            "AS3064",
+            "project lock has no supported `project_layout_version`; run `appstruct update`",
+        )
+    })
+}
+
 pub(super) fn validate(project: &Path, root: &SurfaceRoot) -> Vec<Diagnostic> {
+    if let Err(diagnostic) = layout(project) {
+        return vec![diagnostic];
+    }
     let Some(selected) = &root.preset else {
         return Vec::new();
     };
@@ -69,12 +117,12 @@ pub(super) fn validate(project: &Path, root: &SurfaceRoot) -> Vec<Diagnostic> {
 }
 
 pub(super) fn updated_source(project: &Path, root: &SurfaceRoot) -> Result<String, Diagnostic> {
-    let template = read_template(project)?;
+    let (template, layout) = read_update_metadata(project)?;
     let selected = root
         .preset
         .as_ref()
         .map(|preset| (preset.name.value.as_str(), preset.version.value));
-    source(&template, selected).ok_or_else(|| {
+    source(&template, selected, layout).ok_or_else(|| {
         let preset = root
             .preset
             .as_ref()
@@ -91,12 +139,12 @@ pub(super) fn updated_source(project: &Path, root: &SurfaceRoot) -> Result<Strin
     })
 }
 
-fn read_template(project: &Path) -> Result<String, Diagnostic> {
+fn read_update_metadata(project: &Path) -> Result<(String, ProjectLayout), Diagnostic> {
     let path = project.join("appstruct.lock");
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok("custom".to_owned());
+            return Ok(("custom".to_owned(), infer_legacy_layout(project)?));
         }
         Err(error) => {
             return Err(lock_error(
@@ -111,9 +159,40 @@ fn read_template(project: &Path) -> Result<String, Diagnostic> {
             format!("invalid preset lock `appstruct.lock`: {error}"),
         )
     })?;
-    Ok(lock
+    let template = lock
         .template
-        .map_or_else(|| "custom".to_owned(), |template| template.name))
+        .map_or_else(|| "custom".to_owned(), |template| template.name);
+    let layout = match lock.project_layout_version {
+        Some(version) => parse_layout(Some(version)).ok_or_else(|| {
+            lock_error(
+                "AS3064",
+                format!("unsupported project layout version `{version}`"),
+            )
+        })?,
+        None => infer_legacy_layout(project)?,
+    };
+    Ok((template, layout))
+}
+
+fn infer_legacy_layout(project: &Path) -> Result<ProjectLayout, Diagnostic> {
+    let manifest = project.join("app/backend/Cargo.toml").is_file();
+    let library = project.join("app/backend/src/lib.rs").is_file();
+    match (manifest, library) {
+        (false, false) => Ok(ProjectLayout::LegacyGeneratedBackend),
+        (true, true) => Ok(ProjectLayout::CompositionRoot),
+        _ => Err(lock_error(
+            "AS3064",
+            "cannot migrate a partial `app/backend` layout; expected both `Cargo.toml` and `src/lib.rs`",
+        )),
+    }
+}
+
+fn parse_layout(version: Option<u64>) -> Option<ProjectLayout> {
+    match version {
+        Some(1) => Some(ProjectLayout::LegacyGeneratedBackend),
+        Some(2) => Some(ProjectLayout::CompositionRoot),
+        Some(_) | None => None,
+    }
 }
 
 fn validate_contract(lock: &ProjectLock, info: &super::PresetInfo) -> Vec<Diagnostic> {
@@ -156,6 +235,7 @@ fn lock_error(code: &str, message: impl Into<String>) -> Diagnostic {
 #[derive(Debug, Deserialize)]
 struct ProjectLock {
     lock_version: u64,
+    project_layout_version: Option<u64>,
     appstruct: String,
     template: Option<LockedTemplate>,
     preset: Option<LockedPreset>,

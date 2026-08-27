@@ -1,0 +1,17 @@
+[package]
+name = "appstruct-module-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme.workspace = true
+description = "Module manifests and deterministic capability resolution for AppStruct"
+documentation = "https://docs.rs/appstruct-module-sdk"
+keywords = ["capabilities", "codegen", "modules", "rust"]
+categories = ["development-tools"]
+
+[dependencies]
+serde.workspace = true
+
+[lints]
+workspace = true

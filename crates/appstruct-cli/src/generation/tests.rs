@@ -1,5 +1,5 @@
 use super::ownership;
-use super::transaction::GenerationTransaction;
+use super::transaction::{GenerationFault, GenerationTransaction};
 use appstruct_codegen::{Artifact, ArtifactKind};
 use std::collections::BTreeMap;
 use std::fs;
@@ -72,6 +72,25 @@ fn journal_free_legacy_backup_is_recovered() {
     GenerationTransaction::acquire(temporary.path()).unwrap();
     assert_eq!(tree_value(&temporary.path().join("generated")), "old");
     assert_clean(temporary.path());
+}
+
+#[test]
+fn injected_swap_failures_recover_to_a_complete_generation() {
+    for (fault, expected) in [
+        (GenerationFault::AfterBackup, "old"),
+        (GenerationFault::AfterInstall, "new"),
+    ] {
+        let temporary = tempfile::tempdir().unwrap();
+        install(temporary.path(), "old");
+        let transaction = GenerationTransaction::acquire(temporary.path()).unwrap();
+        assert!(
+            transaction
+                .replace_with_fault(&files("new"), fault)
+                .is_err()
+        );
+        assert_eq!(tree_value(&temporary.path().join("generated")), expected);
+        assert_clean(temporary.path());
+    }
 }
 
 fn install(project: &Path, value: &str) {

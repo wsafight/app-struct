@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
+mod build_cache;
 mod process;
 mod watch;
 
@@ -191,9 +192,16 @@ fn prepare(
 }
 
 fn build_backend(project: &Path, environment: &ProjectEnvironment) -> io::Result<()> {
-    let backend = project.join("generated/backend/Cargo.toml");
+    if build_cache::backend_current(project)? {
+        println!("[appstruct] backend inputs unchanged; reusing debug build");
+        return Ok(());
+    }
+    let backend = crate::build::backend_manifest(project)?;
     let target = project.join(".appstruct/cache/backend-target");
-    let lock = project.join("generated/backend/Cargo.lock");
+    let lock = backend
+        .parent()
+        .expect("backend manifest has a parent")
+        .join("Cargo.lock");
     let mut command = Command::new("cargo");
     command.current_dir(project).env("CARGO_TARGET_DIR", target);
     if lock.is_file() {
@@ -203,16 +211,22 @@ fn build_backend(project: &Path, environment: &ProjectEnvironment) -> io::Result
     }
     command.args(["--manifest-path"]).arg(backend);
     environment.apply(&mut command);
-    status(command, "build generated backend")
+    status(command, "build generated backend")?;
+    build_cache::record_backend(project)
 }
 
 fn install_web(project: &Path, environment: &ProjectEnvironment) -> io::Result<()> {
+    if build_cache::web_dependencies_current(project)? {
+        println!("[appstruct] web dependencies unchanged; reusing installation");
+        return Ok(());
+    }
     let mut command = Command::new("pnpm");
     command
         .current_dir(project.join("generated/web"))
         .args(["install", "--frozen-lockfile"]);
     environment.apply(&mut command);
-    status(command, "install generated web dependencies")
+    status(command, "install generated web dependencies")?;
+    build_cache::record_web_dependencies(project)
 }
 
 fn wait_for_database(project: &Path, database_url: &str, stopping: &AtomicBool) -> io::Result<()> {

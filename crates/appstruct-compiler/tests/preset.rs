@@ -1,5 +1,6 @@
 use appstruct_compiler::{
-    compile_project, expanded_preset, preset_info, project_lock, updated_project_lock,
+    ProjectLayout, compile_project, expanded_preset, preset_info, project_layout, project_lock,
+    updated_project_lock,
 };
 use appstruct_ir::{FileProviderIr, MailProviderIr};
 use std::{
@@ -28,6 +29,10 @@ fn expands_and_locks_official_saas_preset() {
     assert_eq!(ir.jobs.queues.len(), 2);
     assert_eq!(ir.file.provider, FileProviderIr::Local);
     assert_eq!(ir.file.max_bytes, 10_485_760);
+    assert_eq!(ir.modules.len(), 7);
+    assert_eq!(ir.modules[0].name, "appstruct/auth");
+    assert_eq!(ir.modules[1].name, "appstruct/audit");
+    assert_eq!(ir.modules[6].name, "appstruct/tenant");
 }
 
 #[test]
@@ -117,6 +122,7 @@ fn update_lock_repairs_contract_and_preserves_template_identity() {
         &lock_path,
         concat!(
             "lock_version = 1\n",
+            "project_layout_version = 1\n",
             "appstruct = \"0.0.1\"\n\n",
             "[template]\n",
             "name = \"saas\"\n",
@@ -129,11 +135,56 @@ fn update_lock_repairs_contract_and_preserves_template_identity() {
     )
     .unwrap();
 
-    assert_eq!(
-        updated_project_lock(temporary.path()).unwrap(),
-        project_lock("saas", Some(("appstruct/saas", 1))).unwrap()
-    );
+    let updated = updated_project_lock(temporary.path()).unwrap();
+    assert!(updated.contains("project_layout_version = 1"));
+    assert!(updated.contains("name = \"saas\""));
+    assert!(updated.contains(
+        "digest = \"sha256:7267c3a362b328d5b162f4536ac7115c72ab81cf9f3e17542a8d9b6eba7965c5\""
+    ));
     assert!(fs::read_to_string(lock_path).unwrap().contains("stale"));
+}
+
+#[test]
+fn layout_protocol_rejects_unversioned_locks_and_migrates_explicitly() {
+    let temporary = copied_fixture();
+    let lock_path = temporary.path().join("appstruct.lock");
+    replace(&lock_path, "project_layout_version = 1\n", "");
+    fs::create_dir_all(temporary.path().join("app/backend/src")).unwrap();
+    fs::write(
+        temporary.path().join("app/backend/Cargo.toml"),
+        "[package]\nname = \"custom\"\nversion = \"0.0.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        temporary.path().join("app/backend/src/lib.rs"),
+        "pub fn extensions() {}\n",
+    )
+    .unwrap();
+
+    assert!(project_layout(temporary.path()).is_err());
+    let updated = updated_project_lock(temporary.path()).unwrap();
+    assert!(updated.contains("project_layout_version = 2"));
+    fs::write(&lock_path, updated).unwrap();
+    assert_eq!(
+        project_layout(temporary.path()).unwrap(),
+        ProjectLayout::CompositionRoot
+    );
+}
+
+#[test]
+fn lockless_projects_use_the_legacy_layout_contract() {
+    let temporary = tempfile::tempdir().unwrap();
+    assert_eq!(
+        project_layout(temporary.path()).unwrap(),
+        ProjectLayout::LegacyGeneratedBackend
+    );
+
+    fs::write(
+        temporary.path().join("appstruct.lock"),
+        "lock_version = 1\nproject_layout_version = 1\nappstruct = \"0.0.0\"\n",
+    )
+    .unwrap();
+    assert!(project_layout(temporary.path()).is_err());
 }
 
 fn copied_fixture() -> tempfile::TempDir {

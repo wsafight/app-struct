@@ -1,5 +1,7 @@
 mod lock;
 
+pub use lock::ProjectLayout;
+
 use crate::surface::{SurfacePreset, SurfaceRoot};
 use crate::yaml::{self, MappingEntry, Node, NodeKind};
 use appstruct_ir::Diagnostic;
@@ -10,6 +12,7 @@ use std::path::Path;
 const SAAS_NAME: &str = "appstruct/saas";
 const SAAS_VERSION: u64 = 1;
 pub(super) const MODULE_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const CURRENT_PROJECT_LAYOUT_VERSION: u64 = ProjectLayout::CompositionRoot as u64;
 const MODULES: &[&str] = &["audit", "auth", "file", "jobs", "mail", "rbac", "tenant"];
 const EXPANDED: &str = concat!(
     "modules:\n",
@@ -79,7 +82,17 @@ pub(crate) fn preset_digest() -> String {
 /// Build the canonical project lock used by official templates.
 #[must_use]
 pub fn project_lock(template: &str, preset: Option<(&str, u64)>) -> Option<String> {
-    lock::source(template, preset)
+    lock::source(template, preset, ProjectLayout::CompositionRoot)
+}
+
+/// Read the explicit project layout contract used by build and development commands.
+///
+/// # Errors
+///
+/// Returns a diagnostic for invalid, unversioned, or unsupported project locks. Lockless custom
+/// projects are treated as legacy layout v1 for backward compatibility.
+pub fn project_layout(project: &Path) -> Result<ProjectLayout, Diagnostic> {
+    lock::layout(project)
 }
 
 pub(crate) fn expand_modules(

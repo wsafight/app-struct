@@ -4,6 +4,7 @@ use std::io;
 use std::path::Path;
 use std::process::ExitCode;
 
+mod cache;
 pub(crate) mod ownership;
 pub(crate) mod transaction;
 mod web_format;
@@ -18,6 +19,28 @@ pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
             return ExitCode::from(3);
         }
     };
+    let root = project.join("generated");
+    match cache::load_hit(project, &root) {
+        Ok(Some(hit)) => {
+            if check {
+                println!(
+                    "Generated artifacts are current ({} files; cache hit)",
+                    hit.artifact_count
+                );
+            } else {
+                println!(
+                    "Generated {} artifacts for {} (0 changed; cache hit)",
+                    hit.artifact_count, hit.app_name
+                );
+            }
+            return ExitCode::SUCCESS;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            eprintln!("error[AS5004]: generated ownership check failed: {error}");
+            return ExitCode::from(1);
+        }
+    }
     let ir = match appstruct_compiler::compile_project(project) {
         Ok(ir) => ir,
         Err(diagnostics) => {
@@ -38,12 +61,14 @@ pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
         eprintln!("error[AS5006]: cannot format generated web artifacts: {error}");
         return ExitCode::from(3);
     }
-    let root = project.join("generated");
     if check {
         return check_artifacts(&root, &artifacts);
     }
     match write_artifacts(&transaction, &root, &artifacts) {
         Ok(changed) => {
+            if let Err(error) = cache::record(project, &root, &ir.app.name, artifacts.len()) {
+                eprintln!("warning[AS5007]: cannot update generation cache: {error}");
+            }
             println!(
                 "Generated {} artifacts for {} ({changed} changed)",
                 artifacts.len(),
@@ -104,6 +129,12 @@ fn write_artifacts(
                 .is_ok_and(|content| content == artifact.content)
         })
         .count();
+    if expected
+        .iter()
+        .all(|(path, content)| fs::read(root.join(path)).is_ok_and(|actual| actual == *content))
+    {
+        return Ok(changed);
+    }
     transaction.replace(&expected)?;
     Ok(changed)
 }

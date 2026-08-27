@@ -24,7 +24,9 @@ impl DevProcesses {
         let api_url = format!("http://127.0.0.1:{api_port}");
         let web_url = format!("http://127.0.0.1:{web_port}");
         let mut api_command = Command::new(
-            project.join(".appstruct/cache/backend-target/debug/appstruct-generated-backend"),
+            project
+                .join(".appstruct/cache/backend-target/debug")
+                .join(crate::build::backend_binary_name(project)?),
         );
         api_command
             .current_dir(project)

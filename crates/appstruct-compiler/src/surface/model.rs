@@ -26,6 +26,7 @@ pub(crate) struct SurfaceRoot {
     pub jobs: SurfaceJobs,
     pub file: SurfaceFile,
     pub includes: Vec<Located<String>>,
+    pub module_manifests: Vec<Located<String>>,
 }
 
 #[derive(Clone, Debug, Default)]

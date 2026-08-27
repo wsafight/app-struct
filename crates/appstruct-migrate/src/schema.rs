@@ -8,6 +8,9 @@ mod jobs;
 mod mail;
 mod tenant;
 
+pub const SCHEMA_VERSION: u32 = 2;
+pub const MIN_COMPATIBLE_SCHEMA_VERSION: u32 = 1;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatabaseSchema {
     pub schema_version: u32,
@@ -132,7 +135,7 @@ pub fn extract(ir: &AppIr) -> DatabaseSchema {
         foreign_keys.extend(file::foreign_keys(ir));
     }
     DatabaseSchema {
-        schema_version: 2,
+        schema_version: SCHEMA_VERSION,
         provider: ir.database.provider,
         tables,
         unique_constraints,
@@ -258,5 +261,18 @@ pub fn to_json(schema: &DatabaseSchema) -> Result<String, serde_json::Error> {
 ///
 /// Returns an error if the snapshot is invalid or incompatible JSON.
 pub fn from_json(source: &str) -> Result<DatabaseSchema, serde_json::Error> {
-    serde_json::from_str(source)
+    let mut schema: DatabaseSchema = serde_json::from_str(source)?;
+    match schema.schema_version {
+        SCHEMA_VERSION => Ok(schema),
+        MIN_COMPATIBLE_SCHEMA_VERSION => {
+            schema.schema_version = SCHEMA_VERSION;
+            Ok(schema)
+        }
+        found => Err(serde_json::Error::io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "unsupported schema snapshot version {found}; supported versions are {MIN_COMPATIBLE_SCHEMA_VERSION} through {SCHEMA_VERSION}"
+            ),
+        ))),
+    }
 }

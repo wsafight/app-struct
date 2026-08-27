@@ -171,6 +171,14 @@ fn template_files(template: ProjectTemplate) -> &'static [TemplateFile] {
 
 const MINIMAL_FILES: &[TemplateFile] = &[
     TemplateFile {
+        path: "app/backend/Cargo.toml",
+        content: include_str!("../templates/common/app-backend.Cargo.toml"),
+    },
+    TemplateFile {
+        path: "app/backend/src/lib.rs",
+        content: include_str!("../templates/common/app-backend.lib.rs"),
+    },
+    TemplateFile {
         path: ".gitignore",
         content: include_str!("../templates/common/gitignore"),
     },
@@ -197,6 +205,14 @@ const MINIMAL_FILES: &[TemplateFile] = &[
 ];
 
 const DASHBOARD_FILES: &[TemplateFile] = &[
+    TemplateFile {
+        path: "app/backend/Cargo.toml",
+        content: include_str!("../templates/common/app-backend.Cargo.toml"),
+    },
+    TemplateFile {
+        path: "app/backend/src/lib.rs",
+        content: include_str!("../templates/common/app-backend.lib.rs"),
+    },
     TemplateFile {
         path: ".gitignore",
         content: include_str!("../templates/common/gitignore"),
@@ -232,6 +248,14 @@ const DASHBOARD_FILES: &[TemplateFile] = &[
 ];
 
 const SAAS_FILES: &[TemplateFile] = &[
+    TemplateFile {
+        path: "app/backend/Cargo.toml",
+        content: include_str!("../templates/common/app-backend.Cargo.toml"),
+    },
+    TemplateFile {
+        path: "app/backend/src/lib.rs",
+        content: include_str!("../templates/common/app-backend.lib.rs"),
+    },
     TemplateFile {
         path: ".gitignore",
         content: include_str!("../templates/common/gitignore"),

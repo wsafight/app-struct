@@ -6,7 +6,10 @@ use appstruct_ir::Cardinality;
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
-use support::{assert_rustfmt, cargo_check, prepare_generated_package};
+use support::{
+    assert_rustfmt, cargo_check, complete_handler_source, missing_handler_source,
+    prepare_generated_package, server_manifest,
+};
 
 #[test]
 fn generated_fixture_is_a_compilable_rust_crate() {
@@ -26,6 +29,33 @@ fn generated_fixture_is_a_compilable_rust_crate() {
     }
 
     let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    let app_backend = temporary.path().join("app/backend");
+    fs::create_dir_all(app_backend.join("src")).unwrap();
+    fs::write(
+        app_backend.join("Cargo.toml"),
+        concat!(
+            "[package]\nname = \"appstruct-app-backend\"\nversion = \"0.0.0\"\n",
+            "edition = \"2024\"\n\n[dependencies]\n",
+            "appstruct-generated-backend = { path = \"../../generated/backend\" }\n",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        app_backend.join("src/lib.rs"),
+        concat!(
+            "use appstruct_generated_backend::AppExtensions;\n",
+            "pub fn extensions() -> AppExtensions { AppExtensions::builder().build() }\n",
+        ),
+    )
+    .unwrap();
+    let server_manifest = temporary.path().join("generated/server/Cargo.toml");
+    assert_rustfmt(&server_manifest);
+    let server_checked = cargo_check(&server_manifest, false);
+    assert!(
+        server_checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&server_checked.stderr)
+    );
     assert_rustfmt(&manifest);
     let checked = cargo_check(&manifest, false);
     assert!(
@@ -105,7 +135,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 45);
+    assert_eq!(artifacts.len(), 50);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -232,7 +262,25 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 39);
+    assert_eq!(artifacts.len(), 44);
+    assert!(
+        artifact_text(artifacts, "backend/Cargo.toml")
+            .contains("appstruct-runtime = { path = \"runtime\" }")
+    );
+    assert!(
+        artifact_text(artifacts, "backend/runtime/src/lib.rs").contains("pub trait ServiceHandle")
+    );
+    assert!(
+        artifact_text(artifacts, "backend/runtime/src/lifecycle.rs")
+            .contains("pub struct ModulePlan")
+    );
+    let backend = artifact_text(artifacts, "backend/src/lib.rs");
+    assert!(backend.contains("pub const GENERATED_RUNTIME_API_VERSION: u32 = 1"));
+    assert!(backend.contains("startup_plan().start(&mut context).await?"));
+    assert!(
+        artifact_text(artifacts, "server/Cargo.toml")
+            .contains("appstruct-app-backend = { path = \"../../app/backend\" }")
+    );
     assert!(artifact_text(artifacts, "database/0001_initial.sql").contains("CREATE TABLE"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("/health/ready"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("MakeRequestUuid"));
@@ -305,63 +353,4 @@ fn write_artifacts(root: &Path, artifacts: &[Artifact]) {
         fs::create_dir_all(destination.parent().unwrap()).unwrap();
         fs::write(destination, &artifact.content).unwrap();
     }
-}
-
-fn server_manifest(generated_package: &str) -> String {
-    format!(
-        r#"[package]
-name = "appstruct-extension-server"
-version = "0.0.0"
-edition = "2024"
-
-[dependencies]
-appstruct-generated-backend = {{ package = {generated_package:?}, path = "../generated/backend" }}
-async-trait = "0.1.89"
-"#
-    )
-}
-
-fn missing_handler_source() -> &'static str {
-    r"use appstruct_generated_backend::{ApiError, AppExtensions, RequestContext};
-use appstruct_generated_backend::entities::project;
-use appstruct_generated_backend::extensions::{ArchiveProjectHandler, ArchiveProjectInput};
-use async_trait::async_trait;
-
-struct Handlers;
-
-#[async_trait]
-impl ArchiveProjectHandler for Handlers {
-    async fn execute(&self, _ctx: &RequestContext, _input: ArchiveProjectInput) -> Result<project::Model, ApiError> {
-        Err(ApiError::NotFound)
-    }
-}
-
-fn main() { let _extensions = AppExtensions::builder().handlers(Handlers).build(); }
-"
-}
-
-fn complete_handler_source() -> &'static str {
-    r"use appstruct_generated_backend::{ApiError, AppExtensions, RequestContext};
-use appstruct_generated_backend::entities::project;
-use appstruct_generated_backend::extensions::{ArchiveProjectHandler, ArchiveProjectInput, ProjectMetrics, ProjectMetricsHandler};
-use async_trait::async_trait;
-
-struct Handlers;
-
-#[async_trait]
-impl ArchiveProjectHandler for Handlers {
-    async fn execute(&self, _ctx: &RequestContext, _input: ArchiveProjectInput) -> Result<project::Model, ApiError> {
-        Err(ApiError::NotFound)
-    }
-}
-
-#[async_trait]
-impl ProjectMetricsHandler for Handlers {
-    async fn execute(&self, _ctx: &RequestContext) -> Result<ProjectMetrics, ApiError> {
-        Ok(ProjectMetrics { active: 0, total: 0 })
-    }
-}
-
-fn main() { let _extensions = AppExtensions::builder().handlers(Handlers).build(); }
-"
 }

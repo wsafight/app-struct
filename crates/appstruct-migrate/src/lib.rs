@@ -13,7 +13,7 @@ pub use runner::{
     stamp_schema_checksum, status_project,
 };
 pub use schema::{
-    ColumnSchema, DatabaseSchema, DatabaseType, ForeignKeySchema, TableSchema,
-    UniqueConstraintSchema, extract, from_json, to_json,
+    ColumnSchema, DatabaseSchema, DatabaseType, ForeignKeySchema, MIN_COMPATIBLE_SCHEMA_VERSION,
+    SCHEMA_VERSION, TableSchema, UniqueConstraintSchema, extract, from_json, to_json,
 };
 pub use sql::{initial_migration, migration_sql};

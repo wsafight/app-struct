@@ -12,6 +12,7 @@ mod lint;
 mod loading;
 mod lower;
 mod mail;
+mod module;
 mod naming;
 mod preset;
 mod surface;
@@ -20,7 +21,10 @@ mod validation;
 mod yaml;
 
 pub use loading::discover_project;
-pub use preset::{PresetInfo, preset_info, project_lock};
+pub use preset::{
+    CURRENT_PROJECT_LAYOUT_VERSION, PresetInfo, ProjectLayout, preset_info, project_layout,
+    project_lock,
+};
 
 /// Draft 2020-12 schema for root and domain App Spec YAML documents.
 pub const APP_SPEC_SCHEMA: &str = include_str!("../schema/appstruct.schema.json");
@@ -57,6 +61,9 @@ pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<
     let surface_root = surface::decode_root(&root_node).map_err(|error| vec![error])?;
     let mut diagnostics = validation::validate_root(&surface_root);
     diagnostics.extend(preset::validate_lock(&root, &surface_root));
+    let (local_modules, module_diagnostics) =
+        module::load_local_modules(&root, &surface_root.module_manifests);
+    diagnostics.extend(module_diagnostics);
     let mut canonical_includes = BTreeMap::<PathBuf, SourceSpan>::new();
     let mut application = surface::SurfaceDomain::default();
 
@@ -94,7 +101,7 @@ pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<
         return Err(diagnostics);
     }
     let warnings = lint::warnings(&application);
-    lower::build_ir(surface_root, application).map(|ir| CompileReport {
+    lower::build_ir(surface_root, application, local_modules).map(|ir| CompileReport {
         ir,
         diagnostics: warnings,
     })

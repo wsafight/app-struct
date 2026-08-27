@@ -1,5 +1,5 @@
 {
-  "ir_version": 7,
+  "ir_version": 9,
   "app": {
     "name": "project-hub"
   },
@@ -429,5 +429,30 @@
   "commands": [],
   "queries": [],
   "pages": [],
-  "modules": []
+  "modules": [
+    {
+      "name": "appstruct/auth",
+      "version": "0.1.0",
+      "origin": "official",
+      "provides": [
+        "auth.identity"
+      ],
+      "requires": [],
+      "startup_order": 0,
+      "artifacts": []
+    },
+    {
+      "name": "appstruct/rbac",
+      "version": "0.1.0",
+      "origin": "official",
+      "provides": [
+        "auth.roles"
+      ],
+      "requires": [
+        "auth.identity"
+      ],
+      "startup_order": 1,
+      "artifacts": []
+    }
+  ]
 }

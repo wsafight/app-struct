@@ -3,6 +3,7 @@
 mod artifact;
 mod backend;
 mod database;
+mod module_artifact;
 mod openapi;
 mod typescript;
 mod web;
@@ -30,6 +31,7 @@ pub fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     artifacts.extend(openapi::plan(ir)?);
     artifacts.extend(typescript::plan(ir));
     artifacts.extend(web::plan(ir));
+    artifacts.extend(module_artifact::plan(ir)?);
     format_rust_artifacts(&mut artifacts)?;
     artifacts.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     ensure_unique_paths(&artifacts)?;
