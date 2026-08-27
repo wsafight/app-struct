@@ -82,3 +82,9 @@ impl From<serde_json::Error> for CodegenError {
         Self::new(format!("JSON generation failed: {error}"))
     }
 }
+
+impl From<appstruct_ir::IrValidationErrors> for CodegenError {
+    fn from(error: appstruct_ir::IrValidationErrors) -> Self {
+        Self::new(error.to_string())
+    }
+}

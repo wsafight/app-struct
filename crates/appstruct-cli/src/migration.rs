@@ -48,7 +48,17 @@ pub(crate) fn run_with_database(
         MigrateCommand::Plan | MigrateCommand::Dev { .. } => {}
     }
     let target = match appstruct_compiler::compile_project(project) {
-        Ok(ir) => extract(&ir),
+        Ok(ir) => match extract(&ir) {
+            Ok(schema) => schema,
+            Err(error) => {
+                return crate::report::fail(
+                    "AS4101",
+                    crate::report::ErrorCategory::Migration,
+                    error.to_string(),
+                    crate::report::ExitClass::Validation,
+                );
+            }
+        },
         Err(diagnostics) => {
             return crate::report::fail_diagnostics(
                 crate::report::ErrorCategory::Validation,
@@ -69,9 +79,21 @@ pub(crate) fn run_with_database(
         }
     };
     let plan = diff(&before, &target);
-    render_plan(&plan);
+    if !crate::report::is_json() {
+        render_plan(&plan);
+    }
     match command {
-        MigrateCommand::Plan => ExitCode::SUCCESS,
+        MigrateCommand::Plan => {
+            if crate::report::is_json() {
+                crate::report::success(&serde_json::json!({
+                    "command": "migrate",
+                    "action": "plan",
+                    "blocked": plan.is_blocked(),
+                    "changes": plan.changes,
+                }));
+            }
+            ExitCode::SUCCESS
+        }
         MigrateCommand::Dev { accept } => {
             accept_plan(project, &target, &plan, accept, database_url)
         }
@@ -87,8 +109,13 @@ fn accept_plan(
     database_url: Option<&str>,
 ) -> ExitCode {
     if plan.is_empty() {
-        println!("Schema snapshot is current");
-        return database::apply_if_configured(project, database_url).unwrap_or(ExitCode::SUCCESS);
+        if !crate::report::is_json() {
+            println!("Schema snapshot is current");
+        }
+        return database::apply_if_configured(project, database_url).unwrap_or_else(|| {
+            render_dev_success(None, true, false);
+            ExitCode::SUCCESS
+        });
     }
     if plan.is_blocked() {
         return crate::report::fail(
@@ -131,9 +158,14 @@ fn accept_plan(
     let sql = stamp_schema_checksum(&sql, &snapshot);
     match write_plan(project, &sql, &snapshot) {
         Ok(path) => {
-            println!("Created safe migration {}", path.display());
+            if !crate::report::is_json() {
+                println!("Created safe migration {}", path.display());
+            }
             database::apply_if_configured(project, database_url).unwrap_or_else(|| {
-                println!("Migration is pending; set DATABASE_URL to apply it");
+                if !crate::report::is_json() {
+                    println!("Migration is pending; set DATABASE_URL to apply it");
+                }
+                render_dev_success(Some(&path), false, true);
                 ExitCode::SUCCESS
             })
         }
@@ -143,6 +175,18 @@ fn accept_plan(
             format!("cannot commit migration plan: {error}"),
             crate::report::ExitClass::Environment,
         ),
+    }
+}
+
+fn render_dev_success(path: Option<&Path>, current: bool, pending: bool) {
+    if crate::report::is_json() {
+        crate::report::success(&serde_json::json!({
+            "command": "migrate",
+            "action": "dev",
+            "current": current,
+            "migration": path,
+            "pending": pending,
+        }));
     }
 }
 

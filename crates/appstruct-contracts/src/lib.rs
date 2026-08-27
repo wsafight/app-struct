@@ -43,7 +43,7 @@ pub const IR: VersionRange = VersionRange {
     minimum: 7,
     current: 10,
 };
-pub const RUNTIME_API: VersionRange = VersionRange::exact(2);
+pub const RUNTIME_API: VersionRange = VersionRange::exact(3);
 pub const MODULE_API: VersionRange = VersionRange::exact(1);
 pub const PROJECT_LAYOUT: VersionRange = VersionRange {
     minimum: 1,

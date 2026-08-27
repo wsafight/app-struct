@@ -3,6 +3,7 @@
 mod compatibility;
 mod extension;
 mod service;
+mod validation;
 
 pub use compatibility::{IrCompatibilityError, from_compatible_json};
 pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
@@ -10,6 +11,7 @@ pub use service::{
     AuditIr, FileIr, FileProviderIr, JobQueueIr, JobsIr, MailIr, MailProviderIr, MailTemplateIr,
     PresetIr, TenantIr,
 };
+pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir};
 
 use serde::{Deserialize, Serialize};
 use std::fmt;

@@ -19,10 +19,10 @@ const MAX_MODULE_ARTIFACT_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub(crate) struct LoadedModule {
-    manifest: ModuleManifest,
-    manifest_path: String,
-    content_sha256: String,
-    artifacts: Vec<ModuleArtifactIr>,
+    pub(crate) manifest: ModuleManifest,
+    pub(crate) manifest_path: String,
+    pub(crate) content_sha256: String,
+    pub(crate) artifacts: Vec<ModuleArtifactIr>,
 }
 
 pub(crate) fn load_local_modules(

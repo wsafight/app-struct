@@ -68,11 +68,11 @@ fn bootstrap_admin(project: &Path, email: &str) -> ExitCode {
     };
     match promote(&database_url, &ir, user, &email) {
         Ok(BootstrapResult::Promoted) => {
-            println!("Bootstrapped administrator `{email}`");
+            render_success(&email, "promoted");
             ExitCode::SUCCESS
         }
         Ok(BootstrapResult::AlreadyAdmin) => {
-            println!("Administrator `{email}` is already bootstrapped");
+            render_success(&email, "already_admin");
             ExitCode::SUCCESS
         }
         Err(error) => crate::report::fail(
@@ -81,6 +81,21 @@ fn bootstrap_admin(project: &Path, email: &str) -> ExitCode {
             error,
             crate::report::ExitClass::Validation,
         ),
+    }
+}
+
+fn render_success(email: &str, status: &str) {
+    if crate::report::is_json() {
+        crate::report::success(&serde_json::json!({
+            "command": "auth",
+            "action": "bootstrap_admin",
+            "email": email,
+            "status": status,
+        }));
+    } else if status == "promoted" {
+        println!("Bootstrapped administrator `{email}`");
+    } else {
+        println!("Administrator `{email}` is already bootstrapped");
     }
 }
 

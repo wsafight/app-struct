@@ -56,13 +56,8 @@ pub(crate) fn run(project: &Path) -> ExitCode {
             );
         }
     };
-    if crate::generation::run(candidate.path(), false) != ExitCode::SUCCESS {
-        return crate::report::fail(
-            "AS6008",
-            crate::report::ErrorCategory::Project,
-            "staged project generation failed; no project files changed",
-            crate::report::ExitClass::Validation,
-        );
+    if crate::generation::run_quiet(candidate.path(), false) != ExitCode::SUCCESS {
+        return ExitCode::from(1);
     }
     if let Err(error) = crate::build::verify_update(candidate.path()) {
         let exit = if error.kind() == io::ErrorKind::NotFound {
@@ -87,14 +82,25 @@ pub(crate) fn run(project: &Path) -> ExitCode {
             crate::report::ExitClass::Environment,
         );
     }
-    match ir.preset {
-        Some(preset) => println!(
-            "Updated project to AppStruct {} with {}@{}",
-            env!("CARGO_PKG_VERSION"),
-            preset.name,
-            preset.version
-        ),
-        None => println!("Updated project to AppStruct {}", env!("CARGO_PKG_VERSION")),
+    if crate::report::is_json() {
+        crate::report::success(&serde_json::json!({
+            "command": "update",
+            "appstruct_version": env!("CARGO_PKG_VERSION"),
+            "preset": ir.preset.as_ref().map(|preset| serde_json::json!({
+                "name": preset.name,
+                "version": preset.version,
+            })),
+        }));
+    } else {
+        match ir.preset {
+            Some(preset) => println!(
+                "Updated project to AppStruct {} with {}@{}",
+                env!("CARGO_PKG_VERSION"),
+                preset.name,
+                preset.version
+            ),
+            None => println!("Updated project to AppStruct {}", env!("CARGO_PKG_VERSION")),
+        }
     }
     ExitCode::SUCCESS
 }

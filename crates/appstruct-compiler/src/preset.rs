@@ -82,7 +82,7 @@ pub(crate) fn preset_digest() -> String {
 /// Build the canonical project lock used by official templates.
 #[must_use]
 pub fn project_lock(template: &str, preset: Option<(&str, u64)>) -> Option<String> {
-    lock::source(template, preset, ProjectLayout::CompositionRoot)
+    lock::source(template, preset, ProjectLayout::CompositionRoot, &[])
 }
 
 /// Read the explicit project layout contract used by build and development commands.
@@ -137,8 +137,19 @@ pub(crate) fn validate_lock(project: &Path, root: &SurfaceRoot) -> Vec<Diagnosti
     lock::validate(project, root)
 }
 
-pub(crate) fn updated_lock(project: &Path, root: &SurfaceRoot) -> Result<String, Diagnostic> {
-    lock::updated_source(project, root)
+pub(crate) fn validate_local_module_lock(
+    project: &Path,
+    local_modules: &[crate::module::LoadedModule],
+) -> Vec<Diagnostic> {
+    lock::validate_local_modules(project, local_modules)
+}
+
+pub(crate) fn updated_lock(
+    project: &Path,
+    root: &SurfaceRoot,
+    local_modules: &[crate::module::LoadedModule],
+) -> Result<String, Diagnostic> {
+    lock::updated_source(project, root, local_modules)
 }
 
 pub(crate) fn render_expanded_modules(modules: &MappingEntry) -> String {

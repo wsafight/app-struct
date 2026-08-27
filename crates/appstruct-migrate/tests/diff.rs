@@ -7,13 +7,13 @@ use std::path::Path;
 
 fn fixture_schema() -> appstruct_migrate::DatabaseSchema {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
-    extract(&compile_project(&fixture).unwrap())
+    extract(&compile_project(&fixture).unwrap()).unwrap()
 }
 
 fn tenant_fixture_schema() -> appstruct_migrate::DatabaseSchema {
     let fixture =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");
-    extract(&compile_project(&fixture).unwrap())
+    extract(&compile_project(&fixture).unwrap()).unwrap()
 }
 
 #[test]

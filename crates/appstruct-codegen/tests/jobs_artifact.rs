@@ -21,6 +21,8 @@ fn jobs_contract_generates_a_compilable_backend() {
     assert!(jobs.contains("FOR UPDATE SKIP LOCKED"));
     assert!(jobs.contains("status = 'running' AND locked_until <= CURRENT_TIMESTAMP"));
     assert!(jobs.contains("pub struct JobWorkerHandle"));
+    assert!(jobs.contains("SupervisedTaskHandle::spawn"));
+    assert!(!jobs.contains("WorkerExitGuard"));
     assert!(jobs.contains("pub async fn shutdown"));
     assert!(jobs.contains("pub fn for_kind"));
     assert!(jobs.contains("pub struct MailJobPayload"));

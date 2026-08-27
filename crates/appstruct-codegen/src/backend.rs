@@ -44,20 +44,9 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             embedded_crate_source(include_str!("../../appstruct-contracts/src/lib.rs")),
             ArtifactKind::RustSource,
         ),
-        Artifact::text(
-            "backend/runtime/src/lib.rs",
-            embedded_crate_source(include_str!("../../appstruct-runtime/src/lib.rs")),
-            ArtifactKind::RustSource,
-        ),
-        Artifact::text(
-            "backend/runtime/src/lifecycle.rs",
-            format!(
-                "{}{}",
-                generated_header("//"),
-                include_str!("../../appstruct-runtime/src/lifecycle.rs")
-            ),
-            ArtifactKind::RustSource,
-        ),
+    ];
+    artifacts.extend(embedded_runtime_artifacts());
+    artifacts.extend([
         Artifact::text(
             "server/Cargo.toml",
             manifest::server_cargo(),
@@ -108,7 +97,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             operations::source(ir)?,
             ArtifactKind::RustSource,
         ),
-    ];
+    ]);
     artifacts.extend(audit::plan(ir)?);
     artifacts.extend(auth::plan(ir)?);
     artifacts.extend(file::plan(ir)?);
@@ -117,6 +106,34 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     artifacts.extend(tenant::plan(ir)?);
     artifacts.extend(entity_artifacts(ir)?);
     Ok(artifacts)
+}
+
+fn embedded_runtime_artifacts() -> [Artifact; 3] {
+    [
+        Artifact::text(
+            "backend/runtime/src/lib.rs",
+            embedded_crate_source(include_str!("../../appstruct-runtime/src/lib.rs")),
+            ArtifactKind::RustSource,
+        ),
+        Artifact::text(
+            "backend/runtime/src/lifecycle.rs",
+            format!(
+                "{}{}",
+                generated_header("//"),
+                include_str!("../../appstruct-runtime/src/lifecycle.rs")
+            ),
+            ArtifactKind::RustSource,
+        ),
+        Artifact::text(
+            "backend/runtime/src/supervisor.rs",
+            format!(
+                "{}{}",
+                generated_header("//"),
+                include_str!("../../appstruct-runtime/src/supervisor.rs")
+            ),
+            ArtifactKind::RustSource,
+        ),
+    ]
 }
 
 fn embedded_crate_source(source: &str) -> String {
@@ -227,10 +244,11 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
 
         pub use error::{ApiError, FieldViolation};
         pub use appstruct_runtime::{
-            Actor, ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase, ModulePlan,
-            ModuleRuntime, ModuleStarter, RUNTIME_API_VERSION, ServiceHandle, ServiceHandles,
-            ShutdownError, ShutdownFailure, ShutdownFailureKind, ShutdownReport, StartupError,
-            TenantId,
+            Actor, BackgroundTaskExit, BackgroundTaskExitKind, BackgroundTaskObserver,
+            ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase, ModulePlan, ModuleRuntime,
+            ModuleStarter, RUNTIME_API_VERSION, ServiceHandle, ServiceHandles, ShutdownError,
+            ShutdownFailure, ShutdownFailureKind, ShutdownReport, StartupError,
+            SupervisedTaskHandle, TenantId,
         };
         pub const GENERATED_RUNTIME_API_VERSION: u32 = #runtime_api_version;
         const _: [(); GENERATED_RUNTIME_API_VERSION as usize] =

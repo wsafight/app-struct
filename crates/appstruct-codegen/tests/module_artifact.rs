@@ -1,5 +1,5 @@
 use appstruct_codegen::{ArtifactKind, plan};
-use appstruct_compiler::compile_project;
+use appstruct_compiler::{compile_project, updated_project_lock};
 use std::fs;
 use std::path::Path;
 
@@ -32,6 +32,11 @@ fn isolates_local_artifacts_and_generates_a_noop_runtime_starter() {
     fs::write(
         temporary.path().join("modules/example/assets/README.md"),
         "local content\n",
+    )
+    .unwrap();
+    fs::write(
+        temporary.path().join("appstruct.lock"),
+        updated_project_lock(temporary.path()).unwrap(),
     )
     .unwrap();
 

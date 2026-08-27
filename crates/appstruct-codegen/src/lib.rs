@@ -10,7 +10,7 @@ mod web;
 
 pub use artifact::{Artifact, ArtifactKind, CodegenError};
 
-use appstruct_ir::{AppIr, to_canonical_json};
+use appstruct_ir::{AppIr, to_canonical_json, validate_app_ir};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -20,6 +20,7 @@ use std::process::{Command, Stdio};
 ///
 /// Returns an error if IR serialization or source generation fails.
 pub fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
+    validate_app_ir(ir)?;
     let canonical_ir = to_canonical_json(ir)?;
     let mut artifacts = vec![Artifact::text(
         "ir/app-ir.json",

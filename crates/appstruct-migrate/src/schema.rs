@@ -1,4 +1,7 @@
-use appstruct_ir::{AppIr, DatabaseProvider, FieldTypeIr, GeneratedValueIr, OnDeleteIr};
+use appstruct_ir::{
+    AppIr, DatabaseProvider, FieldTypeIr, GeneratedValueIr, IrValidationErrors, OnDeleteIr,
+    validate_app_ir,
+};
 use serde::{Deserialize, Serialize};
 
 mod audit;
@@ -75,8 +78,13 @@ pub struct UniqueConstraintSchema {
     pub columns: Vec<String>,
 }
 
-#[must_use]
-pub fn extract(ir: &AppIr) -> DatabaseSchema {
+/// Extract a database schema from semantically valid IR.
+///
+/// # Errors
+///
+/// Returns all IR invariant violations before schema traversal begins.
+pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
+    validate_app_ir(ir)?;
     let mut tables = ir
         .entities
         .iter()
@@ -134,13 +142,13 @@ pub fn extract(ir: &AppIr) -> DatabaseSchema {
         tables.extend(file::tables());
         foreign_keys.extend(file::foreign_keys(ir));
     }
-    DatabaseSchema {
+    Ok(DatabaseSchema {
         schema_version: SCHEMA_VERSION,
         provider: ir.database.provider,
         tables,
         unique_constraints,
         foreign_keys,
-    }
+    })
 }
 
 fn tenant_unique_constraint(entity: &appstruct_ir::EntityIr) -> UniqueConstraintSchema {

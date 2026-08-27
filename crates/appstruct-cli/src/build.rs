@@ -1,7 +1,7 @@
 use crate::environment::ProjectEnvironment;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 
 pub(crate) fn run(project: &Path) -> ExitCode {
     let backend = match backend_manifest(project) {
@@ -26,7 +26,12 @@ pub(crate) fn run(project: &Path) -> ExitCode {
             );
         }
     };
-    if super::generation::run(project, false) != ExitCode::SUCCESS {
+    let generation = if crate::report::is_json() {
+        super::generation::run_quiet(project, false)
+    } else {
+        super::generation::run(project, false)
+    };
+    if generation != ExitCode::SUCCESS {
         return ExitCode::from(1);
     }
     let environment = match ProjectEnvironment::load(project) {
@@ -55,9 +60,18 @@ pub(crate) fn run(project: &Path) -> ExitCode {
             exit,
         );
     }
-    println!("Production build completed:");
-    println!("- backend: .appstruct/cache/backend-target/release/{binary}");
-    println!("- web: generated/web/dist");
+    let backend = format!(".appstruct/cache/backend-target/release/{binary}");
+    if crate::report::is_json() {
+        crate::report::success(&serde_json::json!({
+            "command": "build",
+            "backend": backend,
+            "web": "generated/web/dist",
+        }));
+    } else {
+        println!("Production build completed:");
+        println!("- backend: {backend}");
+        println!("- web: generated/web/dist");
+    }
     ExitCode::SUCCESS
 }
 
@@ -189,6 +203,7 @@ fn run_cargo(
     }
     command.args(trailing);
     environment.apply(&mut command);
+    isolate_stdout_for_json(&mut command);
     check_status(command.status()?, "cargo")
 }
 
@@ -207,7 +222,14 @@ fn run_command(
     }
     command.args(trailing);
     environment.apply(&mut command);
+    isolate_stdout_for_json(&mut command);
     check_status(command.status()?, program)
+}
+
+fn isolate_stdout_for_json(command: &mut Command) {
+    if crate::report::is_json() {
+        command.stdout(Stdio::null());
+    }
 }
 
 fn check_status(status: std::process::ExitStatus, program: &str) -> io::Result<()> {

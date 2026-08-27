@@ -41,7 +41,22 @@ pub(crate) fn run(project: &Path, command: &PresetCommand) -> ExitCode {
     match command {
         PresetCommand::Show { expanded: true } => {
             match appstruct_compiler::expanded_preset(project) {
-                Ok(Some(expanded)) => print!("{expanded}"),
+                Ok(Some(expanded)) => {
+                    if crate::report::is_json() {
+                        crate::report::success(&serde_json::json!({
+                            "command": "preset",
+                            "action": "show",
+                            "expanded": true,
+                            "name": info.name,
+                            "version": info.version,
+                            "digest": info.digest,
+                            "modules": info.modules,
+                            "source": expanded,
+                        }));
+                    } else {
+                        print!("{expanded}");
+                    }
+                }
                 Ok(None) => unreachable!("compiled IR selected a preset"),
                 Err(diagnostics) => {
                     return crate::report::fail_diagnostics(
@@ -52,9 +67,21 @@ pub(crate) fn run(project: &Path, command: &PresetCommand) -> ExitCode {
             }
         }
         PresetCommand::Show { expanded: false } => {
-            println!("{} {}", info.name, info.version);
-            println!("digest: {}", info.digest);
-            println!("modules: {}", info.modules.join(", "));
+            if crate::report::is_json() {
+                crate::report::success(&serde_json::json!({
+                    "command": "preset",
+                    "action": "show",
+                    "expanded": false,
+                    "name": info.name,
+                    "version": info.version,
+                    "digest": info.digest,
+                    "modules": info.modules,
+                }));
+            } else {
+                println!("{} {}", info.name, info.version);
+                println!("digest: {}", info.digest);
+                println!("modules: {}", info.modules.join(", "));
+            }
         }
     }
     ExitCode::SUCCESS

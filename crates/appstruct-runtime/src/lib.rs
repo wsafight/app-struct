@@ -1,6 +1,7 @@
 //! Stable contracts shared by generated `AppStruct` backends.
 
 mod lifecycle;
+mod supervisor;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,9 @@ use std::time::Duration;
 pub use lifecycle::{
     ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase, ModulePlan, ModuleRuntime,
     ModuleStarter,
+};
+pub use supervisor::{
+    BackgroundTaskExit, BackgroundTaskExitKind, BackgroundTaskObserver, SupervisedTaskHandle,
 };
 
 /// Version of the generated-backend/runtime contract.

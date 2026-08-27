@@ -1,4 +1,4 @@
-use appstruct_compiler::{compile_project, compile_project_report};
+use appstruct_compiler::{compile_project, compile_project_report, updated_project_lock};
 use appstruct_ir::{ModuleOrigin, OperationTypeIr, to_canonical_json};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -103,6 +103,21 @@ fn loads_local_modules_and_artifacts_into_the_capability_graph() {
     )
     .unwrap();
 
+    let diagnostics = compile_project(temporary.path()).unwrap_err();
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "AS3065"
+            && diagnostic
+                .help
+                .as_deref()
+                .is_some_and(|help| help.contains("appstruct update"))
+    }));
+    let lock = updated_project_lock(temporary.path()).unwrap();
+    assert!(lock.contains("[[local_modules]]"));
+    assert!(lock.contains("manifest_path = \"modules/example/module.toml\""));
+    assert!(lock.contains("[[local_modules.artifacts]]"));
+    assert!(lock.contains("source = \"modules/example/assets/README.md\""));
+    fs::write(temporary.path().join("appstruct.lock"), lock).unwrap();
+
     let ir = compile_project(temporary.path()).unwrap();
     let module = ir
         .modules
@@ -131,6 +146,24 @@ fn loads_local_modules_and_artifacts_into_the_capability_graph() {
     );
     assert_eq!(module.artifacts[0].content, "# Local module\n");
     assert!(module.startup_order > ir.modules[0].startup_order);
+
+    fs::write(
+        temporary.path().join("modules/example/assets/README.md"),
+        "changed module\n",
+    )
+    .unwrap();
+    assert_provenance_drift(temporary.path());
+    fs::write(
+        temporary.path().join("modules/example/assets/README.md"),
+        "# Local module\n",
+    )
+    .unwrap();
+    fs::write(
+        temporary.path().join("modules/example/module.toml"),
+        format!("{manifest}\n"),
+    )
+    .unwrap();
+    assert_provenance_drift(temporary.path());
 }
 
 #[test]
@@ -350,4 +383,11 @@ fn add_module_declaration(project: &Path, manifest: &str) {
         format!("{source}\nmodule_manifests:\n  - {manifest}\n"),
     )
     .unwrap();
+}
+
+fn assert_provenance_drift(project: &Path) {
+    let diagnostics = compile_project(project).unwrap_err();
+    assert!(diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "AS3065" && diagnostic.message.contains("provenance has drifted")
+    }));
 }

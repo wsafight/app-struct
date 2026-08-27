@@ -3,7 +3,7 @@ use appstruct_ir::AppIr;
 use appstruct_migrate::{extract, initial_migration, to_json};
 
 pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
-    let schema = extract(ir);
+    let schema = extract(ir).map_err(|error| CodegenError::new(error.to_string()))?;
     Ok(vec![
         Artifact::text(
             "database/schema.json",

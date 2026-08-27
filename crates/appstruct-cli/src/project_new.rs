@@ -21,8 +21,17 @@ struct TemplateFile {
 pub(crate) fn run(parent: &Path, name: &str, template: ProjectTemplate) -> ExitCode {
     match create(parent, name, template) {
         Ok(destination) => {
-            println!("Created AppStruct project at {}", destination.display());
-            println!("Next: cd {name} && appstruct dev");
+            if crate::report::is_json() {
+                crate::report::success(&serde_json::json!({
+                    "command": "new",
+                    "name": name,
+                    "template": template.name(),
+                    "path": destination,
+                }));
+            } else {
+                println!("Created AppStruct project at {}", destination.display());
+                println!("Next: cd {name} && appstruct dev");
+            }
             ExitCode::SUCCESS
         }
         Err(error) => {

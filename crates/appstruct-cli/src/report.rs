@@ -93,6 +93,12 @@ struct ErrorEnvelope<'error> {
 }
 
 #[derive(Serialize)]
+struct SuccessEnvelope<'result, T> {
+    ok: bool,
+    result: &'result T,
+}
+
+#[derive(Serialize)]
 struct MessageEnvelope<'message> {
     level: &'static str,
     code: &'message str,
@@ -110,6 +116,14 @@ pub(crate) fn output_format() -> OutputFormat {
     } else {
         OutputFormat::Text
     }
+}
+
+pub(crate) fn is_json() -> bool {
+    output_format() == OutputFormat::Json
+}
+
+pub(crate) fn success(result: &impl Serialize) {
+    write_json(&SuccessEnvelope { ok: true, result });
 }
 
 pub(crate) fn fail(
@@ -138,7 +152,7 @@ pub(crate) fn fail_diagnostics(category: ErrorCategory, diagnostics: Vec<Diagnos
 pub(crate) fn warning(code: &str, category: ErrorCategory, message: &str) {
     match output_format() {
         OutputFormat::Text => eprintln!("warning[{code}]: {message}"),
-        OutputFormat::Json => write_json(&MessageEnvelope {
+        OutputFormat::Json => write_json_stderr(&MessageEnvelope {
             level: "warning",
             code,
             category,
@@ -165,6 +179,13 @@ fn emit_error(error: &CliError) {
 pub(crate) fn write_json(value: &impl Serialize) {
     match serde_json::to_string_pretty(value) {
         Ok(output) => println!("{output}"),
+        Err(error) => eprintln!("error[AS5003]: failed to serialize CLI report: {error}"),
+    }
+}
+
+fn write_json_stderr(value: &impl Serialize) {
+    match serde_json::to_string(value) {
+        Ok(output) => eprintln!("{output}"),
         Err(error) => eprintln!("error[AS5003]: failed to serialize CLI report: {error}"),
     }
 }

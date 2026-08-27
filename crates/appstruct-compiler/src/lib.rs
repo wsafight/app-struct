@@ -63,6 +63,9 @@ pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<
     diagnostics.extend(preset::validate_lock(&root, &surface_root));
     let (local_modules, module_diagnostics) =
         module::load_local_modules(&root, &surface_root.module_manifests);
+    if module_diagnostics.is_empty() {
+        diagnostics.extend(preset::validate_local_module_lock(&root, &local_modules));
+    }
     diagnostics.extend(module_diagnostics);
     let mut canonical_includes = BTreeMap::<PathBuf, SourceSpan>::new();
     let mut application = surface::SurfaceDomain::default();
@@ -145,7 +148,12 @@ pub fn updated_project_lock(project_root: &Path) -> Result<String, Vec<Diagnosti
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
-    preset::updated_lock(&root, &surface_root).map_err(|error| vec![error])
+    let (local_modules, module_diagnostics) =
+        module::load_local_modules(&root, &surface_root.module_manifests);
+    if !module_diagnostics.is_empty() {
+        return Err(module_diagnostics);
+    }
+    preset::updated_lock(&root, &surface_root, &local_modules).map_err(|error| vec![error])
 }
 
 fn canonical_project_root(project_root: &Path) -> Result<PathBuf, Vec<Diagnostic>> {

@@ -12,6 +12,14 @@ mod web_format;
 use transaction::GenerationTransaction;
 
 pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
+    run_with_output(project, check, true)
+}
+
+pub(crate) fn run_quiet(project: &Path, check: bool) -> ExitCode {
+    run_with_output(project, check, false)
+}
+
+fn run_with_output(project: &Path, check: bool, emit_success: bool) -> ExitCode {
     let transaction = match GenerationTransaction::acquire(project) {
         Ok(transaction) => transaction,
         Err(error) => {
@@ -26,16 +34,8 @@ pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
     let root = project.join("generated");
     match cache::load_hit(project, &root) {
         Ok(Some(hit)) => {
-            if check {
-                println!(
-                    "Generated artifacts are current ({} files; cache hit)",
-                    hit.artifact_count
-                );
-            } else {
-                println!(
-                    "Generated {} artifacts for {} (0 changed; cache hit)",
-                    hit.artifact_count, hit.app_name
-                );
+            if emit_success {
+                render_success(check, &hit.app_name, hit.artifact_count, 0, true);
             }
             return ExitCode::SUCCESS;
         }
@@ -78,22 +78,22 @@ pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
         );
     }
     if check {
-        return check_artifacts(&root, &artifacts);
+        return check_artifacts(&root, &artifacts, &ir.app.name, emit_success);
     }
     match write_artifacts(&transaction, &root, &artifacts) {
         Ok(changed) => {
-            if let Err(error) = cache::record(project, &root, &ir.app.name, artifacts.len()) {
+            if let Err(error) = cache::record(project, &root, &ir.app.name, artifacts.len())
+                && emit_success
+            {
                 crate::report::warning(
                     "AS5007",
                     crate::report::ErrorCategory::Generation,
                     &format!("cannot update generation cache: {error}"),
                 );
             }
-            println!(
-                "Generated {} artifacts for {} ({changed} changed)",
-                artifacts.len(),
-                ir.app.name
-            );
+            if emit_success {
+                render_success(false, &ir.app.name, artifacts.len(), changed, false);
+            }
             ExitCode::SUCCESS
         }
         Err(error) => crate::report::fail(
@@ -105,7 +105,12 @@ pub(crate) fn run(project: &Path, check: bool) -> ExitCode {
     }
 }
 
-fn check_artifacts(root: &Path, artifacts: &[Artifact]) -> ExitCode {
+fn check_artifacts(
+    root: &Path,
+    artifacts: &[Artifact],
+    app_name: &str,
+    emit_success: bool,
+) -> ExitCode {
     let expected = match ownership::expected_files(artifacts) {
         Ok(expected) => expected,
         Err(error) => {
@@ -133,16 +138,47 @@ fn check_artifacts(root: &Path, artifacts: &[Artifact]) -> ExitCode {
         .map(|(path, _)| root.join(path))
         .collect::<Vec<_>>();
     if stale.is_empty() {
-        println!(
-            "Generated artifacts are current ({} files)",
-            artifacts.len()
-        );
+        if emit_success {
+            render_success(true, app_name, artifacts.len(), 0, false);
+        }
         return ExitCode::SUCCESS;
     }
-    for path in stale {
-        eprintln!("stale generated artifact: {}", path.display());
+    let paths = stale
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>();
+    crate::report::fail(
+        "AS5004",
+        crate::report::ErrorCategory::Generation,
+        format!("stale generated artifacts: {}", paths.join(", ")),
+        crate::report::ExitClass::Validation,
+    )
+}
+
+fn render_success(
+    check: bool,
+    app_name: &str,
+    artifact_count: usize,
+    changed: usize,
+    cache_hit: bool,
+) {
+    if crate::report::is_json() {
+        crate::report::success(&serde_json::json!({
+            "command": "generate",
+            "mode": if check { "check" } else { "write" },
+            "app": app_name,
+            "artifact_count": artifact_count,
+            "changed": changed,
+            "cache_hit": cache_hit,
+            "current": check,
+        }));
+    } else if check {
+        let cache = if cache_hit { "; cache hit" } else { "" };
+        println!("Generated artifacts are current ({artifact_count} files{cache})");
+    } else {
+        let cache = if cache_hit { "; cache hit" } else { "" };
+        println!("Generated {artifact_count} artifacts for {app_name} ({changed} changed{cache})");
     }
-    ExitCode::from(1)
 }
 
 fn write_artifacts(

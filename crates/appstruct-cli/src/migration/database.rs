@@ -54,28 +54,58 @@ fn database_url(configured_url: Option<&str>) -> Option<String> {
 }
 
 fn render_apply(report: &ApplyReport) -> ExitCode {
-    println!(
-        "Applied {} migration(s); {} total",
-        report.applied_now, report.total_applied
-    );
+    if matches!(&report.drift, DriftStatus::Detected(_)) {
+        return render_drift(&report.drift);
+    }
+    if crate::report::is_json() {
+        crate::report::success(&serde_json::json!({
+            "command": "migrate",
+            "action": "apply",
+            "applied_now": report.applied_now,
+            "total_applied": report.total_applied,
+            "drift": drift_name(&report.drift),
+        }));
+    } else {
+        println!(
+            "Applied {} migration(s); {} total",
+            report.applied_now, report.total_applied
+        );
+    }
     render_drift(&report.drift)
 }
 
 fn render_status(status: &MigrationStatus) -> ExitCode {
-    println!("Migration status:");
-    println!("- applied: {}", status.applied);
-    println!("- pending: {}", status.pending);
+    if matches!(&status.drift, DriftStatus::Detected(_)) {
+        return render_drift(&status.drift);
+    }
+    if crate::report::is_json() {
+        crate::report::success(&serde_json::json!({
+            "command": "migrate",
+            "action": "status",
+            "applied": status.applied,
+            "pending": status.pending,
+            "drift": drift_name(&status.drift),
+        }));
+    } else {
+        println!("Migration status:");
+        println!("- applied: {}", status.applied);
+        println!("- pending: {}", status.pending);
+    }
     render_drift(&status.drift)
 }
 
 fn render_drift(drift: &DriftStatus) -> ExitCode {
     match drift {
         DriftStatus::Clean => {
-            println!("- drift: none");
+            if !crate::report::is_json() {
+                println!("- drift: none");
+            }
             ExitCode::SUCCESS
         }
         DriftStatus::Deferred => {
-            println!("- drift: deferred until pending migrations are applied");
+            if !crate::report::is_json() {
+                println!("- drift: deferred until pending migrations are applied");
+            }
             ExitCode::SUCCESS
         }
         DriftStatus::Detected(issues) => crate::report::fail(
@@ -84,6 +114,14 @@ fn render_drift(drift: &DriftStatus) -> ExitCode {
             format!("database schema drift detected: {}", issues.join("; ")),
             crate::report::ExitClass::Database,
         ),
+    }
+}
+
+fn drift_name(drift: &DriftStatus) -> &'static str {
+    match drift {
+        DriftStatus::Clean => "clean",
+        DriftStatus::Deferred => "deferred",
+        DriftStatus::Detected(_) => "detected",
     }
 }
 

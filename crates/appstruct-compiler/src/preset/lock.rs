@@ -1,5 +1,6 @@
 use super::{MODULE_VERSION, preset_info};
 use crate::loading::synthetic_span;
+use crate::module::LoadedModule;
 use crate::surface::SurfaceRoot;
 use appstruct_ir::Diagnostic;
 use serde::Deserialize;
@@ -18,6 +19,7 @@ pub(super) fn source(
     template: &str,
     preset: Option<(&str, u64)>,
     layout: ProjectLayout,
+    local_modules: &[LoadedModule],
 ) -> Option<String> {
     let mut output = format!(
         "lock_version = 1\nproject_layout_version = {}\nappstruct = {:?}\n\n[template]\nname = {template:?}\nversion = {:?}\n",
@@ -25,19 +27,49 @@ pub(super) fn source(
         env!("CARGO_PKG_VERSION"),
         env!("CARGO_PKG_VERSION"),
     );
-    let Some((name, version)) = preset else {
-        return Some(output);
-    };
-    let info = preset_info(name, version)?;
-    let _ = write!(
-        output,
-        "\n[preset]\nname = {:?}\nversion = {}\ndigest = {:?}\n\n[modules]\n",
-        info.name, info.version, info.digest,
-    );
-    for module in info.modules {
-        let _ = writeln!(output, "{module} = {MODULE_VERSION:?}");
+    if let Some((name, version)) = preset {
+        let info = preset_info(name, version)?;
+        let _ = write!(
+            output,
+            "\n[preset]\nname = {:?}\nversion = {}\ndigest = {:?}\n\n[modules]\n",
+            info.name, info.version, info.digest,
+        );
+        for module in info.modules {
+            let _ = writeln!(output, "{module} = {MODULE_VERSION:?}");
+        }
     }
+    append_local_modules(&mut output, local_modules);
     Some(output)
+}
+
+fn append_local_modules(output: &mut String, modules: &[LoadedModule]) {
+    let mut modules = modules.iter().collect::<Vec<_>>();
+    modules.sort_by(|left, right| {
+        left.manifest
+            .name
+            .cmp(&right.manifest.name)
+            .then(left.manifest_path.cmp(&right.manifest_path))
+    });
+    for module in modules {
+        let _ = write!(
+            output,
+            "\n[[local_modules]]\nname = {:?}\nversion = {:?}\nmanifest_path = {:?}\nmanifest_sha256 = {:?}\n",
+            module.manifest.name,
+            module.manifest.version,
+            module.manifest_path,
+            module.content_sha256,
+        );
+        for artifact in &module.artifacts {
+            let _ = write!(
+                output,
+                "\n[[local_modules.artifacts]]\npath = {:?}\nsource = {:?}\nsha256 = {:?}\nbyte_len = {}\n",
+                artifact.path,
+                artifact.source.as_deref().unwrap_or_default(),
+                artifact.sha256,
+                artifact.byte_len,
+            );
+        }
+    }
 }
 
 pub(super) fn layout(project: &Path) -> Result<ProjectLayout, Diagnostic> {
@@ -116,13 +148,60 @@ pub(super) fn validate(project: &Path, root: &SurfaceRoot) -> Vec<Diagnostic> {
     validate_contract(&lock, &info)
 }
 
-pub(super) fn updated_source(project: &Path, root: &SurfaceRoot) -> Result<String, Diagnostic> {
+pub(super) fn validate_local_modules(
+    project: &Path,
+    local_modules: &[LoadedModule],
+) -> Vec<Diagnostic> {
+    let path = project.join("appstruct.lock");
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if local_modules.is_empty() {
+                return Vec::new();
+            }
+            return vec![local_module_lock_error(
+                "local module provenance is not locked",
+            )];
+        }
+        Err(error) => {
+            return vec![local_module_lock_error(format!(
+                "cannot read local module provenance: {error}"
+            ))];
+        }
+    };
+    let Ok(lock) = toml::from_str::<ProjectLock>(&source) else {
+        return Vec::new();
+    };
+    let actual = local_modules
+        .iter()
+        .map(LockedLocalModule::from)
+        .collect::<Vec<_>>();
+    let mut actual = actual;
+    actual.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then(left.manifest_path.cmp(&right.manifest_path))
+    });
+    if lock.local_modules == actual {
+        Vec::new()
+    } else {
+        vec![local_module_lock_error(
+            "local module manifest or artifact provenance has drifted",
+        )]
+    }
+}
+
+pub(super) fn updated_source(
+    project: &Path,
+    root: &SurfaceRoot,
+    local_modules: &[LoadedModule],
+) -> Result<String, Diagnostic> {
     let (template, layout) = read_update_metadata(project)?;
     let selected = root
         .preset
         .as_ref()
         .map(|preset| (preset.name.value.as_str(), preset.version.value));
-    source(&template, selected, layout).ok_or_else(|| {
+    source(&template, selected, layout, local_modules).ok_or_else(|| {
         let preset = root
             .preset
             .as_ref()
@@ -232,6 +311,11 @@ fn lock_error(code: &str, message: impl Into<String>) -> Diagnostic {
     Diagnostic::error(code, message, synthetic_span("appstruct.lock"))
 }
 
+fn local_module_lock_error(message: impl Into<String>) -> Diagnostic {
+    Diagnostic::error("AS3065", message, synthetic_span("appstruct.lock"))
+        .with_help("run `appstruct update` to refresh locked local module provenance")
+}
+
 #[derive(Debug, Deserialize)]
 struct ProjectLock {
     lock_version: u64,
@@ -241,6 +325,47 @@ struct ProjectLock {
     preset: Option<LockedPreset>,
     #[serde(default)]
     modules: BTreeMap<String, String>,
+    #[serde(default)]
+    local_modules: Vec<LockedLocalModule>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+struct LockedLocalModule {
+    name: String,
+    version: String,
+    manifest_path: String,
+    manifest_sha256: String,
+    #[serde(default)]
+    artifacts: Vec<LockedModuleArtifact>,
+}
+
+impl From<&LoadedModule> for LockedLocalModule {
+    fn from(module: &LoadedModule) -> Self {
+        Self {
+            name: module.manifest.name.clone(),
+            version: module.manifest.version.clone(),
+            manifest_path: module.manifest_path.clone(),
+            manifest_sha256: module.content_sha256.clone(),
+            artifacts: module
+                .artifacts
+                .iter()
+                .map(|artifact| LockedModuleArtifact {
+                    path: artifact.path.clone(),
+                    source: artifact.source.clone().unwrap_or_default(),
+                    sha256: artifact.sha256.clone(),
+                    byte_len: artifact.byte_len,
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+struct LockedModuleArtifact {
+    path: String,
+    source: String,
+    sha256: String,
+    byte_len: u64,
 }
 
 #[derive(Debug, Deserialize)]

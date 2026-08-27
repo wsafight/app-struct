@@ -33,7 +33,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         use serde::Serialize;
         use std::{
             fmt,
-            sync::{Arc, atomic::{AtomicBool, Ordering}},
+            sync::Arc,
             time::Duration,
         };
         #contract
@@ -200,11 +200,9 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
             fn spawn_inner(
                 self, health: Option<crate::ApplicationHealth>,
             ) -> JobWorkerHandle {
-                let (shutdown, mut receiver) = tokio::sync::watch::channel(false);
-                let expected_shutdown = Arc::new(AtomicBool::new(false));
-                let task_expected_shutdown = Arc::clone(&expected_shutdown);
-                let task = tokio::spawn(async move {
-                    let _exit = WorkerExitGuard { health, expected_shutdown: task_expected_shutdown };
+                let observer = JobWorkerObserver { health };
+                let task = appstruct_runtime::SupervisedTaskHandle::spawn(
+                    "appstruct/jobs", observer, move |mut receiver| async move {
                     loop {
                         if *receiver.borrow() { break; }
                         match self.run_once().await {
@@ -217,8 +215,9 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
                             result = receiver.changed() => if result.is_err() { break; }
                         }
                     }
+                    Ok(())
                 });
-                JobWorkerHandle { shutdown, task, expected_shutdown }
+                JobWorkerHandle { task }
             }
         }
         #lifecycle
@@ -227,29 +226,23 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
 
 fn worker_lifecycle_source() -> proc_macro2::TokenStream {
     quote! {
-        struct WorkerExitGuard {
+        struct JobWorkerObserver {
             health: Option<crate::ApplicationHealth>,
-            expected_shutdown: Arc<AtomicBool>,
         }
-        impl Drop for WorkerExitGuard {
-            fn drop(&mut self) {
-                if !self.expected_shutdown.load(Ordering::Acquire) {
-                    if let Some(health) = &self.health {
-                        health.mark_failed("job worker exited unexpectedly");
-                    }
+        impl appstruct_runtime::BackgroundTaskObserver for JobWorkerObserver {
+            fn exited(&self, event: &appstruct_runtime::BackgroundTaskExit) {
+                if let Some(health) = &self.health {
+                    let detail = event.message.as_deref().unwrap_or("task completed");
+                    health.mark_failed(format!("job worker exited unexpectedly: {detail}"));
                 }
             }
         }
         pub struct JobWorkerHandle {
-            shutdown: tokio::sync::watch::Sender<bool>,
-            task: tokio::task::JoinHandle<()>,
-            expected_shutdown: Arc<AtomicBool>,
+            task: appstruct_runtime::SupervisedTaskHandle,
         }
         impl JobWorkerHandle {
             pub async fn shutdown(self) -> Result<(), appstruct_runtime::ShutdownError> {
-                self.expected_shutdown.store(true, Ordering::Release);
-                self.shutdown.send(true).map_err(appstruct_runtime::ShutdownError::new)?;
-                self.task.await.map_err(appstruct_runtime::ShutdownError::new)
+                self.task.shutdown().await
             }
         }
         #[async_trait]
