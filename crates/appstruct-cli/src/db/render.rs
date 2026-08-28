@@ -1,5 +1,6 @@
 use appstruct_migrate::{
-    IntrospectedColumn, IntrospectedForeignKey, IntrospectedSchema, IntrospectedTable,
+    IntrospectedColumn, IntrospectedForeignKey, IntrospectedIndex, IntrospectedSchema,
+    IntrospectedTable,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
@@ -118,6 +119,7 @@ impl<'schema> RenderContext<'schema> {
         let _ = writeln!(output, "    table: {}", yaml_string(&table.name));
         output.push_str("    fields:\n");
         let mut used_fields = BTreeSet::new();
+        let mut field_names = BTreeMap::new();
         for column in &table.columns {
             if column.name == "revision" {
                 continue;
@@ -126,18 +128,71 @@ impl<'schema> RenderContext<'schema> {
                 .relations
                 .get(&(table.name.as_str(), column.name.as_str()))
                 .copied();
-            self.render_column(output, table, column, relation, &mut used_fields);
+            let field = self.render_column(output, table, column, relation, &mut used_fields);
+            field_names.insert(column.name.as_str(), field);
+        }
+        let has_indexes = table.unique_constraints.iter().any(|index| index.len() > 1)
+            || !table.indexes.is_empty();
+        if has_indexes {
+            output.push_str("    indexes:\n");
         }
         for unique in &table.unique_constraints {
             if unique.len() > 1 {
-                self.warnings.push(format!(
-                    "table `{}` has composite unique constraint ({}) which the current App Spec cannot represent",
-                    table.name,
-                    unique.join(", ")
-                ));
+                self.render_index(
+                    output,
+                    &table.name,
+                    &IntrospectedIndex {
+                        name: format!("{}_{}_unique", table.name, unique.join("_")),
+                        columns: unique.clone(),
+                        unique: true,
+                        predicate: None,
+                    },
+                    &field_names,
+                );
             }
         }
+        for index in &table.indexes {
+            self.render_index(output, &table.name, index, &field_names);
+        }
         output.push('\n');
+    }
+
+    fn render_index(
+        &mut self,
+        output: &mut String,
+        table: &str,
+        index: &IntrospectedIndex,
+        field_names: &BTreeMap<&str, String>,
+    ) {
+        let Some(fields) = index
+            .columns
+            .iter()
+            .map(|column| field_names.get(column.as_str()).cloned())
+            .collect::<Option<Vec<_>>>()
+        else {
+            self.warnings.push(format!(
+                "index `{}` on table `{table}` references an expression or unknown column and needs review",
+                index.name
+            ));
+            return;
+        };
+        let name = index
+            .name
+            .strip_prefix("idx_")
+            .unwrap_or(index.name.as_str());
+        let _ = writeln!(output, "      - name: {}", yaml_string(name));
+        let rendered_fields = fields
+            .iter()
+            .map(|field| yaml_string(field))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let _ = writeln!(output, "        fields: [{rendered_fields}]");
+        if index.unique {
+            output.push_str("        unique: true\n");
+        }
+        if let Some(predicate) = &index.predicate {
+            let _ = writeln!(output, "        where: {}", yaml_string(predicate));
+        }
     }
 
     fn render_column(
@@ -147,7 +202,7 @@ impl<'schema> RenderContext<'schema> {
         column: &IntrospectedColumn,
         relation: Option<&IntrospectedForeignKey>,
         used_fields: &mut BTreeSet<String>,
-    ) {
+    ) -> String {
         let base = relation.map_or_else(
             || field_name(&column.name),
             |_| field_name(column.name.strip_suffix("_id").unwrap_or(&column.name)),
@@ -222,6 +277,7 @@ impl<'schema> RenderContext<'schema> {
             let _ = writeln!(output, "        max_length: {length}");
         }
         render_capabilities(output, &kind, relation.is_some());
+        field
     }
 
     fn render_default(

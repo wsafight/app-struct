@@ -21,6 +21,8 @@ pub struct DatabaseSchema {
     pub tables: Vec<TableSchema>,
     #[serde(default)]
     pub unique_constraints: Vec<UniqueConstraintSchema>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub indexes: Vec<IndexSchema>,
     pub foreign_keys: Vec<ForeignKeySchema>,
 }
 
@@ -78,6 +80,16 @@ pub struct UniqueConstraintSchema {
     pub columns: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexSchema {
+    pub id: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    pub unique: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predicate: Option<String>,
+}
+
 /// Extract a database schema from semantically valid IR.
 ///
 /// # Errors
@@ -113,6 +125,32 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         .filter(|entity| entity.tenant_scoped)
         .map(tenant_unique_constraint)
         .collect::<Vec<_>>();
+    let indexes = ir
+        .entities
+        .iter()
+        .flat_map(|entity| {
+            entity.indexes.iter().map(|index| {
+                let columns = index
+                    .fields
+                    .iter()
+                    .filter_map(|field_id| {
+                        entity
+                            .fields
+                            .iter()
+                            .find(|field| field.id == *field_id)
+                            .map(|field| field.column_name.clone())
+                    })
+                    .collect();
+                IndexSchema {
+                    id: index.id.clone(),
+                    table: entity.table_name.clone(),
+                    columns,
+                    unique: index.unique,
+                    predicate: index.predicate.clone(),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
     let mut foreign_keys = ir
         .relations
         .iter()
@@ -147,6 +185,7 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         provider: ir.database.provider,
         tables,
         unique_constraints,
+        indexes,
         foreign_keys,
     })
 }

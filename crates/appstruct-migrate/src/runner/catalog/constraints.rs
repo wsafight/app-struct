@@ -18,6 +18,14 @@ pub(super) struct UniqueConstraintShape {
     pub columns: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct IndexShape {
+    pub table: String,
+    pub columns: Vec<String>,
+    pub unique: bool,
+    pub predicate: Option<String>,
+}
+
 pub(super) fn key_constraints(
     client: &mut Client,
 ) -> Result<BTreeMap<(String, String), BTreeSet<String>>, MigrationError> {
@@ -170,6 +178,66 @@ ORDER BY relation.relname, con.conname, key.position",
             UniqueConstraintShape {
                 table,
                 columns: columns.into_iter().map(|(_, column)| column).collect(),
+            }
+        })
+        .collect())
+}
+
+pub(super) fn indexes(client: &mut Client) -> Result<BTreeSet<IndexShape>, MigrationError> {
+    let rows = client
+        .query(
+            r"SELECT relation.relname AS table_name,
+       index_relation.relname AS index_name,
+       index_data.indisunique AS is_unique,
+       pg_get_expr(index_data.indpred, index_data.indrelid) AS predicate,
+       attribute.attname AS column_name,
+       key.position::bigint AS position
+FROM pg_index index_data
+JOIN pg_class relation ON relation.oid = index_data.indrelid
+JOIN pg_class index_relation ON index_relation.oid = index_data.indexrelid
+JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+JOIN LATERAL unnest(index_data.indkey) WITH ORDINALITY AS key(number, position) ON true
+JOIN pg_attribute attribute
+  ON attribute.attrelid = relation.oid AND attribute.attnum = key.number
+WHERE namespace.nspname = current_schema()
+  AND index_data.indisvalid
+  AND key.number > 0
+  AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint constraint_data
+    WHERE constraint_data.conindid = index_data.indexrelid
+  )
+ORDER BY relation.relname, index_relation.relname, key.position",
+            &[],
+        )
+        .map_err(|error| database_error("cannot inspect database indexes", &error))?;
+    let mut grouped = BTreeMap::<_, Vec<_>>::new();
+    for row in rows {
+        let key = (
+            catalog_string(&row, "table_name")?,
+            catalog_string(&row, "index_name")?,
+            row.try_get::<_, bool>("is_unique").map_err(|error| {
+                database_error("invalid index uniqueness catalog value", &error)
+            })?,
+            row.try_get::<_, Option<String>>("predicate")
+                .map_err(|error| database_error("invalid index predicate catalog value", &error))?,
+        );
+        let position = row
+            .try_get::<_, i64>("position")
+            .map_err(|error| database_error("invalid index position", &error))?;
+        grouped
+            .entry(key)
+            .or_default()
+            .push((position, catalog_string(&row, "column_name")?));
+    }
+    Ok(grouped
+        .into_iter()
+        .map(|((table, _, unique, predicate), mut columns)| {
+            columns.sort_by_key(|(position, _)| *position);
+            IndexShape {
+                table,
+                columns: columns.into_iter().map(|(_, column)| column).collect(),
+                unique,
+                predicate: predicate.map(|value| value.trim().to_owned()),
             }
         })
         .collect())

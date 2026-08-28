@@ -9,6 +9,8 @@ use crate::jobs::lower_jobs;
 use crate::mail::lower_mail;
 use crate::module::{LoadedModule, resolve_modules_for_app};
 use crate::naming::{pluralize, to_snake_case};
+mod indexes;
+use self::indexes::build_indexes;
 use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceField, SurfaceRoot};
 use crate::tenant::lower_tenant;
 use crate::validation::{validate_entity_declarations, validate_primary_key};
@@ -126,6 +128,7 @@ pub(crate) fn build_ir(
 fn canonicalize_entities(entities: &mut [EntityIr], relations: &mut [RelationIr]) {
     for entity in &mut *entities {
         entity.fields.sort_by(|left, right| left.id.cmp(&right.id));
+        entity.indexes.sort_by(|left, right| left.id.cmp(&right.id));
     }
     entities.sort_by(|left, right| left.id.cmp(&right.id));
     relations.sort_by(|left, right| left.id.cmp(&right.id));
@@ -148,6 +151,7 @@ fn lower_entities(
         let access = build_access(&entity, auth, diagnostics);
         let (mut fields, mut entity_relations) =
             build_fields(&entity, &entity_id, known_entities, auth, diagnostics);
+        let indexes = build_indexes(&entity, &entity_id, &fields, diagnostics);
         let revision_conflict = entity.fields.iter().find(|field| {
             field
                 .column
@@ -192,6 +196,7 @@ fn lower_entities(
                     .map_or_else(|| entity.name.value.clone(), |label| label.value),
                 table_name,
                 fields,
+                indexes,
                 access,
                 views: EntityViewsIr::default(),
                 hooks: HooksIr::default(),

@@ -242,9 +242,29 @@
           "propertyNames": { "$ref": "#/$defs/fieldName" },
           "additionalProperties": { "$ref": "#/$defs/field" }
         },
+        "indexes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/index" }
+        },
         "access": { "$ref": "#/$defs/crudAccess" },
         "tenant": { "type": "boolean" },
         "audit": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "index": {
+      "type": "object",
+      "required": ["fields"],
+      "properties": {
+        "name": { "$ref": "#/$defs/fieldName" },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fieldName" },
+          "uniqueItems": true
+        },
+        "unique": { "type": "boolean" },
+        "where": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": false
     },

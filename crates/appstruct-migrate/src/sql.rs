@@ -1,6 +1,6 @@
 use crate::{
-    ColumnSchema, DatabaseSchema, DatabaseType, ForeignKeySchema, MigrationPlan, SchemaChange,
-    TableSchema, UniqueConstraintSchema,
+    ColumnSchema, DatabaseSchema, DatabaseType, ForeignKeySchema, IndexSchema, MigrationPlan,
+    SchemaChange, TableSchema, UniqueConstraintSchema,
 };
 use appstruct_ir::{GeneratedValueIr, OnDeleteIr};
 
@@ -9,6 +9,7 @@ pub fn initial_migration(schema: &DatabaseSchema) -> String {
     let mut statements = vec![generated_header()];
     statements.extend(schema.tables.iter().map(create_table));
     statements.extend(schema.unique_constraints.iter().map(add_unique_constraint));
+    statements.extend(schema.indexes.iter().map(add_index));
     statements.extend(schema.foreign_keys.iter().map(add_foreign_key));
     format!("{}\n", statements.join("\n"))
 }
@@ -37,11 +38,13 @@ pub fn migration_sql(plan: &MigrationPlan) -> Result<String, String> {
                 after,
             } => alter_column(table, before, after)?,
             SchemaChange::AddUniqueConstraint { constraint } => add_unique_constraint(constraint),
+            SchemaChange::AddIndex { index } => add_index(index),
             SchemaChange::AddForeignKey { foreign_key } => add_foreign_key(foreign_key),
             SchemaChange::RemoveTable { .. }
             | SchemaChange::RenameTable { .. }
             | SchemaChange::RemoveColumn { .. }
             | SchemaChange::RemoveUniqueConstraint { .. }
+            | SchemaChange::RemoveIndex { .. }
             | SchemaChange::RemoveForeignKey { .. } => {
                 return Err("destructive migration cannot be rendered automatically".to_owned());
             }
@@ -178,6 +181,25 @@ fn add_unique_constraint(constraint: &UniqueConstraintSchema) -> String {
         quote_ident(&constraint.table),
         quote_ident(&name)
     )
+}
+
+fn add_index(index: &IndexSchema) -> String {
+    let unique = if index.unique { " UNIQUE" } else { "" };
+    let predicate = index
+        .predicate
+        .as_ref()
+        .map_or_else(String::new, |value| format!(" WHERE ({value})"));
+    format!(
+        "CREATE{unique} INDEX {} ON {} ({}){predicate};\n",
+        quote_ident(&index_name(index)),
+        quote_ident(&index.table),
+        quote_columns(&index.columns),
+    )
+}
+
+fn index_name(index: &IndexSchema) -> String {
+    let suffix = index.id.rsplit("::").next().unwrap_or(index.id.as_str());
+    format!("idx_{}", suffix.replace('.', "_"))
 }
 
 fn quote_columns(columns: &[String]) -> String {

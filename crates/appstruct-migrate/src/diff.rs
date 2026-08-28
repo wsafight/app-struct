@@ -1,4 +1,9 @@
-use crate::{ColumnSchema, DatabaseSchema, ForeignKeySchema, TableSchema, UniqueConstraintSchema};
+mod indexes;
+use self::indexes::diff_indexes;
+use crate::{
+    ColumnSchema, DatabaseSchema, ForeignKeySchema, IndexSchema, TableSchema,
+    UniqueConstraintSchema,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -55,6 +60,12 @@ pub enum SchemaChange {
     },
     RemoveUniqueConstraint {
         constraint: UniqueConstraintSchema,
+    },
+    AddIndex {
+        index: IndexSchema,
+    },
+    RemoveIndex {
+        index: IndexSchema,
     },
     AddForeignKey {
         foreign_key: ForeignKeySchema,
@@ -128,6 +139,7 @@ pub fn diff(before: &DatabaseSchema, after: &DatabaseSchema) -> MigrationPlan {
         }
     }
     diff_unique_constraints(before, after, &old_tables, &mut changes);
+    diff_indexes(before, after, &old_tables, &mut changes);
     diff_foreign_keys(before, after, &old_tables, &mut changes);
     MigrationPlan { changes }
 }
@@ -311,39 +323,39 @@ fn altered_column_risk(before: &ColumnSchema, after: &ColumnSchema) -> ChangeRis
     safe()
 }
 
-fn by_id<T, F>(items: &[T], id: F) -> BTreeMap<&str, &T>
+pub(super) fn by_id<T, F>(items: &[T], id: F) -> BTreeMap<&str, &T>
 where
     F: Fn(&T) -> &str,
 {
     items.iter().map(|item| (id(item), item)).collect()
 }
 
-fn planned(change: SchemaChange, risk: ChangeRisk) -> PlannedChange {
+pub(super) fn planned(change: SchemaChange, risk: ChangeRisk) -> PlannedChange {
     PlannedChange { change, risk }
 }
 
-const fn safe() -> ChangeRisk {
+pub(super) const fn safe() -> ChangeRisk {
     ChangeRisk {
         schema: SchemaRisk::NonDestructive,
         execution: ExecutionRisk::Online,
     }
 }
 
-const fn may_lock() -> ChangeRisk {
+pub(super) const fn may_lock() -> ChangeRisk {
     ChangeRisk {
         schema: SchemaRisk::NonDestructive,
         execution: ExecutionRisk::MayLock,
     }
 }
 
-const fn requires_input() -> ChangeRisk {
+pub(super) const fn requires_input() -> ChangeRisk {
     ChangeRisk {
         schema: SchemaRisk::RequiresInput,
         execution: ExecutionRisk::MayLock,
     }
 }
 
-const fn destructive() -> ChangeRisk {
+pub(super) const fn destructive() -> ChangeRisk {
     ChangeRisk {
         schema: SchemaRisk::Destructive,
         execution: ExecutionRisk::ManualReview,

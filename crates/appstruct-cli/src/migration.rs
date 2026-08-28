@@ -207,6 +207,7 @@ fn empty_schema() -> DatabaseSchema {
         provider: DatabaseProvider::Postgres,
         tables: Vec::new(),
         unique_constraints: Vec::new(),
+        indexes: Vec::new(),
         foreign_keys: Vec::new(),
     }
 }
@@ -253,6 +254,8 @@ fn change_label(change: &SchemaChange) -> String {
         SchemaChange::RemoveUniqueConstraint { constraint } => {
             format!("remove unique constraint `{}`", constraint.id)
         }
+        SchemaChange::AddIndex { index } => format!("add index `{}`", index.id),
+        SchemaChange::RemoveIndex { index } => format!("remove index `{}`", index.id),
         SchemaChange::AddForeignKey { foreign_key } => {
             format!("add foreign key `{}`", foreign_key.id)
         }

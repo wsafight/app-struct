@@ -56,6 +56,9 @@ count/sum/average/min/max and group-by queries over filterable fields. See
 client contracts. Fields can additionally declare independent read/write access rules; unauthorized
 response fields are omitted and unauthorized submitted fields are rejected by the backend.
 
+Composite and partial indexes are declared per entity with `indexes`; see
+[Schema indexes](docs/schema-indexes.md).
+
 Enable tenant isolation together with Auth and mark each tenant-owned entity explicitly:
 
 ```yaml
@@ -137,6 +140,7 @@ the explicit `migrate apply` command.
 - [Upgrading](docs/upgrading.md)
 - [Deployment](docs/deployment.md)
 - [Generated resource queries](docs/data-querying.md)
+- [Schema indexes](docs/schema-indexes.md)
 - [Releasing](docs/releasing.md)
 - [Next product roadmap](docs/next-product-roadmap.md)
 - [Product requirements](PRODUCT.md)

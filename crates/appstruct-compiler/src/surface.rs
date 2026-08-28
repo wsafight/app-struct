@@ -4,6 +4,7 @@ mod auth;
 mod context;
 mod extension;
 mod file;
+mod indexes;
 mod jobs;
 mod mail;
 mod model;
@@ -23,6 +24,7 @@ pub(crate) use modules::{
 };
 
 use self::context::DecodeContext;
+use self::indexes::decode_indexes;
 use self::value::{
     ensure_known_keys, expect_mapping, expect_scalar_string, expect_sequence, expect_string,
     expect_u64, optional_bool, optional_string, optional_u64, required, unknown_key_diagnostics,
@@ -233,7 +235,9 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
     let mapping = expect_mapping(&entry.value, "entity definition")?;
     ensure_known_keys(
         mapping,
-        &["label", "table", "fields", "access", "tenant", "audit"],
+        &[
+            "label", "table", "fields", "indexes", "access", "tenant", "audit",
+        ],
         "entity definition",
     )?;
     let fields_node = required(mapping, "fields", &entry.value.span)?;
@@ -242,6 +246,11 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
     for (field_name, field_entry) in fields_mapping {
         fields.push(decode_field(field_name, field_entry)?);
     }
+    let indexes = mapping
+        .get("indexes")
+        .map(|entry| decode_indexes(&entry.value))
+        .transpose()?
+        .unwrap_or_default();
 
     Ok(SurfaceEntity {
         name: Located {
@@ -251,6 +260,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
         label: optional_string(mapping, "label", "entity `label`")?,
         table: optional_string(mapping, "table", "entity `table`")?,
         fields,
+        indexes,
         access: mapping
             .get("access")
             .map(|access| access::decode_crud_access(&access.value))

@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 mod constraints;
 mod normalize;
 
-use constraints::{ForeignKeyShape, UniqueConstraintShape};
+use constraints::{ForeignKeyShape, IndexShape, UniqueConstraintShape};
 use normalize::{expected_default, expected_type, sql_literals};
 
 const HISTORY_TABLE: &str = "_appstruct_migrations";
@@ -28,6 +28,7 @@ pub(super) fn detect(
     let actual_columns = columns(client)?;
     let key_constraints = constraints::key_constraints(client)?;
     let actual_unique_constraints = constraints::unique_constraints(client)?;
+    let actual_indexes = constraints::indexes(client)?;
     let actual_foreign_keys = constraints::foreign_keys(client)?;
     let checks = check_constraints(client)?;
     let expected_tables = expected
@@ -56,10 +57,55 @@ pub(super) fn detect(
         }
     }
     compare_unique_constraints(expected, &actual_unique_constraints, &mut issues);
+    compare_indexes(expected, &actual_indexes, &mut issues);
     compare_foreign_keys(expected, &actual_foreign_keys, &mut issues);
     issues.sort();
     issues.dedup();
     Ok(issues)
+}
+
+fn compare_indexes(
+    expected: &DatabaseSchema,
+    actual: &BTreeSet<IndexShape>,
+    issues: &mut Vec<String>,
+) {
+    let expected = expected
+        .indexes
+        .iter()
+        .map(|index| IndexShape {
+            table: index.table.clone(),
+            columns: index.columns.clone(),
+            unique: index.unique,
+            predicate: index
+                .predicate
+                .as_ref()
+                .map(|value| value.trim().to_owned()),
+        })
+        .collect::<BTreeSet<_>>();
+    for index in expected.difference(actual) {
+        issues.push(format!(
+            "missing {}index on `{}` ({}){}",
+            if index.unique { "unique " } else { "" },
+            index.table,
+            index.columns.join(", "),
+            index
+                .predicate
+                .as_ref()
+                .map_or_else(String::new, |value| format!(" WHERE ({value})"))
+        ));
+    }
+    for index in actual.difference(&expected) {
+        issues.push(format!(
+            "unexpected {}index on `{}` ({}){}",
+            if index.unique { "unique " } else { "" },
+            index.table,
+            index.columns.join(", "),
+            index
+                .predicate
+                .as_ref()
+                .map_or_else(String::new, |value| format!(" WHERE ({value})"))
+        ));
+    }
 }
 
 fn tables(client: &mut Client) -> Result<BTreeSet<String>, MigrationError> {

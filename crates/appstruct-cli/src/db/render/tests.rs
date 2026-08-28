@@ -35,12 +35,8 @@ fn renders_deterministic_entities_relations_and_review_warnings() {
             .iter()
             .any(|warning| warning.contains("native PostgreSQL enum"))
     );
-    assert!(
-        first
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("composite unique constraint"))
-    );
+    assert!(first.source.contains("    indexes:\n"));
+    assert!(first.source.contains("unique: true"));
     assert!(
         first
             .warnings
@@ -61,6 +57,7 @@ fn normalizes_quoted_identifiers_but_preserves_database_names() {
             ],
             primary_key: vec!["Contact ID".to_owned()],
             unique_constraints: Vec::new(),
+            indexes: Vec::new(),
         }],
         foreign_keys: Vec::new(),
     };
@@ -92,6 +89,7 @@ fn fixture() -> IntrospectedSchema {
                 columns: vec![column("message", "text", false)],
                 primary_key: Vec::new(),
                 unique_constraints: Vec::new(),
+                indexes: Vec::new(),
             },
             IntrospectedTable {
                 name: "projects".to_owned(),
@@ -103,6 +101,7 @@ fn fixture() -> IntrospectedSchema {
                 ],
                 primary_key: vec!["id".to_owned()],
                 unique_constraints: vec![vec!["name".to_owned()]],
+                indexes: Vec::new(),
             },
             IntrospectedTable {
                 name: "tasks".to_owned(),
@@ -114,6 +113,7 @@ fn fixture() -> IntrospectedSchema {
                 ],
                 primary_key: vec!["id".to_owned()],
                 unique_constraints: vec![vec!["project_id".to_owned(), "title".to_owned()]],
+                indexes: Vec::new(),
             },
         ],
         foreign_keys: vec![IntrospectedForeignKey {

@@ -62,6 +62,8 @@ M5 质量门禁已固化。两个独立项目的完整 `generated/` 树逐字节
 
 M6 SaaS Template 门禁从 CLI 创建真实 `saas` 项目并切换到专用 external PostgreSQL，验证 Preset lock、五个模块数据表、迁移、生成 Web TypeScript、注册、组织选择、Project/Task 写入、Audit 事件和跨租户空结果。Playwright 对 1440x900 Audit 页面和 390x844 Project 页面截图，移动表格保持在视口内并使用局部横向滚动。`examples/saas-demo` 与 CLI 模板逐文件字节比对，防止示例漂移。
 
+实体支持有序的复合索引和带 `where` 谓词的部分索引。索引进入 IR、schema snapshot、初始迁移 SQL，并由迁移 status 检查漂移；已有表新增索引标记为可能锁表，删除或变更索引不会自动生成破坏性 SQL。
+
 ## 1. 产品摘要
 
 AppStruct 是一套面向业务系统的配置驱动全栈开发框架。开发者通过声明实体、字段、关系、权限、页面和自定义操作，由 AppStruct 生成可运行的 Rust 后端、数据库迁移、OpenAPI 契约、TypeScript 客户端以及前端 CRUD 界面。

@@ -216,6 +216,7 @@ pub(super) fn empty_schema() -> DatabaseSchema {
         provider: DatabaseProvider::Postgres,
         tables: Vec::new(),
         unique_constraints: Vec::new(),
+        indexes: Vec::new(),
         foreign_keys: Vec::new(),
     }
 }

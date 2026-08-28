@@ -101,12 +101,10 @@ impl fmt::Display for FieldId {
     }
 }
 
-/// Stable logical relation identifier.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct RelationId(pub String);
 
-/// Normalized entity definition.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntityIr {
     pub id: EntityId,
@@ -115,6 +113,8 @@ pub struct EntityIr {
     pub label: String,
     pub table_name: String,
     pub fields: Vec<FieldIr>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub indexes: Vec<IndexIr>,
     pub access: CrudAccessIr,
     pub views: EntityViewsIr,
     pub hooks: HooksIr,
@@ -123,7 +123,16 @@ pub struct EntityIr {
     pub audit_enabled: bool,
 }
 
-/// Normalized field definition.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexIr {
+    pub id: String,
+    pub entity: EntityId,
+    pub fields: Vec<FieldId>,
+    pub unique: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predicate: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FieldIr {
     pub id: FieldId,
@@ -146,7 +155,6 @@ pub struct FieldIr {
     pub ui_component: Option<String>,
 }
 
-/// Field types supported by the first compiler slice.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FieldTypeIr {

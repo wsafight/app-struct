@@ -1,5 +1,7 @@
 mod graph;
+mod indexes;
 use self::graph::{validate_modules, validate_operations, validate_services};
+use self::indexes::validate_indexes;
 use crate::{
     AccessRuleIr, AppIr, EntityId, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr, IR_VERSION,
     RelationIr,
@@ -12,7 +14,6 @@ pub struct IrValidationError {
     pub path: String,
     pub message: String,
 }
-
 impl fmt::Display for IrValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}: {}", self.path, self.message)
@@ -40,8 +41,6 @@ impl fmt::Display for IrValidationErrors {
     }
 }
 impl Error for IrValidationErrors {}
-/// Validate the semantic invariants required by generators and schema extraction.
-///
 /// # Errors
 ///
 /// Returns every independently detectable invariant violation in deterministic path order.
@@ -139,6 +138,7 @@ fn validate_entities(
         for (name, rule) in entity_access(entity) {
             validate_access_rule(rule, entity, &format!("{path}.access.{name}"), errors);
         }
+        validate_indexes(entity, &path, errors);
     }
 }
 fn validate_field_access_rule(

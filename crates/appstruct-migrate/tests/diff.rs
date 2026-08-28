@@ -1,7 +1,7 @@
 use appstruct_compiler::compile_project;
 use appstruct_migrate::{
-    ColumnSchema, DatabaseType, ExecutionRisk, SchemaChange, SchemaRisk, diff, extract, from_json,
-    initial_migration, migration_sql,
+    ColumnSchema, DatabaseType, ExecutionRisk, IndexSchema, SchemaChange, SchemaRisk, diff,
+    extract, from_json, initial_migration, migration_sql,
 };
 use std::path::Path;
 
@@ -179,4 +179,30 @@ fn default_change_and_nullable_relaxation_render_online_sql() {
     let sql = migration_sql(&plan).unwrap();
     assert!(sql.contains("ALTER COLUMN \"priority\" DROP NOT NULL"));
     assert!(sql.contains("ALTER COLUMN \"priority\" SET DEFAULT 1"));
+}
+
+#[test]
+fn composite_and_partial_indexes_are_diffed_and_rendered() {
+    let before = fixture_schema();
+    let mut after = before.clone();
+    after.indexes.push(IndexSchema {
+        id: "app::Project::active_name".to_owned(),
+        table: "projects".to_owned(),
+        columns: vec!["name".to_owned(), "status".to_owned()],
+        unique: true,
+        predicate: Some("status = 'active'".to_owned()),
+    });
+    let plan = diff(&before, &after);
+    assert_eq!(plan.changes.len(), 1);
+    assert!(matches!(
+        plan.changes[0].change,
+        SchemaChange::AddIndex { .. }
+    ));
+    assert_eq!(plan.changes[0].risk.execution, ExecutionRisk::MayLock);
+    assert!(plan.is_blocked());
+
+    let initial = initial_migration(&after);
+    assert!(initial.contains(
+        "CREATE UNIQUE INDEX \"idx_active_name\" ON \"projects\" (\"name\", \"status\") WHERE (status = 'active');"
+    ));
 }

@@ -9,6 +9,14 @@ pub(super) struct KeyConstraint {
     pub columns: Vec<String>,
 }
 
+pub(super) struct Index {
+    pub table: String,
+    pub name: String,
+    pub columns: Vec<String>,
+    pub unique: bool,
+    pub predicate: Option<String>,
+}
+
 pub(super) fn schema_exists(client: &mut Client, schema: &str) -> Result<bool, MigrationError> {
     client
         .query_one(
@@ -145,6 +153,67 @@ ORDER BY source.relname, con.conname, key.position",
         )
         .map_err(|error| database_error("cannot inspect foreign keys", &error))?;
     group_foreign_keys(rows)
+}
+
+pub(super) fn indexes(client: &mut Client, schema: &str) -> Result<Vec<Index>, MigrationError> {
+    let rows = client
+        .query(
+            r"SELECT relation.relname AS table_name,
+       index_relation.relname AS index_name,
+       index_data.indisunique AS is_unique,
+       pg_get_expr(index_data.indpred, index_data.indrelid) AS predicate,
+       attribute.attname AS column_name,
+       key.position::bigint AS position
+FROM pg_index index_data
+JOIN pg_class relation ON relation.oid = index_data.indrelid
+JOIN pg_class index_relation ON index_relation.oid = index_data.indexrelid
+JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+JOIN LATERAL unnest(index_data.indkey) WITH ORDINALITY AS key(number, position) ON true
+JOIN pg_attribute attribute
+  ON attribute.attrelid = relation.oid AND attribute.attnum = key.number
+WHERE namespace.nspname = $1
+  AND index_data.indisvalid
+  AND key.number > 0
+  AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint constraint_data
+    WHERE constraint_data.conindid = index_data.indexrelid
+  )
+ORDER BY relation.relname, index_relation.relname, key.position",
+            &[&schema],
+        )
+        .map_err(|error| database_error("cannot inspect PostgreSQL indexes", &error))?;
+    let mut grouped = BTreeMap::<_, Vec<_>>::new();
+    for row in rows {
+        let key = (
+            text(&row, "table_name")?,
+            text(&row, "index_name")?,
+            row.try_get::<_, bool>("is_unique").map_err(|error| {
+                database_error("invalid index uniqueness catalog value", &error)
+            })?,
+            row.try_get::<_, Option<String>>("predicate")
+                .map_err(|error| database_error("invalid index predicate catalog value", &error))?,
+        );
+        let position = row
+            .try_get::<_, i64>("position")
+            .map_err(|error| database_error("invalid index position", &error))?;
+        grouped
+            .entry(key)
+            .or_default()
+            .push((position, text(&row, "column_name")?));
+    }
+    Ok(grouped
+        .into_iter()
+        .map(|((table, name, unique, predicate), mut columns)| {
+            columns.sort_by_key(|(position, _)| *position);
+            Index {
+                table,
+                name,
+                columns: columns.into_iter().map(|(_, column)| column).collect(),
+                unique,
+                predicate: predicate.map(|value| value.trim().to_owned()),
+            }
+        })
+        .collect())
 }
 
 fn group_foreign_keys(rows: Vec<Row>) -> Result<Vec<IntrospectedForeignKey>, MigrationError> {

@@ -17,6 +17,15 @@ pub struct IntrospectedTable {
     pub columns: Vec<IntrospectedColumn>,
     pub primary_key: Vec<String>,
     pub unique_constraints: Vec<Vec<String>>,
+    pub indexes: Vec<IntrospectedIndex>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IntrospectedIndex {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub unique: bool,
+    pub predicate: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,6 +83,7 @@ fn inspect(client: &mut Client, schema: &str) -> Result<IntrospectedSchema, Migr
             .unwrap_or_default();
     }
     let constraints = catalog::key_constraints(client, schema)?;
+    let indexes = catalog::indexes(client, schema)?;
     let mut columns_by_table = BTreeMap::<String, Vec<_>>::new();
     for column in columns {
         columns_by_table.entry(column.0).or_default().push(column.1);
@@ -90,6 +100,18 @@ fn inspect(client: &mut Client, schema: &str) -> Result<IntrospectedSchema, Migr
                 .push(constraint.columns);
         }
     }
+    let mut indexes_by_table = BTreeMap::<String, Vec<IntrospectedIndex>>::new();
+    for index in indexes {
+        indexes_by_table
+            .entry(index.table.clone())
+            .or_default()
+            .push(IntrospectedIndex {
+                name: index.name,
+                columns: index.columns,
+                unique: index.unique,
+                predicate: index.predicate,
+            });
+    }
     let tables = table_names
         .into_iter()
         .filter(|name| !name.starts_with("_appstruct_"))
@@ -97,6 +119,7 @@ fn inspect(client: &mut Client, schema: &str) -> Result<IntrospectedSchema, Migr
             columns: columns_by_table.remove(&name).unwrap_or_default(),
             primary_key: primary_keys.remove(&name).unwrap_or_default(),
             unique_constraints: unique_constraints.remove(&name).unwrap_or_default(),
+            indexes: indexes_by_table.remove(&name).unwrap_or_default(),
             name,
         })
         .collect();
