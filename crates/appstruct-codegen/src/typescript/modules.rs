@@ -21,12 +21,29 @@ pub(super) fn tenant_source() -> String {
   created_at: string;
 }
 
+export interface TenantInvitation {
+  id: string;
+  email: string;
+  role: "member";
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+}
+
 export const tenantApi = {
   listOrganizations: () => request<{ data: TenantOrganization[] }>("/api/tenant/organizations"),
   createOrganization: (name: string) => request<TenantOrganization>("/api/tenant/organizations", {
     method: "POST",
     body: JSON.stringify({ name }),
   }),
+  listInvitations: () => request<{ data: TenantInvitation[] }>("/api/tenant/invitations"),
+  invite: (email: string, role: TenantInvitation["role"] = "member") =>
+    request<TenantInvitation>("/api/tenant/invitations", {
+      method: "POST", body: JSON.stringify({ email, role }),
+    }),
+  revokeInvitation: (id: string) => request<void>(`/api/tenant/invitations/${id}`, { method: "DELETE" }),
+  acceptInvitation: (token: string) =>
+    request<TenantOrganization>(`/api/tenant/invitations/${encodeURIComponent(token)}/accept`, { method: "POST" }),
   select: (id: string) => selectTenant(id),
   clear: () => selectTenant(),
   current: () => currentTenant(),

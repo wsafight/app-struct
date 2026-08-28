@@ -1,7 +1,7 @@
-import { Building2, Plus } from "lucide-react";
+import { Building2, MailPlus, Plus, Trash2, Users } from "lucide-react";
 import { FormEvent, ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
-import { Outlet } from "react-router-dom";
-import { tenantApi, type TenantOrganization } from "../generated/client";
+import { Link, Outlet, useSearchParams } from "react-router-dom";
+import { tenantApi, type TenantInvitation, type TenantOrganization } from "../generated/client";
 import { errorMessage } from "../resource";
 
 interface TenantContextValue {
@@ -77,8 +77,60 @@ export function TenantSwitcher() {
     <select aria-label="Current organization" value={tenant.current?.id ?? ""} onChange={(event) => tenant.select(event.target.value)}>
       {tenant.organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
     </select>
+    <Link to="/organization" title="Organization settings" aria-label="Organization settings"><Users size={15} /></Link>
     <button type="button" title="Create organization" aria-label="Create organization" onClick={() => void create()}><Plus size={15} /></button>
   </div>;
+}
+
+export function OrganizationPage() {
+  const tenant = useTenant();
+  const [invitations, setInvitations] = useState<TenantInvitation[]>([]);
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const owner = tenant.current?.role === "owner";
+
+  useEffect(() => {
+    if (owner) tenantApi.listInvitations().then(({ data }) => setInvitations(data)).catch((reason) => setError(errorMessage(reason)));
+  }, [owner, tenant.current?.id]);
+
+  async function invite(event: FormEvent) {
+    event.preventDefault(); setError(""); setBusy(true);
+    try {
+      const invitation = await tenantApi.invite(email);
+      setInvitations((items) => [invitation, ...items]); setEmail("");
+    } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
+  }
+
+  async function revoke(id: string) {
+    setError("");
+    try { await tenantApi.revokeInvitation(id); setInvitations((items) => items.filter((item) => item.id !== id)); }
+    catch (reason) { setError(errorMessage(reason)); }
+  }
+
+  return <main className="page">
+    <div className="page-heading"><div><h1>Organization</h1><p>Manage members and invitations for {tenant.current?.name}.</p></div></div>
+    {error && <div className="alert" role="alert">{error}</div>}
+    {owner ? <>
+      <section className="form-frame invitation-form"><h2>Invite a member</h2><form className="toolbar" onSubmit={(event) => void invite(event)}><label className="sr-only" htmlFor="invitation-email">Email</label><input id="invitation-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required /><button className="primary-button" disabled={busy}><MailPlus size={16} /> Invite</button></form></section>
+      <section className="table-frame invitation-list"><table><thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Expires</th><th aria-label="Actions" /></tr></thead><tbody>{invitations.map((invitation) => <tr key={invitation.id}><td>{invitation.email}</td><td>{invitation.role}</td><td>{invitation.accepted_at ? "Accepted" : "Pending"}</td><td>{new Date(invitation.expires_at).toLocaleDateString()}</td><td>{!invitation.accepted_at && <button type="button" className="icon-button danger" title="Revoke invitation" aria-label={`Revoke invitation for ${invitation.email}`} onClick={() => void revoke(invitation.id)}><Trash2 size={15} /></button>}</td></tr>)}</tbody></table>{invitations.length === 0 && <div className="empty">No invitations yet</div>}</section>
+    </> : <div className="alert" role="status">Only organization owners can manage invitations.</div>}
+  </main>;
+}
+
+export function InvitationAcceptPage() {
+  const [params] = useSearchParams();
+  const [status, setStatus] = useState<"loading" | "accepted" | "error">("loading");
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    const token = params.get("token");
+    if (!token) { setStatus("error"); setMessage("This invitation link is missing its token."); return; }
+    tenantApi.acceptInvitation(token).then((organization) => {
+      tenantApi.select(organization.id); setStatus("accepted"); setMessage(`You joined ${organization.name}.`);
+      window.history.replaceState({}, "", "/organization");
+    }).catch((reason) => { setStatus("error"); setMessage(errorMessage(reason)); });
+  }, [params]);
+  return <main className="auth-page"><div className="auth-panel"><div className="auth-brand">AppStruct</div><h1>{status === "loading" ? "Accepting invitation" : status === "accepted" ? "Invitation accepted" : "Invitation unavailable"}</h1>{status === "loading" ? <div className="auth-loading" aria-label="Loading" /> : status === "accepted" ? <><p>{message}</p><Link className="primary-button" to="/organization">Open organization</Link></> : <div className="alert" role="alert">{message}</div>}</div></main>;
 }
 
 function TenantOnboarding() {

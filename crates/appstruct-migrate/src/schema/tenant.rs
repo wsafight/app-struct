@@ -3,9 +3,10 @@ use appstruct_ir::{AppIr, OnDeleteIr};
 
 const ORGANIZATIONS: &str = "_appstruct_tenant_organizations";
 const MEMBERSHIPS: &str = "_appstruct_tenant_memberships";
+const INVITATIONS: &str = "_appstruct_tenant_invitations";
 
 pub(super) fn tables() -> Vec<TableSchema> {
-    vec![organizations(), memberships()]
+    vec![organizations(), memberships(), invitations()]
 }
 
 pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {
@@ -34,6 +35,22 @@ pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {
             user_table,
             user_key,
             OnDeleteIr::Cascade,
+        ),
+        foreign_key(
+            "invitation_organization",
+            INVITATIONS,
+            "organization_id",
+            ORGANIZATIONS,
+            "id",
+            OnDeleteIr::Cascade,
+        ),
+        foreign_key(
+            "invitation_inviter",
+            INVITATIONS,
+            "invited_by",
+            user_table,
+            user_key,
+            OnDeleteIr::Restrict,
         ),
     ];
     keys.extend(
@@ -98,6 +115,71 @@ fn memberships() -> TableSchema {
             ),
         ],
     )
+}
+
+fn invitations() -> TableSchema {
+    TableSchema {
+        id: "appstruct::tenant::invitations".to_owned(),
+        name: INVITATIONS.to_owned(),
+        columns: vec![
+            column("invitations.id", "id", DatabaseType::Uuid, true),
+            column(
+                "invitations.organization_id",
+                "organization_id",
+                DatabaseType::Uuid,
+                false,
+            ),
+            column("invitations.email", "email", DatabaseType::Text, false),
+            ColumnSchema {
+                id: "appstruct::tenant::invitations.role".to_owned(),
+                name: "role".to_owned(),
+                data_type: DatabaseType::Text,
+                nullable: false,
+                primary_key: false,
+                unique: false,
+                default: None,
+                generated: None,
+            },
+            ColumnSchema {
+                id: "appstruct::tenant::invitations.token_hash".to_owned(),
+                name: "token_hash".to_owned(),
+                data_type: DatabaseType::Text,
+                nullable: false,
+                primary_key: false,
+                unique: true,
+                default: None,
+                generated: None,
+            },
+            column(
+                "invitations.expires_at",
+                "expires_at",
+                DatabaseType::Datetime,
+                false,
+            ),
+            ColumnSchema {
+                id: "appstruct::tenant::invitations.accepted_at".to_owned(),
+                name: "accepted_at".to_owned(),
+                data_type: DatabaseType::Datetime,
+                nullable: true,
+                primary_key: false,
+                unique: false,
+                default: None,
+                generated: None,
+            },
+            column(
+                "invitations.invited_by",
+                "invited_by",
+                DatabaseType::Uuid,
+                false,
+            ),
+            column(
+                "invitations.created_at",
+                "created_at",
+                DatabaseType::Datetime,
+                false,
+            ),
+        ],
+    }
 }
 
 fn table(id: &str, name: &str, columns: Vec<ColumnSchema>) -> TableSchema {

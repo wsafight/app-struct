@@ -595,6 +595,12 @@ Tenant Module 提供组织和成员关系。已认证用户可以创建组织，
 自己所属的组织。Web Client 将当前组织保存在浏览器本地状态，并在请求中发送
 `X-AppStruct-Tenant`。切换租户只改变后续请求的显式上下文，不复制或迁移业务数据。
 
+组织 owner 可以在当前租户下创建、查看和撤销成员邀请。邀请只接受 `member` 角色，默认有效期
+七天；重复邀请同一地址会替换仍待处理的旧邀请。Runtime 为邀请生成一次性随机 token，仅保存其
+SHA-256 哈希，并通过 Auth Mail Sender 发送包含接受链接的邮件。接受链接必须由已认证且邮箱地址
+匹配的用户打开，成员关系写入与邀请消费在同一事务中完成；过期、撤销、重复消费或邮箱不匹配的
+token 均失败。Tenant Web 页面提供邀请列表、发送和撤销操作。
+
 对 tenant-scoped Entity 的所有 list、read、create、update 和 delete 请求，Runtime 必须先验证：
 
 - 请求已认证且携带合法的当前租户 ID；

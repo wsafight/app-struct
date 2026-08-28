@@ -23,6 +23,7 @@ pub enum ApiError {
     InvalidCredentialsInput,
     InvalidCsrf,
     InvalidResetToken,
+    InvalidInvitationToken,
     Unauthorized,
     TooManyRequests,
     Forbidden,
@@ -105,6 +106,12 @@ impl IntoResponse for ApiError {
                 StatusCode::BAD_REQUEST,
                 "INVALID_RESET_TOKEN",
                 "The password reset link is invalid or expired".to_owned(),
+                vec![],
+            ),
+            Self::InvalidInvitationToken => (
+                StatusCode::BAD_REQUEST,
+                "INVALID_INVITATION_TOKEN",
+                "The organization invitation link is invalid or expired".to_owned(),
                 vec![],
             ),
             Self::Unauthorized => (

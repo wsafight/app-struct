@@ -14,6 +14,15 @@ pub trait AuthMailSender: Send + Sync {
         recipient: &str,
         reset_url: &str,
     ) -> Result<(), ApiError>;
+
+    async fn send_invitation(
+        &self,
+        _database: &DatabaseConnection,
+        _recipient: &str,
+        _invitation_url: &str,
+    ) -> Result<(), ApiError> {
+        Err(ApiError::NotFound)
+    }
 }
 
 pub struct DevMailSender;
@@ -35,6 +44,27 @@ impl AuthMailSender for DevMailSender {
                     recipient.to_owned().into(),
                     "Reset your password".to_owned().into(),
                     reset_url.to_owned().into(),
+                ],
+            ))
+            .await?;
+        Ok(())
+    }
+
+    async fn send_invitation(
+        &self,
+        database: &DatabaseConnection,
+        recipient: &str,
+        invitation_url: &str,
+    ) -> Result<(), ApiError> {
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "INSERT INTO \"_appstruct_auth_mail_capture\" (id, recipient, subject, body, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)",
+                [
+                    uuid::Uuid::now_v7().into(),
+                    recipient.to_owned().into(),
+                    "You are invited to an organization".to_owned().into(),
+                    invitation_url.to_owned().into(),
                 ],
             ))
             .await?;
@@ -104,6 +134,28 @@ impl AuthMailSender for SmtpMailSender {
             .await
             .map_err(|error| {
                 tracing::error!(%error, "auth SMTP delivery failed");
+                ApiError::Internal
+            })?;
+        Ok(())
+    }
+
+    async fn send_invitation(
+        &self,
+        _database: &DatabaseConnection,
+        recipient: &str,
+        invitation_url: &str,
+    ) -> Result<(), ApiError> {
+        let message = Message::builder()
+            .from(self.from.clone())
+            .to(recipient.parse().map_err(|_| ApiError::Internal)?)
+            .subject("You are invited to an organization")
+            .body(format!("Open this link to join the organization:\n\n{invitation_url}\n"))
+            .map_err(|_| ApiError::Internal)?;
+        self.transport
+            .send(message)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "auth SMTP invitation delivery failed");
                 ApiError::Internal
             })?;
         Ok(())

@@ -226,6 +226,8 @@ fn m6_tenant_contract_generates_a_compilable_backend() {
     let sql = artifact_text(&artifacts, "database/0001_initial.sql");
     assert!(sql.contains("_appstruct_tenant_organizations"));
     assert!(sql.contains("_appstruct_tenant_memberships"));
+    assert!(sql.contains("_appstruct_tenant_invitations"));
+    assert!(sql.contains("UNIQUE"));
     assert!(sql.contains("PRIMARY KEY (\"organization_id\", \"user_id\")"));
     assert!(sql.contains("FOREIGN KEY (\"tenant_id\")"));
     assert!(sql.contains("UNIQUE (\"tenant_id\", \"id\")"));
@@ -257,6 +259,8 @@ fn m6_tenant_contract_generates_a_compilable_backend() {
             .any(|parameter| parameter["name"] == "X-AppStruct-Tenant")
     );
     assert!(openapi["paths"]["/api/tenant/organizations"]["post"].is_object());
+    assert!(openapi["paths"]["/api/tenant/invitations"]["post"].is_object());
+    assert!(openapi["paths"]["/api/tenant/invitations/{token}/accept"]["post"].is_object());
 
     let manifest = temporary.path().join("generated/backend/Cargo.toml");
     assert_rustfmt(&manifest);

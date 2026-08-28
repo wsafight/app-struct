@@ -73,7 +73,8 @@ remains out of scope.
 - [x] Bulk update/delete and CSV import/export.
 - [x] Private and shared saved list views.
 - [x] Soft delete, trash, restore, and audit-backed history display.
-- Organization invitations, email verification, OAuth/OIDC, and personal API tokens.
+- [x] Organization invitations.
+- Email verification, OAuth/OIDC, and personal API tokens.
 - Jobs, mail, file, user, tenant, and audit administration pages.
 - Recurring schedules, signed webhooks, retry, and replay.
 - Optional SSE updates and record presence/locks.
