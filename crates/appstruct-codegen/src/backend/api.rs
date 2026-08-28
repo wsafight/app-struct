@@ -1,3 +1,4 @@
+mod bulk;
 mod write;
 
 use super::query::list_support;
@@ -40,6 +41,25 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
     )?;
     let validators = validation_functions(entity)?;
     let field_access = field_access_support(entity, &module)?;
+    let list_scope = super::access::scope(entity, &module, &entity.access.list)?;
+    let create_allowed = super::access::create_allowed(entity, &entity.access.create)?;
+    let update_allowed = super::access::update_allowed(entity, &entity.access.update)?;
+    let delete_allowed = super::access::row_allowed(entity, &entity.access.delete)?;
+    let bulk = bulk::source(
+        entity,
+        &module,
+        &parse_id,
+        &primary,
+        &hooks,
+        &policy,
+        &list_scope,
+        &create_allowed,
+        &delete_allowed,
+        &update_allowed,
+        &create_values,
+        active_default.as_ref(),
+        &updates,
+    )?;
 
     render(quote! {
         use crate::{AppState, ApiError, FieldViolation, RequestContext, entities::#module};
@@ -56,16 +76,19 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         use serde::{Deserialize, Serialize};
         use std::collections::BTreeMap;
 
-        #[derive(Debug, Deserialize)]
+        #[derive(Clone, Debug, Deserialize)]
         pub struct CreateInput { #(#create_fields,)* }
 
-        #[derive(Debug, Deserialize)]
+        #[derive(Clone, Debug, Deserialize)]
         pub struct UpdateInput { #(#update_fields,)* }
 
         pub fn router() -> Router<AppState> {
             Router::new()
                 .route("/", get(list).post(create))
                 .route("/_aggregate", get(aggregate))
+                .route("/_bulk", axum::routing::patch(bulk_update).delete(bulk_delete))
+                .route("/_export.csv", get(export_csv))
+                .route("/_import.csv", axum::routing::post(import_csv))
                 .route("/{id}", get(read).patch(update).delete(delete))
         }
 
@@ -74,6 +97,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         #handlers
         #validators
         #field_access
+        #bulk
     })
 }
 

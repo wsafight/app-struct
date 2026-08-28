@@ -70,7 +70,7 @@ remains out of scope.
 
 ### Phase B: Usable operations
 
-- Bulk update/delete and CSV import/export.
+- [x] Bulk update/delete and CSV import/export.
 - Private and shared saved list views.
 - Soft delete, trash, restore, and audit-backed history display.
 - Organization invitations, email verification, OAuth/OIDC, and personal API tokens.

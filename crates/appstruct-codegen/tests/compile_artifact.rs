@@ -68,6 +68,21 @@ fn generated_fixture_is_a_compilable_rust_crate() {
 }
 
 #[test]
+fn resources_publish_bulk_and_csv_contracts() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
+    let artifacts = plan(&compile_project(&fixture).unwrap()).unwrap();
+    let api = artifact_text(&artifacts, "backend/src/api/project.rs");
+    assert!(api.contains("/_bulk"));
+    assert!(api.contains("/_export.csv"));
+    assert!(api.contains("/_import.csv"));
+    assert!(api.contains("expected_revisions"));
+    let client = artifact_text(&artifacts, "web/src/generated/client.ts");
+    assert!(client.contains("bulkUpdate"));
+    assert!(client.contains("exportCsv"));
+    assert!(client.contains("importCsv"));
+}
+
+#[test]
 fn one_to_one_relation_generates_has_one_inverse() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
     let mut ir = compile_project(&fixture).unwrap();

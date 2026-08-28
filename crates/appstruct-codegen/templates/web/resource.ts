@@ -1,4 +1,4 @@
-import type { AggregateQuery, AggregateResponse, ApiError, CursorListQuery, CursorListResponse, ListQuery, ListResponse } from "./generated/client";
+import type { AggregateQuery, AggregateResponse, ApiError, BulkDeleteRequest, BulkResult, BulkUpdateRequest, CursorListQuery, CursorListResponse, ListQuery, ListResponse } from "./generated/client";
 import type { AppStructRegistry } from "./generated/registry";
 import { createContext, createElement, type ReactNode, useContext } from "react";
 
@@ -76,6 +76,10 @@ export interface ResourceApi {
   create(input: ResourceInput): Promise<ResourceRecord>;
   update(id: string, input: ResourceInput): Promise<ResourceRecord>;
   remove(id: string): Promise<void>;
+  bulkUpdate(input: BulkUpdateRequest<ResourceInput>): Promise<BulkResult>;
+  bulkDelete(input: BulkDeleteRequest): Promise<BulkResult>;
+  exportCsv(): Promise<string>;
+  importCsv(csv: string): Promise<BulkResult>;
 }
 
 export type FieldKind =

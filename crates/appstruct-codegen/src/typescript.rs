@@ -1,3 +1,5 @@
+mod bulk;
+mod entity;
 mod modules;
 use crate::{Artifact, ArtifactKind, generated_header};
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, OperationTypeIr, ValueObjectIr};
@@ -28,7 +30,7 @@ fn client_source(ir: &AppIr) -> String {
     sections.extend(ir.value_objects.iter().map(value_object_type));
     for entity in &ir.entities {
         sections.push(entity_types(entity));
-        sections.push(entity_client(entity));
+        sections.push(entity::client(entity));
     }
     sections.extend(operation_clients(ir));
     format!("{}\n", sections.join("\n"))
@@ -94,7 +96,12 @@ fn operation_type_name<'ir>(ir: &'ir AppIr, operation_type: &OperationTypeIr) ->
     }
 }
 fn runtime_source() -> String {
-    format!("{}\n{}", request_runtime_source(), list_runtime_source())
+    format!(
+        "{}\n{}\n{}",
+        request_runtime_source(),
+        bulk::runtime_source(),
+        list_runtime_source()
+    )
 }
 fn request_runtime_source() -> &'static str {
     r#"const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://127.0.0.1:3000";
@@ -308,39 +315,6 @@ fn entity_types(entity: &EntityIr) -> String {
     format!(
         "export interface {} {{\n{model_fields}\n}}\n\nexport interface Create{}Input {{\n{create_fields}\n}}\n\nexport interface Update{}Input {{\n{update_fields}\n}}\n",
         entity.rust_name, entity.rust_name, entity.rust_name
-    )
-}
-
-fn entity_client(entity: &EntityIr) -> String {
-    let variable = lower_camel(&entity.rust_name);
-    let model = &entity.rust_name;
-    let path = format!("/api/{}/", entity.table_name);
-    format!(
-        r#"export const {variable}Api = {{
-  list: (query: ListQuery = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query)),
-  listCursor: (query: CursorListQuery = {{}}) =>
-    request<CursorListResponse<{model}>>(listPath("{path}", {{ limit: 25, ...query }})),
-  aggregate: (query: AggregateQuery = {{}}) =>
-    request<AggregateResponse>(aggregatePath("{path}_aggregate", query)),
-  get: (id: string) => {{
-    const member = `{path}${{encodeURIComponent(id)}}`;
-    return request<{model}>(member, undefined, member);
-  }},
-  create: (input: Create{model}Input) =>
-    request<{model}>("{path}", {{ method: "POST", body: JSON.stringify(input) }}),
-  update: (id: string, input: Update{model}Input) => {{
-    const member = `{path}${{encodeURIComponent(id)}}`;
-    return request<{model}>(member, {{
-      method: "PATCH",
-      body: JSON.stringify(input),
-    }}, member);
-  }},
-  remove: (id: string) => {{
-    const member = `{path}${{encodeURIComponent(id)}}`;
-    return request<void>(member, {{ method: "DELETE" }});
-  }},
-}};
-"#
     )
 }
 
