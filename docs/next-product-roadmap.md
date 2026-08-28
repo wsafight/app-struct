@@ -65,7 +65,7 @@ remains out of scope.
 - [x] Count/sum/average/min/max aggregates and group-by queries.
 - [x] Composite and partial indexes.
 - [x] Seed data.
-- [ ] Stronger migration linting.
+- [x] Stronger migration linting.
 - [x] Field-level read/write access rules.
 
 ### Phase B: Usable operations

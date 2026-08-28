@@ -1,7 +1,7 @@
 use appstruct_ir::DatabaseProvider;
 use appstruct_migrate::{
-    DatabaseSchema, MigrationPlan, SCHEMA_VERSION, SchemaChange, diff, extract, from_json,
-    migration_sql, stamp_schema_checksum, to_json,
+    DatabaseSchema, LintSeverity, MigrationPlan, SCHEMA_VERSION, SchemaChange, diff, extract,
+    from_json, lint_plan, migration_sql, stamp_schema_checksum, to_json,
 };
 use clap::Subcommand;
 use std::fs;
@@ -31,6 +31,12 @@ pub(crate) enum MigrateCommand {
     Apply,
     /// Compare migration files, database history, and the live PostgreSQL schema.
     Status,
+    /// Check the migration plan for unsafe or operationally risky changes.
+    Lint {
+        /// Treat warnings as errors.
+        #[arg(long)]
+        deny_warnings: bool,
+    },
 }
 
 pub(crate) fn run(project: &Path, command: MigrateCommand) -> ExitCode {
@@ -45,7 +51,7 @@ pub(crate) fn run_with_database(
     match command {
         MigrateCommand::Apply => return database::apply(project, database_url),
         MigrateCommand::Status => return database::status(project, database_url),
-        MigrateCommand::Plan | MigrateCommand::Dev { .. } => {}
+        MigrateCommand::Plan | MigrateCommand::Dev { .. } | MigrateCommand::Lint { .. } => {}
     }
     let target = match appstruct_compiler::compile_project(project) {
         Ok(ir) => match extract(&ir) {
@@ -79,7 +85,9 @@ pub(crate) fn run_with_database(
         }
     };
     let plan = diff(&before, &target);
-    if !crate::report::is_json() {
+    if !crate::report::is_json()
+        && matches!(command, MigrateCommand::Plan | MigrateCommand::Dev { .. })
+    {
         render_plan(&plan);
     }
     match command {
@@ -97,7 +105,39 @@ pub(crate) fn run_with_database(
         MigrateCommand::Dev { accept } => {
             accept_plan(project, &target, &plan, accept, database_url)
         }
+        MigrateCommand::Lint { deny_warnings } => render_lint(&plan, deny_warnings),
         MigrateCommand::Apply | MigrateCommand::Status => unreachable!(),
+    }
+}
+
+fn render_lint(plan: &MigrationPlan, deny_warnings: bool) -> ExitCode {
+    let issues = lint_plan(plan);
+    let denied = deny_warnings
+        && issues
+            .iter()
+            .any(|issue| issue.severity == LintSeverity::Warning);
+    let has_errors = issues
+        .iter()
+        .any(|issue| issue.severity == LintSeverity::Error);
+    if crate::report::is_json() {
+        crate::report::success(&serde_json::json!({
+            "command": "migrate",
+            "action": "lint",
+            "valid": !has_errors && !denied,
+            "issues": issues,
+        }));
+    } else if issues.is_empty() {
+        println!("Migration lint: no issues");
+    } else {
+        println!("Migration lint ({} issues):", issues.len());
+        for issue in &issues {
+            println!("- [{}] {}", issue.code, issue.message);
+        }
+    }
+    if has_errors || denied {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
     }
 }
 

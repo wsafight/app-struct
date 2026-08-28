@@ -123,7 +123,7 @@ appstruct new <name> --template minimal|dashboard|saas
 appstruct schema
 appstruct check [--deny-warnings] [--format text|json]
 appstruct generate [--check]
-appstruct migrate plan|dev|apply|status
+appstruct migrate plan|dev|lint|apply|status
 appstruct dev [--api-port <port>] [--web-port <port>]
 appstruct build
 appstruct doctor [--format text|json]
@@ -135,7 +135,8 @@ appstruct update
 
 `migrate plan` is read-only. `migrate dev --accept` creates and optionally applies only
 non-destructive online migrations. Production deployment uses `migrate status` followed by
-the explicit `migrate apply` command.
+the explicit `migrate apply` command. `migrate lint` reports destructive, locking, and unsafe
+non-null changes without writing files; use `--deny-warnings` in CI to enforce operational review.
 
 ## Documentation
 

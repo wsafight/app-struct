@@ -2,6 +2,7 @@
 
 mod diff;
 mod introspection;
+mod lint;
 mod runner;
 mod schema;
 mod sql;
@@ -13,6 +14,7 @@ pub use introspection::{
     IntrospectedColumn, IntrospectedForeignKey, IntrospectedIndex, IntrospectedSchema,
     IntrospectedTable, inspect_database_schema,
 };
+pub use lint::{LintSeverity, MigrationLint, lint_plan};
 pub use runner::{
     ApplyReport, DriftStatus, MigrationError, MigrationStatus, apply_project, connect_database,
     stamp_schema_checksum, status_project,
