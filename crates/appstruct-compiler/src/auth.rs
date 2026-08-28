@@ -13,6 +13,7 @@ pub(crate) fn lower_auth(
         if auth.user_entity.is_some()
             || auth.registration_enabled
             || auth.password_reset_enabled
+            || auth.oauth_enabled
             || !auth.roles.is_empty()
             || auth.default_role.is_some()
         {
@@ -73,6 +74,7 @@ pub(crate) fn lower_auth(
         user_entity,
         registration_enabled: auth.registration_enabled,
         password_reset_enabled: auth.password_reset_enabled,
+        oauth_enabled: auth.oauth_enabled,
         roles,
         default_role,
     }
@@ -84,6 +86,7 @@ fn disabled_auth() -> AuthIr {
         user_entity: None,
         registration_enabled: false,
         password_reset_enabled: false,
+        oauth_enabled: false,
         roles: Vec::new(),
         default_role: None,
     }

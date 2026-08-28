@@ -45,6 +45,7 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
       <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
       <label>Password<input type="password" minLength={12} autoComplete={registering ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
       <button className="primary-button" disabled={submitting}>{registering ? <UserPlus size={17} /> : <LogIn size={17} />}{submitting ? "Working..." : registering ? "Create account" : "Sign in"}</button>
+      {authFeatures.oauth && !registering && <button type="button" className="secondary-button" onClick={() => authApi.startOidc()}>Continue with SSO</button>}
       <div className="auth-links">
         {authFeatures.passwordReset && <Link to="/forgot-password">Forgot password?</Link>}
         {authFeatures.registration && <Link to={registering ? "/login" : "/register"}>{registering ? "Sign in" : "Create account"}</Link>}

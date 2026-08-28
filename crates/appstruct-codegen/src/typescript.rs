@@ -257,6 +257,7 @@ function appendFilterParams(params: URLSearchParams, query: FilterQuery): void {
 fn auth_source(ir: &AppIr) -> String {
     let registration = ir.auth.registration_enabled;
     let password_reset = ir.auth.password_reset_enabled;
+    let oauth = ir.auth.oauth_enabled;
     format!(
         r#"export interface AuthUser {{
   id: string;
@@ -266,7 +267,7 @@ fn auth_source(ir: &AppIr) -> String {
 
 interface AuthResponse {{ user: AuthUser; email_verified: boolean; }}
 
-export const authFeatures = {{ registration: {registration}, passwordReset: {password_reset}, emailVerification: true }} as const;
+export const authFeatures = {{ registration: {registration}, passwordReset: {password_reset}, emailVerification: true, oauth: {oauth} }} as const;
 
 export const authApi = {{
   me: async () => (await request<AuthResponse>("/api/auth/me")).user,
@@ -285,6 +286,7 @@ export const authApi = {{
     request<void>("/api/auth/password/reset", {{ method: "POST", body: JSON.stringify({{ token, password }}) }}),
   requestEmailVerification: () => request<void>("/api/auth/email/request", {{ method: "POST" }}),
   verifyEmail: (token: string) => request<void>("/api/auth/email/verify", {{ method: "POST", body: JSON.stringify({{ token }}) }}),
+  startOidc: () => {{ window.location.assign(`${{API_BASE}}/api/auth/oauth/oidc/start`); }},
 }};
 "#
     )

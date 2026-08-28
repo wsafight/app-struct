@@ -7,12 +7,14 @@ pub(crate) struct SurfacePreset {
     pub version: Located<u64>,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SurfaceAuth {
     pub enabled: bool,
     pub user_entity: Option<Located<String>>,
     pub registration_enabled: bool,
     pub password_reset_enabled: bool,
+    pub oauth_enabled: bool,
     pub roles: Vec<Located<String>>,
     pub default_role: Option<Located<String>>,
 }

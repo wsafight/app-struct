@@ -77,6 +77,9 @@ pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Valu
     if ir.auth.password_reset_enabled {
         add_password_reset_paths(paths);
     }
+    if ir.auth.oauth_enabled {
+        add_oauth_paths(paths);
+    }
     add_email_verification_paths(paths);
 }
 
@@ -101,6 +104,33 @@ fn add_email_verification_paths(paths: &mut Map<String, Value>) {
                 "tags": ["Auth"],
                 "requestBody": request_body("EmailVerificationInput"),
                 "responses": { "204": { "description": "Email verified" }, "400": error_response() }
+            }
+        }),
+    );
+}
+
+fn add_oauth_paths(paths: &mut Map<String, Value>) {
+    paths.insert(
+        "/api/auth/oauth/oidc/start".to_owned(),
+        json!({
+            "get": {
+                "operationId": "startOidcLogin",
+                "tags": ["Auth"],
+                "responses": { "307": { "description": "Redirect to OIDC provider" }, "404": error_response() }
+            }
+        }),
+    );
+    paths.insert(
+        "/api/auth/oauth/oidc/callback".to_owned(),
+        json!({
+            "get": {
+                "operationId": "oidcCallback",
+                "tags": ["Auth"],
+                "parameters": [
+                    { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
+                    { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+                ],
+                "responses": { "307": { "description": "Redirect to application" }, "400": error_response(), "502": error_response() }
             }
         }),
     );

@@ -27,7 +27,13 @@ fn decode_auth(entry: Option<&MappingEntry>) -> Result<SurfaceAuth, Diagnostic> 
     let auth = expect_mapping(&entry.value, "`modules.auth`")?;
     ensure_known_keys(
         auth,
-        &["enabled", "user_entity", "registration", "password_reset"],
+        &[
+            "enabled",
+            "user_entity",
+            "registration",
+            "password_reset",
+            "oauth",
+        ],
         "`modules.auth`",
     )?;
     Ok(SurfaceAuth {
@@ -44,6 +50,7 @@ fn decode_auth(entry: Option<&MappingEntry>) -> Result<SurfaceAuth, Diagnostic> 
             auth.get("password_reset"),
             "`modules.auth.password_reset`",
         )?,
+        oauth_enabled: optional_bool(auth.get("oauth"), "`modules.auth.oauth`")?,
         ..SurfaceAuth::default()
     })
 }

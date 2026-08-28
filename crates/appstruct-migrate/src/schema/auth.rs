@@ -8,6 +8,7 @@ pub(super) fn tables() -> Vec<TableSchema> {
         sessions(),
         password_resets(),
         email_verifications(),
+        oauth_accounts(),
         mail_capture(),
     ]
 }
@@ -228,6 +229,42 @@ fn email_verifications() -> TableSchema {
     )
 }
 
+fn oauth_accounts() -> TableSchema {
+    table(
+        "oauth_accounts",
+        vec![
+            column(
+                "oauth_accounts.provider",
+                "provider",
+                DatabaseType::Text,
+                false,
+                false,
+            ),
+            column(
+                "oauth_accounts.subject",
+                "subject",
+                DatabaseType::Text,
+                false,
+                true,
+            ),
+            column(
+                "oauth_accounts.user_id",
+                "user_id",
+                DatabaseType::Uuid,
+                false,
+                false,
+            ),
+            column(
+                "oauth_accounts.created_at",
+                "created_at",
+                DatabaseType::Datetime,
+                false,
+                false,
+            ),
+        ],
+    )
+}
+
 fn table(name: &str, columns: Vec<ColumnSchema>) -> TableSchema {
     TableSchema {
         id: format!("appstruct::auth::{name}"),
@@ -292,6 +329,13 @@ pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {
         foreign_key(
             "email_verification_user",
             "email_verifications",
+            "user_id",
+            "_appstruct_auth_accounts",
+            "user_id",
+        ),
+        foreign_key(
+            "oauth_account_user",
+            "oauth_accounts",
             "user_id",
             "_appstruct_auth_accounts",
             "user_id",

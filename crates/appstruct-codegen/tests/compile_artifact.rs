@@ -217,6 +217,31 @@ fn m4_disabled_auth_flows_are_not_published() {
 }
 
 #[test]
+fn oauth_enabled_auth_publishes_oidc_contracts() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+    let mut ir = compile_project(&fixture).unwrap();
+    ir.auth.oauth_enabled = true;
+    let artifacts = plan(&ir).unwrap();
+    let sql = artifact_text(&artifacts, "database/0001_initial.sql");
+    assert!(sql.contains("_appstruct_auth_oauth_accounts"));
+    assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("start_oidc"));
+    assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("startOidc"));
+    let openapi: Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    assert!(openapi["paths"]["/api/auth/oauth/oidc/start"]["get"].is_object());
+    let temporary = tempfile::tempdir().unwrap();
+    write_artifacts(temporary.path(), &artifacts);
+    let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest);
+    let checked = cargo_check(&manifest, true);
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+}
+
+#[test]
 fn m6_tenant_contract_generates_a_compilable_backend() {
     let fixture =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");

@@ -51,6 +51,7 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
         .expect("compiler requires auth user email");
     let registration = ir.auth.registration_enabled;
     let password_reset = ir.auth.password_reset_enabled;
+    let oauth = ir.auth.oauth_enabled;
     let default_role = ir
         .auth
         .default_role
@@ -62,6 +63,7 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
     render(quote! {
         pub const REGISTRATION_ENABLED: bool = #registration;
         pub const PASSWORD_RESET_ENABLED: bool = #password_reset;
+        pub const OAUTH_ENABLED: bool = #oauth;
         pub const DEFAULT_ROLE: &str = #default_role;
         pub const USER_TABLE: &str = #user_table;
         pub const USER_ID_COLUMN: &str = #user_id_column;
