@@ -64,6 +64,8 @@ M6 SaaS Template 门禁从 CLI 创建真实 `saas` 项目并切换到专用 exte
 
 实体支持有序的复合索引和带 `where` 谓词的部分索引。索引进入 IR、schema snapshot、初始迁移 SQL，并由迁移 status 检查漂移；已有表新增索引标记为可能锁表，删除或变更索引不会自动生成破坏性 SQL。
 
+实体可声明带稳定名称的 seed 数据。Seed 进入 IR 和 schema snapshot，初始/开发迁移生成幂等插入；缺失主键、必填字段或类型不匹配会在编译阶段失败，已有 seed 的删除或内容变更要求人工审查。
+
 ## 1. 产品摘要
 
 AppStruct 是一套面向业务系统的配置驱动全栈开发框架。开发者通过声明实体、字段、关系、权限、页面和自定义操作，由 AppStruct 生成可运行的 Rust 后端、数据库迁移、OpenAPI 契约、TypeScript 客户端以及前端 CRUD 界面。

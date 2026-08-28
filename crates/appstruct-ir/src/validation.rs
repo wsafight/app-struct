@@ -1,46 +1,16 @@
+mod error;
 mod graph;
 mod indexes;
+mod seeds;
 use self::graph::{validate_modules, validate_operations, validate_services};
 use self::indexes::validate_indexes;
+use self::seeds::validate_seeds;
 use crate::{
     AccessRuleIr, AppIr, EntityId, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr, IR_VERSION,
     RelationIr,
 };
+pub use error::{IrValidationError, IrValidationErrors};
 use std::collections::{BTreeMap, BTreeSet};
-use std::error::Error;
-use std::fmt;
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IrValidationError {
-    pub path: String,
-    pub message: String,
-}
-impl fmt::Display for IrValidationError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}: {}", self.path, self.message)
-    }
-}
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IrValidationErrors(Vec<IrValidationError>);
-impl IrValidationErrors {
-    #[must_use]
-    pub fn errors(&self) -> &[IrValidationError] {
-        &self.0
-    }
-}
-impl fmt::Display for IrValidationErrors {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "invalid AppStruct IR: {}",
-            self.0
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join("; ")
-        )
-    }
-}
-impl Error for IrValidationErrors {}
 /// # Errors
 ///
 /// Returns every independently detectable invariant violation in deterministic path order.
@@ -60,6 +30,7 @@ pub fn validate_app_ir(ir: &AppIr) -> Result<(), IrValidationErrors> {
         &mut errors,
     );
     validate_entities(ir, &entities, &mut errors);
+    validate_seeds(ir, &entities, &mut errors);
     validate_relations(ir, &entities, &mut errors);
     validate_services(ir, &entities, &mut errors);
     validate_operations(ir, &entities, &value_objects, &mut errors);

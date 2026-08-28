@@ -246,6 +246,11 @@
           "type": "array",
           "items": { "$ref": "#/$defs/index" }
         },
+        "seeds": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/fieldName" },
+          "additionalProperties": { "$ref": "#/$defs/seed" }
+        },
         "access": { "$ref": "#/$defs/crudAccess" },
         "tenant": { "type": "boolean" },
         "audit": { "type": "boolean" }
@@ -267,6 +272,11 @@
         "where": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": false
+    },
+    "seed": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/scalar" }
     },
     "field": {
       "type": "object",

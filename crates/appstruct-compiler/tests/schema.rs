@@ -44,6 +44,10 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
                         }
                     }
                 },
+                "seeds": {
+                    "demo": { "id": "00000000-0000-0000-0000-000000000001", "email": "demo@example.com" }
+                },
+                "indexes": [{ "fields": ["email"], "unique": true, "where": "email IS NOT NULL" }],
                 "access": {
                     "read": { "any": [{ "owner": "owner" }, { "role": "admin" }] }
                 },

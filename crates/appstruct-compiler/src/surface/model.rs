@@ -55,9 +55,17 @@ pub(crate) struct SurfaceEntity {
     pub table: Option<Located<String>>,
     pub fields: Vec<SurfaceField>,
     pub indexes: Vec<SurfaceIndex>,
+    pub seeds: Vec<SurfaceSeed>,
     pub access: Option<SurfaceAccess>,
     pub tenant_scoped: bool,
     pub audit_enabled: bool,
+    pub span: SourceSpan,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceSeed {
+    pub name: Located<String>,
+    pub values: Vec<(Located<String>, Located<String>)>,
     pub span: SourceSpan,
 }
 

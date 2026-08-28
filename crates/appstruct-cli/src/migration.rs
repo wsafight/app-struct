@@ -208,6 +208,7 @@ fn empty_schema() -> DatabaseSchema {
         tables: Vec::new(),
         unique_constraints: Vec::new(),
         indexes: Vec::new(),
+        seeds: Vec::new(),
         foreign_keys: Vec::new(),
     }
 }
@@ -256,6 +257,8 @@ fn change_label(change: &SchemaChange) -> String {
         }
         SchemaChange::AddIndex { index } => format!("add index `{}`", index.id),
         SchemaChange::RemoveIndex { index } => format!("remove index `{}`", index.id),
+        SchemaChange::AddSeed { seed } => format!("add seed `{}`", seed.id),
+        SchemaChange::RemoveSeed { seed } => format!("remove seed `{}`", seed.id),
         SchemaChange::AddForeignKey { foreign_key } => {
             format!("add foreign key `{}`", foreign_key.id)
         }

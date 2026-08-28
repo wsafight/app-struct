@@ -11,6 +11,8 @@ use crate::module::{LoadedModule, resolve_modules_for_app};
 use crate::naming::{pluralize, to_snake_case};
 mod indexes;
 use self::indexes::build_indexes;
+mod seeds;
+use self::seeds::build_seeds;
 use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceField, SurfaceRoot};
 use crate::tenant::lower_tenant;
 use crate::validation::{validate_entity_declarations, validate_primary_key};
@@ -59,7 +61,7 @@ pub(crate) fn build_ir(
         .iter()
         .map(|entity| entity.name.value.clone())
         .collect::<BTreeSet<_>>();
-    let (mut entities, mut relations) =
+    let (mut entities, mut relations, seeds) =
         lower_entities(surface_entities, &known_entities, &auth, &mut diagnostics);
     let resource_paths = entities
         .iter()
@@ -117,6 +119,7 @@ pub(crate) fn build_ir(
         enums: Vec::new(),
         value_objects: extensions.value_objects,
         entities,
+        seeds,
         relations,
         commands: extensions.commands,
         queries: extensions.queries,
@@ -139,9 +142,10 @@ fn lower_entities(
     known_entities: &BTreeSet<String>,
     auth: &AuthIr,
     diagnostics: &mut Vec<Diagnostic>,
-) -> (Vec<EntityIr>, Vec<RelationIr>) {
+) -> (Vec<EntityIr>, Vec<RelationIr>, Vec<appstruct_ir::SeedIr>) {
     let mut entities = Vec::with_capacity(surface_entities.len());
     let mut relations = Vec::new();
+    let mut seeds = Vec::new();
     for entity in surface_entities {
         let entity_id = EntityId(format!("app::{}", entity.name.value));
         let table_name = entity.table.as_ref().map_or_else(
@@ -151,7 +155,6 @@ fn lower_entities(
         let access = build_access(&entity, auth, diagnostics);
         let (mut fields, mut entity_relations) =
             build_fields(&entity, &entity_id, known_entities, auth, diagnostics);
-        let indexes = build_indexes(&entity, &entity_id, &fields, diagnostics);
         let revision_conflict = entity.fields.iter().find(|field| {
             field
                 .column
@@ -185,6 +188,8 @@ fn lower_entities(
                 fields.push(tenant_field(&entity_id));
             }
         }
+        let indexes = build_indexes(&entity, &entity_id, &fields, diagnostics);
+        seeds.extend(build_seeds(&entity, &entity_id, &fields, diagnostics));
         relations.append(&mut entity_relations);
         if let Some(access) = access {
             entities.push(EntityIr {
@@ -206,7 +211,8 @@ fn lower_entities(
             });
         }
     }
-    (entities, relations)
+    seeds.sort_by(|left, right| left.id.cmp(&right.id));
+    (entities, relations, seeds)
 }
 
 fn tenant_field(entity_id: &EntityId) -> FieldIr {

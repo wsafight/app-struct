@@ -217,6 +217,7 @@ pub(super) fn empty_schema() -> DatabaseSchema {
         tables: Vec::new(),
         unique_constraints: Vec::new(),
         indexes: Vec::new(),
+        seeds: Vec::new(),
         foreign_keys: Vec::new(),
     }
 }

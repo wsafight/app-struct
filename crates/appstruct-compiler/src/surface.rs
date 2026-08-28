@@ -10,6 +10,7 @@ mod mail;
 mod model;
 mod modules;
 mod preset;
+mod seeds;
 mod tenant;
 mod value;
 
@@ -25,6 +26,7 @@ pub(crate) use modules::{
 
 use self::context::DecodeContext;
 use self::indexes::decode_indexes;
+use self::seeds::decode_seeds;
 use self::value::{
     ensure_known_keys, expect_mapping, expect_scalar_string, expect_sequence, expect_string,
     expect_u64, optional_bool, optional_string, optional_u64, required, unknown_key_diagnostics,
@@ -236,7 +238,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
     ensure_known_keys(
         mapping,
         &[
-            "label", "table", "fields", "indexes", "access", "tenant", "audit",
+            "label", "table", "fields", "indexes", "seeds", "access", "tenant", "audit",
         ],
         "entity definition",
     )?;
@@ -251,6 +253,11 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
         .map(|entry| decode_indexes(&entry.value))
         .transpose()?
         .unwrap_or_default();
+    let seeds = mapping
+        .get("seeds")
+        .map(|entry| decode_seeds(&entry.value))
+        .transpose()?
+        .unwrap_or_default();
 
     Ok(SurfaceEntity {
         name: Located {
@@ -261,6 +268,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
         table: optional_string(mapping, "table", "entity `table`")?,
         fields,
         indexes,
+        seeds,
         access: mapping
             .get("access")
             .map(|access| access::decode_crud_access(&access.value))

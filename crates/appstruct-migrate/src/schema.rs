@@ -23,6 +23,8 @@ pub struct DatabaseSchema {
     pub unique_constraints: Vec<UniqueConstraintSchema>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub indexes: Vec<IndexSchema>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub seeds: Vec<SeedSchema>,
     pub foreign_keys: Vec<ForeignKeySchema>,
 }
 
@@ -90,6 +92,20 @@ pub struct IndexSchema {
     pub predicate: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeedSchema {
+    pub id: String,
+    pub table: String,
+    pub values: Vec<SeedValueSchema>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeedValueSchema {
+    pub column: String,
+    pub value: String,
+    pub data_type: DatabaseType,
+}
+
 /// Extract a database schema from semantically valid IR.
 ///
 /// # Errors
@@ -125,32 +141,8 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         .filter(|entity| entity.tenant_scoped)
         .map(tenant_unique_constraint)
         .collect::<Vec<_>>();
-    let indexes = ir
-        .entities
-        .iter()
-        .flat_map(|entity| {
-            entity.indexes.iter().map(|index| {
-                let columns = index
-                    .fields
-                    .iter()
-                    .filter_map(|field_id| {
-                        entity
-                            .fields
-                            .iter()
-                            .find(|field| field.id == *field_id)
-                            .map(|field| field.column_name.clone())
-                    })
-                    .collect();
-                IndexSchema {
-                    id: index.id.clone(),
-                    table: entity.table_name.clone(),
-                    columns,
-                    unique: index.unique,
-                    predicate: index.predicate.clone(),
-                }
-            })
-        })
-        .collect::<Vec<_>>();
+    let indexes = entity_indexes(ir);
+    let seeds = entity_seeds(ir);
     let mut foreign_keys = ir
         .relations
         .iter()
@@ -186,8 +178,62 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         tables,
         unique_constraints,
         indexes,
+        seeds,
         foreign_keys,
     })
+}
+
+fn entity_indexes(ir: &AppIr) -> Vec<IndexSchema> {
+    ir.entities
+        .iter()
+        .flat_map(|entity| {
+            entity.indexes.iter().map(|index| IndexSchema {
+                id: index.id.clone(),
+                table: entity.table_name.clone(),
+                columns: index
+                    .fields
+                    .iter()
+                    .filter_map(|field_id| {
+                        entity
+                            .fields
+                            .iter()
+                            .find(|field| field.id == *field_id)
+                            .map(|field| field.column_name.clone())
+                    })
+                    .collect(),
+                unique: index.unique,
+                predicate: index.predicate.clone(),
+            })
+        })
+        .collect()
+}
+
+fn entity_seeds(ir: &AppIr) -> Vec<SeedSchema> {
+    ir.seeds
+        .iter()
+        .filter_map(|seed| {
+            let entity = ir.entities.iter().find(|entity| entity.id == seed.entity)?;
+            let values = seed
+                .values
+                .iter()
+                .filter_map(|(field_name, value)| {
+                    let field = entity.fields.iter().find(|field| {
+                        field.api_name == *field_name || field.rust_name == *field_name
+                    })?;
+                    Some(SeedValueSchema {
+                        column: field.column_name.clone(),
+                        value: value.clone(),
+                        data_type: database_type(ir, &field.ty),
+                    })
+                })
+                .collect::<Vec<_>>();
+            (!values.is_empty()).then_some(SeedSchema {
+                id: seed.id.clone(),
+                table: entity.table_name.clone(),
+                values,
+            })
+        })
+        .collect()
 }
 
 fn tenant_unique_constraint(entity: &appstruct_ir::EntityIr) -> UniqueConstraintSchema {

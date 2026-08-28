@@ -1,25 +1,21 @@
 //! Stable, serialization-friendly intermediate representation for `AppStruct`.
-
 mod compatibility;
 mod extension;
+mod seed;
 mod service;
 mod validation;
-
 pub use compatibility::{IrCompatibilityError, from_compatible_json};
 pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
+pub use seed::SeedIr;
+use serde::{Deserialize, Serialize};
 pub use service::{
     AuditIr, FileIr, FileProviderIr, JobQueueIr, JobsIr, MailIr, MailProviderIr, MailTemplateIr,
     PresetIr, TenantIr,
 };
-pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir};
-
-use serde::{Deserialize, Serialize};
 use std::fmt;
-
-/// Current serialized IR format version.
+pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir};
 pub const IR_VERSION: u32 = appstruct_contracts::IR.current;
 
-/// Fully normalized application model consumed by generators.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppIr {
     pub ir_version: u32,
@@ -35,6 +31,8 @@ pub struct AppIr {
     pub enums: Vec<EnumIr>,
     pub value_objects: Vec<ValueObjectIr>,
     pub entities: Vec<EntityIr>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub seeds: Vec<SeedIr>,
     pub relations: Vec<RelationIr>,
     pub commands: Vec<CommandIr>,
     pub queries: Vec<QueryIr>,

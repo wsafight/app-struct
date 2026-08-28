@@ -64,7 +64,8 @@ remains out of scope.
 - [x] Cursor pagination and filters across relations.
 - [x] Count/sum/average/min/max aggregates and group-by queries.
 - [x] Composite and partial indexes.
-- [ ] Seed data and stronger migration linting.
+- [x] Seed data.
+- [ ] Stronger migration linting.
 - [x] Field-level read/write access rules.
 
 ### Phase B: Usable operations

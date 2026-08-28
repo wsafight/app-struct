@@ -59,6 +59,9 @@ response fields are omitted and unauthorized submitted fields are rejected by th
 Composite and partial indexes are declared per entity with `indexes`; see
 [Schema indexes](docs/schema-indexes.md).
 
+Named entity seed rows are declared with `seeds` and included in reviewable migrations; see
+[Seed data](docs/seeding.md).
+
 Enable tenant isolation together with Auth and mark each tenant-owned entity explicitly:
 
 ```yaml
@@ -141,6 +144,7 @@ the explicit `migrate apply` command.
 - [Deployment](docs/deployment.md)
 - [Generated resource queries](docs/data-querying.md)
 - [Schema indexes](docs/schema-indexes.md)
+- [Seed data](docs/seeding.md)
 - [Releasing](docs/releasing.md)
 - [Next product roadmap](docs/next-product-roadmap.md)
 - [Product requirements](PRODUCT.md)

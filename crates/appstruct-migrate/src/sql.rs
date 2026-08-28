@@ -1,6 +1,6 @@
 use crate::{
     ColumnSchema, DatabaseSchema, DatabaseType, ForeignKeySchema, IndexSchema, MigrationPlan,
-    SchemaChange, TableSchema, UniqueConstraintSchema,
+    SchemaChange, SeedSchema, TableSchema, UniqueConstraintSchema,
 };
 use appstruct_ir::{GeneratedValueIr, OnDeleteIr};
 
@@ -10,6 +10,7 @@ pub fn initial_migration(schema: &DatabaseSchema) -> String {
     statements.extend(schema.tables.iter().map(create_table));
     statements.extend(schema.unique_constraints.iter().map(add_unique_constraint));
     statements.extend(schema.indexes.iter().map(add_index));
+    statements.extend(schema.seeds.iter().map(add_seed));
     statements.extend(schema.foreign_keys.iter().map(add_foreign_key));
     format!("{}\n", statements.join("\n"))
 }
@@ -39,12 +40,14 @@ pub fn migration_sql(plan: &MigrationPlan) -> Result<String, String> {
             } => alter_column(table, before, after)?,
             SchemaChange::AddUniqueConstraint { constraint } => add_unique_constraint(constraint),
             SchemaChange::AddIndex { index } => add_index(index),
+            SchemaChange::AddSeed { seed } => add_seed(seed),
             SchemaChange::AddForeignKey { foreign_key } => add_foreign_key(foreign_key),
             SchemaChange::RemoveTable { .. }
             | SchemaChange::RenameTable { .. }
             | SchemaChange::RemoveColumn { .. }
             | SchemaChange::RemoveUniqueConstraint { .. }
             | SchemaChange::RemoveIndex { .. }
+            | SchemaChange::RemoveSeed { .. }
             | SchemaChange::RemoveForeignKey { .. } => {
                 return Err("destructive migration cannot be rendered automatically".to_owned());
             }
@@ -200,6 +203,35 @@ fn add_index(index: &IndexSchema) -> String {
 fn index_name(index: &IndexSchema) -> String {
     let suffix = index.id.rsplit("::").next().unwrap_or(index.id.as_str());
     format!("idx_{}", suffix.replace('.', "_"))
+}
+
+fn add_seed(seed: &SeedSchema) -> String {
+    let columns = seed
+        .values
+        .iter()
+        .map(|value| quote_ident(&value.column))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let values = seed
+        .values
+        .iter()
+        .map(|value| seed_value(&value.value, &value.data_type))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "INSERT INTO {} ({columns}) VALUES ({values}) ON CONFLICT DO NOTHING;\n",
+        quote_ident(&seed.table)
+    )
+}
+
+fn seed_value(value: &str, data_type: &DatabaseType) -> String {
+    match data_type {
+        DatabaseType::Boolean if matches!(value, "true" | "false") => value.to_owned(),
+        DatabaseType::Integer if value.parse::<i32>().is_ok() => value.to_owned(),
+        DatabaseType::Bigint if value.parse::<i64>().is_ok() => value.to_owned(),
+        DatabaseType::Decimal if value.parse::<f64>().is_ok_and(f64::is_finite) => value.to_owned(),
+        _ => quote_literal(value),
+    }
 }
 
 fn quote_columns(columns: &[String]) -> String {

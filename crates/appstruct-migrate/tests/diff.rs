@@ -1,7 +1,7 @@
 use appstruct_compiler::compile_project;
 use appstruct_migrate::{
-    ColumnSchema, DatabaseType, ExecutionRisk, IndexSchema, SchemaChange, SchemaRisk, diff,
-    extract, from_json, initial_migration, migration_sql,
+    ColumnSchema, DatabaseType, ExecutionRisk, IndexSchema, SchemaChange, SchemaRisk, SeedSchema,
+    SeedValueSchema, diff, extract, from_json, initial_migration, migration_sql,
 };
 use std::path::Path;
 
@@ -205,4 +205,34 @@ fn composite_and_partial_indexes_are_diffed_and_rendered() {
     assert!(initial.contains(
         "CREATE UNIQUE INDEX \"idx_active_name\" ON \"projects\" (\"name\", \"status\") WHERE (status = 'active');"
     ));
+}
+
+#[test]
+fn seed_rows_are_diffed_and_rendered_idempotently() {
+    let before = fixture_schema();
+    let mut after = before.clone();
+    after.seeds.push(SeedSchema {
+        id: "app::Project::demo".to_owned(),
+        table: "projects".to_owned(),
+        values: vec![
+            SeedValueSchema {
+                column: "id".to_owned(),
+                value: "00000000-0000-0000-0000-000000000001".to_owned(),
+                data_type: DatabaseType::Uuid,
+            },
+            SeedValueSchema {
+                column: "priority".to_owned(),
+                value: "3".to_owned(),
+                data_type: DatabaseType::Integer,
+            },
+        ],
+    });
+    let plan = diff(&before, &after);
+    assert!(matches!(
+        plan.changes[0].change,
+        SchemaChange::AddSeed { .. }
+    ));
+    assert!(!plan.is_blocked());
+    let sql = migration_sql(&plan).unwrap();
+    assert!(sql.contains("INSERT INTO \"projects\" (\"id\", \"priority\") VALUES ('00000000-0000-0000-0000-000000000001', 3) ON CONFLICT DO NOTHING;"));
 }

@@ -1,5 +1,7 @@
 mod indexes;
+mod seeds;
 use self::indexes::diff_indexes;
+use self::seeds::diff_seeds;
 use crate::{
     ColumnSchema, DatabaseSchema, ForeignKeySchema, IndexSchema, TableSchema,
     UniqueConstraintSchema,
@@ -66,6 +68,12 @@ pub enum SchemaChange {
     },
     RemoveIndex {
         index: IndexSchema,
+    },
+    AddSeed {
+        seed: crate::SeedSchema,
+    },
+    RemoveSeed {
+        seed: crate::SeedSchema,
     },
     AddForeignKey {
         foreign_key: ForeignKeySchema,
@@ -140,6 +148,7 @@ pub fn diff(before: &DatabaseSchema, after: &DatabaseSchema) -> MigrationPlan {
     }
     diff_unique_constraints(before, after, &old_tables, &mut changes);
     diff_indexes(before, after, &old_tables, &mut changes);
+    diff_seeds(before, after, &mut changes);
     diff_foreign_keys(before, after, &old_tables, &mut changes);
     MigrationPlan { changes }
 }
