@@ -83,6 +83,16 @@ fn resources_publish_bulk_and_csv_contracts() {
 }
 
 #[test]
+fn resource_lists_publish_saved_view_controls() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
+    let artifacts = plan(&compile_project(&fixture).unwrap()).unwrap();
+    let list = artifact_text(&artifacts, "web/src/pages/ResourceList.tsx");
+    assert!(list.contains("appstruct.saved-views"));
+    assert!(list.contains("copyViewLink"));
+    assert!(list.contains("Saved views"));
+}
+
+#[test]
 fn one_to_one_relation_generates_has_one_inverse() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
     let mut ir = compile_project(&fixture).unwrap();

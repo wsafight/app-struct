@@ -23,6 +23,8 @@ h1 { font-size: 24px; line-height: 1.25; letter-spacing: 0; margin: 0; }
 .bulk-toolbar { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #eef4f2; border: 1px solid #c7d8d3; border-radius: 6px; }
 .bulk-toolbar strong { margin-right: 4px; font-size: 13px; }
 .bulk-toolbar select, .bulk-toolbar input { min-height: 34px; border: 1px solid #b8c5c9; border-radius: 4px; background: white; padding: 0 9px; }
+.view-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.view-toolbar select, .view-toolbar input { min-height: 34px; border: 1px solid #b8c5c9; border-radius: 4px; background: white; padding: 0 9px; }
 .selection-cell { width: 40px; text-align: center; }
 .list-controls { min-height: 48px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 14px; }
 .search-control { height: 38px; width: min(360px, 100%); display: flex; align-items: center; gap: 8px; background: white; border: 1px solid #bdc8cc; border-radius: 5px; padding: 0 10px; color: #65737a; }

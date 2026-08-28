@@ -1,8 +1,10 @@
-import { ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, Download, Eye, Plus, RefreshCw, Search, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Bookmark, Check, ChevronLeft, ChevronRight, Copy, Download, Eye, Plus, RefreshCw, Search, Trash2, Upload } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { FieldDefinition, ResourceDefinition, ResourceRecord } from "../resource";
 import { canAccessResource, canAccessRule, errorMessage, useCanAccess, useResourceActor } from "../resource";
+
+interface SavedView { id: string; name: string; query: string; }
 
 export function ResourceList({ resource, resources }: { resource: ResourceDefinition; resources: ResourceDefinition[] }) {
   const actor = useResourceActor();
@@ -18,7 +20,10 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
   const writableFields = resource.fields.filter((field) => !field.readOnly && !field.primaryKey && canAccessRule(field.writeAccess ?? { mode: "public" }, actor));
   const [bulkField, setBulkField] = useState(writableFields[0]?.name ?? "");
   const [bulkValue, setBulkValue] = useState("");
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [viewName, setViewName] = useState("");
   const importInput = useRef<HTMLInputElement>(null);
+  const viewStorageKey = `appstruct.saved-views.${resource.id}`;
   const queryKey = searchParams.toString();
   const page = boundedInteger(searchParams.get("page"), 1, Number.MAX_SAFE_INTEGER, 1);
   const pageSize = boundedInteger(searchParams.get("page_size"), 1, 100, 25);
@@ -56,6 +61,9 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { setSearch(searchParams.get("q") ?? ""); }, [queryKey]);
+  useEffect(() => {
+    try { setSavedViews(JSON.parse(localStorage.getItem(viewStorageKey) ?? "[]") as SavedView[]); } catch { setSavedViews([]); }
+  }, [viewStorageKey]);
 
   function updateParam(name: string, value?: string) {
     setSearchParams((current) => {
@@ -132,6 +140,27 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
     } catch (reason) { setError(errorMessage(reason)); }
   }
 
+  function saveView() {
+    const name = viewName.trim();
+    if (!name) return;
+    const view = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, name, query: searchParams.toString() };
+    const next = [...savedViews.filter((item) => item.name !== name), view];
+    setSavedViews(next); setViewName(""); localStorage.setItem(viewStorageKey, JSON.stringify(next));
+  }
+
+  function applyView(view: SavedView) {
+    setSearchParams(new URLSearchParams(view.query));
+  }
+
+  function deleteView(view: SavedView) {
+    const next = savedViews.filter((item) => item.id !== view.id);
+    setSavedViews(next); localStorage.setItem(viewStorageKey, JSON.stringify(next));
+  }
+
+  async function copyViewLink() {
+    try { await navigator.clipboard.writeText(window.location.href); setError(""); } catch { setError("Could not copy view link"); }
+  }
+
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (!canList) return <AccessDenied />;
   return <main className="page">
@@ -140,6 +169,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
       {resource.fields.some((field) => field.searchable && canAccessRule(field.readAccess ?? { mode: "public" }, actor)) && <form className="search-control" onSubmit={submitSearch}><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search" placeholder="Search" /></form>}
       {filterFields.map((field) => <FilterControl key={field.name} field={field} resources={resources} searchParams={searchParams} updateParam={updateParam} />)}
     </div>
+    <div className="view-toolbar"><Bookmark size={16} /><select aria-label="Saved views" value="" onChange={(event) => { const view = savedViews.find((item) => item.id === event.target.value); if (view) applyView(view); }}><option value="">Saved views</option>{savedViews.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select><input aria-label="View name" placeholder="Name this view" value={viewName} onChange={(event) => setViewName(event.target.value)} /><button className="secondary-button" onClick={saveView} disabled={!viewName.trim()}>Save</button><button className="icon-button" onClick={() => void copyViewLink()} title="Copy share link" aria-label="Copy share link"><Copy size={16} /></button>{savedViews.length > 0 && <button className="icon-button danger" onClick={() => { const view = savedViews.at(-1); if (view) deleteView(view); }} title="Delete last saved view" aria-label="Delete last saved view"><Trash2 size={16} /></button>}</div>
     {selected.size > 0 && <div className="bulk-toolbar"><strong>{selected.size} selected</strong>{writableFields.length > 0 && <><select aria-label="Field to update" value={bulkField} onChange={(event) => setBulkField(event.target.value)}>{writableFields.map((field) => <option key={field.name} value={field.name}>{field.label}</option>)}</select><input aria-label="Bulk value" value={bulkValue} onChange={(event) => setBulkValue(event.target.value)} /><button className="secondary-button" onClick={() => void bulkUpdate()}><Check size={16} /> Apply</button></>}<button className="icon-button danger" onClick={() => void bulkDelete()} title="Delete selected" aria-label="Delete selected"><Trash2 size={16} /></button></div>}
     {error && <div className="alert" role="alert">{error}</div>}
     <div className="table-frame"><table><thead><tr><th className="selection-cell"><input type="checkbox" aria-label="Select page" checked={records.length > 0 && records.every((record) => selected.has(String(record[resource.primaryKey])))} onChange={(event) => setSelected(event.target.checked ? new Set(records.map((record) => String(record[resource.primaryKey]))) : new Set())} /></th>{columns.map((field) => <th key={field.name}>{field.sortable || field.primaryKey ? <button className="sort-button" onClick={() => changeSort(field.name)}>{field.label}{sort === field.name ? <ArrowUp size={14} /> : sort === `-${field.name}` ? <ArrowDown size={14} /> : null}</button> : field.label}</th>)}<th><span className="sr-only">Actions</span></th></tr></thead><tbody>
