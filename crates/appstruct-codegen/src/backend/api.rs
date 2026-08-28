@@ -1,6 +1,5 @@
 mod bulk;
 mod write;
-
 use super::query::list_support;
 use super::validation::validation_rules;
 use super::{module_name, parse_ident, render, rust_type};
@@ -34,6 +33,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
             policy: &policy,
             parse_id: &parse_id,
             primary: &primary,
+            soft_delete: entity.views.soft_delete,
         },
         &create_values,
         active_default.as_ref(),
@@ -60,6 +60,10 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         active_default.as_ref(),
         &updates,
     )?;
+    let restore_route = entity
+        .views
+        .soft_delete
+        .then(|| quote! { .route("/_restore", axum::routing::post(restore)).route("/_trash", get(trash)) });
 
     render(quote! {
         use crate::{AppState, ApiError, FieldViolation, RequestContext, entities::#module};
@@ -70,18 +74,16 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
             routing::get,
         };
         use sea_orm::{
-            ActiveModelTrait, ActiveValue::Set, EntityTrait, IntoActiveModel, ModelTrait,
-            QuerySelect, TransactionTrait, TryIntoModel,
+            ActiveModelTrait, ActiveValue::Set, EntityTrait, IntoActiveModel,
+            ModelTrait, QuerySelect, TransactionTrait, TryIntoModel,
         };
         use serde::{Deserialize, Serialize};
         use std::collections::BTreeMap;
 
-        #[derive(Clone, Debug, Deserialize)]
+        #[derive(Clone, Debug, Default, Deserialize)]
         pub struct CreateInput { #(#create_fields,)* }
-
-        #[derive(Clone, Debug, Deserialize)]
+        #[derive(Clone, Debug, Default, Deserialize)]
         pub struct UpdateInput { #(#update_fields,)* }
-
         pub fn router() -> Router<AppState> {
             Router::new()
                 .route("/", get(list).post(create))
@@ -89,9 +91,9 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
                 .route("/_bulk", axum::routing::patch(bulk_update).delete(bulk_delete))
                 .route("/_export.csv", get(export_csv))
                 .route("/_import.csv", axum::routing::post(import_csv))
+                #restore_route
                 .route("/{id}", get(read).patch(update).delete(delete))
         }
-
         #list
         #aggregate
         #handlers
@@ -100,7 +102,6 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         #bulk
     })
 }
-
 fn field_access_support(
     entity: &EntityIr,
     module: &syn::Ident,
@@ -217,12 +218,14 @@ fn validation_functions(entity: &EntityIr) -> Result<TokenStream, CodegenError> 
     let create_rules = validation_rules(entity, false)?;
     let update_rules = validation_rules(entity, true)?;
     Ok(quote! {
+        #[allow(unused_mut, unused_variables)]
         fn validate_create(input: &CreateInput) -> Result<(), ApiError> {
             let mut violations = Vec::new();
             #(#create_rules)*
             finish_validation(violations)
         }
 
+        #[allow(unused_mut, unused_variables)]
         fn validate_update(input: &UpdateInput) -> Result<(), ApiError> {
             let mut violations = Vec::new();
             #(#update_rules)*

@@ -188,6 +188,19 @@ fn lower_entities(
                 fields.push(tenant_field(&entity_id));
             }
         }
+        if entity.soft_delete
+            && !fields.iter().any(|field| {
+                field.rust_name == "deleted_at"
+                    && field.nullable
+                    && matches!(field.ty, FieldTypeIr::Datetime)
+            })
+        {
+            diagnostics.push(Diagnostic::error(
+                "AS2041",
+                "soft_delete requires a nullable datetime field named `deleted_at`",
+                entity.span.clone(),
+            ));
+        }
         let indexes = build_indexes(&entity, &entity_id, &fields, diagnostics);
         seeds.extend(build_seeds(&entity, &entity_id, &fields, diagnostics));
         relations.append(&mut entity_relations);
@@ -203,7 +216,9 @@ fn lower_entities(
                 fields,
                 indexes,
                 access,
-                views: EntityViewsIr::default(),
+                views: EntityViewsIr {
+                    soft_delete: entity.soft_delete,
+                },
                 hooks: HooksIr::default(),
                 concurrency: ConcurrencyIr { enabled: true },
                 tenant_scoped: entity.tenant_scoped,

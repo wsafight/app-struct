@@ -49,12 +49,13 @@ fn resource_source(entity: &EntityIr) -> String {
         .map_or("id", |field| field.rust_name.as_str());
     let api = format!("{}Api", lower_camel(&entity.rust_name));
     format!(
-        "{{\n  id: {:?},\n  name: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  access: {},\n  fields: [\n{}\n  ],\n  api: {} as unknown as ResourceApi,\n}}",
+        "{{\n  id: {:?},\n  name: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  softDelete: {},\n  access: {},\n  fields: [\n{}\n  ],\n  api: {} as unknown as ResourceApi,\n}}",
         entity.id.0,
         entity.rust_name,
         entity.label,
         entity.table_name,
         primary_key,
+        entity.views.soft_delete,
         serde_json::to_string(&entity.access).expect("access IR is serializable"),
         indent(&fields, 4),
         api,

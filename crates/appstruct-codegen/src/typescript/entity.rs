@@ -4,6 +4,13 @@ pub(super) fn client(entity: &EntityIr) -> String {
     let variable = lower_camel(&entity.rust_name);
     let model = &entity.rust_name;
     let path = format!("/api/{}/", entity.table_name);
+    let restore = if entity.views.soft_delete {
+        format!(
+            "  trash: () => request<{{ data: {model}[] }}>(\"{path}_trash\"),\n  restore: (input: BulkDeleteRequest) => request<BulkResult>(\"{path}_restore\", {{ method: \"POST\", body: JSON.stringify(input) }}),\n"
+        )
+    } else {
+        String::new()
+    };
     format!(
         r#"export const {variable}Api = {{
   list: (query: ListQuery = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query)),
@@ -29,7 +36,7 @@ pub(super) fn client(entity: &EntityIr) -> String {
   bulkDelete: (input: BulkDeleteRequest) => request<BulkResult>("{path}_bulk", {{ method: "DELETE", body: JSON.stringify(input) }}),
   exportCsv: () => requestText("{path}_export.csv"),
   importCsv: (csv: string) => request<BulkResult>("{path}_import.csv", {{ method: "POST", headers: {{ "Content-Type": "text/csv" }}, body: csv }}),
-}};
+{restore}}};
 "#
     )
 }

@@ -238,7 +238,15 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
     ensure_known_keys(
         mapping,
         &[
-            "label", "table", "fields", "indexes", "seeds", "access", "tenant", "audit",
+            "label",
+            "table",
+            "fields",
+            "indexes",
+            "seeds",
+            "access",
+            "tenant",
+            "audit",
+            "soft_delete",
         ],
         "entity definition",
     )?;
@@ -275,6 +283,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
             .transpose()?,
         tenant_scoped: optional_bool(mapping, "tenant")?,
         audit_enabled: optional_bool(mapping, "audit")?,
+        soft_delete: optional_bool(mapping, "soft_delete")?,
         span: entry.value.span.clone(),
     })
 }

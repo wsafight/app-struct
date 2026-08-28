@@ -92,6 +92,7 @@ pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, entity: &Ent
         }),
     );
     add_aggregate_path(paths, ir, entity);
+    super::bulk::add_paths(paths, ir, entity);
 }
 fn add_aggregate_path(paths: &mut Map<String, Value>, ir: &AppIr, entity: &EntityIr) {
     let singular = &entity.rust_name;
@@ -133,6 +134,7 @@ pub(super) fn add_schemas(schemas: &mut Map<String, Value>, entity: &EntityIr) {
         format!("{}AggregateResponse", entity.rust_name),
         aggregate_response_schema(),
     );
+    super::bulk::add_schemas(schemas, entity);
 }
 fn entity_schema(entity: &EntityIr) -> Value {
     let properties = entity

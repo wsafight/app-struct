@@ -1,9 +1,11 @@
 mod aggregate;
+mod helpers;
 mod relation;
 use super::access;
 use super::{parse_ident, rust_type};
 use crate::CodegenError;
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
+use helpers::column_ident;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
@@ -19,6 +21,11 @@ pub(super) fn list_support(
     let filter_validation = filter_validation(&filter_keys);
     let search = search_rule(entity, module)?;
     let sorts = sort_rules(entity, module)?;
+    let column_trait = (!filters.is_empty()
+        || !relation_filters.is_empty()
+        || !sorts.is_empty()
+        || entity.views.soft_delete)
+        .then(|| quote! { ColumnTrait as _, });
     let primary_field = primary_key(entity)?;
     let primary = column_ident(primary_field)?;
     let cursor_value = parsed_value(primary_field, &quote! { raw_cursor.as_str() });
@@ -40,7 +47,7 @@ pub(super) fn list_support(
     let cursor_helpers = cursor_helpers();
     Ok(quote! {
         use base64::Engine as _;
-        use sea_orm::{ColumnTrait as _, #query_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
+        use sea_orm::{#column_trait #query_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
         #[derive(Debug, Default, Deserialize)]
         pub struct ListQuery {
             page: Option<u64>,
@@ -384,17 +391,4 @@ fn primary_key(entity: &EntityIr) -> Result<&FieldIr, CodegenError> {
         .iter()
         .find(|field| field.primary_key)
         .ok_or_else(|| CodegenError::new(format!("entity `{}` has no primary key", entity.id)))
-}
-fn column_ident(field: &FieldIr) -> Result<syn::Ident, CodegenError> {
-    let name = field
-        .rust_name
-        .split('_')
-        .map(|part| {
-            let mut chars = part.chars();
-            chars.next().map_or_else(String::new, |first| {
-                first.to_uppercase().chain(chars).collect::<String>()
-            })
-        })
-        .collect::<String>();
-    parse_ident(&name)
 }

@@ -10,6 +10,7 @@ pub(super) struct HandlerContext<'context> {
     pub policy: &'context Ident,
     pub parse_id: &'context TokenStream,
     pub primary: &'context Ident,
+    pub soft_delete: bool,
 }
 
 pub(super) fn handlers(
@@ -25,6 +26,7 @@ pub(super) fn handlers(
         policy,
         parse_id,
         primary,
+        soft_delete,
     } = context;
     let read_scope = access::member_scope(entity, module, &entity.access.read)?;
     let create_allowed = access::create_allowed(entity, &entity.access.create)?;
@@ -58,6 +60,7 @@ pub(super) fn handlers(
         &read_scope,
         &delete_allowed,
         &delete_audit,
+        *soft_delete,
     );
     let helpers = helper_functions(module, hooks);
     Ok(quote! {
@@ -218,6 +221,7 @@ fn update_handler(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn delete_handler(
     module: &Ident,
     hooks: &Ident,
@@ -226,7 +230,23 @@ fn delete_handler(
     read_scope: &TokenStream,
     delete_allowed: &TokenStream,
     audit: &TokenStream,
+    soft_delete: bool,
 ) -> TokenStream {
+    let delete_model = if soft_delete {
+        quote! {
+            let mut active = model.clone().into_active_model();
+            active.deleted_at = Set(Some(chrono::Utc::now()));
+            active.revision = Set(model.revision.checked_add(1)
+                .ok_or_else(|| sea_orm::DbErr::Custom("revision overflow".to_owned()))?);
+            active.update(&transaction).await?
+        }
+    } else {
+        quote! {
+            let deleted = model.clone();
+            model.delete(&transaction).await?;
+            deleted
+        }
+    };
     quote! {
         async fn delete(
             State(state): State<AppState>,
@@ -262,8 +282,7 @@ fn delete_handler(
                     return Err(ApiError::Forbidden);
                 }
                 state.extensions.#hooks().before_delete(&context, &model).await?;
-                let deleted = model.clone();
-                model.delete(&transaction).await?;
+                let deleted = { #delete_model };
                 state.extensions.#hooks().after_delete(&context, &deleted).await?;
                 #audit
                 deleted

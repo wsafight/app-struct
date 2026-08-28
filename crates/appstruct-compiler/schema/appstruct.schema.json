@@ -253,7 +253,8 @@
         },
         "access": { "$ref": "#/$defs/crudAccess" },
         "tenant": { "type": "boolean" },
-        "audit": { "type": "boolean" }
+        "audit": { "type": "boolean" },
+        "soft_delete": { "type": "boolean" }
       },
       "additionalProperties": false
     },

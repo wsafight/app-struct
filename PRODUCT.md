@@ -72,6 +72,8 @@ M6 SaaS Template 门禁从 CLI 创建真实 `saas` 项目并切换到专用 exte
 
 React 资源列表支持按资源保存私有筛选/搜索/排序视图，并可复制包含当前查询状态的分享链接。保存视图只缓存查询条件，不绕过服务端的 actor、租户和资源授权。
 
+实体可通过 `soft_delete: true` 启用回收站：Compiler 要求可空 `deleted_at` datetime 字段，普通查询自动排除归档记录，删除会推进 revision 并写入审计；生成 API 与 React 列表提供 trash、逐条/批量 restore，恢复继续经过授权和并发检查。
+
 ## 1. 产品摘要
 
 AppStruct 是一套面向业务系统的配置驱动全栈开发框架。开发者通过声明实体、字段、关系、权限、页面和自定义操作，由 AppStruct 生成可运行的 Rust 后端、数据库迁移、OpenAPI 契约、TypeScript 客户端以及前端 CRUD 界面。

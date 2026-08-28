@@ -1,7 +1,10 @@
+use super::super::access;
 use crate::CodegenError;
-use appstruct_ir::{EntityIr, FieldTypeIr};
+use appstruct_ir::EntityIr;
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
+
+mod csv;
 
 pub(super) struct BulkContext<'context> {
     pub module: &'context Ident,
@@ -18,6 +21,9 @@ pub(super) struct BulkContext<'context> {
     pub updates: &'context [TokenStream],
     pub entity_id: &'context str,
     pub audit_enabled: bool,
+    pub soft_delete: bool,
+    pub tenant_scoped: bool,
+    pub trash_scope: &'context TokenStream,
 }
 
 #[allow(clippy::too_many_arguments, clippy::unnecessary_wraps)]
@@ -36,6 +42,7 @@ pub(super) fn source(
     active_default: Option<&TokenStream>,
     updates: &[TokenStream],
 ) -> Result<TokenStream, CodegenError> {
+    let trash_scope = access::trash_scope(entity, module, &entity.access.list)?;
     let context = BulkContext {
         module,
         primary,
@@ -51,11 +58,17 @@ pub(super) fn source(
         updates,
         entity_id: &entity.id.0,
         audit_enabled: entity.audit_enabled,
+        soft_delete: entity.views.soft_delete,
+        tenant_scoped: entity.tenant_scoped,
+        trash_scope: &trash_scope,
     };
     let update = bulk_update(&context);
     let delete = bulk_delete(&context);
-    let export = csv_export(entity, module, list_scope);
-    let import = csv_import(entity, &context);
+    let csv_helpers = csv::helpers();
+    let export = csv::export(entity, module, list_scope);
+    let import = csv::import(entity, &context);
+    let restore = context.soft_delete.then(|| restore_handler(&context));
+    let trash = context.soft_delete.then(|| trash_handler(&context));
     Ok(quote! {
         #[derive(Clone, Debug, Deserialize)]
         struct BulkUpdateInput { ids: Vec<String>, patch: UpdateInput, expected_revisions: BTreeMap<String, i64> }
@@ -73,59 +86,111 @@ pub(super) fn source(
         #delete
         #export
         #import
+        #restore
+        #trash
+        #csv_helpers
 
         fn bulk_failure(id: &str, code: &str, message: impl Into<String>) -> BulkFailure {
             BulkFailure { id: id.to_owned(), code: code.to_owned(), message: message.into() }
         }
 
-        fn csv_escape(value: &str) -> String {
-            if value.contains([',', '"', '\n', '\r']) {
-                format!("\"{}\"", value.replace('"', "\"\""))
-            } else {
-                value.to_owned()
-            }
-        }
-
-        fn parse_csv_rows(body: &str) -> Result<Vec<Vec<String>>, ApiError> {
-            let mut rows = Vec::new();
-            let mut row = Vec::new();
-            let mut value = String::new();
-            let mut quoted = false;
-            let mut chars = body.chars().peekable();
-            while let Some(character) = chars.next() {
-                match character {
-                    '"' if quoted && chars.peek() == Some(&'"') => {
-                        value.push('"');
-                        chars.next();
-                    }
-                    '"' => quoted = !quoted,
-                    ',' if !quoted => { row.push(std::mem::take(&mut value)); }
-                    '\n' if !quoted => {
-                        row.push(std::mem::take(&mut value));
-                        if !row.iter().all(String::is_empty) { rows.push(std::mem::take(&mut row)); }
-                    }
-                    '\r' if !quoted => {}
-                    _ => value.push(character),
-                }
-            }
-            if quoted { return Err(ApiError::InvalidQuery("CSV contains an unterminated quote".to_owned())); }
-            if !value.is_empty() || !row.is_empty() {
-                row.push(value);
-                if !row.iter().all(String::is_empty) { rows.push(row); }
-            }
-            Ok(rows)
-        }
-
-        fn csv_json_value(value: &str, kind: &str) -> serde_json::Value {
-            if value.is_empty() { return serde_json::Value::Null; }
-            match kind {
-                "boolean" => value.parse::<bool>().map(serde_json::Value::Bool).unwrap_or_else(|_| serde_json::Value::String(value.to_owned())),
-                "integer" => value.parse::<i32>().map(|value| serde_json::json!(value)).unwrap_or_else(|_| serde_json::Value::String(value.to_owned())),
-                "bigint" => value.parse::<i64>().map(|value| serde_json::json!(value)).unwrap_or_else(|_| serde_json::Value::String(value.to_owned())),
-                _ => serde_json::Value::String(value.to_owned()),
-            }
-        }
     })
+}
+
+fn trash_handler(context: &BulkContext<'_>) -> TokenStream {
+    let BulkContext {
+        module,
+        trash_scope,
+        ..
+    } = context;
+    quote! {
+        #[derive(Debug, Serialize)]
+        struct TrashResponse { data: Vec<serde_json::Value> }
+
+        async fn trash(
+            State(state): State<AppState>, headers: HeaderMap,
+        ) -> Result<Json<TrashResponse>, ApiError> {
+            let context = state.context(&headers).await?;
+            let mut select = #module::Entity::find();
+            #trash_scope
+            let data = select.limit(100).all(&state.database).await?
+                .into_iter().map(|model| redact_model(&context, model))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Json(TrashResponse { data }))
+        }
+    }
+}
+
+fn restore_handler(context: &BulkContext<'_>) -> TokenStream {
+    let BulkContext {
+        module,
+        parse_id,
+        policy,
+        hooks,
+        update_allowed,
+        primary,
+        entity_id,
+        tenant_scoped,
+        audit_enabled,
+        ..
+    } = context;
+    let tenant_filter = if *tenant_scoped {
+        quote! { select = select.filter(#module::Column::TenantId.eq(context.require_tenant()?)); }
+    } else {
+        TokenStream::new()
+    };
+    let select_decl = if *tenant_scoped {
+        quote! { let mut select = #module::Entity::find_by_id(id); }
+    } else {
+        quote! { let select = #module::Entity::find_by_id(id); }
+    };
+    let audit = audit_event(*audit_enabled, entity_id, primary, "restore");
+    quote! {
+        async fn restore(
+            State(state): State<AppState>, headers: HeaderMap,
+            Json(input): Json<BulkDeleteInput>,
+        ) -> Result<Json<BulkResult>, ApiError> {
+            state.auth.verify_csrf(&state.database, &headers).await?;
+            let context = state.context(&headers).await?;
+            let actor = context.actor().cloned();
+            let tenant = context.tenant();
+            let transaction = state.database.begin().await?;
+            let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };
+            for id_text in &input.ids {
+                let Some(expected) = input.expected_revisions.get(id_text).copied() else {
+                    result.failed.push(bulk_failure(id_text, "precondition_required", "expected_revisions must include every id"));
+                    continue;
+                };
+                let id = { let id = id_text.clone(); #parse_id };
+                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, actor.clone(), tenant);
+                #select_decl
+                #tenant_filter
+                let Some(before) = select.lock_exclusive().one(&transaction).await? else {
+                    result.failed.push(bulk_failure(id_text, "not_found", "record was not found"));
+                    continue;
+                };
+                if before.deleted_at.is_none() || before.revision != expected {
+                    result.failed.push(bulk_failure(id_text, "invalid_restore", "record is not in the trash or revision is stale"));
+                    continue;
+                }
+                let mut active = before.clone().into_active_model();
+                active.deleted_at = Set(None);
+                active.revision = Set(before.revision.checked_add(1).ok_or_else(|| sea_orm::DbErr::Custom("revision overflow".to_owned()))?);
+                let candidate = active.clone().try_into_model()?;
+                if !state.extensions.#policy().can_read(&context, &before).await? || !(#update_allowed) || !state.extensions.#policy().can_update(&context, &before, &crate::api::#module::UpdateInput::default(), &candidate).await? {
+                    result.failed.push(bulk_failure(id_text, "forbidden", "record restore is not allowed"));
+                    continue;
+                }
+                state.extensions.#hooks().before_update(&context, &before, &mut crate::api::#module::UpdateInput::default()).await?;
+                let after = active.update(&transaction).await?;
+                state.extensions.#hooks().after_update(&context, &before, &after).await?;
+                #audit
+                result.succeeded.push(id_text.clone());
+            }
+            transaction.commit().await?;
+            Ok(Json(result))
+        }
+    }
 }
 
 fn bulk_update(context: &BulkContext<'_>) -> TokenStream {
@@ -259,124 +324,6 @@ fn bulk_delete(context: &BulkContext<'_>) -> TokenStream {
     }
 }
 
-fn csv_export(entity: &EntityIr, module: &Ident, list_scope: &TokenStream) -> TokenStream {
-    let headers = entity
-        .fields
-        .iter()
-        .map(|field| field.api_name.as_str())
-        .collect::<Vec<_>>();
-    let fields = entity
-        .fields
-        .iter()
-        .map(|field| field.rust_name.as_str())
-        .collect::<Vec<_>>();
-    quote! {
-        async fn export_csv(
-            State(state): State<AppState>, headers: HeaderMap,
-        ) -> Result<([(header::HeaderName, String); 1], String), ApiError> {
-            let context = state.context(&headers).await?;
-            let mut select = #module::Entity::find();
-            #list_scope
-            let models = select.all(&state.database).await?;
-            let mut csv = String::new();
-            csv.push_str(&[#(csv_escape(#headers)),*].join(","));
-            csv.push('\n');
-            for model in models {
-                let value = serde_json::to_value(model).map_err(|_| ApiError::Internal)?;
-                let object = value.as_object().ok_or(ApiError::Internal)?;
-                let row = [#(object.get(#fields).map(|value| value.to_string()).unwrap_or_default()),*];
-                csv.push_str(&row.iter().map(|value| csv_escape(value.trim_matches('"'))).collect::<Vec<_>>().join(","));
-                csv.push('\n');
-            }
-            let _ = context;
-            Ok(([(header::CONTENT_TYPE, "text/csv; charset=utf-8".to_owned())], csv))
-        }
-    }
-}
-
-fn csv_import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStream {
-    let BulkContext {
-        module,
-        hooks,
-        policy,
-        create_allowed,
-        create_values,
-        active_default,
-        primary,
-        entity_id,
-        audit_enabled,
-        ..
-    } = context;
-    let fields = entity
-        .fields
-        .iter()
-        .filter(|field| field.generated.is_none())
-        .collect::<Vec<_>>();
-    let field_names = entity
-        .fields
-        .iter()
-        .map(|field| field.api_name.as_str())
-        .collect::<Vec<_>>();
-    let field_match = fields.iter().map(|field| {
-        let name = field.api_name.as_str();
-        let kind = csv_kind(&field.ty);
-        quote! { #name => { object.insert(#name.to_owned(), csv_json_value(raw, #kind)); } }
-    });
-    let audit = audit_event(*audit_enabled, entity_id, primary, "create");
-    quote! {
-        async fn import_csv(
-            State(state): State<AppState>, headers: HeaderMap, body: String,
-        ) -> Result<Json<BulkResult>, ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
-            let context = state.context(&headers).await?;
-            let rows = parse_csv_rows(&body)?;
-            let Some(header_row) = rows.first() else { return Ok(Json(BulkResult { succeeded: Vec::new(), failed: Vec::new() })); };
-            let expected = [#(#field_names),*];
-            if header_row.iter().map(String::as_str).any(|name| !expected.contains(&name)) {
-                return Err(ApiError::InvalidQuery("CSV contains an unknown column".to_owned()));
-            }
-            let actor = context.actor().cloned();
-            let tenant = context.tenant();
-            let transaction = state.database.begin().await?;
-            let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };
-            for (index, row) in rows.iter().skip(1).enumerate() {
-                let mut object = serde_json::Map::new();
-                for (column, raw) in header_row.iter().zip(row.iter()) {
-                    match column.as_str() { #(#field_match)* _ => {} }
-                }
-                let mut input: CreateInput = match serde_json::from_value(serde_json::Value::Object(object)) {
-                    Ok(input) => input,
-                    Err(error) => { result.failed.push(bulk_failure(&index.to_string(), "invalid_row", error.to_string())); continue; }
-                };
-                authorize_create_fields(&context, &input)?;
-                validate_create(&input)?;
-                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, actor.clone(), tenant);
-                if !(#create_allowed) || !state.extensions.#policy().can_create(&context, &input).await? {
-                    result.failed.push(bulk_failure(&index.to_string(), "forbidden", "record creation is not allowed"));
-                    continue;
-                }
-                state.extensions.#hooks().before_create(&context, &mut input).await?;
-                let active = #module::ActiveModel { #(#create_values,)* #active_default };
-                let model = active.insert(&transaction).await?;
-                state.extensions.#hooks().after_create(&context, &model).await?;
-                #audit
-                result.succeeded.push(index.to_string());
-            }
-            transaction.commit().await?;
-            Ok(Json(result))
-        }
-    }
-}
-
-fn csv_kind(ty: &FieldTypeIr) -> &'static str {
-    match ty {
-        FieldTypeIr::Boolean => "boolean",
-        FieldTypeIr::Integer => "integer",
-        FieldTypeIr::Bigint => "bigint",
-        _ => "string",
-    }
-}
-
 fn audit_event(enabled: bool, entity_id: &str, primary: &Ident, operation: &str) -> TokenStream {
     if !enabled {
         return TokenStream::new();
@@ -391,6 +338,9 @@ fn audit_event(enabled: bool, entity_id: &str, primary: &Ident, operation: &str)
         }
         "delete" => {
             quote! { crate::audit::record(&transaction, &context, #entity_id, deleted.#primary.to_string(), "delete", Some(&deleted), None).await?; }
+        }
+        "restore" => {
+            quote! { crate::audit::record(&transaction, &context, #entity_id, after.#primary.to_string(), "restore", Some(&before), Some(&after)).await?; }
         }
         _ => TokenStream::new(),
     }

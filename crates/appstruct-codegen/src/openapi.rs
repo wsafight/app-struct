@@ -29,6 +29,7 @@ fn document(ir: &AppIr) -> Value {
     let mut paths = Map::new();
     let mut schemas = Map::new();
     schemas.insert("Error".to_owned(), error_schema());
+    bulk::add_common_schemas(&mut schemas);
     for entity in &ir.entities {
         entity::add_paths(&mut paths, ir, entity);
         entity::add_schemas(&mut schemas, entity);
@@ -126,6 +127,7 @@ fn error_schema() -> Value {
 }
 mod audit;
 mod auth;
+mod bulk;
 mod entity;
 mod extension;
 mod tenant;

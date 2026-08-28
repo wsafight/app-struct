@@ -11,6 +11,7 @@ pub(super) fn scope(
 ) -> Result<TokenStream, CodegenError> {
     let condition = condition(entity, module, rule)?;
     let tenant_scope = tenant_scope(entity, module);
+    let soft_delete_scope = soft_delete_scope(entity, module);
     Ok(quote! {
         let access_scope = #condition;
         let access_condition = match access_scope {
@@ -19,6 +20,7 @@ pub(super) fn scope(
         };
         select = select.filter(access_condition);
         #tenant_scope
+        #soft_delete_scope
     })
 }
 
@@ -52,10 +54,27 @@ pub(super) fn member_scope(
 ) -> Result<TokenStream, CodegenError> {
     let condition = condition(entity, module, rule)?;
     let tenant_condition = tenant_condition(entity, module);
+    let soft_delete_condition = soft_delete_condition(entity, module);
     Ok(quote! {
         let access_condition = #condition
             .ok_or_else(|| access_denied(&context))?
-            #tenant_condition;
+            #tenant_condition
+            #soft_delete_condition;
+    })
+}
+
+pub(super) fn trash_scope(
+    entity: &EntityIr,
+    module: &syn::Ident,
+    rule: &AccessRuleIr,
+) -> Result<TokenStream, CodegenError> {
+    let condition = condition(entity, module, rule)?;
+    let tenant_scope = tenant_scope(entity, module);
+    Ok(quote! {
+        let access_condition = #condition.ok_or_else(|| access_denied(&context))?;
+        select = select.filter(access_condition);
+        #tenant_scope
+        select = select.filter(#module::Column::DeletedAt.is_not_null());
     })
 }
 
@@ -65,6 +84,22 @@ fn tenant_scope(entity: &EntityIr, module: &syn::Ident) -> TokenStream {
             let tenant_id = context.require_tenant()?;
             select = select.filter(#module::Column::TenantId.eq(tenant_id));
         }
+    } else {
+        TokenStream::new()
+    }
+}
+
+fn soft_delete_scope(entity: &EntityIr, module: &syn::Ident) -> TokenStream {
+    if entity.views.soft_delete {
+        quote! { select = select.filter(#module::Column::DeletedAt.is_null()); }
+    } else {
+        TokenStream::new()
+    }
+}
+
+fn soft_delete_condition(entity: &EntityIr, module: &syn::Ident) -> TokenStream {
+    if entity.views.soft_delete {
+        quote! { .add(#module::Column::DeletedAt.is_null()) }
     } else {
         TokenStream::new()
     }

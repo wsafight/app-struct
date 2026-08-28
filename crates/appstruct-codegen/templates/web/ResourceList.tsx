@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Bookmark, Check, ChevronLeft, ChevronRight, Copy, Download, Eye, Plus, RefreshCw, Search, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Bookmark, Check, ChevronLeft, ChevronRight, Copy, Download, Eye, Plus, RefreshCw, RotateCcw, Search, Trash2, Upload } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { FieldDefinition, ResourceDefinition, ResourceRecord } from "../resource";
@@ -25,6 +25,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
   const importInput = useRef<HTMLInputElement>(null);
   const viewStorageKey = `appstruct.saved-views.${resource.id}`;
   const queryKey = searchParams.toString();
+  const trashMode = resource.softDelete && searchParams.get("trash") === "1";
   const page = boundedInteger(searchParams.get("page"), 1, Number.MAX_SAFE_INTEGER, 1);
   const pageSize = boundedInteger(searchParams.get("page_size"), 1, 100, 25);
   const sort = searchParams.get("sort") ?? "";
@@ -36,6 +37,11 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
     setLoading(true);
     setError("");
     try {
+      if (trashMode) {
+        const response = await resource.api.trash?.();
+        setRecords(response?.data ?? []); setTotal(response?.data.length ?? 0); setSelected(new Set());
+        setLoading(false); return;
+      }
       const exact = Object.fromEntries(filterFields.map((field) => [field.name, searchParams.get(`filter[${field.name}]`) ?? ""]));
       const ranges = Object.fromEntries(filterFields.filter(supportsRange).map((field) => [field.name, {
         gte: searchParams.get(`filter[${field.name}][gte]`) ?? "",
@@ -57,7 +63,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
     } finally {
       setLoading(false);
     }
-  }, [canList, page, pageSize, queryKey, resource, sort]);
+  }, [canList, page, pageSize, queryKey, resource, sort, trashMode]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { setSearch(searchParams.get("q") ?? ""); }, [queryKey]);
@@ -85,7 +91,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
   }
 
   async function remove(id: string) {
-    if (!window.confirm(`Delete this ${resource.label}?`)) return;
+    if (!window.confirm(`${resource.softDelete ? "Move this record to trash" : "Delete this record"}?`)) return;
     try {
       await resource.api.remove(id);
       await load();
@@ -104,12 +110,23 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
 
   async function bulkDelete() {
     const ids = [...selected];
-    if (!ids.length || !window.confirm(`Delete ${ids.length} selected ${resource.label} records?`)) return;
+    if (!ids.length || !window.confirm(`${trashMode ? "Permanently delete" : "Move to trash"} ${ids.length} selected ${resource.label} records?`)) return;
     try {
       const result = await resource.api.bulkDelete({ ids, expected_revisions: revisionMap(ids) });
       if (result.failed.length) setError(`${result.failed.length} records could not be deleted`);
       await load();
     } catch (reason) { setError(errorMessage(reason)); }
+  }
+
+  async function restoreSelected() {
+    const ids = [...selected];
+    if (!ids.length || !resource.api.restore) return;
+    try { const result = await resource.api.restore({ ids, expected_revisions: revisionMap(ids) }); if (result.failed.length) setError(`${result.failed.length} records could not be restored`); await load(); } catch (reason) { setError(errorMessage(reason)); }
+  }
+
+  async function restoreOne(id: string) {
+    if (!resource.api.restore) return;
+    try { const result = await resource.api.restore({ ids: [id], expected_revisions: revisionMap([id]) }); if (result.failed.length) setError(result.failed[0].message); await load(); } catch (reason) { setError(errorMessage(reason)); }
   }
 
   async function bulkUpdate() {
@@ -164,18 +181,18 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (!canList) return <AccessDenied />;
   return <main className="page">
-    <div className="page-heading"><div><h1>{resource.label}</h1><p>{total} records</p></div><div className="toolbar"><button className="icon-button" onClick={() => void exportCsv()} title="Export CSV" aria-label="Export CSV"><Download size={17} /></button>{canCreate && <><input ref={importInput} className="sr-only" type="file" accept=".csv,text/csv" onChange={(event) => void importCsv(event.target.files?.[0])} /><button className="icon-button" onClick={() => importInput.current?.click()} title="Import CSV" aria-label="Import CSV"><Upload size={17} /></button></>}<button className="icon-button" onClick={() => void load()} title="Refresh" aria-label="Refresh"><RefreshCw size={17} /></button>{canCreate && <Link className="primary-button" to={`/${resource.slug}/new`}><Plus size={17} /> Add</Link>}</div></div>
-    <div className="list-controls">
+    <div className="page-heading"><div><h1>{trashMode ? `${resource.label} trash` : resource.label}</h1><p>{total} records</p></div><div className="toolbar">{resource.softDelete && <button className="icon-button" onClick={() => updateParam("trash", trashMode ? undefined : "1")} title={trashMode ? "Show active records" : "Show trash"} aria-label={trashMode ? "Show active records" : "Show trash"}>{trashMode ? <RotateCcw size={17} /> : <Trash2 size={17} />}</button>}<button className="icon-button" onClick={() => void exportCsv()} title="Export CSV" aria-label="Export CSV"><Download size={17} /></button>{canCreate && !trashMode && <><input ref={importInput} className="sr-only" type="file" accept=".csv,text/csv" onChange={(event) => void importCsv(event.target.files?.[0])} /><button className="icon-button" onClick={() => importInput.current?.click()} title="Import CSV" aria-label="Import CSV"><Upload size={17} /></button></>}<button className="icon-button" onClick={() => void load()} title="Refresh" aria-label="Refresh"><RefreshCw size={17} /></button>{canCreate && !trashMode && <Link className="primary-button" to={`/${resource.slug}/new`}><Plus size={17} /> Add</Link>}</div></div>
+    {!trashMode && <div className="list-controls">
       {resource.fields.some((field) => field.searchable && canAccessRule(field.readAccess ?? { mode: "public" }, actor)) && <form className="search-control" onSubmit={submitSearch}><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search" placeholder="Search" /></form>}
       {filterFields.map((field) => <FilterControl key={field.name} field={field} resources={resources} searchParams={searchParams} updateParam={updateParam} />)}
-    </div>
+    </div>}
     <div className="view-toolbar"><Bookmark size={16} /><select aria-label="Saved views" value="" onChange={(event) => { const view = savedViews.find((item) => item.id === event.target.value); if (view) applyView(view); }}><option value="">Saved views</option>{savedViews.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select><input aria-label="View name" placeholder="Name this view" value={viewName} onChange={(event) => setViewName(event.target.value)} /><button className="secondary-button" onClick={saveView} disabled={!viewName.trim()}>Save</button><button className="icon-button" onClick={() => void copyViewLink()} title="Copy share link" aria-label="Copy share link"><Copy size={16} /></button>{savedViews.length > 0 && <button className="icon-button danger" onClick={() => { const view = savedViews.at(-1); if (view) deleteView(view); }} title="Delete last saved view" aria-label="Delete last saved view"><Trash2 size={16} /></button>}</div>
-    {selected.size > 0 && <div className="bulk-toolbar"><strong>{selected.size} selected</strong>{writableFields.length > 0 && <><select aria-label="Field to update" value={bulkField} onChange={(event) => setBulkField(event.target.value)}>{writableFields.map((field) => <option key={field.name} value={field.name}>{field.label}</option>)}</select><input aria-label="Bulk value" value={bulkValue} onChange={(event) => setBulkValue(event.target.value)} /><button className="secondary-button" onClick={() => void bulkUpdate()}><Check size={16} /> Apply</button></>}<button className="icon-button danger" onClick={() => void bulkDelete()} title="Delete selected" aria-label="Delete selected"><Trash2 size={16} /></button></div>}
+    {selected.size > 0 && <div className="bulk-toolbar"><strong>{selected.size} selected</strong>{!trashMode && writableFields.length > 0 && <><select aria-label="Field to update" value={bulkField} onChange={(event) => setBulkField(event.target.value)}>{writableFields.map((field) => <option key={field.name} value={field.name}>{field.label}</option>)}</select><input aria-label="Bulk value" value={bulkValue} onChange={(event) => setBulkValue(event.target.value)} /><button className="secondary-button" onClick={() => void bulkUpdate()}><Check size={16} /> Apply</button></>}{trashMode ? <button className="secondary-button" onClick={() => void restoreSelected()}><RotateCcw size={16} /> Restore</button> : <button className="icon-button danger" onClick={() => void bulkDelete()} title="Delete selected" aria-label="Delete selected"><Trash2 size={16} /></button>}</div>}
     {error && <div className="alert" role="alert">{error}</div>}
     <div className="table-frame"><table><thead><tr><th className="selection-cell"><input type="checkbox" aria-label="Select page" checked={records.length > 0 && records.every((record) => selected.has(String(record[resource.primaryKey])))} onChange={(event) => setSelected(event.target.checked ? new Set(records.map((record) => String(record[resource.primaryKey]))) : new Set())} /></th>{columns.map((field) => <th key={field.name}>{field.sortable || field.primaryKey ? <button className="sort-button" onClick={() => changeSort(field.name)}>{field.label}{sort === field.name ? <ArrowUp size={14} /> : sort === `-${field.name}` ? <ArrowDown size={14} /> : null}</button> : field.label}</th>)}<th><span className="sr-only">Actions</span></th></tr></thead><tbody>
       {loading && <tr><td colSpan={columns.length + 2} className="empty">Loading...</td></tr>}
       {!loading && records.length === 0 && <tr><td colSpan={columns.length + 2} className="empty">No records</td></tr>}
-      {!loading && records.map((record) => { const id = String(record[resource.primaryKey]); const canRead = canAccessResource(resource, "read", actor, record); const canDelete = canAccessResource(resource, "delete", actor, record); return <tr key={id}><td className="selection-cell"><input type="checkbox" checked={selected.has(id)} onChange={() => toggleSelected(id)} aria-label={`Select ${id}`} /></td>{columns.map((field) => <td key={field.name}>{formatValue(record[field.name])}</td>)}<td className="row-actions">{canRead && <Link className="icon-button" to={`/${resource.slug}/${encodeURIComponent(id)}`} title="View" aria-label="View"><Eye size={16} /></Link>}{canDelete && <button className="icon-button danger" onClick={() => void remove(id)} title="Delete" aria-label="Delete"><Trash2 size={16} /></button>}</td></tr>; })}
+      {!loading && records.map((record) => { const id = String(record[resource.primaryKey]); const canRead = canAccessResource(resource, "read", actor, record); const canDelete = canAccessResource(resource, "delete", actor, record); return <tr key={id}><td className="selection-cell"><input type="checkbox" checked={selected.has(id)} onChange={() => toggleSelected(id)} aria-label={`Select ${id}`} /></td>{columns.map((field) => <td key={field.name}>{formatValue(record[field.name])}</td>)}<td className="row-actions">{canRead && <Link className="icon-button" to={`/${resource.slug}/${encodeURIComponent(id)}`} title="View" aria-label="View"><Eye size={16} /></Link>}{trashMode ? <button className="icon-button" onClick={() => void restoreOne(id)} title="Restore" aria-label="Restore"><RotateCcw size={16} /></button> : canDelete && <button className="icon-button danger" onClick={() => void remove(id)} title="Move to trash" aria-label="Move to trash"><Trash2 size={16} /></button>}</td></tr>; })}
     </tbody></table></div>
     <div className="pagination"><span>Page {page} of {pages}</span><div><button className="icon-button" disabled={page <= 1} onClick={() => updateParam("page", String(page - 1))} aria-label="Previous page"><ChevronLeft size={17} /></button><button className="icon-button" disabled={page >= pages} onClick={() => updateParam("page", String(page + 1))} aria-label="Next page"><ChevronRight size={17} /></button></div></div>
   </main>;

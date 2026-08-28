@@ -59,6 +59,7 @@ pub(crate) struct SurfaceEntity {
     pub access: Option<SurfaceAccess>,
     pub tenant_scoped: bool,
     pub audit_enabled: bool,
+    pub soft_delete: bool,
     pub span: SourceSpan,
 }
 

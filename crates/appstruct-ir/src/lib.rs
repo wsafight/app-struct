@@ -4,6 +4,7 @@ mod extension;
 mod seed;
 mod service;
 mod validation;
+mod views;
 pub use compatibility::{IrCompatibilityError, from_compatible_json};
 pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
 pub use seed::SeedIr;
@@ -14,6 +15,7 @@ pub use service::{
 };
 use std::fmt;
 pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir};
+pub use views::EntityViewsIr;
 pub const IR_VERSION: u32 = appstruct_contracts::IR.current;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -245,10 +247,6 @@ pub enum AccessRuleIr {
     Any { rules: Vec<AccessRuleIr> },
     All { rules: Vec<AccessRuleIr> },
 }
-
-/// M0 preserves the future IR shape while leaving UI defaults empty.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EntityViewsIr {}
 
 /// M0 preserves the future IR shape while leaving hooks empty.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

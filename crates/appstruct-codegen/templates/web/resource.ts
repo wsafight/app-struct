@@ -80,6 +80,8 @@ export interface ResourceApi {
   bulkDelete(input: BulkDeleteRequest): Promise<BulkResult>;
   exportCsv(): Promise<string>;
   importCsv(csv: string): Promise<BulkResult>;
+  restore?(input: BulkDeleteRequest): Promise<BulkResult>;
+  trash?(): Promise<{ data: ResourceRecord[] }>;
 }
 
 export type FieldKind =
@@ -121,6 +123,7 @@ export interface ResourceDefinition {
   label: string;
   slug: string;
   primaryKey: string;
+  softDelete: boolean;
   access: ResourceAccess;
   fields: FieldDefinition[];
   api: ResourceApi;
