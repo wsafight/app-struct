@@ -48,6 +48,11 @@ The command reads `DATABASE_URL`, never changes the database or root `includes`,
 overwrite the output. Review unsupported-shape warnings and add explicit entity access rules before
 including the draft in `appstruct.yaml`.
 
+Generated list endpoints offer offset pagination with totals and primary-key cursor pagination for
+large result sets. A filterable relation can traverse one hop to target fields that are also marked
+filterable, while retaining target access and tenant scopes. See [Generated resource queries](docs/data-querying.md)
+for request, response, OpenAPI, and TypeScript client contracts.
+
 Enable tenant isolation together with Auth and mark each tenant-owned entity explicitly:
 
 ```yaml
@@ -128,6 +133,7 @@ the explicit `migrate apply` command.
 - [Installation](docs/installation.md)
 - [Upgrading](docs/upgrading.md)
 - [Deployment](docs/deployment.md)
+- [Generated resource queries](docs/data-querying.md)
 - [Releasing](docs/releasing.md)
 - [Next product roadmap](docs/next-product-roadmap.md)
 - [Product requirements](PRODUCT.md)

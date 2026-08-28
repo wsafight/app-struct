@@ -22,6 +22,29 @@ pub(super) fn scope(
     })
 }
 
+pub(super) fn related_scope(
+    entity: &EntityIr,
+    module: &syn::Ident,
+    rule: &AccessRuleIr,
+) -> Result<TokenStream, CodegenError> {
+    let condition = condition(entity, module, rule)?;
+    let tenant_scope = if entity.tenant_scoped {
+        quote! {
+            relation_select = relation_select
+                .filter(#module::Column::TenantId.eq(context.require_tenant()?));
+        }
+    } else {
+        TokenStream::new()
+    };
+    Ok(quote! {
+        let relation_access_scope = #condition;
+        let relation_access_condition = relation_access_scope
+            .ok_or_else(|| access_denied(&context))?;
+        relation_select = relation_select.filter(relation_access_condition);
+        #tenant_scope
+    })
+}
+
 pub(super) fn member_scope(
     entity: &EntityIr,
     module: &syn::Ident,

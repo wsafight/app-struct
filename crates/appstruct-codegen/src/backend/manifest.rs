@@ -11,6 +11,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         "appstruct-runtime = { path = \"runtime\" }\n",
         "async-trait = \"=0.1.89\"\n",
         "axum = \"=0.8.9\"\n",
+        "base64 = \"=0.22.1\"\n",
         "chrono = { version = \"=0.4.45\", features = [\"serde\"] }\n",
         "rust_decimal = { version = \"=1.42.1\", features = [\"serde-with-str\"] }\n",
         "sea-orm = { version = \"=2.0.2\", default-features = false, features = [\"macros\", \"runtime-tokio-rustls\", \"sqlx-postgres\", \"with-chrono\", \"with-json\", \"with-rust_decimal\", \"with-uuid\"] }\n",
@@ -29,11 +30,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         );
     }
     if ir.auth.enabled {
-        manifest.push_str(concat!(
-            "argon2 = \"=0.5.3\"\n",
-            "base64 = \"=0.22.1\"\n",
-            "rand = \"=0.9.2\"\n",
-        ));
+        manifest.push_str(concat!("argon2 = \"=0.5.3\"\n", "rand = \"=0.9.2\"\n",));
     }
     if ir.auth.enabled || ir.file.enabled {
         manifest.push_str("sha2 = \"=0.10.9\"\n");

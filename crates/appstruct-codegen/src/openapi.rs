@@ -30,7 +30,7 @@ fn document(ir: &AppIr) -> Value {
     let mut schemas = Map::new();
     schemas.insert("Error".to_owned(), error_schema());
     for entity in &ir.entities {
-        entity::add_paths(&mut paths, entity);
+        entity::add_paths(&mut paths, ir, entity);
         entity::add_schemas(&mut schemas, entity);
     }
     if ir.auth.enabled {

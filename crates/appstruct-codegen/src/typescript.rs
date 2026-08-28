@@ -15,7 +15,7 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
 fn client_source(ir: &AppIr) -> String {
     let mut sections = vec![
         generated_header("//"),
-        runtime_source().to_owned(),
+        runtime_source(),
         tenant_storage_source().to_owned(),
     ];
     if ir.auth.enabled {
@@ -99,26 +99,16 @@ fn operation_type_name<'ir>(ir: &'ir AppIr, operation_type: &OperationTypeIr) ->
     }
 }
 
-fn runtime_source() -> &'static str {
+fn runtime_source() -> String {
+    format!("{}\n{}", request_runtime_source(), list_runtime_source())
+}
+
+fn request_runtime_source() -> &'static str {
     r#"const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://127.0.0.1:3000";
 
 export interface FieldViolation {
   field: string;
   message: string;
-}
-
-export interface ListQuery {
-  page?: number;
-  page_size?: number;
-  sort?: string;
-  q?: string;
-  filters?: Record<string, string>;
-  range_filters?: Record<string, { gte?: string; lte?: string }>;
-}
-
-export interface ListResponse<T> {
-  data: T[];
-  meta: { page: number; page_size: number; total: number };
 }
 
 interface ErrorEnvelope {
@@ -183,12 +173,44 @@ function cookieValue(name: string): string | undefined {
     .map((part) => part.trim().split("="))
     .find(([candidate]) => candidate === name)?.[1];
 }
+"#
+}
 
-function listPath(path: string, query: ListQuery): string {
+fn list_runtime_source() -> &'static str {
+    r#"interface FilterQuery {
+  q?: string;
+  filters?: Record<string, string>;
+  range_filters?: Record<string, { gte?: string; lte?: string }>;
+}
+
+export interface ListQuery extends FilterQuery {
+  page?: number;
+  page_size?: number;
+  sort?: string;
+}
+
+export interface CursorListQuery extends FilterQuery {
+  cursor?: string;
+  limit?: number;
+}
+
+export interface ListResponse<T> {
+  data: T[];
+  meta: { page: number; page_size: number; total: number };
+}
+
+export interface CursorListResponse<T> {
+  data: T[];
+  meta: { limit: number; next_cursor: string | null; has_more: boolean };
+}
+
+function listPath(path: string, query: ListQuery | CursorListQuery): string {
   const params = new URLSearchParams();
-  if (query.page) params.set("page", String(query.page));
-  if (query.page_size) params.set("page_size", String(query.page_size));
-  if (query.sort) params.set("sort", query.sort);
+  if ("page" in query && query.page) params.set("page", String(query.page));
+  if ("page_size" in query && query.page_size) params.set("page_size", String(query.page_size));
+  if ("sort" in query && query.sort) params.set("sort", query.sort);
+  if ("cursor" in query && query.cursor) params.set("cursor", query.cursor);
+  if ("limit" in query && query.limit) params.set("limit", String(query.limit));
   if (query.q) params.set("q", query.q);
   for (const [key, value] of Object.entries(query.filters ?? {})) {
     if (value !== "") params.set(`filter[${key}]`, value);
@@ -271,6 +293,8 @@ fn entity_client(entity: &EntityIr) -> String {
     format!(
         r#"export const {variable}Api = {{
   list: (query: ListQuery = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query)),
+  listCursor: (query: CursorListQuery = {{}}) =>
+    request<CursorListResponse<{model}>>(listPath("{path}", {{ limit: 25, ...query }})),
   get: (id: string) => {{
     const member = `{path}${{encodeURIComponent(id)}}`;
     return request<{model}>(member, undefined, member);

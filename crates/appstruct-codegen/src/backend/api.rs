@@ -4,11 +4,11 @@ use super::query::list_support;
 use super::validation::validation_rules;
 use super::{module_name, parse_ident, render, rust_type};
 use crate::CodegenError;
-use appstruct_ir::{EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
+use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
+pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenError> {
     let module = parse_ident(&module_name(entity))?;
     let create_fields = dto_fields(entity, false)?;
     let update_fields = dto_fields(entity, true)?;
@@ -21,7 +21,7 @@ pub(super) fn source(entity: &EntityIr) -> Result<String, CodegenError> {
     let updates = update_values(entity)?;
     let parse_id = parse_id_expression(primary_key(entity)?);
     let primary = parse_ident(&primary_key(entity)?.rust_name)?;
-    let list = list_support(entity, &module)?;
+    let list = list_support(ir, entity, &module)?;
     let hooks = format_ident!("{}_hooks", module_name(entity));
     let policy = format_ident!("{}_policy", module_name(entity));
     let handlers = write::handlers(

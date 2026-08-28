@@ -1,30 +1,54 @@
+mod relation;
+
 use super::access;
 use super::{parse_ident, rust_type};
 use crate::CodegenError;
-use appstruct_ir::{AccessRuleIr, EntityIr, FieldIr, FieldTypeIr};
+use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
 
 pub(super) fn list_support(
+    ir: &AppIr,
     entity: &EntityIr,
     module: &syn::Ident,
 ) -> Result<TokenStream, CodegenError> {
     let filters = filter_rules(entity, module)?;
-    let filter_keys = filter_keys(entity);
+    let relation_filters = relation::filter_rules(ir, entity, module)?;
+    let mut filter_keys = filter_keys(entity);
+    filter_keys.extend(relation::filter_keys(ir, entity)?);
     let filter_validation = filter_validation(&filter_keys);
     let search = search_rule(entity, module)?;
     let sorts = sort_rules(entity, module)?;
-    let primary = column_ident(primary_key(entity)?)?;
+    let primary_field = primary_key(entity)?;
+    let primary = column_ident(primary_field)?;
+    let cursor_value = parsed_value(primary_field, &quote! { raw_cursor.as_str() });
+    let primary_name = parse_ident(&primary_field.rust_name)?;
     let access_scope = access::scope(entity, module, &entity.access.list)?;
-    let column_trait = uses_column_trait(entity).then(|| quote! { ColumnTrait as _, });
+    let query_trait = relation::has_filters(ir, entity)?.then(|| quote! { QueryTrait as _, });
+    let handler = list_handler(&ListHandlerTokens {
+        module,
+        filter_validation: &filter_validation,
+        access_scope: &access_scope,
+        filters: &filters,
+        relation_filters: &relation_filters,
+        search: &search,
+        cursor_value: &cursor_value,
+        primary: &primary,
+        primary_name: &primary_name,
+        sorts: &sorts,
+    });
+    let cursor_helpers = cursor_helpers();
     Ok(quote! {
-        use sea_orm::{#column_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
+        use base64::Engine as _;
+        use sea_orm::{ColumnTrait as _, #query_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
 
         #[derive(Debug, Default, Deserialize)]
         pub struct ListQuery {
             page: Option<u64>,
             page_size: Option<u64>,
+            cursor: Option<String>,
+            limit: Option<u64>,
             sort: Option<String>,
             q: Option<String>,
             #[serde(flatten)]
@@ -32,10 +56,10 @@ pub(super) fn list_support(
         }
 
         #[derive(Debug, Serialize)]
-        pub struct ListMeta {
-            page: u64,
-            page_size: u64,
-            total: u64,
+        #[serde(untagged)]
+        pub enum ListMeta {
+            Page { page: u64, page_size: u64, total: u64 },
+            Cursor { limit: u64, next_cursor: Option<String>, has_more: bool },
         }
 
         #[derive(Debug, Serialize)]
@@ -44,12 +68,88 @@ pub(super) fn list_support(
             meta: ListMeta,
         }
 
+        #handler
+        #cursor_helpers
+    })
+}
+
+struct ListHandlerTokens<'a> {
+    module: &'a syn::Ident,
+    filter_validation: &'a TokenStream,
+    access_scope: &'a TokenStream,
+    filters: &'a [TokenStream],
+    relation_filters: &'a [TokenStream],
+    search: &'a TokenStream,
+    cursor_value: &'a TokenStream,
+    primary: &'a syn::Ident,
+    primary_name: &'a syn::Ident,
+    sorts: &'a [TokenStream],
+}
+
+fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
+    let ListHandlerTokens {
+        module,
+        filter_validation,
+        access_scope,
+        filters,
+        relation_filters,
+        search,
+        cursor_value,
+        primary,
+        primary_name,
+        sorts,
+    } = tokens;
+    quote! {
         async fn list(
             State(state): State<AppState>,
             headers: HeaderMap,
             axum::extract::Query(query): axum::extract::Query<ListQuery>,
         ) -> Result<Json<ListResponse<#module::Model>>, ApiError> {
             let context = state.context(&headers).await?;
+            #filter_validation
+            let mut select = #module::Entity::find();
+            #access_scope
+            #(#filters)*
+            #(#relation_filters)*
+            #search
+            let cursor_mode = query.cursor.is_some() || query.limit.is_some();
+            if cursor_mode {
+                if query.page.is_some() || query.page_size.is_some() || query.sort.is_some() {
+                    return Err(ApiError::InvalidQuery(
+                        "cursor pagination cannot be combined with `page`, `page_size`, or `sort`".to_owned()
+                    ));
+                }
+                let limit = query.limit.unwrap_or(25);
+                if !(1..=100).contains(&limit) {
+                    return Err(ApiError::InvalidQuery(
+                        "`limit` must be between 1 and 100".to_owned()
+                    ));
+                }
+                if let Some(cursor) = query.cursor.as_deref() {
+                    let raw_cursor = decode_cursor(cursor)?;
+                    let cursor_value = #cursor_value;
+                    select = select.filter(#module::Column::#primary.gt(cursor_value));
+                }
+                let mut data = select
+                    .order_by_asc(#module::Column::#primary)
+                    .limit(limit + 1)
+                    .all(&state.database)
+                    .await?;
+                let has_more = data.len() > usize::try_from(limit).unwrap_or(usize::MAX);
+                if has_more {
+                    data.pop();
+                }
+                let next_cursor = has_more.then(|| {
+                    data.last()
+                        .map(|model| encode_cursor(&model.#primary_name.to_string()))
+                        .expect("a cursor page with more rows is not empty")
+                });
+                return Ok(Json(ListResponse {
+                    data,
+                    meta: ListMeta::Cursor { limit, next_cursor, has_more },
+                }));
+            }
+
             let page = query.page.unwrap_or(1);
             let page_size = query.page_size.unwrap_or(25);
             if page == 0 || !(1..=100).contains(&page_size) {
@@ -57,11 +157,6 @@ pub(super) fn list_support(
                     "`page` must be at least 1 and `page_size` must be between 1 and 100".to_owned()
                 ));
             }
-            #filter_validation
-            let mut select = #module::Entity::find();
-            #access_scope
-            #(#filters)*
-            #search
             let mut primary_sorted = false;
             if let Some(sort) = &query.sort {
                 for item in sort.split(',').filter(|item| !item.is_empty()) {
@@ -77,28 +172,30 @@ pub(super) fn list_support(
             }
             let total = select.clone().count(&state.database).await?;
             let data = select.paginate(&state.database, page_size).fetch_page(page - 1).await?;
-            Ok(Json(ListResponse { data, meta: ListMeta { page, page_size, total } }))
+            Ok(Json(ListResponse {
+                data,
+                meta: ListMeta::Page { page, page_size, total },
+            }))
         }
-    })
+    }
 }
 
-fn uses_column_trait(entity: &EntityIr) -> bool {
-    entity.tenant_scoped
-        || entity
-            .fields
-            .iter()
-            .any(|field| field.capabilities.filterable || field.capabilities.searchable)
-        || rule_uses_owner(&entity.access.list)
-        || rule_uses_owner(&entity.access.read)
-}
-
-fn rule_uses_owner(rule: &AccessRuleIr) -> bool {
-    match rule {
-        AccessRuleIr::Owner { .. } => true,
-        AccessRuleIr::Any { rules } | AccessRuleIr::All { rules } => {
-            rules.iter().any(rule_uses_owner)
+fn cursor_helpers() -> TokenStream {
+    quote! {
+        fn encode_cursor(value: &str) -> String {
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!("v1:{value}"))
         }
-        AccessRuleIr::Public | AccessRuleIr::Authenticated | AccessRuleIr::Role { .. } => false,
+
+        fn decode_cursor(cursor: &str) -> Result<String, ApiError> {
+            let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(cursor)
+                .ok()
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+                .and_then(|value| value.strip_prefix("v1:").map(str::to_owned))
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| ApiError::InvalidQuery("invalid cursor".to_owned()))?;
+            Ok(decoded)
+        }
     }
 }
 

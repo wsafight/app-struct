@@ -973,7 +973,7 @@ GET    /api/queries/project-summary
 
 ### 14.2 列表查询
 
-MVP 使用页码分页，适合后台表格和总数展示：
+默认使用页码分页，适合后台表格和总数展示：
 
 ```text
 GET /api/projects?page=1&page_size=25
@@ -988,10 +988,12 @@ GET /api/projects?page=1&page_size=25
 - 默认 `page_size=25`，最大 100。
 - 排序字段必须在 Spec 中允许。
 - 每个 filter 操作符按字段类型校验。
+- `filter[relation.field]` 只允许遍历一跳、且关系字段和目标字段都声明为可过滤；目标
+  Entity 的列表权限和租户条件在子查询内执行。
 - `include` 默认最大深度 1，且必须显式允许。
 - 每一种排序都必须形成唯一全序：如果用户排序末尾不包含唯一键，Repository 自动追加主键；不能只在无显式排序时追加。
 
-该规则保证静态数据集上的页码稳定。并发插入或删除仍可能使 offset 页码移动，客户端在完成写操作后应失效并重新获取相关列表。大数据实体后续可声明 `pagination: cursor`，但不进入首版双模式实现。
+该规则保证静态数据集上的页码稳定。并发插入或删除仍可能使 offset 页码移动，客户端在完成写操作后应失效并重新获取相关列表。传入 `limit` 或 `cursor` 时，同一路由切换为主键升序的游标模式；该模式不计算总数，返回 `next_cursor` 与 `has_more`，并拒绝和 `page`、`page_size`、`sort` 混用。游标使用带版本的 Base64URL 编码，客户端只能原样回传。
 
 ### 14.3 响应
 

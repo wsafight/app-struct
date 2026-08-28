@@ -2,14 +2,14 @@ use super::{
     auth, error_response, if_match_parameter, request_body, response, schema_ref, tenant,
     versioned_response,
 };
-use appstruct_ir::{EntityIr, FieldIr, FieldTypeIr};
+use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
 use serde_json::{Map, Value, json};
 
-pub(super) fn add_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
+pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, entity: &EntityIr) {
     let singular = &entity.rust_name;
     let collection = format!("/api/{}/", entity.table_name);
     let member = format!("/api/{}/{{id}}", entity.table_name);
-    let mut list_parameters = list_parameters(entity);
+    let mut list_parameters = list_parameters(ir, entity);
     let mut member_parameters = vec![json!({
         "name": "id",
         "in": "path",
@@ -158,18 +158,32 @@ fn list_response_schema(entity: &EntityIr) -> Value {
             "data": { "type": "array", "items": schema_ref(&entity.rust_name) },
             "meta": {
                 "type": "object",
-                "required": ["page", "page_size", "total"],
-                "properties": {
-                    "page": { "type": "integer", "minimum": 1 },
-                    "page_size": { "type": "integer", "minimum": 1, "maximum": 100 },
-                    "total": { "type": "integer", "minimum": 0 },
-                }
+                "oneOf": [
+                    {
+                        "title": "Offset pagination",
+                        "required": ["page", "page_size", "total"],
+                        "properties": {
+                            "page": { "type": "integer", "minimum": 1 },
+                            "page_size": { "type": "integer", "minimum": 1, "maximum": 100 },
+                            "total": { "type": "integer", "minimum": 0 },
+                        }
+                    },
+                    {
+                        "title": "Cursor pagination",
+                        "required": ["limit", "next_cursor", "has_more"],
+                        "properties": {
+                            "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+                            "next_cursor": { "type": ["string", "null"] },
+                            "has_more": { "type": "boolean" },
+                        }
+                    }
+                ]
             }
         }
     })
 }
 
-fn list_parameters(entity: &EntityIr) -> Vec<Value> {
+fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
     let mut parameters = vec![
         query_parameter(
             "page",
@@ -177,6 +191,11 @@ fn list_parameters(entity: &EntityIr) -> Vec<Value> {
         ),
         query_parameter(
             "page_size",
+            &json!({ "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }),
+        ),
+        query_parameter("cursor", &json!({ "type": "string" })),
+        query_parameter(
+            "limit",
             &json!({ "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }),
         ),
         query_parameter("sort", &json!({ "type": "string" })),
@@ -204,6 +223,49 @@ fn list_parameters(entity: &EntityIr) -> Vec<Value> {
                     &format!("filter[{}][{operator}]", field.rust_name),
                     &field_schema(field, false),
                 ));
+            }
+        }
+    }
+    for relation_field in entity.fields.iter().filter(|field| {
+        field.capabilities.filterable && matches!(field.ty, FieldTypeIr::Relation { .. })
+    }) {
+        let FieldTypeIr::Relation { target } = &relation_field.ty else {
+            continue;
+        };
+        let target = ir
+            .entities
+            .iter()
+            .find(|candidate| candidate.id == *target)
+            .expect("validated relation target");
+        for target_field in target
+            .fields
+            .iter()
+            .filter(|field| field.capabilities.filterable)
+        {
+            parameters.push(query_parameter(
+                &format!(
+                    "filter[{}.{}]",
+                    relation_field.api_name, target_field.rust_name
+                ),
+                &field_schema(target_field, false),
+            ));
+            if matches!(
+                target_field.ty,
+                FieldTypeIr::Integer
+                    | FieldTypeIr::Bigint
+                    | FieldTypeIr::Decimal
+                    | FieldTypeIr::Date
+                    | FieldTypeIr::Datetime
+            ) {
+                for operator in ["gte", "lte"] {
+                    parameters.push(query_parameter(
+                        &format!(
+                            "filter[{}.{}][{operator}]",
+                            relation_field.api_name, target_field.rust_name
+                        ),
+                        &field_schema(target_field, false),
+                    ));
+                }
             }
         }
     }

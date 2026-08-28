@@ -1,3 +1,5 @@
+#[path = "compile_artifact/query_contract.rs"]
+mod query_contract;
 mod support;
 
 use appstruct_codegen::{Artifact, plan};
@@ -222,9 +224,12 @@ fn m6_tenant_contract_generates_a_compilable_backend() {
 
     let openapi: Value =
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
-    assert_eq!(
-        openapi["paths"]["/api/projects/"]["get"]["parameters"][4]["name"],
-        "X-AppStruct-Tenant"
+    assert!(
+        openapi["paths"]["/api/projects/"]["get"]["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|parameter| parameter["name"] == "X-AppStruct-Tenant")
     );
     assert!(openapi["paths"]["/api/tenant/organizations"]["post"].is_object());
 
@@ -293,8 +298,7 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("/health/ready"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("MakeRequestUuid"));
     assert!(artifact_text(artifacts, "web/pnpm-lock.yaml").contains("lockfileVersion"));
-    assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("ListResponse"));
-    assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("range_filters"));
+    query_contract::assert_query_contract(artifacts);
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("resourceEtags"));
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("If-Match"));
     assert!(
@@ -309,7 +313,6 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
         artifact_text(artifacts, "backend/src/entities/task.rs")
             .contains("pub project: BelongsTo<super::project::Entity>")
     );
-
     let schema: Value =
         serde_json::from_str(artifact_text(artifacts, "database/schema.json")).unwrap();
     assert_eq!(schema["tables"][0]["name"], "projects");
@@ -341,10 +344,6 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     );
     assert!(openapi["paths"]["/api/projects/{id}"]["patch"]["responses"]["412"].is_object());
     assert!(openapi["paths"]["/api/projects/{id}"]["delete"]["responses"]["428"].is_object());
-    assert_eq!(
-        openapi["components"]["schemas"]["ProjectListResponse"]["properties"]["meta"]["type"],
-        "object"
-    );
 }
 
 fn artifact_text<'artifacts>(artifacts: &'artifacts [Artifact], path: &str) -> &'artifacts str {

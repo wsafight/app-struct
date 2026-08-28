@@ -184,7 +184,7 @@ fn plan_entity(ir: &AppIr, entity: &EntityIr) -> Result<[Artifact; 2], CodegenEr
     let module = module_name(entity);
     let entity_source = entity::source(ir, entity)
         .map_err(|error| CodegenError::new(format!("entity `{module}` failed: {error}")))?;
-    let api_source = api::source(entity)
+    let api_source = api::source(ir, entity)
         .map_err(|error| CodegenError::new(format!("API `{module}` failed: {error}")))?;
     Ok([
         Artifact::text(
