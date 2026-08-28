@@ -15,7 +15,7 @@ mod value;
 pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
 pub(crate) use model::{
     FieldFlags, Located, SurfaceAccess, SurfaceAccessRule, SurfaceDomain, SurfaceEntity,
-    SurfaceField, SurfaceRoot,
+    SurfaceField, SurfaceFieldAccess, SurfaceRoot,
 };
 pub(crate) use modules::{
     SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobQueue, SurfaceJobs, SurfaceMail,
@@ -280,6 +280,7 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             "searchable",
             "filterable",
             "sortable",
+            "access",
             "values",
             "target",
             "on_delete",
@@ -344,6 +345,10 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
         ui_component: mapping
             .get("ui")
             .map(|ui| extension::decode_ui_component(&ui.value))
+            .transpose()?,
+        access: mapping
+            .get("access")
+            .map(|access| access::decode_field_access(&access.value))
             .transpose()?,
         span: entry.value.span.clone(),
     })

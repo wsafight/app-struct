@@ -1001,6 +1001,9 @@ GET /api/projects?page=1&page_size=25
 可见数据再聚合。结果使用稳定的 `group_<field>` 与 `<metric>_<field>` 别名，并以 `limit` 将分组
 结果限制在 1 至 500 行。OpenAPI 与 TypeScript client 从相同 IR 生成该白名单和调用契约。
 
+字段可声明独立的 `read`/`write` AccessRule；缺省时继承实体操作权限。读取在 JSON 序列化前
+裁剪，写入在 Hook 和校验前后均检查，过滤、排序、搜索、关联过滤和聚合不能绕过字段读权限。
+
 ### 14.3 响应
 
 ```json
@@ -1080,6 +1083,10 @@ pub enum AccessRuleIr {
 ### 15.3 查询范围
 
 列表、按 ID 读取、RelationSelect 和 relation include 必须将完整 read `AccessExprIr` 转换为数据库查询范围，`Any` 生成 OR，`All` 生成 AND。禁止先读取整页再逐条过滤，否则会造成分页、总数和数据泄露。
+
+字段权限使用与实体相同的 `public`、`authenticated`、`role`、`any` 和 `all` 表达式，但不支持
+`owner`。OpenAPI 用 `x-appstruct-read-access`/`x-appstruct-write-access` 保留动态规则，Web
+Manifest 将规则传递给列、详情和表单运行时；这些客户端提示不构成安全边界。
 
 ```rust
 pub trait EntityPolicy<E>: Send + Sync {

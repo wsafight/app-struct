@@ -10,6 +10,7 @@ type FormValues = Record<string, string | boolean>;
 export function ResourceForm({ resource, resources, registry }: { resource: ResourceDefinition; resources: ResourceDefinition[]; registry?: AppStructRegistry }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const actor = useResourceActor();
   const editing = id !== undefined;
   const canSubmit = useCanAccess(resource, editing ? "update" : "create");
   const [values, setValues] = useState<FormValues>({});
@@ -18,7 +19,7 @@ export function ResourceForm({ resource, resources, registry }: { resource: Reso
   const [loading, setLoading] = useState(editing);
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(false);
-  const fields = resource.fields.filter((field) => !field.readOnly && !field.primaryKey);
+  const fields = resource.fields.filter((field) => !field.readOnly && !field.primaryKey && canAccessRule(field.writeAccess ?? { mode: "public" }, actor));
 
   useEffect(() => {
     void loadRecord();

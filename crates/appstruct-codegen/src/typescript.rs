@@ -1,9 +1,7 @@
 mod modules;
-
 use crate::{Artifact, ArtifactKind, generated_header};
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, OperationTypeIr, ValueObjectIr};
 use modules::{audit_source, tenant_source, tenant_storage_source};
-
 pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
     vec![Artifact::text(
         "web/src/generated/client.ts",
@@ -35,7 +33,6 @@ fn client_source(ir: &AppIr) -> String {
     sections.extend(operation_clients(ir));
     format!("{}\n", sections.join("\n"))
 }
-
 fn value_object_type(value: &ValueObjectIr) -> String {
     let fields = value
         .fields
@@ -99,7 +96,6 @@ fn operation_type_name<'ir>(ir: &'ir AppIr, operation_type: &OperationTypeIr) ->
 fn runtime_source() -> String {
     format!("{}\n{}", request_runtime_source(), list_runtime_source())
 }
-
 fn request_runtime_source() -> &'static str {
     r#"const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://127.0.0.1:3000";
 
@@ -289,7 +285,10 @@ fn entity_types(entity: &EntityIr) -> String {
     let model_fields = entity
         .fields
         .iter()
-        .map(|field| format!("  {}: {};", field.rust_name, model_type(field)))
+        .map(|field| {
+            let marker = if field.read_access.is_some() { "?" } else { "" };
+            format!("  {}{marker}: {};", field.rust_name, model_type(field))
+        })
         .collect::<Vec<_>>()
         .join("\n");
     let create_fields = entity
@@ -346,7 +345,8 @@ fn entity_client(entity: &EntityIr) -> String {
 }
 
 fn input_property(field: &FieldIr, update: bool) -> String {
-    let optional = update || field.nullable || field.default.is_some();
+    let optional =
+        update || field.nullable || field.default.is_some() || field.write_access.is_some();
     let marker = if optional { "?" } else { "" };
     let nullable = if field.nullable { " | null" } else { "" };
     format!(

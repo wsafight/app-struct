@@ -1,7 +1,7 @@
 use super::{column_ident, parsed_value, primary_key, supports_range};
 use crate::CodegenError;
 use crate::backend::{access, find_entity, module_name, parse_ident};
-use appstruct_ir::{AppIr, EntityIr, FieldTypeIr};
+use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
@@ -22,6 +22,9 @@ pub(super) fn filter_rules(
         let target_primary = column_ident(primary_key(target)?)?;
         let target_scope = access::related_scope(target, &target_module, &target.access.list)?;
         for target_field in filterable_fields(target) {
+            let source_allowed = read_allowed(relation_field);
+            let target_allowed = read_allowed(target_field);
+            let filter_allowed = quote! { (#source_allowed) && (#target_allowed) };
             let target_column = column_ident(target_field)?;
             let exact_key = LitStr::new(
                 &format!(
@@ -33,6 +36,9 @@ pub(super) fn filter_rules(
             let value = parsed_value(target_field, &quote! { raw });
             rules.push(quote! {
                 if let Some(raw) = query.filters.get(#exact_key) {
+                    if !(#filter_allowed) {
+                        return Err(access_denied(&context));
+                    }
                     use crate::entities::#target_module;
                     let value = #value;
                     let mut relation_select = #target_module::Entity::find()
@@ -55,6 +61,7 @@ pub(super) fn filter_rules(
                 target_primary: &target_primary,
                 target_column: &target_column,
                 target_scope: &target_scope,
+                filter_allowed: &filter_allowed,
             })?);
         }
     }
@@ -70,6 +77,7 @@ struct RangeRuleTokens<'a> {
     target_primary: &'a syn::Ident,
     target_column: &'a syn::Ident,
     target_scope: &'a TokenStream,
+    filter_allowed: &'a TokenStream,
 }
 
 fn range_rules(tokens: &RangeRuleTokens<'_>) -> Result<Vec<TokenStream>, CodegenError> {
@@ -82,6 +90,7 @@ fn range_rules(tokens: &RangeRuleTokens<'_>) -> Result<Vec<TokenStream>, Codegen
         target_primary,
         target_column,
         target_scope,
+        filter_allowed,
     } = tokens;
     if !supports_range(&target_field.ty) {
         return Ok(Vec::new());
@@ -100,6 +109,9 @@ fn range_rules(tokens: &RangeRuleTokens<'_>) -> Result<Vec<TokenStream>, Codegen
             let value = parsed_value(target_field, &quote! { raw });
             Ok(quote! {
                 if let Some(raw) = query.filters.get(#key) {
+                    if !(#filter_allowed) {
+                        return Err(access_denied(&context));
+                    }
                     use crate::entities::#target_module;
                     let value = #value;
                     let mut relation_select = #target_module::Entity::find()
@@ -175,4 +187,11 @@ fn filterable_fields(entity: &EntityIr) -> impl Iterator<Item = &appstruct_ir::F
         .fields
         .iter()
         .filter(|field| field.capabilities.filterable)
+}
+
+fn read_allowed(field: &FieldIr) -> TokenStream {
+    field
+        .read_access
+        .as_ref()
+        .map_or_else(|| quote! { true }, access::operation_allowed)
 }

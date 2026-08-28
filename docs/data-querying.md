@@ -121,3 +121,22 @@ const report = await taskApi.aggregate({
   filters: { "project.status": "active" },
 });
 ```
+
+## Field-level access
+
+Fields may declare `access.read` and `access.write` rules. A missing field rule inherits the
+entity's operation policy. Read rules are enforced after the row-level scope and before JSON
+serialization, so a field that is not visible is omitted from list, detail, and write responses.
+Write rules are checked after hooks run and before validation/persistence; submitting a field without
+permission returns the same authorization error as the corresponding entity operation. The generated
+Web manifest uses these rules to hide unauthorized columns and form controls, while the backend
+remains authoritative.
+
+```yaml
+api_key:
+  type: string
+  required: false
+  access:
+    read: { role: admin }
+    write: { role: admin }
+```

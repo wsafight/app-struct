@@ -4,7 +4,7 @@ use super::query::list_support;
 use super::validation::validation_rules;
 use super::{module_name, parse_ident, render, rust_type};
 use crate::CodegenError;
-use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
+use appstruct_ir::{AccessRuleIr, AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
@@ -39,6 +39,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         &updates,
     )?;
     let validators = validation_functions(entity)?;
+    let field_access = field_access_support(entity, &module)?;
 
     render(quote! {
         use crate::{AppState, ApiError, FieldViolation, RequestContext, entities::#module};
@@ -72,7 +73,120 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         #aggregate
         #handlers
         #validators
+        #field_access
     })
+}
+
+fn field_access_support(
+    entity: &EntityIr,
+    module: &syn::Ident,
+) -> Result<TokenStream, CodegenError> {
+    let read_arms = field_access_arms(entity, |field| field.read_access.as_ref());
+    let write_arms = field_access_arms(entity, |field| field.write_access.as_ref());
+    let read_redactions = entity
+        .fields
+        .iter()
+        .filter(|field| field.read_access.is_some())
+        .map(|field| {
+            let key = field.rust_name.as_str();
+            quote! {
+                if !field_read_allowed(context, #key) {
+                    if let serde_json::Value::Object(object) = &mut value {
+                        object.remove(#key);
+                    }
+                }
+            }
+        });
+    let create_guards = write_guards(entity, false)?;
+    let update_guards = write_guards(entity, true)?;
+    Ok(quote! {
+        #[allow(dead_code, unused_variables, unused_mut)]
+        fn field_read_allowed(context: &RequestContext, field: &str) -> bool {
+            match field {
+                #(#read_arms,)*
+                _ => true,
+            }
+        }
+
+        #[allow(dead_code, unused_variables, unused_mut)]
+        fn field_write_allowed(context: &RequestContext, field: &str) -> bool {
+            match field {
+                #(#write_arms,)*
+                _ => true,
+            }
+        }
+
+        #[allow(dead_code, unused_variables, unused_mut)]
+        fn redact_model(
+            context: &RequestContext,
+            model: #module::Model,
+        ) -> Result<serde_json::Value, ApiError> {
+            let mut value = serde_json::to_value(model).map_err(|_| ApiError::Internal)?;
+            #(#read_redactions)*
+            Ok(value)
+        }
+
+        #[allow(dead_code, unused_variables, unused_mut)]
+        fn authorize_create_fields(
+            context: &RequestContext,
+            input: &CreateInput,
+        ) -> Result<(), ApiError> {
+            #(#create_guards)*
+            Ok(())
+        }
+
+        #[allow(dead_code, unused_variables, unused_mut)]
+        fn authorize_update_fields(
+            context: &RequestContext,
+            input: &UpdateInput,
+        ) -> Result<(), ApiError> {
+            #(#update_guards)*
+            Ok(())
+        }
+    })
+}
+
+fn field_access_arms(
+    entity: &EntityIr,
+    access: impl Fn(&FieldIr) -> Option<&AccessRuleIr>,
+) -> Vec<TokenStream> {
+    entity
+        .fields
+        .iter()
+        .filter_map(|field| {
+            access(field).map(|rule| {
+                let name = &field.rust_name;
+                let allowed = super::access::operation_allowed(rule);
+                quote! { #name => #allowed }
+            })
+        })
+        .collect::<Vec<_>>()
+}
+
+fn write_guards(entity: &EntityIr, update: bool) -> Result<Vec<TokenStream>, CodegenError> {
+    entity
+        .fields
+        .iter()
+        .filter(|field| {
+            field.write_access.is_some()
+                && field.generated.is_none()
+                && (!update || !field.primary_key)
+        })
+        .map(|field| {
+            let name = parse_ident(&field.rust_name)?;
+            let key = field.rust_name.as_str();
+            let check = quote! {
+                if !field_write_allowed(context, #key) {
+                    return Err(access_denied(context));
+                }
+            };
+            if update || field.nullable || field.default.is_some() {
+                Ok(quote! { if input.#name.is_some() { #check } })
+            } else {
+                Ok(check)
+            }
+        })
+        .collect()
 }
 
 fn validation_functions(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
@@ -113,7 +227,7 @@ fn dto_field(field: &FieldIr, update: bool) -> Result<TokenStream, CodegenError>
     if field.nullable {
         ty = quote! { Option<#ty> };
     }
-    if update || field.default.is_some() {
+    if update || field.default.is_some() || field.write_access.is_some() {
         ty = quote! { Option<#ty> };
     }
     Ok(quote! { pub #name: #ty })
@@ -139,7 +253,19 @@ fn create_value(field: &FieldIr) -> Result<Option<TokenStream>, CodegenError> {
         Some(GeneratedValueIr::Revision) => quote! { 1_i64 },
         Some(GeneratedValueIr::Tenant) => quote! { context.require_tenant()? },
         None => field.default.as_ref().map_or_else(
-            || quote! { input.#name },
+            || {
+                if field.write_access.is_some() && !field.nullable {
+                    let field_name = field.api_name.clone();
+                    let message = format!("field `{}` is required", field.api_name);
+                    quote! {
+                        input.#name.ok_or_else(|| ApiError::Validation(vec![FieldViolation {
+                            field: #field_name.to_owned(), message: #message.to_owned()
+                        }]))?
+                    }
+                } else {
+                    quote! { input.#name }
+                }
+            },
             |default| {
                 let default = default_expression(field, default);
                 quote! { input.#name.unwrap_or_else(|| #default) }

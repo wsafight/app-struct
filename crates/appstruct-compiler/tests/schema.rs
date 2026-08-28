@@ -35,7 +35,14 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
                 "fields": {
                     "id": { "type": "uuid", "primary_key": true, "generated": "uuid_v7" },
                     "owner": { "type": "relation", "target": "User", "required": true },
-                    "metadata": { "type": "json", "ui": { "component": "MetadataEditor" } }
+                    "metadata": {
+                        "type": "json",
+                        "ui": { "component": "MetadataEditor" },
+                        "access": {
+                            "read": { "role": "admin" },
+                            "write": { "authenticated": true }
+                        }
+                    }
                 },
                 "access": {
                     "read": { "any": [{ "owner": "owner" }, { "role": "admin" }] }

@@ -1,4 +1,4 @@
-use crate::surface::{Located, SurfaceAccess, SurfaceAccessRule, SurfaceEntity};
+use crate::surface::{Located, SurfaceAccess, SurfaceAccessRule, SurfaceEntity, SurfaceField};
 use appstruct_ir::{AccessRuleIr, AuthIr, CrudAccessIr, Diagnostic, FieldId};
 
 pub(crate) fn build_access(
@@ -44,6 +44,25 @@ pub(crate) fn build_operation_access(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<AccessRuleIr> {
     lower_rule(rule, None, auth, diagnostics)
+}
+
+pub(crate) fn build_field_access(
+    field: &SurfaceField,
+    auth: &AuthIr,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> (Option<AccessRuleIr>, Option<AccessRuleIr>) {
+    let Some(access) = &field.access else {
+        return (None, None);
+    };
+    let read = access
+        .read
+        .as_ref()
+        .and_then(|rule| lower_rule(rule, None, auth, diagnostics));
+    let write = access
+        .write
+        .as_ref()
+        .and_then(|rule| lower_rule(rule, None, auth, diagnostics));
+    (read, write)
 }
 
 fn lower_rule(

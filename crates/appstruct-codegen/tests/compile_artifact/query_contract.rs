@@ -1,4 +1,5 @@
-use super::artifact_text;
+use super::support::{assert_rustfmt, cargo_check};
+use super::{artifact_text, write_artifacts};
 use appstruct_codegen::{Artifact, plan};
 use appstruct_compiler::compile_project;
 use serde_json::Value;
@@ -100,5 +101,60 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
             .unwrap()
             .iter()
             .any(|parameter| parameter["name"] == "metrics")
+    );
+}
+
+#[test]
+fn field_access_is_enforced_and_published_to_contracts() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+    let mut ir = appstruct_compiler::compile_project(&fixture).unwrap();
+    let project = ir
+        .entities
+        .iter_mut()
+        .find(|entity| entity.rust_name == "Project")
+        .unwrap();
+    let secret = project
+        .fields
+        .iter_mut()
+        .find(|field| field.rust_name == "status")
+        .unwrap();
+    secret.read_access = Some(appstruct_ir::AccessRuleIr::Role {
+        role: "admin".to_owned(),
+    });
+    secret.write_access = Some(appstruct_ir::AccessRuleIr::Role {
+        role: "admin".to_owned(),
+    });
+    let artifacts = appstruct_codegen::plan(&ir).unwrap();
+    let api = artifact_text(&artifacts, "backend/src/api/project.rs");
+    assert!(api.contains("fn field_read_allowed"));
+    assert!(api.contains("field_write_allowed"));
+    assert!(api.contains("redact_model"));
+    assert!(api.contains("authorize_create_fields"));
+    assert!(api.contains("actor.has_role(\"admin\")"));
+
+    let client = artifact_text(&artifacts, "web/src/generated/client.ts");
+    assert!(client.contains("status?: string"));
+    let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
+    assert!(resources.contains("readAccess: {\"mode\":\"role\",\"role\":\"admin\"}"));
+    assert!(resources.contains("writeAccess: {\"mode\":\"role\",\"role\":\"admin\"}"));
+    let web_resource = artifact_text(&artifacts, "web/src/resource.ts");
+    assert!(web_resource.contains("readAccess?: AccessRule"));
+    assert!(web_resource.contains("writeAccess?: AccessRule"));
+
+    let openapi: Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    let status = &openapi["components"]["schemas"]["Project"]["properties"]["status"];
+    assert_eq!(status["x-appstruct-read-access"]["mode"], "role");
+    assert_eq!(status["x-appstruct-write-access"]["role"], "admin");
+
+    let temporary = tempfile::tempdir().unwrap();
+    write_artifacts(temporary.path(), &artifacts);
+    let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest);
+    let checked = cargo_check(&manifest, true);
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
     );
 }

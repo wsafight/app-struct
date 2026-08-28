@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Eye, Plus, RefreshCw, Se
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { FieldDefinition, ResourceDefinition, ResourceRecord } from "../resource";
-import { canAccessResource, errorMessage, useCanAccess, useResourceActor } from "../resource";
+import { canAccessResource, canAccessRule, errorMessage, useCanAccess, useResourceActor } from "../resource";
 
 export function ResourceList({ resource, resources }: { resource: ResourceDefinition; resources: ResourceDefinition[] }) {
   const actor = useResourceActor();
@@ -18,8 +18,8 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
   const page = boundedInteger(searchParams.get("page"), 1, Number.MAX_SAFE_INTEGER, 1);
   const pageSize = boundedInteger(searchParams.get("page_size"), 1, 100, 25);
   const sort = searchParams.get("sort") ?? "";
-  const columns = useMemo(() => resource.fields.filter((field) => field.kind !== "json").slice(0, 6), [resource]);
-  const filterFields = resource.fields.filter((field) => field.filterable);
+  const columns = useMemo(() => resource.fields.filter((field) => field.kind !== "json" && canAccessRule(field.readAccess ?? { mode: "public" }, actor)).slice(0, 6), [actor, resource]);
+  const filterFields = resource.fields.filter((field) => field.filterable && canAccessRule(field.readAccess ?? { mode: "public" }, actor));
 
   const load = useCallback(async () => {
     if (!canList) return;
@@ -85,7 +85,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
   return <main className="page">
     <div className="page-heading"><div><h1>{resource.label}</h1><p>{total} records</p></div><div className="toolbar"><button className="icon-button" onClick={() => void load()} title="Refresh" aria-label="Refresh"><RefreshCw size={17} /></button>{canCreate && <Link className="primary-button" to={`/${resource.slug}/new`}><Plus size={17} /> Add</Link>}</div></div>
     <div className="list-controls">
-      {resource.fields.some((field) => field.searchable) && <form className="search-control" onSubmit={submitSearch}><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search" placeholder="Search" /></form>}
+      {resource.fields.some((field) => field.searchable && canAccessRule(field.readAccess ?? { mode: "public" }, actor)) && <form className="search-control" onSubmit={submitSearch}><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search" placeholder="Search" /></form>}
       {filterFields.map((field) => <FilterControl key={field.name} field={field} resources={resources} searchParams={searchParams} updateParam={updateParam} />)}
     </div>
     {error && <div className="alert" role="alert">{error}</div>}

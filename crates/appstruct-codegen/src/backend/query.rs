@@ -1,6 +1,5 @@
 mod aggregate;
 mod relation;
-
 use super::access;
 use super::{parse_ident, rust_type};
 use crate::CodegenError;
@@ -8,7 +7,6 @@ use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
-
 pub(super) fn list_support(
     ir: &AppIr,
     entity: &EntityIr,
@@ -43,7 +41,6 @@ pub(super) fn list_support(
     Ok(quote! {
         use base64::Engine as _;
         use sea_orm::{ColumnTrait as _, #query_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
-
         #[derive(Debug, Default, Deserialize)]
         pub struct ListQuery {
             page: Option<u64>,
@@ -55,27 +52,22 @@ pub(super) fn list_support(
             #[serde(flatten)]
             filters: BTreeMap<String, String>,
         }
-
         #[derive(Debug, Serialize)]
         #[serde(untagged)]
         pub enum ListMeta {
             Page { page: u64, page_size: u64, total: u64 },
             Cursor { limit: u64, next_cursor: Option<String>, has_more: bool },
         }
-
         #[derive(Debug, Serialize)]
         pub struct ListResponse<T> {
             data: Vec<T>,
             meta: ListMeta,
         }
-
         #handler
         #cursor_helpers
     })
 }
-
 pub(super) use aggregate::aggregate_support;
-
 struct ListHandlerTokens<'a> {
     module: &'a syn::Ident,
     filter_validation: &'a TokenStream,
@@ -88,7 +80,6 @@ struct ListHandlerTokens<'a> {
     primary_name: &'a syn::Ident,
     sorts: &'a [TokenStream],
 }
-
 fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
     let ListHandlerTokens {
         module,
@@ -107,7 +98,7 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
             State(state): State<AppState>,
             headers: HeaderMap,
             axum::extract::Query(query): axum::extract::Query<ListQuery>,
-        ) -> Result<Json<ListResponse<#module::Model>>, ApiError> {
+        ) -> Result<Json<ListResponse<serde_json::Value>>, ApiError> {
             let context = state.context(&headers).await?;
             #filter_validation
             let mut select = #module::Entity::find();
@@ -147,12 +138,15 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
                         .map(|model| encode_cursor(&model.#primary_name.to_string()))
                         .expect("a cursor page with more rows is not empty")
                 });
+                let data = data
+                    .into_iter()
+                    .map(|model| redact_model(&context, model))
+                    .collect::<Result<Vec<_>, _>>()?;
                 return Ok(Json(ListResponse {
                     data,
                     meta: ListMeta::Cursor { limit, next_cursor, has_more },
                 }));
             }
-
             let page = query.page.unwrap_or(1);
             let page_size = query.page_size.unwrap_or(25);
             if page == 0 || !(1..=100).contains(&page_size) {
@@ -174,7 +168,10 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
                 select = select.order_by_asc(#module::Column::#primary);
             }
             let total = select.clone().count(&state.database).await?;
-            let data = select.paginate(&state.database, page_size).fetch_page(page - 1).await?;
+            let data = select.paginate(&state.database, page_size).fetch_page(page - 1).await?
+                .into_iter()
+                .map(|model| redact_model(&context, model))
+                .collect::<Result<Vec<_>, _>>()?;
             Ok(Json(ListResponse {
                 data,
                 meta: ListMeta::Page { page, page_size, total },
@@ -182,13 +179,11 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
         }
     }
 }
-
 fn cursor_helpers() -> TokenStream {
     quote! {
         fn encode_cursor(value: &str) -> String {
             base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!("v1:{value}"))
         }
-
         fn decode_cursor(cursor: &str) -> Result<String, ApiError> {
             let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
                 .decode(cursor)
@@ -201,7 +196,6 @@ fn cursor_helpers() -> TokenStream {
         }
     }
 }
-
 fn filter_validation(keys: &[LitStr]) -> TokenStream {
     if keys.is_empty() {
         quote! {
@@ -220,7 +214,6 @@ fn filter_validation(keys: &[LitStr]) -> TokenStream {
         }
     }
 }
-
 fn filter_rules(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream>, CodegenError> {
     let mut rules = Vec::new();
     for field in entity
@@ -229,10 +222,14 @@ fn filter_rules(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStrea
         .filter(|field| field.capabilities.filterable)
     {
         let column = column_ident(field)?;
+        let field_name = field.rust_name.as_str();
         let exact_key = LitStr::new(&format!("filter[{}]", field.rust_name), Span::call_site());
         let value = parsed_value(field, &quote! { raw });
         rules.push(quote! {
             if let Some(raw) = query.filters.get(#exact_key) {
+                if !field_read_allowed(&context, #field_name) {
+                    return Err(access_denied(&context));
+                }
                 let value = #value;
                 select = select.filter(#module::Column::#column.eq(value));
             }
@@ -247,6 +244,9 @@ fn filter_rules(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStrea
                 let value = parsed_value(field, &quote! { raw });
                 rules.push(quote! {
                     if let Some(raw) = query.filters.get(#key) {
+                        if !field_read_allowed(&context, #field_name) {
+                            return Err(access_denied(&context));
+                        }
                         let value = #value;
                     select = select.filter(#module::Column::#column.#method(value));
                     }
@@ -256,7 +256,6 @@ fn filter_rules(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStrea
     }
     Ok(rules)
 }
-
 fn filter_keys(entity: &EntityIr) -> Vec<LitStr> {
     let mut keys = Vec::new();
     for field in entity
@@ -281,13 +280,14 @@ fn filter_keys(entity: &EntityIr) -> Vec<LitStr> {
     }
     keys
 }
-
 fn search_rule(entity: &EntityIr, module: &syn::Ident) -> Result<TokenStream, CodegenError> {
     let searchable = entity
         .fields
         .iter()
         .filter(|field| field.capabilities.searchable)
-        .map(column_ident)
+        .map(|field| -> Result<_, crate::CodegenError> {
+            Ok((column_ident(field)?, field.rust_name.as_str()))
+        })
         .collect::<Result<Vec<_>, _>>()?;
     if searchable.is_empty() {
         return Ok(quote! {
@@ -296,15 +296,23 @@ fn search_rule(entity: &EntityIr, module: &syn::Ident) -> Result<TokenStream, Co
             }
         });
     }
+    let columns = searchable.iter().map(|(column, _)| column);
+    let names = searchable.iter().map(|(_, name)| name);
     Ok(quote! {
         if let Some(term) = query.q.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
             let mut condition = Condition::any();
-            #(condition = condition.add(#module::Column::#searchable.contains(term));)*
+            let mut searchable_field_allowed = false;
+            #(if field_read_allowed(&context, #names) {
+                searchable_field_allowed = true;
+                condition = condition.add(#module::Column::#columns.contains(term));
+            })*
+            if !searchable_field_allowed {
+                return Err(access_denied(&context));
+            }
             select = select.filter(condition);
         }
     })
 }
-
 fn sort_rules(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream>, CodegenError> {
     entity
         .fields
@@ -316,6 +324,9 @@ fn sort_rules(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream>
             let primary = field.primary_key;
             Ok(quote! {
                 #name => {
+                    if !field_read_allowed(&context, #name) {
+                        return Err(access_denied(&context));
+                    }
                     select = if descending {
                         select.order_by_desc(#module::Column::#column)
                     } else {
@@ -327,7 +338,6 @@ fn sort_rules(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream>
         })
         .collect()
 }
-
 fn parsed_value(field: &FieldIr, raw: &TokenStream) -> TokenStream {
     let message = LitStr::new(
         &format!("invalid value for `{}`", field.rust_name),
@@ -358,7 +368,6 @@ fn parsed_value(field: &FieldIr, raw: &TokenStream) -> TokenStream {
         },
     }
 }
-
 fn supports_range(field_type: &FieldTypeIr) -> bool {
     matches!(
         field_type,
@@ -369,7 +378,6 @@ fn supports_range(field_type: &FieldTypeIr) -> bool {
             | FieldTypeIr::Datetime
     )
 }
-
 fn primary_key(entity: &EntityIr) -> Result<&FieldIr, CodegenError> {
     entity
         .fields
@@ -377,7 +385,6 @@ fn primary_key(entity: &EntityIr) -> Result<&FieldIr, CodegenError> {
         .find(|field| field.primary_key)
         .ok_or_else(|| CodegenError::new(format!("entity `{}` has no primary key", entity.id)))
 }
-
 fn column_ident(field: &FieldIr) -> Result<syn::Ident, CodegenError> {
     let name = field
         .rust_name

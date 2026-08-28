@@ -1,7 +1,7 @@
 use super::value::{
     ensure_known_keys, expect_bool, expect_mapping, expect_sequence, expect_string,
 };
-use super::{Located, SurfaceAccess, SurfaceAccessRule};
+use super::{Located, SurfaceAccess, SurfaceAccessRule, SurfaceFieldAccess};
 use crate::yaml::{MappingEntry, Node};
 use appstruct_ir::Diagnostic;
 use std::collections::BTreeMap;
@@ -20,6 +20,15 @@ pub(super) fn decode_crud_access(node: &Node) -> Result<SurfaceAccess, Diagnosti
         update: optional_rule(mapping, "update")?,
         delete: optional_rule(mapping, "delete")?,
         span: node.span.clone(),
+    })
+}
+
+pub(super) fn decode_field_access(node: &Node) -> Result<SurfaceFieldAccess, Diagnostic> {
+    let mapping = expect_mapping(node, "field `access`")?;
+    ensure_known_keys(mapping, &["read", "write"], "field `access`")?;
+    Ok(SurfaceFieldAccess {
+        read: optional_rule(mapping, "read")?,
+        write: optional_rule(mapping, "write")?,
     })
 }
 

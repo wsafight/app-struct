@@ -80,7 +80,7 @@ fn read_handler(
             State(state): State<AppState>,
             Path(id): Path<String>,
             headers: HeaderMap,
-        ) -> Result<([(header::HeaderName, String); 1], Json<#module::Model>), ApiError> {
+        ) -> Result<([(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
             let context = state.context(&headers).await?;
             let id = #parse_id;
             #read_scope
@@ -90,7 +90,7 @@ fn read_handler(
             if !state.extensions.#policy().can_read(&context, &model).await? {
                 return Err(ApiError::NotFound);
             }
-            Ok((etag_header(&model), Json(model)))
+            Ok((etag_header(&model), Json(redact_model(&context, model)?)))
         }
     }
 }
@@ -109,11 +109,12 @@ fn create_handler(
             State(state): State<AppState>,
             headers: HeaderMap,
             Json(mut input): Json<CreateInput>,
-        ) -> Result<(StatusCode, [(header::HeaderName, String); 1], Json<#module::Model>), ApiError> {
+        ) -> Result<(StatusCode, [(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
             state.auth.verify_csrf(&state.database, &headers).await?;
             let context = state.context(&headers).await?;
             let actor = context.actor().cloned();
             let tenant = context.tenant();
+            authorize_create_fields(&context, &input)?;
             state.extensions.#hooks().before_validate_create(&context, &mut input).await?;
             validate_create(&input)?;
             let transaction = state.database.begin().await?;
@@ -122,6 +123,7 @@ fn create_handler(
                     &transaction, &state.mail, &state.file, actor.clone(), tenant,
                 );
                 state.extensions.#hooks().before_create(&context, &mut input).await?;
+                authorize_create_fields(&context, &input)?;
                 validate_create(&input)?;
                 if !(#create_allowed) {
                     return Err(access_denied(&context));
@@ -137,7 +139,7 @@ fn create_handler(
             };
             transaction.commit().await?;
             run_after_commit(&state, crate::HookOperation::Create, &model, actor, tenant).await;
-            Ok((StatusCode::CREATED, etag_header(&model), Json(model)))
+            Ok((StatusCode::CREATED, etag_header(&model), Json(redact_model(&context, model)?)))
         }
     }
 }
@@ -162,12 +164,13 @@ fn update_handler(
             Path(id): Path<String>,
             headers: HeaderMap,
             Json(mut input): Json<UpdateInput>,
-        ) -> Result<([(header::HeaderName, String); 1], Json<#module::Model>), ApiError> {
+        ) -> Result<([(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
             state.auth.verify_csrf(&state.database, &headers).await?;
             let expected = expected_revision(&headers)?;
             let context = state.context(&headers).await?;
             let actor = context.actor().cloned();
             let tenant = context.tenant();
+            authorize_update_fields(&context, &input)?;
             state.extensions.#hooks().before_validate_update(&context, &mut input).await?;
             validate_update(&input)?;
             let id = #parse_id;
@@ -188,6 +191,7 @@ fn update_handler(
                     return Err(ApiError::ConcurrentModification);
                 }
                 state.extensions.#hooks().before_update(&context, &before, &mut input).await?;
+                authorize_update_fields(&context, &input)?;
                 validate_update(&input)?;
                 let mut active = before.clone().into_active_model();
                 #(#updates)*
@@ -209,7 +213,7 @@ fn update_handler(
             };
             transaction.commit().await?;
             run_after_commit(&state, crate::HookOperation::Update, &after, actor, tenant).await;
-            Ok((etag_header(&after), Json(after)))
+            Ok((etag_header(&after), Json(redact_model(&context, after)?)))
         }
     }
 }

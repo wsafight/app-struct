@@ -1,6 +1,6 @@
 # AppStruct Next Product Roadmap
 
-> Status: active implementation (`db pull`, cursor/relation queries, and aggregates complete)
+> Status: active implementation (`db pull`, cursor/relation queries, aggregates, and field access complete)
 > Date: 2026-08-28
 > Scope: product work after the M0-M6 technical preview baseline
 
@@ -64,7 +64,7 @@ remains out of scope.
 - [x] Cursor pagination and filters across relations.
 - [x] Count/sum/average/min/max aggregates and group-by queries.
 - [ ] Composite and partial indexes, seed data, and stronger migration linting.
-- [ ] Field-level read/write access rules.
+- [x] Field-level read/write access rules.
 
 ### Phase B: Usable operations
 

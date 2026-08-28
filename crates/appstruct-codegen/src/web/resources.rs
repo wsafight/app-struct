@@ -102,6 +102,18 @@ fn field_source(field: &FieldIr) -> String {
     if let Some(component) = &field.ui_component {
         properties.push(format!("uiComponent: {component:?}"));
     }
+    if let Some(access) = &field.read_access {
+        properties.push(format!(
+            "readAccess: {}",
+            serde_json::to_string(access).expect("access IR is serializable")
+        ));
+    }
+    if let Some(access) = &field.write_access {
+        properties.push(format!(
+            "writeAccess: {}",
+            serde_json::to_string(access).expect("access IR is serializable")
+        ));
+    }
     format!("{{ {} }}", properties.join(", "))
 }
 

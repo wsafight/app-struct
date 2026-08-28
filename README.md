@@ -53,7 +53,8 @@ large result sets. A filterable relation can traverse one hop to target fields t
 filterable, while retaining target access and tenant scopes. Each resource also exposes bounded
 count/sum/average/min/max and group-by queries over filterable fields. See
 [Generated resource queries](docs/data-querying.md) for request, response, OpenAPI, and TypeScript
-client contracts.
+client contracts. Fields can additionally declare independent read/write access rules; unauthorized
+response fields are omitted and unauthorized submitted fields are rejected by the backend.
 
 Enable tenant isolation together with Auth and mark each tenant-owned entity explicitly:
 

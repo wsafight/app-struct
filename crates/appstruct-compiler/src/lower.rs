@@ -147,7 +147,7 @@ fn lower_entities(
         );
         let access = build_access(&entity, auth, diagnostics);
         let (mut fields, mut entity_relations) =
-            build_fields(&entity, &entity_id, known_entities, diagnostics);
+            build_fields(&entity, &entity_id, known_entities, auth, diagnostics);
         let revision_conflict = entity.fields.iter().find(|field| {
             field
                 .column
@@ -223,6 +223,8 @@ fn tenant_field(entity_id: &EntityId) -> FieldIr {
             filterable: false,
             sortable: false,
         },
+        read_access: None,
+        write_access: None,
         ui_component: None,
     }
 }
@@ -246,6 +248,8 @@ fn revision_field(entity_id: &EntityId) -> FieldIr {
             filterable: false,
             sortable: false,
         },
+        read_access: None,
+        write_access: None,
         ui_component: None,
     }
 }
@@ -254,6 +258,7 @@ fn build_fields(
     entity: &SurfaceEntity,
     entity_id: &EntityId,
     known_entities: &BTreeSet<String>,
+    auth: &AuthIr,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> (Vec<FieldIr>, Vec<RelationIr>) {
     let mut fields = Vec::with_capacity(entity.fields.len());
@@ -261,9 +266,14 @@ fn build_fields(
     let mut columns = BTreeMap::<String, SourceSpan>::new();
     validate_primary_key(entity, diagnostics);
     for field in &entity.fields {
-        if let Some((field_ir, relation)) =
-            build_field(field, entity_id, known_entities, &mut columns, diagnostics)
-        {
+        if let Some((field_ir, relation)) = build_field(
+            field,
+            entity_id,
+            known_entities,
+            auth,
+            &mut columns,
+            diagnostics,
+        ) {
             fields.push(field_ir);
             relations.extend(relation);
         }
@@ -275,6 +285,7 @@ fn build_field(
     field: &SurfaceField,
     entity_id: &EntityId,
     known_entities: &BTreeSet<String>,
+    auth: &AuthIr,
     columns: &mut BTreeMap<String, SourceSpan>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<(FieldIr, Option<RelationIr>)> {
@@ -282,6 +293,7 @@ fn build_field(
     let field_type = build_field_type(field, known_entities, diagnostics)?;
     validate_field_options(field, &field_type, diagnostics);
     let generated = build_generated(field, &field_type, diagnostics);
+    let (read_access, write_access) = crate::access::build_field_access(field, auth, diagnostics);
     let field_id = FieldId(format!("{entity_id}.{}", field.name.value));
     let relation = build_relation(field, entity_id, &field_id, &field_type, diagnostics);
     let nullable = !(field.flags.required()
@@ -316,6 +328,8 @@ fn build_field(
                 filterable: field.flags.filterable(),
                 sortable: field.flags.sortable(),
             },
+            read_access,
+            write_access,
             ui_component: field
                 .ui_component
                 .as_ref()

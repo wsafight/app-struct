@@ -1,5 +1,4 @@
 mod graph;
-
 use self::graph::{validate_modules, validate_operations, validate_services};
 use crate::{
     AccessRuleIr, AppIr, EntityId, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr, IR_VERSION,
@@ -8,7 +7,6 @@ use crate::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IrValidationError {
     pub path: String,
@@ -20,17 +18,14 @@ impl fmt::Display for IrValidationError {
         write!(formatter, "{}: {}", self.path, self.message)
     }
 }
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IrValidationErrors(Vec<IrValidationError>);
-
 impl IrValidationErrors {
     #[must_use]
     pub fn errors(&self) -> &[IrValidationError] {
         &self.0
     }
 }
-
 impl fmt::Display for IrValidationErrors {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -44,9 +39,7 @@ impl fmt::Display for IrValidationErrors {
         )
     }
 }
-
 impl Error for IrValidationErrors {}
-
 /// Validate the semantic invariants required by generators and schema extraction.
 ///
 /// # Errors
@@ -83,7 +76,6 @@ pub fn validate_app_ir(ir: &AppIr) -> Result<(), IrValidationErrors> {
         Err(IrValidationErrors(errors))
     }
 }
-
 fn entity_index<'ir>(
     ir: &'ir AppIr,
     errors: &mut Vec<IrValidationError>,
@@ -100,7 +92,6 @@ fn entity_index<'ir>(
     }
     entities
 }
-
 fn validate_entities(
     ir: &AppIr,
     entities: &BTreeMap<&str, &EntityIr>,
@@ -138,13 +129,37 @@ fn validate_entities(
                 );
             }
             validate_field(field, &field_path, entities, errors);
+            if let Some(rule) = &field.read_access {
+                validate_field_access_rule(rule, &format!("{field_path}.read_access"), errors);
+            }
+            if let Some(rule) = &field.write_access {
+                validate_field_access_rule(rule, &format!("{field_path}.write_access"), errors);
+            }
         }
         for (name, rule) in entity_access(entity) {
             validate_access_rule(rule, entity, &format!("{path}.access.{name}"), errors);
         }
     }
 }
-
+fn validate_field_access_rule(
+    rule: &AccessRuleIr,
+    path: &str,
+    errors: &mut Vec<IrValidationError>,
+) {
+    match rule {
+        AccessRuleIr::Owner { .. } => push(
+            errors,
+            path,
+            "owner rules are not supported for field-level access",
+        ),
+        AccessRuleIr::Any { rules } | AccessRuleIr::All { rules } => {
+            for (index, child) in rules.iter().enumerate() {
+                validate_field_access_rule(child, &format!("{path}.rules[{index}]"), errors);
+            }
+        }
+        _ => {}
+    }
+}
 fn validate_field(
     field: &FieldIr,
     path: &str,
@@ -206,7 +221,6 @@ fn validate_field(
         }
     }
 }
-
 fn validate_relations(
     ir: &AppIr,
     entities: &BTreeMap<&str, &EntityIr>,
@@ -247,7 +261,6 @@ fn validate_relations(
         }
     }
 }
-
 fn validate_foreign_key_fields(
     relation: &RelationIr,
     path: &str,
@@ -275,7 +288,6 @@ fn validate_foreign_key_fields(
         }
     }
 }
-
 fn validate_relation_endpoint(
     entity: &EntityId,
     name: &str,
@@ -291,7 +303,6 @@ fn validate_relation_endpoint(
         );
     }
 }
-
 fn validate_access_rule(
     rule: &AccessRuleIr,
     entity: &EntityIr,
@@ -316,7 +327,6 @@ fn validate_access_rule(
         _ => {}
     }
 }
-
 fn entity_access(entity: &EntityIr) -> [(&'static str, &AccessRuleIr); 5] {
     [
         ("list", &entity.access.list),
@@ -326,7 +336,6 @@ fn entity_access(entity: &EntityIr) -> [(&'static str, &AccessRuleIr); 5] {
         ("delete", &entity.access.delete),
     ]
 }
-
 pub(super) fn unique_ids<'id>(
     ids: impl IntoIterator<Item = &'id str>,
     collection: &str,
@@ -344,7 +353,6 @@ pub(super) fn unique_ids<'id>(
     }
     unique
 }
-
 fn generated_compatible(generated: GeneratedValueIr, ty: &FieldTypeIr) -> bool {
     matches!(
         (generated, ty),
@@ -360,7 +368,6 @@ fn generated_compatible(generated: GeneratedValueIr, ty: &FieldTypeIr) -> bool {
         ) | (GeneratedValueIr::Revision, FieldTypeIr::Bigint)
     )
 }
-
 fn default_is_valid(value: &str, ty: &FieldTypeIr) -> bool {
     match ty {
         FieldTypeIr::Enum { values } => values.iter().any(|candidate| candidate == value),
@@ -372,7 +379,6 @@ fn default_is_valid(value: &str, ty: &FieldTypeIr) -> bool {
         _ => true,
     }
 }
-
 fn numeric_value_is_valid(value: &str, ty: &FieldTypeIr) -> bool {
     match ty {
         FieldTypeIr::Integer => value.parse::<i32>().is_ok(),

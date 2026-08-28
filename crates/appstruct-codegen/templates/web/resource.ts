@@ -102,6 +102,8 @@ export interface FieldDefinition {
   searchable: boolean;
   filterable: boolean;
   sortable: boolean;
+  readAccess?: AccessRule;
+  writeAccess?: AccessRule;
   values?: string[];
   relation?: string;
   minimum?: string;

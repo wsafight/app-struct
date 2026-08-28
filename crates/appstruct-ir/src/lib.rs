@@ -139,6 +139,10 @@ pub struct FieldIr {
     pub default: Option<String>,
     pub validation: ValidationIr,
     pub capabilities: FieldCapabilities,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_access: Option<AccessRuleIr>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write_access: Option<AccessRuleIr>,
     pub ui_component: Option<String>,
 }
 

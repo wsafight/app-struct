@@ -1,4 +1,4 @@
-use appstruct_ir::{EntityId, GeneratedValueIr, validate_app_ir};
+use appstruct_ir::{AccessRuleIr, EntityId, GeneratedValueIr, validate_app_ir};
 
 #[test]
 fn aggregates_semantic_invariant_violations_in_stable_path_order() {
@@ -48,4 +48,25 @@ fn accepts_the_internal_revision_default() {
     revision.default = Some("1".to_owned());
 
     validate_app_ir(&ir).unwrap();
+}
+
+#[test]
+fn rejects_owner_rules_on_field_access() {
+    let mut ir: appstruct_ir::AppIr =
+        serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();
+    let field = ir.entities[0]
+        .fields
+        .iter_mut()
+        .find(|field| field.rust_name == "name")
+        .unwrap();
+    field.read_access = Some(AccessRuleIr::Owner {
+        field: field.id.clone(),
+    });
+    let errors = validate_app_ir(&ir).unwrap_err();
+    assert!(errors.errors().iter().any(|error| {
+        error.path.ends_with(".read_access")
+            && error
+                .message
+                .contains("not supported for field-level access")
+    }));
 }

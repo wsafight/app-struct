@@ -62,6 +62,39 @@ fn rejects_incompatible_auth_user_identity_fields() {
     }
 }
 
+#[test]
+fn lowers_field_read_and_write_access_rules() {
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("spec/project.yaml"),
+        "        max_length: 120\n",
+        concat!(
+            "        max_length: 120\n",
+            "        access:\n",
+            "          read: { role: admin }\n",
+            "          write: { role: admin }\n",
+        ),
+    );
+    let ir = compile_project(temporary.path()).unwrap();
+    let field = ir
+        .entities
+        .iter()
+        .find(|entity| entity.rust_name == "Project")
+        .unwrap()
+        .fields
+        .iter()
+        .find(|field| field.rust_name == "name")
+        .unwrap();
+    assert!(matches!(
+        field.read_access,
+        Some(appstruct_ir::AccessRuleIr::Role { ref role }) if role == "admin"
+    ));
+    assert!(matches!(
+        field.write_access,
+        Some(appstruct_ir::AccessRuleIr::Role { ref role }) if role == "admin"
+    ));
+}
+
 fn copied_fixture() -> tempfile::TempDir {
     let temporary = tempfile::tempdir().unwrap();
     fs::create_dir(temporary.path().join("spec")).unwrap();

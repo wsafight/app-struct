@@ -4,7 +4,6 @@ use super::{
 };
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
 use serde_json::{Map, Value, json};
-
 pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, entity: &EntityIr) {
     let singular = &entity.rust_name;
     let collection = format!("/api/{}/", entity.table_name);
@@ -94,7 +93,6 @@ pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, entity: &Ent
     );
     add_aggregate_path(paths, ir, entity);
 }
-
 fn add_aggregate_path(paths: &mut Map<String, Value>, ir: &AppIr, entity: &EntityIr) {
     let singular = &entity.rust_name;
     let aggregate_path = format!("/api/{}/_aggregate", entity.table_name);
@@ -117,7 +115,6 @@ fn add_aggregate_path(paths: &mut Map<String, Value>, ir: &AppIr, entity: &Entit
         }),
     );
 }
-
 pub(super) fn add_schemas(schemas: &mut Map<String, Value>, entity: &EntityIr) {
     schemas.insert(entity.rust_name.clone(), entity_schema(entity));
     schemas.insert(
@@ -146,7 +143,7 @@ fn entity_schema(entity: &EntityIr) -> Value {
     let required = entity
         .fields
         .iter()
-        .filter(|field| !field.nullable)
+        .filter(|field| !field.nullable && field.read_access.is_none())
         .map(|field| Value::String(field.rust_name.clone()))
         .collect::<Vec<_>>();
     json!({ "type": "object", "properties": properties, "required": required })
@@ -169,7 +166,9 @@ fn input_schema(entity: &EntityIr, update: bool) -> Value {
     } else {
         fields
             .iter()
-            .filter(|field| !field.nullable && field.default.is_none())
+            .filter(|field| {
+                !field.nullable && field.default.is_none() && field.write_access.is_none()
+            })
             .map(|field| Value::String(field.rust_name.clone()))
             .collect()
     };
@@ -337,11 +336,9 @@ fn aggregate_response_schema() -> Value {
         }
     })
 }
-
 fn query_parameter(name: &str, schema: &Value) -> Value {
     json!({ "name": name, "in": "query", "required": false, "schema": schema })
 }
-
 fn field_schema(field: &FieldIr, response: bool) -> Value {
     let mut schema = match &field.ty {
         FieldTypeIr::Uuid | FieldTypeIr::Relation { .. } => {
@@ -366,6 +363,14 @@ fn field_schema(field: &FieldIr, response: bool) -> Value {
     if response && field.generated.is_some() {
         schema["readOnly"] = Value::Bool(true);
     }
+    if let Some(access) = &field.read_access {
+        schema["x-appstruct-read-access"] =
+            serde_json::to_value(access).expect("access is serializable");
+    }
+    if let Some(access) = &field.write_access {
+        schema["x-appstruct-write-access"] =
+            serde_json::to_value(access).expect("access is serializable");
+    }
     if let Some(minimum) = field.validation.min_length {
         schema["minLength"] = json!(minimum);
     }
@@ -373,21 +378,13 @@ fn field_schema(field: &FieldIr, response: bool) -> Value {
         schema["maxLength"] = json!(maximum);
     }
     if let Some(minimum) = &field.validation.minimum {
-        schema["minimum"] = json_number(minimum);
+        schema["minimum"] = serde_json::from_str(minimum).unwrap_or_else(|_| json!(0));
     }
     if let Some(maximum) = &field.validation.maximum {
-        schema["maximum"] = json_number(maximum);
+        schema["maximum"] = serde_json::from_str(maximum).unwrap_or_else(|_| json!(0));
     }
     schema
 }
-
-fn json_number(value: &str) -> Value {
-    value.parse::<i64>().map_or_else(
-        |_| json!(value.parse::<f64>().unwrap_or_default()),
-        Value::from,
-    )
-}
-
 fn primary_key_schema(entity: &EntityIr) -> Value {
     entity
         .fields

@@ -169,6 +169,12 @@ fn metric_arms(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream
     }];
     for field in aggregate_fields(entity) {
         let column = column_ident(field)?;
+        let field_name = LitStr::new(&field.rust_name, Span::call_site());
+        let read_guard = quote! {
+            if !field_read_allowed(&context, #field_name) {
+                return Err(access_denied(&context));
+            }
+        };
         let sum_name = LitStr::new(&format!("sum:{}", field.rust_name), Span::call_site());
         let avg_name = LitStr::new(&format!("avg:{}", field.rust_name), Span::call_site());
         let min_name = LitStr::new(&format!("min:{}", field.rust_name), Span::call_site());
@@ -180,9 +186,11 @@ fn metric_arms(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream
         if supports_sum_avg(&field.ty) {
             arms.push(quote! {
                 #sum_name => {
+                    #read_guard
                     select = select.column_as(#module::Column::#column.sum(), #sum_alias);
                 },
                 #avg_name => {
+                    #read_guard
                     select = select.column_as(#module::Column::#column.avg(), #avg_alias);
                 }
             });
@@ -190,9 +198,11 @@ fn metric_arms(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream
         if supports_min_max(&field.ty) {
             arms.push(quote! {
                 #min_name => {
+                    #read_guard
                     select = select.column_as(#module::Column::#column.min(), #min_alias);
                 },
                 #max_name => {
+                    #read_guard
                     select = select.column_as(#module::Column::#column.max(), #max_alias);
                 }
             });
@@ -212,6 +222,9 @@ fn group_arms(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream>
             let alias = LitStr::new(&format!("group_{}", field.rust_name), Span::call_site());
             Ok(quote! {
                 #name => {
+                    if !field_read_allowed(&context, #name) {
+                        return Err(access_denied(&context));
+                    }
                     select = select
                         .column_as(#module::Column::#column, #alias)
                         .group_by(#module::Column::#column);

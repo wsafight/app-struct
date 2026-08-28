@@ -76,7 +76,14 @@ pub(crate) struct SurfaceField {
     pub target: Option<Located<String>>,
     pub on_delete: Option<Located<String>>,
     pub ui_component: Option<Located<String>>,
+    pub access: Option<SurfaceFieldAccess>,
     pub span: SourceSpan,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceFieldAccess {
+    pub read: Option<Located<SurfaceAccessRule>>,
+    pub write: Option<Located<SurfaceAccessRule>>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
