@@ -53,7 +53,6 @@ fn value_object_type(value: &ValueObjectIr) -> String {
         .join("\n");
     format!("export interface {} {{\n{fields}\n}}\n", value.rust_name)
 }
-
 fn operation_clients(ir: &AppIr) -> Vec<String> {
     let mut clients = Vec::new();
     for command in &ir.commands {
@@ -81,7 +80,6 @@ fn operation_clients(ir: &AppIr) -> Vec<String> {
     }
     clients
 }
-
 fn operation_type_name<'ir>(ir: &'ir AppIr, operation_type: &OperationTypeIr) -> &'ir str {
     match operation_type {
         OperationTypeIr::Entity { entity } => ir
@@ -98,7 +96,6 @@ fn operation_type_name<'ir>(ir: &'ir AppIr, operation_type: &OperationTypeIr) ->
             .expect("compiler resolved operation value object"),
     }
 }
-
 fn runtime_source() -> String {
     format!("{}\n{}", request_runtime_source(), list_runtime_source())
 }
@@ -194,6 +191,12 @@ export interface CursorListQuery extends FilterQuery {
   limit?: number;
 }
 
+export interface AggregateQuery extends FilterQuery {
+  metrics?: string[];
+  group_by?: string[];
+  limit?: number;
+}
+
 export interface ListResponse<T> {
   data: T[];
   meta: { page: number; page_size: number; total: number };
@@ -204,6 +207,15 @@ export interface CursorListResponse<T> {
   meta: { limit: number; next_cursor: string | null; has_more: boolean };
 }
 
+export interface AggregateRow {
+  [key: string]: unknown;
+}
+
+export interface AggregateResponse {
+  data: AggregateRow[];
+  meta: { metrics: string[]; group_by: string[]; limit: number };
+}
+
 function listPath(path: string, query: ListQuery | CursorListQuery): string {
   const params = new URLSearchParams();
   if ("page" in query && query.page) params.set("page", String(query.page));
@@ -211,6 +223,22 @@ function listPath(path: string, query: ListQuery | CursorListQuery): string {
   if ("sort" in query && query.sort) params.set("sort", query.sort);
   if ("cursor" in query && query.cursor) params.set("cursor", query.cursor);
   if ("limit" in query && query.limit) params.set("limit", String(query.limit));
+  appendFilterParams(params, query);
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
+}
+
+function aggregatePath(path: string, query: AggregateQuery): string {
+  const params = new URLSearchParams();
+  if (query.metrics?.length) params.set("metrics", query.metrics.join(","));
+  if (query.group_by?.length) params.set("group_by", query.group_by.join(","));
+  if (query.limit) params.set("limit", String(query.limit));
+  appendFilterParams(params, query);
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
+}
+
+function appendFilterParams(params: URLSearchParams, query: FilterQuery): void {
   if (query.q) params.set("q", query.q);
   for (const [key, value] of Object.entries(query.filters ?? {})) {
     if (value !== "") params.set(`filter[${key}]`, value);
@@ -219,8 +247,6 @@ function listPath(path: string, query: ListQuery | CursorListQuery): string {
     if (range.gte) params.set(`filter[${key}][gte]`, range.gte);
     if (range.lte) params.set(`filter[${key}][lte]`, range.lte);
   }
-  const search = params.toString();
-  return search ? `${path}?${search}` : path;
 }
 "#
 }
@@ -295,6 +321,8 @@ fn entity_client(entity: &EntityIr) -> String {
   list: (query: ListQuery = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query)),
   listCursor: (query: CursorListQuery = {{}}) =>
     request<CursorListResponse<{model}>>(listPath("{path}", {{ limit: 25, ...query }})),
+  aggregate: (query: AggregateQuery = {{}}) =>
+    request<AggregateResponse>(aggregatePath("{path}_aggregate", query)),
   get: (id: string) => {{
     const member = `{path}${{encodeURIComponent(id)}}`;
     return request<{model}>(member, undefined, member);

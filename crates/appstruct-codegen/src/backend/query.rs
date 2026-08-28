@@ -1,3 +1,4 @@
+mod aggregate;
 mod relation;
 
 use super::access;
@@ -72,6 +73,8 @@ pub(super) fn list_support(
         #cursor_helpers
     })
 }
+
+pub(super) use aggregate::aggregate_support;
 
 struct ListHandlerTokens<'a> {
     module: &'a syn::Ident,

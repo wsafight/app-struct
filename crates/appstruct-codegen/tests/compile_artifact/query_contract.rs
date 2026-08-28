@@ -47,6 +47,10 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     assert!(client.contains("CursorListResponse"));
     assert!(client.contains("listCursor"));
     assert!(client.contains("{ limit: 25, ...query }"));
+    assert!(client.contains("AggregateQuery"));
+    assert!(client.contains("AggregateResponse"));
+    assert!(client.contains("aggregatePath"));
+    assert!(client.contains("aggregate: (query: AggregateQuery"));
     assert!(client.contains("range_filters"));
 
     let project_api = artifact_text(artifacts, "backend/src/api/project.rs");
@@ -58,6 +62,14 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     assert!(task_api.contains("filter[project.status]"));
     assert!(task_api.contains("project::Column::Status.eq(value)"));
     assert!(task_api.contains("in_subquery(relation_select.into_query())"));
+    assert!(task_api.contains("async fn aggregate"));
+    assert!(task_api.contains("Column::Priority.sum()"));
+    assert!(task_api.contains("Column::Priority.avg()"));
+    assert!(task_api.contains("Column::Priority.min()"));
+    assert!(task_api.contains("Column::Priority.max()"));
+    assert!(task_api.contains("group_priority"));
+    assert!(task_api.contains("limit` must be between 1 and 500"));
+    assert!(task_api.contains("aggregate metric `{metric}` is not allowed"));
 
     let openapi: Value =
         serde_json::from_str(artifact_text(artifacts, "openapi/openapi.json")).unwrap();
@@ -79,5 +91,14 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
         !task_parameters
             .iter()
             .any(|parameter| parameter["name"] == "filter[project.name]")
+    );
+    assert!(openapi["paths"]["/api/tasks/_aggregate"]["get"].is_object());
+    assert!(openapi["components"]["schemas"]["TaskAggregateResponse"].is_object());
+    assert!(
+        openapi["paths"]["/api/tasks/_aggregate"]["get"]["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|parameter| parameter["name"] == "metrics")
     );
 }

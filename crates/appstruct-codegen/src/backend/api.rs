@@ -22,6 +22,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
     let parse_id = parse_id_expression(primary_key(entity)?);
     let primary = parse_ident(&primary_key(entity)?.rust_name)?;
     let list = list_support(ir, entity, &module)?;
+    let aggregate = super::query::aggregate_support(ir, entity, &module)?;
     let hooks = format_ident!("{}_hooks", module_name(entity));
     let policy = format_ident!("{}_policy", module_name(entity));
     let handlers = write::handlers(
@@ -63,10 +64,12 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         pub fn router() -> Router<AppState> {
             Router::new()
                 .route("/", get(list).post(create))
+                .route("/_aggregate", get(aggregate))
                 .route("/{id}", get(read).patch(update).delete(delete))
         }
 
         #list
+        #aggregate
         #handlers
         #validators
     })

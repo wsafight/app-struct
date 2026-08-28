@@ -92,6 +92,30 @@ pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, entity: &Ent
             }
         }),
     );
+    add_aggregate_path(paths, ir, entity);
+}
+
+fn add_aggregate_path(paths: &mut Map<String, Value>, ir: &AppIr, entity: &EntityIr) {
+    let singular = &entity.rust_name;
+    let aggregate_path = format!("/api/{}/_aggregate", entity.table_name);
+    paths.insert(
+        aggregate_path,
+        json!({
+            "get": {
+                "operationId": format!("aggregate{singular}"),
+                "tags": [singular],
+                "security": auth::security(&entity.access.list),
+                "parameters": aggregate_parameters(ir, entity),
+                "responses": {
+                    "200": response(
+                        "Aggregate and grouped resource data",
+                        &schema_ref(&format!("{singular}AggregateResponse"))
+                    ),
+                    "400": error_response(),
+                }
+            }
+        }),
+    );
 }
 
 pub(super) fn add_schemas(schemas: &mut Map<String, Value>, entity: &EntityIr) {
@@ -108,8 +132,11 @@ pub(super) fn add_schemas(schemas: &mut Map<String, Value>, entity: &EntityIr) {
         format!("Update{}Input", entity.rust_name),
         input_schema(entity, true),
     );
+    schemas.insert(
+        format!("{}AggregateResponse", entity.rust_name),
+        aggregate_response_schema(),
+    );
 }
-
 fn entity_schema(entity: &EntityIr) -> Value {
     let properties = entity
         .fields
@@ -124,7 +151,6 @@ fn entity_schema(entity: &EntityIr) -> Value {
         .collect::<Vec<_>>();
     json!({ "type": "object", "properties": properties, "required": required })
 }
-
 fn input_schema(entity: &EntityIr, update: bool) -> Value {
     let fields = entity.fields.iter().filter(|field| {
         if update {
@@ -149,7 +175,6 @@ fn input_schema(entity: &EntityIr, update: bool) -> Value {
     };
     json!({ "type": "object", "properties": properties, "required": required })
 }
-
 fn list_response_schema(entity: &EntityIr) -> Value {
     json!({
         "type": "object",
@@ -182,7 +207,6 @@ fn list_response_schema(entity: &EntityIr) -> Value {
         }
     })
 }
-
 fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
     let mut parameters = vec![
         query_parameter(
@@ -270,6 +294,48 @@ fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
         }
     }
     parameters
+}
+fn aggregate_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
+    let mut parameters = vec![
+        query_parameter(
+            "metrics",
+            &json!({ "type": "string", "example": "count,sum:priority,avg:priority" }),
+        ),
+        query_parameter(
+            "group_by",
+            &json!({ "type": "string", "example": "status" }),
+        ),
+        query_parameter(
+            "limit",
+            &json!({ "type": "integer", "minimum": 1, "maximum": 500, "default": 100 }),
+        ),
+    ];
+    parameters.extend(list_parameters(ir, entity).into_iter().filter(|parameter| {
+        let name = parameter["name"].as_str().unwrap_or_default();
+        name == "q" || name.starts_with("filter[")
+    }));
+    parameters
+}
+fn aggregate_response_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties": {
+            "data": {
+                "type": "array",
+                "items": { "type": "object", "additionalProperties": true }
+            },
+            "meta": {
+                "type": "object",
+                "required": ["metrics", "group_by", "limit"],
+                "properties": {
+                    "metrics": { "type": "array", "items": { "type": "string" } },
+                    "group_by": { "type": "array", "items": { "type": "string" } },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 500 }
+                }
+            }
+        }
+    })
 }
 
 fn query_parameter(name: &str, schema: &Value) -> Value {

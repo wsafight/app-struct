@@ -50,8 +50,10 @@ including the draft in `appstruct.yaml`.
 
 Generated list endpoints offer offset pagination with totals and primary-key cursor pagination for
 large result sets. A filterable relation can traverse one hop to target fields that are also marked
-filterable, while retaining target access and tenant scopes. See [Generated resource queries](docs/data-querying.md)
-for request, response, OpenAPI, and TypeScript client contracts.
+filterable, while retaining target access and tenant scopes. Each resource also exposes bounded
+count/sum/average/min/max and group-by queries over filterable fields. See
+[Generated resource queries](docs/data-querying.md) for request, response, OpenAPI, and TypeScript
+client contracts.
 
 Enable tenant isolation together with Auth and mark each tenant-owned entity explicitly:
 

@@ -1,4 +1,4 @@
-import type { ApiError, CursorListQuery, CursorListResponse, ListQuery, ListResponse } from "./generated/client";
+import type { AggregateQuery, AggregateResponse, ApiError, CursorListQuery, CursorListResponse, ListQuery, ListResponse } from "./generated/client";
 import type { AppStructRegistry } from "./generated/registry";
 import { createContext, createElement, type ReactNode, useContext } from "react";
 
@@ -71,6 +71,7 @@ export function useVisibleResources(resources: ResourceDefinition[]): ResourceDe
 export interface ResourceApi {
   list(query?: ListQuery): Promise<ListResponse<ResourceRecord>>;
   listCursor(query?: CursorListQuery): Promise<CursorListResponse<ResourceRecord>>;
+  aggregate(query?: AggregateQuery): Promise<AggregateResponse>;
   get(id: string): Promise<ResourceRecord>;
   create(input: ResourceInput): Promise<ResourceRecord>;
   update(id: string, input: ResourceInput): Promise<ResourceRecord>;

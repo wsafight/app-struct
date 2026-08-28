@@ -71,7 +71,7 @@ Technical Preview 契约加固已完成。Compiler 内嵌 Draft 2020-12 JSON Sch
 | Module 装配 | 构建期 capability graph + 启动期 typed service 与可清理 handle |
 | 本地数据库 | `managed` 模式调用 Docker Compose；`external` 模式只连接已有 PostgreSQL |
 | 版本策略 | MVP 期间核心、Runtime、官方模块和模板锁步发布 |
-| 默认分页 | 页码分页，后续为大数据实体增加游标模式 |
+| 默认分页 | 页码分页；大数据遍历使用主键游标模式 |
 | 安全默认值 | 无授权声明时编译失败，不隐式公开实体 |
 
 ## 3. 系统上下文
@@ -994,6 +994,12 @@ GET /api/projects?page=1&page_size=25
 - 每一种排序都必须形成唯一全序：如果用户排序末尾不包含唯一键，Repository 自动追加主键；不能只在无显式排序时追加。
 
 该规则保证静态数据集上的页码稳定。并发插入或删除仍可能使 offset 页码移动，客户端在完成写操作后应失效并重新获取相关列表。传入 `limit` 或 `cursor` 时，同一路由切换为主键升序的游标模式；该模式不计算总数，返回 `next_cursor` 与 `has_more`，并拒绝和 `page`、`page_size`、`sort` 混用。游标使用带版本的 Base64URL 编码，客户端只能原样回传。
+
+每个资源同时生成 `GET /api/<table>/_aggregate`。`count` 默认可用；声明为 `filterable` 的
+数值字段支持 `sum`/`avg`，数值、字符串、枚举和日期时间字段支持 `min`/`max`，非 JSON
+标量可用于 `group_by`。查询复用列表的搜索、字段过滤、关联过滤、访问条件和租户范围，先限定
+可见数据再聚合。结果使用稳定的 `group_<field>` 与 `<metric>_<field>` 别名，并以 `limit` 将分组
+结果限制在 1 至 500 行。OpenAPI 与 TypeScript client 从相同 IR 生成该白名单和调用契约。
 
 ### 14.3 响应
 

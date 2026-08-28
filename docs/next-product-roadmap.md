@@ -1,6 +1,6 @@
 # AppStruct Next Product Roadmap
 
-> Status: active implementation (`db pull` and cursor/relation queries complete)
+> Status: active implementation (`db pull`, cursor/relation queries, and aggregates complete)
 > Date: 2026-08-28
 > Scope: product work after the M0-M6 technical preview baseline
 
@@ -62,7 +62,7 @@ remains out of scope.
 
 - [x] `appstruct db pull` for PostgreSQL tables, columns, keys, supported defaults, enums, and relations.
 - [x] Cursor pagination and filters across relations.
-- [ ] Count/sum/average/min/max aggregates and group-by queries.
+- [x] Count/sum/average/min/max aggregates and group-by queries.
 - [ ] Composite and partial indexes, seed data, and stronger migration linting.
 - [ ] Field-level read/write access rules.
 
