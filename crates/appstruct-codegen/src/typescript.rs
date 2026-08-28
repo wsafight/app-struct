@@ -264,9 +264,9 @@ fn auth_source(ir: &AppIr) -> String {
   roles: string[];
 }}
 
-interface AuthResponse {{ user: AuthUser; }}
+interface AuthResponse {{ user: AuthUser; email_verified: boolean; }}
 
-export const authFeatures = {{ registration: {registration}, passwordReset: {password_reset} }} as const;
+export const authFeatures = {{ registration: {registration}, passwordReset: {password_reset}, emailVerification: true }} as const;
 
 export const authApi = {{
   me: async () => (await request<AuthResponse>("/api/auth/me")).user,
@@ -283,6 +283,8 @@ export const authApi = {{
     request<void>("/api/auth/password/request", {{ method: "POST", body: JSON.stringify({{ email }}) }}),
   resetPassword: (token: string, password: string) =>
     request<void>("/api/auth/password/reset", {{ method: "POST", body: JSON.stringify({{ token, password }}) }}),
+  requestEmailVerification: () => request<void>("/api/auth/email/request", {{ method: "POST" }}),
+  verifyEmail: (token: string) => request<void>("/api/auth/email/verify", {{ method: "POST", body: JSON.stringify({{ token }}) }}),
 }};
 "#
     )

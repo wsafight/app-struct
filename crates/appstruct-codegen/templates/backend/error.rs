@@ -24,6 +24,7 @@ pub enum ApiError {
     InvalidCsrf,
     InvalidResetToken,
     InvalidInvitationToken,
+    InvalidEmailVerificationToken,
     Unauthorized,
     TooManyRequests,
     Forbidden,
@@ -112,6 +113,12 @@ impl IntoResponse for ApiError {
                 StatusCode::BAD_REQUEST,
                 "INVALID_INVITATION_TOKEN",
                 "The organization invitation link is invalid or expired".to_owned(),
+                vec![],
+            ),
+            Self::InvalidEmailVerificationToken => (
+                StatusCode::BAD_REQUEST,
+                "INVALID_EMAIL_VERIFICATION_TOKEN",
+                "The email verification link is invalid or expired".to_owned(),
                 vec![],
             ),
             Self::Unauthorized => (

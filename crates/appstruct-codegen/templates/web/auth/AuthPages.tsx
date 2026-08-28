@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { KeyRound, LogIn, Mail, UserPlus } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { authApi, authFeatures } from "../generated/client";
@@ -81,6 +81,23 @@ export function ResetPasswordPage() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "The request could not be completed"); }
   }
   return <AuthFrame title="Choose a password"><form className="auth-form" onSubmit={(event) => void submit(event)}>{error && <div className="alert" role="alert">{error}</div>}<label>New password<input type="password" minLength={12} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label><button className="primary-button" disabled={!token}><KeyRound size={17} /> Update password</button></form></AuthFrame>;
+}
+
+export function VerifyEmailPage() {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const [state, setState] = useState<"pending" | "success" | "error">("pending");
+  const [message, setMessage] = useState("");
+  const token = params.get("token") ?? "";
+  useEffect(() => {
+    if (!token) { setState("error"); setMessage("This verification link is missing its token."); return; }
+    authApi.verifyEmail(token)
+      .then(() => { setState("success"); setMessage("Your email address is verified."); })
+      .catch((reason) => { setState("error"); setMessage(reason instanceof Error ? reason.message : "The verification link is invalid or expired"); });
+  }, [token]);
+  return <AuthFrame title={state === "success" ? "Email verified" : state === "error" ? "Verification unavailable" : "Verifying email"}>
+    {state === "pending" ? <div className="auth-loading" aria-label="Loading" /> : state === "success" ? <><div className="auth-success"><Mail size={20} /> {message}</div><button type="button" className="primary-button" onClick={() => navigate("/", { replace: true })}>Continue</button></> : <div className="alert" role="alert">{message}</div>}
+  </AuthFrame>;
 }
 
 function AuthFrame({ title, children }: { title: string; children: ReactNode }) {

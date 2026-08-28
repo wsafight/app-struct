@@ -30,6 +30,10 @@ pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Valu
     schemas.insert("AuthResponse".to_owned(), auth_response_schema());
     schemas.insert("PasswordResetRequest".to_owned(), reset_request_schema());
     schemas.insert("PasswordResetInput".to_owned(), reset_input_schema());
+    schemas.insert(
+        "EmailVerificationInput".to_owned(),
+        email_verification_schema(),
+    );
     paths.insert(
         "/api/auth/login".to_owned(),
         json!({ "post": auth_operation("login", "AuthCredentials") }),
@@ -73,6 +77,33 @@ pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Valu
     if ir.auth.password_reset_enabled {
         add_password_reset_paths(paths);
     }
+    add_email_verification_paths(paths);
+}
+
+fn add_email_verification_paths(paths: &mut Map<String, Value>) {
+    paths.insert(
+        "/api/auth/email/request".to_owned(),
+        json!({
+            "post": {
+                "operationId": "requestEmailVerification",
+                "tags": ["Auth"],
+                "security": [{ "cookieSession": [] }],
+                "parameters": [csrf_parameter()],
+                "responses": { "204": { "description": "Verification email queued" }, "401": error_response() }
+            }
+        }),
+    );
+    paths.insert(
+        "/api/auth/email/verify".to_owned(),
+        json!({
+            "post": {
+                "operationId": "verifyEmail",
+                "tags": ["Auth"],
+                "requestBody": request_body("EmailVerificationInput"),
+                "responses": { "204": { "description": "Email verified" }, "400": error_response() }
+            }
+        }),
+    );
 }
 
 fn auth_operation(name: &str, body: &str) -> Value {
@@ -157,8 +188,11 @@ fn user_schema(ir: &AppIr) -> Value {
 fn auth_response_schema() -> Value {
     json!({
         "type": "object",
-        "required": ["user"],
-        "properties": { "user": schema_ref("AuthUser") }
+        "required": ["user", "email_verified"],
+        "properties": {
+            "user": schema_ref("AuthUser"),
+            "email_verified": { "type": "boolean" }
+        }
     })
 }
 
@@ -183,6 +217,14 @@ fn reset_input_schema() -> Value {
                 "maxLength": 1024
             }
         }
+    })
+}
+
+fn email_verification_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["token"],
+        "properties": { "token": { "type": "string", "minLength": 16 } }
     })
 }
 

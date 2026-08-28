@@ -16,6 +16,8 @@ pub(super) fn router() -> Router<AppState> {
         .route("/api/auth/login", post(login))
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
+        .route("/api/auth/email/request", post(request_email_verification))
+        .route("/api/auth/email/verify", post(verify_email))
         .route("/api/auth/password/request", post(request_password_reset))
         .route("/api/auth/password/reset", post(reset_password))
 }
@@ -37,9 +39,15 @@ struct ResetInput {
     password: String,
 }
 
+#[derive(Deserialize)]
+struct VerifyEmailInput {
+    token: String,
+}
+
 #[derive(Serialize)]
 struct AuthResponse {
     user: Actor,
+    email_verified: bool,
 }
 
 async fn register(
@@ -82,12 +90,13 @@ async fn register(
         .await?;
     let (session, csrf) = state.auth.create_session(&transaction, user_id).await?;
     transaction.commit().await?;
+    issue_email_verification(&state, user_id, &email.email).await?;
     let user = Actor {
         id: user_id,
         email: email.email,
         roles,
     };
-    Ok((state.auth.session_headers(&session, &csrf), Json(AuthResponse { user })))
+    Ok((state.auth.session_headers(&session, &csrf), Json(AuthResponse { user, email_verified: false })))
 }
 
 async fn login(
@@ -100,7 +109,7 @@ async fn login(
     validate_password(&input.password)?;
     state.auth.check_login_rate(&email)?;
     let sql = format!(
-        "SELECT a.user_id, a.password_hash, a.roles FROM \"_appstruct_auth_accounts\" a JOIN {users} u ON u.{id} = a.user_id WHERE LOWER(u.{email}) = $1",
+        "SELECT a.user_id, a.password_hash, a.roles, a.email_verified_at FROM \"_appstruct_auth_accounts\" a JOIN {users} u ON u.{id} = a.user_id WHERE LOWER(u.{email}) = $1",
         users = quote_ident(config::USER_TABLE),
         id = quote_ident(config::USER_ID_COLUMN),
         email = quote_ident(config::USER_EMAIL_COLUMN),
@@ -122,11 +131,16 @@ async fn login(
         .is_some_and(|hash| Argon2::default().verify_password(input.password.as_bytes(), &hash).is_ok());
     let Some(row) = row.filter(|_| valid) else { return Err(ApiError::Unauthorized) };
     let user_id = row.try_get("", "user_id")?;
+    let email_verified = row
+        .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "email_verified_at")
+        .ok()
+        .flatten()
+        .is_some();
     let roles: serde_json::Value = row.try_get("", "roles")?;
     let roles = serde_json::from_value(roles).map_err(|_| ApiError::Internal)?;
     let user = Actor { id: user_id, email, roles };
     let (session, csrf) = state.auth.create_session(&state.database, user_id).await?;
-    Ok((state.auth.session_headers(&session, &csrf), Json(AuthResponse { user })))
+    Ok((state.auth.session_headers(&session, &csrf), Json(AuthResponse { user, email_verified })))
 }
 
 async fn logout(
@@ -155,7 +169,59 @@ async fn me(
         .actor(&state.database, &headers)
         .await?
         .ok_or(ApiError::Unauthorized)?;
-    Ok(Json(AuthResponse { user }))
+    let email_verified = account_email_verified(&state, user.id).await?;
+    Ok(Json(AuthResponse { user, email_verified }))
+}
+
+async fn request_email_verification(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    state.auth.verify_csrf(&state.database, &headers).await?;
+    let actor = state
+        .auth
+        .actor(&state.database, &headers)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    if account_email_verified(&state, actor.id).await? {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    issue_email_verification(&state, actor.id, &actor.email).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn verify_email(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<VerifyEmailInput>,
+) -> Result<StatusCode, ApiError> {
+    state.auth.validate_origin(&headers)?;
+    let transaction = state.database.begin().await?;
+    let row = transaction
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT user_id FROM \"_appstruct_auth_email_verifications\" WHERE token_hash = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP FOR UPDATE",
+            [token_hash(&input.token).into()],
+        ))
+        .await?
+        .ok_or(ApiError::InvalidEmailVerificationToken)?;
+    let user_id: uuid::Uuid = row.try_get("", "user_id")?;
+    transaction
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "UPDATE \"_appstruct_auth_accounts\" SET email_verified_at = CURRENT_TIMESTAMP WHERE user_id = $1",
+            [user_id.into()],
+        ))
+        .await?;
+    transaction
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "UPDATE \"_appstruct_auth_email_verifications\" SET used_at = CURRENT_TIMESTAMP WHERE token_hash = $1",
+            [token_hash(&input.token).into()],
+        ))
+        .await?;
+    transaction.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn request_password_reset(
@@ -280,6 +346,57 @@ async fn find_user_id(state: &AppState, email: &str) -> Result<Option<uuid::Uuid
         .await?
         .map(|row| row.try_get("", "user_id").map_err(ApiError::from))
         .transpose()
+}
+
+async fn account_email_verified(state: &AppState, user_id: uuid::Uuid) -> Result<bool, ApiError> {
+    Ok(state
+        .database
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT email_verified_at FROM \"_appstruct_auth_accounts\" WHERE user_id = $1",
+            [user_id.into()],
+        ))
+        .await?
+        .and_then(|row| {
+            row.try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "email_verified_at")
+                .ok()
+                .flatten()
+        })
+        .is_some())
+}
+
+async fn issue_email_verification(
+    state: &AppState,
+    user_id: uuid::Uuid,
+    email: &str,
+) -> Result<(), ApiError> {
+    let token = random_token();
+    state
+        .database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "DELETE FROM \"_appstruct_auth_email_verifications\" WHERE user_id = $1 AND used_at IS NULL",
+            [user_id.into()],
+        ))
+        .await?;
+    state
+        .database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO \"_appstruct_auth_email_verifications\" (token_hash, user_id, expires_at, created_at) VALUES ($1, $2, CURRENT_TIMESTAMP + INTERVAL '24 hours', CURRENT_TIMESTAMP)",
+            [token_hash(&token).into(), user_id.into()],
+        ))
+        .await?;
+    let url = format!("{}/verify-email?token={token}", state.auth.config.frontend_url);
+    if let Err(error) = state
+        .auth
+        .mail
+        .send_email_verification(&state.database, email, &url)
+        .await
+    {
+        tracing::warn!(?error, "email verification delivery failed");
+    }
+    Ok(())
 }
 
 fn quote_ident(value: &str) -> String {

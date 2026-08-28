@@ -74,7 +74,8 @@ remains out of scope.
 - [x] Private and shared saved list views.
 - [x] Soft delete, trash, restore, and audit-backed history display.
 - [x] Organization invitations.
-- Email verification, OAuth/OIDC, and personal API tokens.
+- [x] Email verification.
+- OAuth/OIDC and personal API tokens.
 - Jobs, mail, file, user, tenant, and audit administration pages.
 - Recurring schedules, signed webhooks, retry, and replay.
 - Optional SSE updates and record presence/locks.

@@ -170,10 +170,12 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(sql.contains("_appstruct_auth_accounts"));
     assert!(sql.contains("_appstruct_auth_sessions"));
     assert!(sql.contains("_appstruct_auth_password_resets"));
+    assert!(sql.contains("_appstruct_auth_email_verifications"));
     let project_api = artifact_text(&artifacts, "backend/src/api/project.rs");
     assert!(project_api.contains("actor.has_role(\"admin\")"));
     assert!(project_api.contains("Column::OwnerId.eq(actor.id)"));
     assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("Argon2"));
+    assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("verify_email"));
     let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
     assert!(resources.contains(r#""mode":"role","role":"admin""#));
     assert!(resources.contains("export const auditAccess"));
@@ -285,6 +287,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
     );
     assert!(openapi["paths"]["/api/auth/register"]["post"].is_object());
     assert!(openapi["paths"]["/api/auth/password/request"]["post"].is_object());
+    assert!(openapi["paths"]["/api/auth/email/verify"]["post"].is_object());
     assert_eq!(
         openapi["paths"]["/api/auth/logout"]["post"]["parameters"][0]["name"],
         "X-CSRF-Token"

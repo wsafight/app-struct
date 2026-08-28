@@ -3,7 +3,13 @@ use appstruct_ir::{AppIr, OnDeleteIr};
 use super::{ColumnSchema, DatabaseType, ForeignKeySchema, TableSchema};
 
 pub(super) fn tables() -> Vec<TableSchema> {
-    vec![accounts(), sessions(), password_resets(), mail_capture()]
+    vec![
+        accounts(),
+        sessions(),
+        password_resets(),
+        email_verifications(),
+        mail_capture(),
+    ]
 }
 
 fn accounts() -> TableSchema {
@@ -25,6 +31,16 @@ fn accounts() -> TableSchema {
                 false,
             ),
             column("accounts.roles", "roles", DatabaseType::Json, false, false),
+            ColumnSchema {
+                id: "appstruct::auth::accounts.email_verified_at".to_owned(),
+                name: "email_verified_at".to_owned(),
+                data_type: DatabaseType::Datetime,
+                nullable: true,
+                primary_key: false,
+                unique: false,
+                default: None,
+                generated: None,
+            },
             column(
                 "accounts.created_at",
                 "created_at",
@@ -166,6 +182,52 @@ fn mail_capture() -> TableSchema {
     )
 }
 
+fn email_verifications() -> TableSchema {
+    table(
+        "email_verifications",
+        vec![
+            column(
+                "email_verifications.token_hash",
+                "token_hash",
+                DatabaseType::Text,
+                false,
+                true,
+            ),
+            column(
+                "email_verifications.user_id",
+                "user_id",
+                DatabaseType::Uuid,
+                false,
+                false,
+            ),
+            column(
+                "email_verifications.expires_at",
+                "expires_at",
+                DatabaseType::Datetime,
+                false,
+                false,
+            ),
+            ColumnSchema {
+                id: "appstruct::auth::email_verifications.used_at".to_owned(),
+                name: "used_at".to_owned(),
+                data_type: DatabaseType::Datetime,
+                nullable: true,
+                primary_key: false,
+                unique: false,
+                default: None,
+                generated: None,
+            },
+            column(
+                "email_verifications.created_at",
+                "created_at",
+                DatabaseType::Datetime,
+                false,
+                false,
+            ),
+        ],
+    )
+}
+
 fn table(name: &str, columns: Vec<ColumnSchema>) -> TableSchema {
     TableSchema {
         id: format!("appstruct::auth::{name}"),
@@ -223,6 +285,13 @@ pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {
         foreign_key(
             "reset_user",
             "password_resets",
+            "user_id",
+            "_appstruct_auth_accounts",
+            "user_id",
+        ),
+        foreign_key(
+            "email_verification_user",
+            "email_verifications",
             "user_id",
             "_appstruct_auth_accounts",
             "user_id",
