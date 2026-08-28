@@ -76,7 +76,7 @@ remains out of scope.
 - [x] Organization invitations.
 - [x] Email verification.
 - [x] OAuth/OIDC.
-- Personal API tokens.
+- [x] Personal API tokens.
 - Jobs, mail, file, user, tenant, and audit administration pages.
 - Recurring schedules, signed webhooks, retry, and replay.
 - Optional SSE updates and record presence/locks.

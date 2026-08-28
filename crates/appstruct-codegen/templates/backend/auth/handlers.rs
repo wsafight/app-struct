@@ -3,7 +3,7 @@ use super::session::{cookie_value, random_token, token_hash};
 use crate::{Actor, ApiError, AppState};
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Redirect;
 use axum::routing::{get, post};
@@ -21,6 +21,8 @@ pub(super) fn router() -> Router<AppState> {
         .route("/api/auth/email/verify", post(verify_email))
         .route("/api/auth/oauth/oidc/start", get(start_oidc))
         .route("/api/auth/oauth/oidc/callback", get(oidc_callback))
+        .route("/api/auth/tokens", get(list_api_tokens).post(create_api_token))
+        .route("/api/auth/tokens/{id}", axum::routing::delete(revoke_api_token))
         .route("/api/auth/password/request", post(request_password_reset))
         .route("/api/auth/password/reset", post(reset_password))
 }
@@ -51,6 +53,29 @@ struct VerifyEmailInput {
 struct OidcCallback {
     code: String,
     state: String,
+}
+
+#[derive(Deserialize)]
+struct CreateApiTokenInput {
+    name: String,
+    expires_in_days: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct ApiToken {
+    id: uuid::Uuid,
+    name: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    last_used_at: Option<chrono::DateTime<chrono::Utc>>,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    revoked_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Serialize)]
+struct CreatedApiToken {
+    #[serde(flatten)]
+    metadata: ApiToken,
+    token: String,
 }
 
 #[derive(Serialize)]
@@ -314,6 +339,104 @@ async fn oidc_callback(
     Ok((response_headers, Redirect::temporary("/")))
 }
 
+async fn list_api_tokens(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<ApiToken>>, ApiError> {
+    let actor = state
+        .auth
+        .actor(&state.database, &headers)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    let rows = state
+        .database
+        .query_all_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT id, name, created_at, last_used_at, expires_at, revoked_at FROM \"_appstruct_auth_api_tokens\" WHERE user_id = $1 ORDER BY created_at DESC, id DESC",
+            [actor.id.into()],
+        ))
+        .await?;
+    rows.into_iter()
+        .map(api_token_from_row)
+        .collect::<Result<Vec<_>, _>>()
+        .map(Json)
+        .map_err(ApiError::from)
+}
+
+async fn create_api_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<CreateApiTokenInput>,
+) -> Result<(StatusCode, Json<CreatedApiToken>), ApiError> {
+    state.auth.verify_csrf(&state.database, &headers).await?;
+    let actor = state
+        .auth
+        .actor(&state.database, &headers)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    let name = input.name.trim();
+    if name.is_empty() || name.len() > 80 {
+        return Err(ApiError::Validation(vec![crate::FieldViolation {
+            field: "name".to_owned(),
+            message: "Name must contain between 1 and 80 bytes".to_owned(),
+        }]));
+    }
+    if input.expires_in_days.is_some_and(|days| !(1..=3650).contains(&days)) {
+        return Err(ApiError::Validation(vec![crate::FieldViolation {
+            field: "expires_in_days".to_owned(),
+            message: "Expiration must be between 1 and 3650 days".to_owned(),
+        }]));
+    }
+    let token = random_token();
+    let id = uuid::Uuid::now_v7();
+    let expires_at = input
+        .expires_in_days
+        .map(|days| chrono::Utc::now() + chrono::Duration::days(i64::from(days)));
+    state
+        .database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO \"_appstruct_auth_api_tokens\" (id, user_id, token_hash, name, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)",
+            [
+                id.into(), actor.id.into(), token_hash(&token).into(), name.to_owned().into(),
+                expires_at.into(),
+            ],
+        ))
+        .await?;
+    let metadata = ApiToken {
+        id,
+        name: name.to_owned(),
+        created_at: chrono::Utc::now(),
+        last_used_at: None,
+        expires_at,
+        revoked_at: None,
+    };
+    Ok((StatusCode::CREATED, Json(CreatedApiToken { metadata, token })))
+}
+
+async fn revoke_api_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    state.auth.verify_csrf(&state.database, &headers).await?;
+    let actor = state
+        .auth
+        .actor(&state.database, &headers)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
+    state
+        .database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "UPDATE \"_appstruct_auth_api_tokens\" SET revoked_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL",
+            [id.into(), actor.id.into()],
+        ))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn request_password_reset(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -453,6 +576,17 @@ async fn account_email_verified(state: &AppState, user_id: uuid::Uuid) -> Result
                 .flatten()
         })
         .is_some())
+}
+
+fn api_token_from_row(row: sea_orm::QueryResult) -> Result<ApiToken, sea_orm::DbErr> {
+    Ok(ApiToken {
+        id: row.try_get("", "id")?,
+        name: row.try_get("", "name")?,
+        created_at: row.try_get("", "created_at")?,
+        last_used_at: row.try_get("", "last_used_at")?,
+        expires_at: row.try_get("", "expires_at")?,
+        revoked_at: row.try_get("", "revoked_at")?,
+    })
 }
 
 async fn issue_email_verification(

@@ -14,6 +14,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .invitation-form h2 { margin: 0 0 14px; font-size: 16px; }
 .invitation-form input { min-height: 36px; min-width: min(320px, 100%); border: 1px solid #bdc8cc; border-radius: 5px; padding: 0 10px; }
 .invitation-list { overflow-x: auto; }
+.token-form { margin-bottom: 14px; }
+.token-form input { min-height: 36px; border: 1px solid #bdc8cc; border-radius: 5px; padding: 0 10px; }
+.token-list { overflow-x: auto; }
 .sidebar nav { display: grid; gap: 3px; margin-top: 18px; }
 .sidebar nav a { display: flex; align-items: center; gap: 7px; color: #b9c6ca; padding: 9px 10px; text-decoration: none; border-radius: 5px; font-size: 14px; }
 .sidebar nav a:hover, .sidebar nav a.active { background: #2a373c; color: white; }

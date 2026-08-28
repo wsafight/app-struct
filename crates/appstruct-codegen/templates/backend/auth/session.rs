@@ -84,7 +84,18 @@ impl AuthState {
         database: &DatabaseConnection,
         headers: &HeaderMap,
     ) -> Result<Option<Actor>, ApiError> {
-        let Some(token) = cookie_value(headers, SESSION_COOKIE) else { return Ok(None) };
+        let token = cookie_value(headers, SESSION_COOKIE);
+        let bearer = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "));
+        if token.is_none() {
+            if let Some(token) = bearer {
+                return self.actor_from_api_token(database, token).await;
+            }
+            return Ok(None);
+        }
+        let token = token.expect("checked above");
         let sql = format!(
             "SELECT a.user_id, u.{email} AS email, a.roles FROM \"_appstruct_auth_sessions\" s JOIN \"_appstruct_auth_accounts\" a ON a.user_id = s.user_id JOIN {users} u ON u.{id} = a.user_id WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP",
             email = quote_ident(config::USER_EMAIL_COLUMN),
@@ -107,6 +118,42 @@ impl AuthState {
             id: row.try_get("", "user_id")?,
             email: row.try_get("", "email")?,
             roles,
+        }))
+    }
+
+    async fn actor_from_api_token(
+        &self,
+        database: &DatabaseConnection,
+        token: &str,
+    ) -> Result<Option<Actor>, ApiError> {
+        let sql = format!(
+            "SELECT a.user_id, u.{email} AS email, a.roles FROM \"_appstruct_auth_api_tokens\" t JOIN \"_appstruct_auth_accounts\" a ON a.user_id = t.user_id JOIN {users} u ON u.{id} = a.user_id WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > CURRENT_TIMESTAMP)",
+            email = quote_ident(config::USER_EMAIL_COLUMN),
+            users = quote_ident(config::USER_TABLE),
+            id = quote_ident(config::USER_ID_COLUMN),
+        );
+        let Some(row) = database
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                sql,
+                [token_hash(token).into()],
+            ))
+            .await?
+        else {
+            return Ok(None);
+        };
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "UPDATE \"_appstruct_auth_api_tokens\" SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = $1",
+                [token_hash(token).into()],
+            ))
+            .await?;
+        let roles: serde_json::Value = row.try_get("", "roles")?;
+        Ok(Some(Actor {
+            id: row.try_get("", "user_id")?,
+            email: row.try_get("", "email")?,
+            roles: serde_json::from_value(roles).map_err(|_| ApiError::Internal)?,
         }))
     }
 
@@ -163,6 +210,7 @@ impl AuthState {
             .allow_headers([
                 header::CONTENT_TYPE,
                 header::IF_MATCH,
+                header::AUTHORIZATION,
                 "x-csrf-token".parse().unwrap(),
                 "x-appstruct-tenant".parse().unwrap(),
             ])

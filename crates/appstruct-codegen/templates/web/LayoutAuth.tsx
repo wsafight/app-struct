@@ -17,6 +17,7 @@ export function Layout({ resources, pages }: { resources: ResourceDefinition[]; 
       <nav aria-label="Resources">
         {visibleResources.map((resource) => <NavLink key={resource.name} to={`/${resource.slug}`}>{resource.label}</NavLink>)}
         {pages.map((page) => <NavLink key={page.name} to={`/${page.path}`}>{page.label}</NavLink>)}
+        <NavLink to="/tokens">API tokens</NavLink>
       </nav>
     </aside>
     <div className="workspace">

@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useState } from "react";
-import { KeyRound, LogIn, Mail, UserPlus } from "lucide-react";
+import { Copy, KeyRound, LogIn, Mail, Plus, Trash2, UserPlus } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { authApi, authFeatures } from "../generated/client";
+import { authApi, authFeatures, type ApiToken, type CreatedApiToken } from "../generated/client";
 import { useAuth } from "./Auth";
 
 export function LoginPage() {
@@ -99,6 +99,25 @@ export function VerifyEmailPage() {
   return <AuthFrame title={state === "success" ? "Email verified" : state === "error" ? "Verification unavailable" : "Verifying email"}>
     {state === "pending" ? <div className="auth-loading" aria-label="Loading" /> : state === "success" ? <><div className="auth-success"><Mail size={20} /> {message}</div><button type="button" className="primary-button" onClick={() => navigate("/", { replace: true })}>Continue</button></> : <div className="alert" role="alert">{message}</div>}
   </AuthFrame>;
+}
+
+export function ApiTokensPage() {
+  const [tokens, setTokens] = useState<ApiToken[]>([]);
+  const [created, setCreated] = useState<CreatedApiToken | null>(null);
+  const [name, setName] = useState("");
+  const [expires, setExpires] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => { authApi.listApiTokens().then(setTokens).catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load tokens")); }, []);
+  async function create(event: FormEvent) {
+    event.preventDefault(); setError("");
+    try { const token = await authApi.createApiToken(name, expires ? Number(expires) : undefined); setCreated(token); setTokens((items) => [token, ...items]); setName(""); setExpires(""); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to create token"); }
+  }
+  async function revoke(id: string) {
+    try { await authApi.revokeApiToken(id); setTokens((items) => items.map((token) => token.id === id ? { ...token, revoked_at: new Date().toISOString() } : token)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to revoke token"); }
+  }
+  return <main className="page"><div className="page-heading"><div><h1>API tokens</h1><p>Use personal tokens for scripts and automation.</p></div></div>{error && <div className="alert" role="alert">{error}</div>}{created && <section className="alert" role="status"><strong>Copy this token now. It will not be shown again.</strong><div className="toolbar"><code>{created.token}</code><button type="button" className="icon-button" title="Copy token" aria-label="Copy token" onClick={() => void navigator.clipboard.writeText(created.token)}><Copy size={15} /></button></div></section>}<section className="form-frame token-form"><form className="toolbar" onSubmit={(event) => void create(event)}><label className="sr-only" htmlFor="token-name">Token name</label><input id="token-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Token name" maxLength={80} required /><label className="sr-only" htmlFor="token-expiry">Expires in days</label><input id="token-expiry" type="number" min={1} max={3650} value={expires} onChange={(event) => setExpires(event.target.value)} placeholder="Days (optional)" /><button className="primary-button"><Plus size={16} /> Create token</button></form></section><section className="table-frame token-list"><table><thead><tr><th>Name</th><th>Created</th><th>Expires</th><th>Status</th><th aria-label="Actions" /></tr></thead><tbody>{tokens.map((token) => <tr key={token.id}><td>{token.name}</td><td>{new Date(token.created_at).toLocaleDateString()}</td><td>{token.expires_at ? new Date(token.expires_at).toLocaleDateString() : "Never"}</td><td>{token.revoked_at ? "Revoked" : "Active"}</td><td>{!token.revoked_at && <button type="button" className="icon-button danger" title="Revoke token" aria-label={`Revoke ${token.name}`} onClick={() => void revoke(token.id)}><Trash2 size={15} /></button>}</td></tr>)}</tbody></table>{tokens.length === 0 && <div className="empty">No API tokens yet</div>}</section></main>;
 }
 
 function AuthFrame({ title, children }: { title: string; children: ReactNode }) {

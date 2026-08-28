@@ -17,7 +17,8 @@ pub(super) fn security_schemes(enabled: bool) -> Value {
                 "type": "apiKey",
                 "in": "cookie",
                 "name": "appstruct_session"
-            }
+            },
+            "bearerToken": { "type": "http", "scheme": "bearer" }
         })
     } else {
         json!({})
@@ -81,6 +82,56 @@ pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Valu
         add_oauth_paths(paths);
     }
     add_email_verification_paths(paths);
+    add_token_paths(paths, schemas);
+}
+
+fn add_token_paths(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {
+    schemas.insert(
+        "CreateApiTokenInput".to_owned(),
+        json!({
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+                "expires_in_days": { "type": "integer", "minimum": 1, "maximum": 3650 }
+            }
+        }),
+    );
+    schemas.insert(
+        "ApiToken".to_owned(),
+        json!({
+            "type": "object",
+            "required": ["id", "name", "created_at", "last_used_at", "expires_at", "revoked_at"],
+            "properties": {
+                "id": { "type": "string", "format": "uuid" },
+                "name": { "type": "string" },
+                "created_at": { "type": "string", "format": "date-time" },
+                "last_used_at": { "type": ["string", "null"], "format": "date-time" },
+                "expires_at": { "type": ["string", "null"], "format": "date-time" },
+                "revoked_at": { "type": ["string", "null"], "format": "date-time" }
+            }
+        }),
+    );
+    schemas.insert("CreatedApiToken".to_owned(), json!({
+        "allOf": [schema_ref("ApiToken"), { "type": "object", "required": ["token"], "properties": { "token": { "type": "string" } } }]
+    }));
+    paths.insert("/api/auth/tokens".to_owned(), json!({
+        "get": {
+            "operationId": "listApiTokens", "tags": ["Auth"], "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
+            "responses": { "200": response("Personal API tokens", &json!({ "type": "array", "items": schema_ref("ApiToken") })), "401": error_response() }
+        },
+        "post": {
+            "operationId": "createApiToken", "tags": ["Auth"], "security": [{ "cookieSession": [] }], "parameters": [csrf_parameter()],
+            "requestBody": request_body("CreateApiTokenInput"),
+            "responses": { "201": response("Token created; plaintext is returned once", &schema_ref("CreatedApiToken")), "401": error_response(), "422": error_response() }
+        }
+    }));
+    paths.insert("/api/auth/tokens/{id}".to_owned(), json!({
+        "delete": {
+            "operationId": "revokeApiToken", "tags": ["Auth"], "security": [{ "cookieSession": [] }, { "bearerToken": [] }], "parameters": [csrf_parameter(), { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+            "responses": { "204": { "description": "Token revoked" }, "400": error_response(), "401": error_response() }
+        }
+    }));
 }
 
 fn add_email_verification_paths(paths: &mut Map<String, Value>) {

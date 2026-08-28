@@ -267,6 +267,17 @@ fn auth_source(ir: &AppIr) -> String {
 
 interface AuthResponse {{ user: AuthUser; email_verified: boolean; }}
 
+export interface ApiToken {{
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+}}
+
+export interface CreatedApiToken extends ApiToken {{ token: string; }}
+
 export const authFeatures = {{ registration: {registration}, passwordReset: {password_reset}, emailVerification: true, oauth: {oauth} }} as const;
 
 export const authApi = {{
@@ -287,6 +298,9 @@ export const authApi = {{
   requestEmailVerification: () => request<void>("/api/auth/email/request", {{ method: "POST" }}),
   verifyEmail: (token: string) => request<void>("/api/auth/email/verify", {{ method: "POST", body: JSON.stringify({{ token }}) }}),
   startOidc: () => {{ window.location.assign(`${{API_BASE}}/api/auth/oauth/oidc/start`); }},
+  listApiTokens: () => request<ApiToken[]>("/api/auth/tokens"),
+  createApiToken: (name: string, expiresInDays?: number) => request<CreatedApiToken>("/api/auth/tokens", {{ method: "POST", body: JSON.stringify({{ name, expires_in_days: expiresInDays }}) }}),
+  revokeApiToken: (id: string) => request<void>(`/api/auth/tokens/${{id}}`, {{ method: "DELETE" }}),
 }};
 "#
     )

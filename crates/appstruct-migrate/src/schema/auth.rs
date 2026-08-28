@@ -9,6 +9,7 @@ pub(super) fn tables() -> Vec<TableSchema> {
         password_resets(),
         email_verifications(),
         oauth_accounts(),
+        api_tokens(),
         mail_capture(),
     ]
 }
@@ -265,6 +266,56 @@ fn oauth_accounts() -> TableSchema {
     )
 }
 
+fn api_tokens() -> TableSchema {
+    table(
+        "api_tokens",
+        vec![
+            column("api_tokens.id", "id", DatabaseType::Uuid, false, true),
+            column(
+                "api_tokens.user_id",
+                "user_id",
+                DatabaseType::Uuid,
+                false,
+                false,
+            ),
+            ColumnSchema {
+                id: "appstruct::auth::api_tokens.token_hash".to_owned(),
+                name: "token_hash".to_owned(),
+                data_type: DatabaseType::Text,
+                nullable: false,
+                primary_key: false,
+                unique: true,
+                default: None,
+                generated: None,
+            },
+            column("api_tokens.name", "name", DatabaseType::Text, false, false),
+            nullable_datetime("api_tokens.last_used_at", "last_used_at"),
+            nullable_datetime("api_tokens.expires_at", "expires_at"),
+            nullable_datetime("api_tokens.revoked_at", "revoked_at"),
+            column(
+                "api_tokens.created_at",
+                "created_at",
+                DatabaseType::Datetime,
+                false,
+                false,
+            ),
+        ],
+    )
+}
+
+fn nullable_datetime(id: &str, name: &str) -> ColumnSchema {
+    ColumnSchema {
+        id: format!("appstruct::auth::{id}"),
+        name: name.to_owned(),
+        data_type: DatabaseType::Datetime,
+        nullable: true,
+        primary_key: false,
+        unique: false,
+        default: None,
+        generated: None,
+    }
+}
+
 fn table(name: &str, columns: Vec<ColumnSchema>) -> TableSchema {
     TableSchema {
         id: format!("appstruct::auth::{name}"),
@@ -336,6 +387,13 @@ pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {
         foreign_key(
             "oauth_account_user",
             "oauth_accounts",
+            "user_id",
+            "_appstruct_auth_accounts",
+            "user_id",
+        ),
+        foreign_key(
+            "api_token_user",
+            "api_tokens",
             "user_id",
             "_appstruct_auth_accounts",
             "user_id",

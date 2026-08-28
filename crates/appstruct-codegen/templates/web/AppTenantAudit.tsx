@@ -2,7 +2,7 @@ import type { ComponentType } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuditPage } from "../audit/AuditPage";
 import { AuthProvider, RequireAuth } from "../auth/Auth";
-import { ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "../auth/AuthPages";
+import { ApiTokensPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "../auth/AuthPages";
 import { auditAccess, resources } from "../generated/resources";
 import { customPages } from "../generated/registry";
 import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
@@ -22,7 +22,7 @@ export function App({ registry }: { registry?: AppStructRegistry }) {
       {resources.map((resource) => <Route key={resource.name}><Route path={resource.slug} element={<ResourceList resource={resource} resources={resources} />} /><Route path={`${resource.slug}/new`} element={<ResourceForm resource={resource} resources={resources} registry={registry} />} /><Route path={`${resource.slug}/:id`} element={<ResourceDetail resource={resource} />} /><Route path={`${resource.slug}/:id/edit`} element={<ResourceForm resource={resource} resources={resources} registry={registry} />} /></Route>)}
       <Route path="audit" element={<AuditPage />} />
       {customPages.map((page) => { const Component = pageComponents?.[String(page.component)]; return <Route key={page.name} path={page.path} element={Component ? <Component /> : <main className="page"><div className="alert" role="alert">Page renderer unavailable</div></main>} />; })}
-      <Route path="empty" element={<main className="page"><h1>No accessible resources</h1></main>} /><Route path="organization" element={<OrganizationPage />} />
+      <Route path="empty" element={<main className="page"><h1>No accessible resources</h1></main>} /><Route path="organization" element={<OrganizationPage />} /><Route path="tokens" element={<ApiTokensPage />} />
     </Route></Route></Route>
   </Routes></AuthProvider>;
 }
