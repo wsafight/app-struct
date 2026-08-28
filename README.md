@@ -38,6 +38,16 @@ is available.
 migrations, watches App Spec and user Rust inputs, and stops its child processes on Ctrl-C.
 The default URLs are `http://127.0.0.1:3000` and `http://127.0.0.1:5173`.
 
+Create a review-only App Spec draft from an existing PostgreSQL schema:
+
+```bash
+appstruct db pull --schema public --output spec/imported.yaml
+```
+
+The command reads `DATABASE_URL`, never changes the database or root `includes`, and refuses to
+overwrite the output. Review unsupported-shape warnings and add explicit entity access rules before
+including the draft in `appstruct.yaml`.
+
 Enable tenant isolation together with Auth and mark each tenant-owned entity explicitly:
 
 ```yaml
@@ -103,6 +113,7 @@ appstruct migrate plan|dev|apply|status
 appstruct dev [--api-port <port>] [--web-port <port>]
 appstruct build
 appstruct doctor [--format text|json]
+appstruct db pull [--schema <name>] [--output <project-relative-path>]
 appstruct auth bootstrap-admin --email <address>
 appstruct preset show [--expanded]
 appstruct update
@@ -118,6 +129,7 @@ the explicit `migrate apply` command.
 - [Upgrading](docs/upgrading.md)
 - [Deployment](docs/deployment.md)
 - [Releasing](docs/releasing.md)
+- [Next product roadmap](docs/next-product-roadmap.md)
 - [Product requirements](PRODUCT.md)
 - [Technical design](TECHNICAL_DESIGN.md)
 

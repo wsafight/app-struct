@@ -8,6 +8,7 @@ use std::process::ExitCode;
 mod auth_admin;
 mod build;
 mod cache;
+mod db;
 mod development;
 mod doctor;
 mod environment;
@@ -62,6 +63,11 @@ enum Command {
         api_port: u16,
         #[arg(long, default_value_t = 5173)]
         web_port: u16,
+    },
+    /// Inspect an existing PostgreSQL database.
+    Db {
+        #[command(subcommand)]
+        command: db::DbCommand,
     },
     /// Validate the App Spec and build normalized IR in memory.
     Check {
@@ -157,6 +163,7 @@ fn run(cli: Cli) -> ExitCode {
         Command::Build => build::run(&project),
         Command::Doctor {} => doctor::run(&project, cli.format == report::OutputFormat::Json),
         Command::Dev { api_port, web_port } => development::run(&project, api_port, web_port),
+        Command::Db { command } => db::run(&project, &command),
         Command::Check { deny_warnings } => run_check(&project, cli.format, deny_warnings),
         Command::Generate { check } => generation::run(&project, check),
         Command::Migrate { command } => migration::run(&project, command),
