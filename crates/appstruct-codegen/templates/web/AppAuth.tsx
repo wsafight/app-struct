@@ -1,6 +1,6 @@
 import { useState, type ComponentType } from "react";
 import { AuthProvider, RequireAuth } from "../auth/Auth";
-import { AdminJobsPage, AdminPage, ApiTokensPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "../auth/AuthPages";
+import { AdminJobsPage, AdminPage, AdminUsersPage, ApiTokensPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "../auth/AuthPages";
 import { resources } from "../generated/resources";
 import { customPages } from "../generated/registry";
 import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
@@ -40,8 +40,9 @@ function appRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
           ...customPages.map((page) => ({ path: absolutePath(page.path), component: pageComponents?.[String(page.component)] ?? PageRendererUnavailable })),
           { path: "/empty", component: EmptyPage },
           { path: "/tokens", component: ApiTokensPage },
-          { path: "/admin", component: AdminPage },
-          { path: "/admin/jobs", component: AdminJobsPage },
+            { path: "/admin", component: AdminPage },
+            { path: "/admin/users", component: AdminUsersPage },
+            { path: "/admin/jobs", component: AdminJobsPage },
         ],
       }],
     },

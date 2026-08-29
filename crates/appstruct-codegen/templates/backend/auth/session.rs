@@ -5,10 +5,8 @@ use axum::http::{HeaderMap, HeaderValue, Method, header};
 use base64::Engine;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
 use std::env;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 
 const SESSION_COOKIE: &str = "appstruct_session";
@@ -18,7 +16,6 @@ const CSRF_COOKIE: &str = "appstruct_csrf";
 pub struct AuthState {
     pub(crate) config: Arc<AuthConfig>,
     pub(crate) mail: Arc<dyn AuthMailSender>,
-    login_attempts: Arc<Mutex<HashMap<String, Vec<Instant>>>>,
 }
 
 pub(crate) struct AuthConfig {
@@ -70,7 +67,6 @@ impl AuthState {
                 session_ttl_hours,
             }),
             mail,
-            login_attempts: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -200,15 +196,36 @@ impl AuthState {
         Ok(())
     }
 
-    pub(crate) fn check_login_rate(&self, key: &str) -> Result<(), ApiError> {
-        let now = Instant::now();
-        let mut attempts = self.login_attempts.lock().map_err(|_| ApiError::Internal)?;
-        let entry = attempts.entry(key.to_owned()).or_default();
-        entry.retain(|attempt| now.duration_since(*attempt) < Duration::from_secs(60));
-        if entry.len() >= 10 {
+    pub(crate) async fn check_login_rate<C: ConnectionTrait>(
+        &self,
+        database: &C,
+        key: &str,
+    ) -> Result<(), ApiError> {
+        let row = database
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                r#"INSERT INTO "_appstruct_auth_login_attempts" ("key", window_started_at, attempts)
+                   VALUES ($1, CURRENT_TIMESTAMP, 1)
+                   ON CONFLICT (key) DO UPDATE SET
+                     attempts = CASE
+                       WHEN "_appstruct_auth_login_attempts".window_started_at <= CURRENT_TIMESTAMP - INTERVAL '1 minute'
+                       THEN 1
+                       ELSE "_appstruct_auth_login_attempts".attempts + 1
+                     END,
+                     window_started_at = CASE
+                       WHEN "_appstruct_auth_login_attempts".window_started_at <= CURRENT_TIMESTAMP - INTERVAL '1 minute'
+                       THEN CURRENT_TIMESTAMP
+                       ELSE "_appstruct_auth_login_attempts".window_started_at
+                     END
+                   RETURNING attempts"#,
+                [key.to_owned().into()],
+            ))
+            .await?
+            .ok_or(ApiError::Internal)?;
+        let attempts: i32 = row.try_get("", "attempts")?;
+        if attempts > 10 {
             return Err(ApiError::TooManyRequests);
         }
-        entry.push(now);
         Ok(())
     }
 

@@ -218,6 +218,7 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
                 .merge(operations::router()).merge(audit::router())
                 .merge(auth::router()).merge(tenant::router())
                 .route("/health/live", get(liveness)).route("/health/ready", get(readiness))
+                .route("/metrics", get(metrics))
                 .route("/openapi.json", get(openapi)).layer(cors)
                 .layer(PropagateRequestIdLayer::x_request_id()).layer(TraceLayer::new_for_http())
                 .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
@@ -229,6 +230,13 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
                 StatusCode::NO_CONTENT
             }
             else { StatusCode::SERVICE_UNAVAILABLE }
+        }
+        async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
+            let ready = u8::from(state.health.is_ready());
+            let body = format!(
+                "# HELP appstruct_health_ready Whether the application is ready to serve traffic.\n# TYPE appstruct_health_ready gauge\nappstruct_health_ready {ready}\n"
+            );
+            ([(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4")], body)
         }
         async fn openapi() -> impl IntoResponse {
             ([(axum::http::header::CONTENT_TYPE, "application/json")], openapi::OPENAPI_JSON)

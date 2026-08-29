@@ -23,6 +23,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      - run: scripts/verify-packages.sh
+      - run: scripts/run-template-build.sh
 
   binaries:
     needs: quality

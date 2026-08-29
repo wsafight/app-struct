@@ -8,9 +8,72 @@ pub(super) fn add(
 ) {
     schemas.insert("AdminOverview".to_owned(), overview_schema());
     paths.insert("/api/admin/overview".to_owned(), overview_path());
+    schemas.insert("AdminUser".to_owned(), user_schema());
+    paths.insert("/api/admin/users".to_owned(), users_path());
+    schemas.insert(
+        "AdminSessionRevocation".to_owned(),
+        session_revocation_schema(),
+    );
+    paths.insert(
+        "/api/admin/users/{id}/revoke-sessions".to_owned(),
+        revoke_sessions_path(),
+    );
     if jobs_enabled {
         add_jobs(paths, schemas);
     }
+}
+
+fn user_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["id", "email", "roles", "email_verified", "active_sessions", "created_at"],
+        "properties": {
+            "id": { "type": "string", "format": "uuid" },
+            "email": { "type": "string", "format": "email" },
+            "roles": { "type": "array", "items": { "type": "string" } },
+            "email_verified": { "type": "boolean" },
+            "active_sessions": { "type": "integer" },
+            "created_at": { "type": "string", "format": "date-time" }
+        }
+    })
+}
+
+fn users_path() -> Value {
+    json!({
+        "get": {
+            "operationId": "listAdminUsers", "tags": ["Admin"],
+            "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
+            "parameters": [
+                { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }
+            ],
+            "responses": {
+                "200": response("Registered users", &json!({ "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": schema_ref("AdminUser") } } })),
+                "400": error_response(), "401": error_response(), "403": error_response()
+            }
+        }
+    })
+}
+
+fn session_revocation_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["revoked"],
+        "properties": { "revoked": { "type": "integer", "minimum": 0 } }
+    })
+}
+
+fn revoke_sessions_path() -> Value {
+    json!({
+        "post": {
+            "operationId": "revokeAdminUserSessions", "tags": ["Admin"],
+            "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
+            "parameters": [csrf_parameter(), { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+            "responses": {
+                "200": response("User sessions revoked", &schema_ref("AdminSessionRevocation")),
+                "400": error_response(), "401": error_response(), "403": error_response(), "404": error_response()
+            }
+        }
+    })
 }
 
 fn overview_schema() -> Value {

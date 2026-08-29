@@ -197,6 +197,26 @@ const MINIMAL_FILES: &[TemplateFile] = &[
         content: include_str!("../templates/common/gitignore"),
     },
     TemplateFile {
+        path: ".dockerignore",
+        content: include_str!("../templates/common/.dockerignore"),
+    },
+    TemplateFile {
+        path: "Dockerfile",
+        content: include_str!("../templates/common/Dockerfile"),
+    },
+    TemplateFile {
+        path: "compose.production.yaml",
+        content: include_str!("../templates/common/compose.production.yaml"),
+    },
+    TemplateFile {
+        path: "deploy/web.Dockerfile",
+        content: include_str!("../templates/common/deploy/web.Dockerfile"),
+    },
+    TemplateFile {
+        path: "deploy/nginx.conf",
+        content: include_str!("../templates/common/deploy/nginx.conf"),
+    },
+    TemplateFile {
         path: ".env.example",
         content: include_str!("../templates/minimal/env.example"),
     },
@@ -230,6 +250,26 @@ const DASHBOARD_FILES: &[TemplateFile] = &[
     TemplateFile {
         path: ".gitignore",
         content: include_str!("../templates/common/gitignore"),
+    },
+    TemplateFile {
+        path: ".dockerignore",
+        content: include_str!("../templates/common/.dockerignore"),
+    },
+    TemplateFile {
+        path: "Dockerfile",
+        content: include_str!("../templates/common/Dockerfile"),
+    },
+    TemplateFile {
+        path: "compose.production.yaml",
+        content: include_str!("../templates/common/compose.production.yaml"),
+    },
+    TemplateFile {
+        path: "deploy/web.Dockerfile",
+        content: include_str!("../templates/common/deploy/web.Dockerfile"),
+    },
+    TemplateFile {
+        path: "deploy/nginx.conf",
+        content: include_str!("../templates/common/deploy/nginx.conf"),
     },
     TemplateFile {
         path: ".env.example",
@@ -273,6 +313,26 @@ const SAAS_FILES: &[TemplateFile] = &[
     TemplateFile {
         path: ".gitignore",
         content: include_str!("../templates/common/gitignore"),
+    },
+    TemplateFile {
+        path: ".dockerignore",
+        content: include_str!("../templates/common/.dockerignore"),
+    },
+    TemplateFile {
+        path: "Dockerfile",
+        content: include_str!("../templates/common/Dockerfile"),
+    },
+    TemplateFile {
+        path: "compose.production.yaml",
+        content: include_str!("../templates/common/compose.production.yaml"),
+    },
+    TemplateFile {
+        path: "deploy/web.Dockerfile",
+        content: include_str!("../templates/common/deploy/web.Dockerfile"),
+    },
+    TemplateFile {
+        path: "deploy/nginx.conf",
+        content: include_str!("../templates/common/deploy/nginx.conf"),
     },
     TemplateFile {
         path: ".env.example",

@@ -18,3 +18,7 @@ New accounts receive the `member` role. After the first operator registers, run
 Development uses capture mail, PostgreSQL Jobs/Outbox, and local file storage under
 `.appstruct/files`. Set production Mail/File provider credentials through environment variables;
 never put secrets in `appstruct.yaml`. Billing and Admin are not included in preset version 1.
+
+For a production image, create `.env.production`, run `appstruct build`, and use
+`docker compose -f compose.production.yaml up -d`. Apply reviewed migrations separately before
+starting the API image.

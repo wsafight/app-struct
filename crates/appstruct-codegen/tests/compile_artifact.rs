@@ -197,6 +197,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(sql.contains("_appstruct_auth_password_resets"));
     assert!(sql.contains("_appstruct_auth_email_verifications"));
     assert!(sql.contains("_appstruct_auth_api_tokens"));
+    assert!(sql.contains("_appstruct_auth_login_attempts"));
     let project_api = artifact_text(&artifacts, "backend/src/api/project.rs");
     assert!(project_api.contains("actor.has_role(\"admin\")"));
     assert!(project_api.contains("Column::OwnerId.eq(actor.id)"));
@@ -257,10 +258,19 @@ fn admin_surface_is_wired_for_auth_and_audit_without_tenant() {
 
     let app = artifact_text(&artifacts, "web/src/app/App.tsx");
     assert!(app.contains("AdminPage"));
+    assert!(app.contains("AdminUsersPage"));
     assert!(app.contains("path: \"/admin\""));
+    assert!(app.contains("path: \"/admin/users\""));
     let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
     assert!(layout.contains("to=\"/admin\""));
-    assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("adminFeatures"));
+    let client = artifact_text(&artifacts, "web/src/generated/client.ts");
+    assert!(client.contains("adminFeatures"));
+    assert!(client.contains("listUsers"));
+    assert!(client.contains("revokeUserSessions"));
+    let openapi: Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    assert!(openapi["paths"]["/api/admin/users"]["get"].is_object());
+    assert!(openapi["paths"]["/api/admin/users/{id}/revoke-sessions"]["post"].is_object());
 }
 
 #[test]
@@ -402,6 +412,7 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     );
     assert!(artifact_text(artifacts, "database/0001_initial.sql").contains("CREATE TABLE"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("/health/ready"));
+    assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("appstruct_health_ready"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("MakeRequestUuid"));
     assert!(artifact_text(artifacts, "web/pnpm-lock.yaml").contains("lockfileVersion"));
     assert!(artifact_text(artifacts, "web/.gitignore").contains("node_modules/"));

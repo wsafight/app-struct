@@ -1,6 +1,6 @@
 # AppStruct Next Product Roadmap
 
-> Status: active implementation (`db pull`, cursor/relation queries, aggregates, and field access complete)
+> Status: active implementation (Phase A data onboarding is complete; Phase B operations is mostly complete)
 > Date: 2026-08-28
 > Scope: product work after the M0-M6 technical preview baseline
 
@@ -25,23 +25,23 @@ OpenAPI, generated clients, and any future protocol adapter retain identical aut
 
 ### 2.1 Existing database onboarding
 
-The product describes existing-database admin generation as a target scenario, but it cannot yet
-derive an App Spec from PostgreSQL. The first addition is a read-only `appstruct db pull` workflow.
+The read-only `appstruct db pull` workflow now derives a reviewable App Spec draft from PostgreSQL.
+The remaining gap is migration from real-world schemas: composite keys, cross-schema relations,
+arrays, domains, generated columns, and unsupported types still require manual review, and access
+rules cannot be inferred from database metadata.
 
 ### 2.2 Data access and reporting
 
-Generated resources currently provide offset pagination, basic filters, search, sorting, and
-bounded relation expansion. Business applications also need cursor pagination, relation filters,
-aggregates, grouping, read-only computed values, and dashboard queries. Every query operation must
-apply the same actor, tenant, and resource scopes as ordinary list reads, including aggregate
-counts.
+Generated resources now provide offset/cursor pagination, one-hop relation filters, bounded
+aggregates/grouping, and field-level access. Remaining gaps are read-only computed fields, deeper
+relation traversal, richer report/dashboard queries, and cursor traversal with user-selected sort
+keys.
 
 ### 2.3 Admin productivity
 
-The Web runtime needs explicit bulk operations, saved views, import/export, inline editing, soft
-delete, restore, and record history. Bulk operations require per-record authorization, explicit
-partial-failure semantics, and optimistic concurrency contracts; they must not be implemented as a
-client loop over unrestricted endpoints.
+The Web runtime now has explicit bulk operations, saved views, import/export, soft delete, restore,
+and audit-backed history. Remaining productivity gaps are inline editing, richer history diff UI,
+and a more complete reusable headless controller for custom screens.
 
 ### 2.4 Operational administration
 

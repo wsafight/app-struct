@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { ArrowLeft, Copy, CopyPlus, KeyRound, LogIn, Mail, Plus, RotateCcw, Trash2, UserPlus } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "../navigation";
-import { adminApi, adminFeatures, authApi, authFeatures, type AdminJob, type AdminJobStatus, type AdminOverview, type ApiToken, type CreatedApiToken } from "../generated/client";
+import { adminApi, adminFeatures, authApi, authFeatures, type AdminJob, type AdminJobStatus, type AdminOverview, type AdminUser, type ApiToken, type CreatedApiToken } from "../generated/client";
 import { useAuth } from "./Auth";
 
 export function LoginPage() {
@@ -133,7 +133,26 @@ export function AdminPage() {
     ["Users", overview.users], ["Organizations", overview.organizations], ["Invitations", overview.invitations], ["Sessions", overview.sessions],
     ["Jobs queued", overview.jobs_queued], ["Jobs dead", overview.jobs_dead], ["Mail deliveries", overview.mail_deliveries], ["Files", overview.files], ["Audit events", overview.audit_events],
   ] as const : [];
-  return <main className="page"><div className="page-heading"><div><h1>Administration</h1><p>Operational status across generated modules.</p></div></div>{error && <div className="alert" role="alert">{error}</div>}{overview ? <div className="admin-grid">{metrics.map(([label, value]) => <section className="admin-metric" key={label}><span>{label}</span><strong>{value.toLocaleString()}</strong></section>)}</div> : !error && <div className="auth-loading" aria-label="Loading" />}<nav className="admin-links" aria-label="Administration pages"><Link to="/tokens">API tokens</Link>{adminFeatures.jobs && <Link to="/admin/jobs">Jobs</Link>}{adminFeatures.tenant && <Link to="/organization">Organization</Link>}{adminFeatures.audit && <Link to="/audit">Audit log</Link>}</nav></main>;
+  return <main className="page"><div className="page-heading"><div><h1>Administration</h1><p>Operational status across generated modules.</p></div></div>{error && <div className="alert" role="alert">{error}</div>}{overview ? <div className="admin-grid">{metrics.map(([label, value]) => <section className="admin-metric" key={label}><span>{label}</span><strong>{value.toLocaleString()}</strong></section>)}</div> : !error && <div className="auth-loading" aria-label="Loading" />}<nav className="admin-links" aria-label="Administration pages"><Link to="/admin/users">Users</Link><Link to="/tokens">API tokens</Link>{adminFeatures.jobs && <Link to="/admin/jobs">Jobs</Link>}{adminFeatures.tenant && <Link to="/organization">Organization</Link>}{adminFeatures.audit && <Link to="/audit">Audit log</Link>}</nav></main>;
+}
+
+export function AdminUsersPage() {
+  const auth = useAuth();
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!auth.user?.roles.includes("admin")) return;
+    adminApi.listUsers().then(setUsers).catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load users"));
+  }, [auth.user]);
+  if (!auth.user?.roles.includes("admin")) return <Navigate to="/admin" replace />;
+  async function revokeSessions(user: AdminUser) {
+    setBusy(user.id); setError("");
+    try { await adminApi.revokeUserSessions(user.id); setUsers((items) => items.map((item) => item.id === user.id ? { ...item, active_sessions: 0 } : item)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to revoke sessions"); }
+    finally { setBusy(""); }
+  }
+  return <main className="page"><Link className="back-link" to="/admin"><ArrowLeft size={15} /> Administration</Link><div className="page-heading"><div><h1>Users</h1><p>Registered accounts and active sessions.</p></div></div>{error && <div className="alert" role="alert">{error}</div>}<section className="table-frame admin-users-table"><table><thead><tr><th>Email</th><th>Roles</th><th>Verified</th><th>Active sessions</th><th>Created</th><th aria-label="Actions" /></tr></thead><tbody>{users.map((user) => <tr key={user.id}><td>{user.email}</td><td>{user.roles.join(", ")}</td><td>{user.email_verified ? "Yes" : "No"}</td><td>{user.active_sessions}</td><td>{new Date(user.created_at).toLocaleString()}</td><td><button type="button" className="icon-button" title="Revoke all sessions" aria-label={`Revoke all sessions for ${user.email}`} disabled={Boolean(busy)} onClick={() => void revokeSessions(user)}><LogIn size={15} /></button></td></tr>)}</tbody></table>{users.length === 0 && !error && <div className="empty">No users yet</div>}</section></main>;
 }
 
 export function AdminJobsPage() {

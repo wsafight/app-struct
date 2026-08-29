@@ -216,6 +216,10 @@ APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_saas_
   scripts/run-m6-saas-e2e.sh
 ```
 
+The CI and release workflows also run `scripts/run-template-build.sh`, which creates a fresh SaaS
+project and verifies generated Web formatting, TypeScript types, and the Vite production bundle
+without requiring a database.
+
 Rust source files are limited to 400 lines by a repository test. Generated projects also pin
 their Rust and pnpm dependency graphs so repeated generation and production builds remain
 reviewable and reproducible.

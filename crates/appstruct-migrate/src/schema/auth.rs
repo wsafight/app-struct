@@ -2,6 +2,8 @@ use appstruct_ir::{AppIr, OnDeleteIr};
 
 use super::{ColumnSchema, DatabaseType, ForeignKeySchema, TableSchema};
 
+mod capture;
+
 pub(super) fn tables() -> Vec<TableSchema> {
     vec![
         accounts(),
@@ -10,7 +12,8 @@ pub(super) fn tables() -> Vec<TableSchema> {
         email_verifications(),
         oauth_accounts(),
         api_tokens(),
-        mail_capture(),
+        login_attempts(),
+        capture::table_schema(),
     ]
 }
 
@@ -138,43 +141,6 @@ fn password_resets() -> TableSchema {
     )
 }
 
-fn mail_capture() -> TableSchema {
-    table(
-        "mail_capture",
-        vec![
-            column("mail_capture.id", "id", DatabaseType::Uuid, false, true),
-            column(
-                "mail_capture.recipient",
-                "recipient",
-                DatabaseType::Text,
-                false,
-                false,
-            ),
-            column(
-                "mail_capture.subject",
-                "subject",
-                DatabaseType::Text,
-                false,
-                false,
-            ),
-            column(
-                "mail_capture.body",
-                "body",
-                DatabaseType::Text,
-                false,
-                false,
-            ),
-            column(
-                "mail_capture.created_at",
-                "created_at",
-                DatabaseType::Datetime,
-                false,
-                false,
-            ),
-        ],
-    )
-}
-
 fn email_verifications() -> TableSchema {
     table(
         "email_verifications",
@@ -269,6 +235,29 @@ fn api_tokens() -> TableSchema {
                 "api_tokens.created_at",
                 "created_at",
                 DatabaseType::Datetime,
+                false,
+                false,
+            ),
+        ],
+    )
+}
+
+fn login_attempts() -> TableSchema {
+    table(
+        "login_attempts",
+        vec![
+            column("login_attempts.key", "key", DatabaseType::Text, false, true),
+            column(
+                "login_attempts.window_started_at",
+                "window_started_at",
+                DatabaseType::Datetime,
+                false,
+                false,
+            ),
+            column(
+                "login_attempts.attempts",
+                "attempts",
+                DatabaseType::Integer,
                 false,
                 false,
             ),

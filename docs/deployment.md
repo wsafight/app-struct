@@ -27,6 +27,21 @@ migrations/
 .appstruct/schema.snapshot.json
 ```
 
+Official templates also include a production `Dockerfile`, a static Web image definition under
+`deploy/`, and `compose.production.yaml`. Run `appstruct build` before building these images:
+
+```bash
+cp .env.example .env.production
+# Set DATABASE_URL and production Auth/Mail/File variables in .env.production.
+appstruct build
+docker compose -f compose.production.yaml build
+docker compose -f compose.production.yaml up -d
+```
+
+The production Compose file contains only the API and static Web services. It does not start
+PostgreSQL or run migrations. Execute `appstruct migrate status` and `appstruct migrate apply` from
+the matching release artifact before starting the new API image.
+
 Ship the backend binary and Web `dist/` directory as immutable artifacts. The release job that
 runs migrations also needs the matching AppStruct CLI, project root marker, migration files,
 and schema snapshot. Do not build from a mutable branch inside the production runtime.
@@ -81,10 +96,11 @@ requires it. Expose it through a reverse proxy that provides HTTPS, request size
 logs, and deployment-level timeouts. Serve the Web directory from a static host or CDN and
 route unknown application paths back to `index.html`.
 
-The generated backend exposes `/health/live` for process liveness and `/health/ready` for a
-database ping. Successful responses include `X-Request-Id`; an incoming request ID is preserved
-and otherwise the backend creates one. Keep the old release available until readiness and a
-database-backed smoke journey both succeed.
+The generated backend exposes `/health/live` for process liveness, `/health/ready` for a database
+ping, and a Prometheus-compatible `/metrics` endpoint with the application readiness gauge.
+Successful responses include `X-Request-Id`; an incoming request ID is preserved and otherwise the
+backend creates one. Keep the old release available until readiness and a database-backed smoke
+journey both succeed.
 
 Auth, Mail, and File configuration is validated before the listener begins serving requests.
 Invalid environment values return a startup error and a non-zero process status; they do not

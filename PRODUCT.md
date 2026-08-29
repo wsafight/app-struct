@@ -1045,7 +1045,7 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 - 多租户、审计、文件、邮件和任务模块
 - `appstruct/saas@1` Preset、SaaS Template 和端到端示例
 - 官方 Module capability graph 与生成 Runtime/server 边界
-- 数据库 schema 反向生成 App Spec（后续）
+- PostgreSQL 数据库 schema 反向生成 App Spec（已完成；复杂 schema 形状仍需人工审查）
 - 第三方模块和自定义字段组件分发协议（后续）
 - 发布不含完整 Billing/Admin 的 AppStruct SaaS Preview；Admin Preview 提供运营总览、模块入口和 Jobs 恢复操作
 
@@ -1112,7 +1112,7 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 5. 后续：第三方 Module API 和远程分发协议的冻结范围。
 6. 已决策：Module capability graph、provider 唯一性、拓扑启动顺序和逆序清理。
 7. 部分完成：当前 Web 资源契约已稳定；完整可复用 headless Controller 仍是后续 Runtime 演进项。
-8. 已决策：CRUD、关系和 Command/Query 统一经过后端授权入口；批量操作尚未实现。
+8. 已决策：CRUD、关系和 Command/Query 统一经过后端授权入口；批量操作已实现并复用逐记录授权与并发控制。
 9. 已决策：迁移 rename/危险变更阻断、checksum、非事务步骤和 drift 诊断协议。
 10. 后续：第三方 Module 可注入的 IR fragment 和 Artifact ownership 边界。
 

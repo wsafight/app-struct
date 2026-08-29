@@ -39,6 +39,17 @@ export interface AdminOverview {{
   audit_events: number;
 }}
 
+export interface AdminUser {{
+  id: string;
+  email: string;
+  roles: string[];
+  email_verified: boolean;
+  active_sessions: number;
+  created_at: string;
+}}
+
+export interface AdminSessionRevocation {{ revoked: number; }}
+
 export type AdminJobStatus = "queued" | "running" | "succeeded" | "dead";
 
 export interface AdminJob {{
@@ -83,6 +94,10 @@ export const authApi = {{
 
 export const adminApi = {{
   overview: () => request<AdminOverview>("/api/admin/overview"),
+  listUsers: (limit = 50) =>
+    request<{{ data: AdminUser[] }}>(`/api/admin/users?limit=${{limit}}`).then((response) => response.data),
+  revokeUserSessions: (id: string) =>
+    request<AdminSessionRevocation>(`/api/admin/users/${{id}}/revoke-sessions`, {{ method: "POST" }}),
   listJobs: (status?: AdminJobStatus) =>
     request<{{ data: AdminJob[] }}>(`/api/admin/jobs${{status ? `?status=${{status}}` : ""}}`).then((response) => response.data),
   retryJob: (id: string) => request<AdminJob>(`/api/admin/jobs/${{id}}/retry`, {{ method: "POST" }}),

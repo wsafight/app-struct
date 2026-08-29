@@ -28,6 +28,8 @@ pub(super) fn router() -> Router<AppState> {
         .route("/api/auth/tokens", get(list_api_tokens).post(create_api_token))
         .route("/api/auth/tokens/{id}", axum::routing::delete(revoke_api_token))
         .route("/api/admin/overview", get(admin_overview))
+        .route("/api/admin/users", get(list_admin_users))
+        .route("/api/admin/users/{id}/revoke-sessions", post(revoke_admin_user_sessions))
         .route("/api/admin/jobs", get(list_admin_jobs))
         .route("/api/admin/jobs/{id}/retry", post(retry_admin_job))
         .route("/api/admin/jobs/{id}/replay", post(replay_admin_job))
@@ -99,6 +101,31 @@ struct AdminOverview {
     mail_deliveries: i64,
     files: i64,
     audit_events: i64,
+}
+
+#[derive(Serialize)]
+struct AdminUser {
+    id: uuid::Uuid,
+    email: String,
+    roles: Vec<String>,
+    email_verified: bool,
+    active_sessions: i64,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Serialize)]
+struct AdminUserList {
+    data: Vec<AdminUser>,
+}
+
+#[derive(Serialize)]
+struct AdminSessionRevocation {
+    revoked: u64,
+}
+
+#[derive(Deserialize)]
+struct AdminUserQuery {
+    limit: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -190,7 +217,7 @@ async fn login(
     state.auth.validate_origin(&headers)?;
     let email = normalize_email(&input.email)?;
     validate_password(&input.password)?;
-    state.auth.check_login_rate(&email)?;
+    state.auth.check_login_rate(&state.database, &email).await?;
     let sql = format!(
         "SELECT a.user_id, a.password_hash, a.roles, a.email_verified_at FROM \"_appstruct_auth_accounts\" a JOIN {users} u ON u.{id} = a.user_id WHERE LOWER(u.{email}) = $1",
         users = quote_ident(config::USER_TABLE),
@@ -519,6 +546,77 @@ async fn admin_overview(
     }))
 }
 
+async fn list_admin_users(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(input): Query<AdminUserQuery>,
+) -> Result<Json<AdminUserList>, ApiError> {
+    require_admin(&state, &headers).await?;
+    let limit = input.limit.unwrap_or(50);
+    if !(1..=100).contains(&limit) {
+        return Err(ApiError::InvalidQuery(
+            "limit must be between 1 and 100".to_owned(),
+        ));
+    }
+    let sql = format!(
+        "SELECT u.{id} AS id, u.{email} AS email, a.roles, a.email_verified_at, a.created_at, (SELECT COUNT(*) FROM \"_appstruct_auth_sessions\" s WHERE s.user_id = a.user_id AND s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP) AS active_sessions FROM {users} u JOIN \"_appstruct_auth_accounts\" a ON a.user_id = u.{id} ORDER BY a.created_at DESC, u.{id} DESC LIMIT $1",
+        id = quote_ident(config::USER_ID_COLUMN),
+        email = quote_ident(config::USER_EMAIL_COLUMN),
+        users = quote_ident(config::USER_TABLE),
+    );
+    let rows = state
+        .database
+        .query_all_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            sql,
+            [i64::try_from(limit).unwrap_or(100).into()],
+        ))
+        .await?;
+    let data = rows
+        .into_iter()
+        .map(admin_user_from_row)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Json(AdminUserList { data }))
+}
+
+async fn revoke_admin_user_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<AdminSessionRevocation>, ApiError> {
+    state.auth.verify_csrf(&state.database, &headers).await?;
+    require_admin(&state, &headers).await?;
+    let user_id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
+    let user_exists = format!(
+        "SELECT 1 FROM \"_appstruct_auth_accounts\" WHERE user_id = $1 AND EXISTS (SELECT 1 FROM {users} WHERE {users}.{id} = $1)",
+        users = quote_ident(config::USER_TABLE),
+        id = quote_ident(config::USER_ID_COLUMN),
+    );
+    if state
+        .database
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            user_exists,
+            [user_id.into()],
+        ))
+        .await?
+        .is_none()
+    {
+        return Err(ApiError::NotFound);
+    }
+    let result = state
+        .database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "UPDATE \"_appstruct_auth_sessions\" SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND revoked_at IS NULL",
+            [user_id.into()],
+        ))
+        .await?;
+    Ok(Json(AdminSessionRevocation {
+        revoked: result.rows_affected(),
+    }))
+}
+
 async fn list_admin_jobs(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -636,6 +734,21 @@ fn admin_job_from_row(row: sea_orm::QueryResult) -> Result<AdminJob, sea_orm::Db
     })
 }
 
+fn admin_user_from_row(row: sea_orm::QueryResult) -> Result<AdminUser, sea_orm::DbErr> {
+    let roles: serde_json::Value = row.try_get("", "roles")?;
+    Ok(AdminUser {
+        id: row.try_get("", "id")?,
+        email: row.try_get("", "email")?,
+        roles: serde_json::from_value(roles)
+            .map_err(|error| sea_orm::DbErr::Type(error.to_string()))?,
+        email_verified: row
+            .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "email_verified_at")?
+            .is_some(),
+        active_sessions: row.try_get("", "active_sessions")?,
+        created_at: row.try_get("", "created_at")?,
+    })
+}
+
 async fn count_table(state: &AppState, table: &str) -> Result<i64, ApiError> {
     let sql = format!("SELECT COUNT(*) AS count FROM {}", quote_ident(table));
     let row = state.database.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres, sql, [])).await?.ok_or(ApiError::Internal)?;
@@ -663,7 +776,7 @@ async fn request_password_reset(
     }
     state.auth.validate_origin(&headers)?;
     let email = normalize_email(&input.email)?;
-    state.auth.check_login_rate(&format!("reset:{email}"))?;
+    state.auth.check_login_rate(&state.database, &format!("reset:{email}")).await?;
     if let Some(user_id) = find_user_id(&state, &email).await? {
         let token = random_token();
         state.database
