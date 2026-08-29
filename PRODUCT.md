@@ -874,8 +874,9 @@ Template 可以包含初始领域配置、用户可修改的 React 页面、邮�
 | 配置 | Serde + YAML + JSON Schema |
 | 前端 | React + TypeScript + Vite |
 | 数据请求 | TanStack Query |
+| 路由 | TanStack Router |
 | 表格 | TanStack Table |
-| 表单 | React Hook Form + Zod |
+| 表单 | TanStack Form + Zod |
 | UI 基础 | shadcn/ui 风格组件层 |
 
 产品层面承诺的是契约和能力，不是让用户在 MVP 阶段自由替换每一层技术组件。

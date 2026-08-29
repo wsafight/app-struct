@@ -1,6 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { ArrowLeft, Copy, CopyPlus, KeyRound, LogIn, Mail, Plus, RotateCcw, Trash2, UserPlus } from "lucide-react";
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "../navigation";
 import { adminApi, adminFeatures, authApi, authFeatures, type AdminJob, type AdminJobStatus, type AdminOverview, type ApiToken, type CreatedApiToken } from "../generated/client";
 import { useAuth } from "./Auth";
 

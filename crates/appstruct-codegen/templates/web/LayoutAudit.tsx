@@ -1,5 +1,5 @@
 import { Boxes, History, LogOut } from "lucide-react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "../navigation";
 import { useAuth } from "../auth/Auth";
 import { auditAccess } from "../generated/resources";
 import { type ResourceDefinition, useCanAccessRule, useVisibleResources } from "../resource";

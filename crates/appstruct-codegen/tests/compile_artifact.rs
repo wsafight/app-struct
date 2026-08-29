@@ -93,6 +93,29 @@ fn resource_lists_publish_saved_view_controls() {
 }
 
 #[test]
+fn generated_web_uses_the_tanstack_runtime() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
+    let artifacts = plan(&compile_project(&fixture).unwrap()).unwrap();
+    let package = artifact_text(&artifacts, "web/package.json");
+    let main = artifact_text(&artifacts, "web/src/main.tsx");
+    let navigation = artifact_text(&artifacts, "web/src/navigation.tsx");
+    let list = artifact_text(&artifacts, "web/src/pages/ResourceList.tsx");
+    let form = artifact_text(&artifacts, "web/src/pages/ResourceForm.tsx");
+
+    assert!(package.contains("@tanstack/react-query"));
+    assert!(package.contains("@tanstack/react-router"));
+    assert!(package.contains("@tanstack/react-table"));
+    assert!(package.contains("@tanstack/react-form"));
+    assert!(!package.contains("react-router-dom"));
+    assert!(main.contains("QueryClientProvider"));
+    assert!(navigation.contains("createRuntimeRouter"));
+    assert!(list.contains("useTable"));
+    assert!(list.contains("useMutation"));
+    assert!(form.contains("useForm"));
+    assert!(form.contains("buildValidationSchema"));
+}
+
+#[test]
 fn one_to_one_relation_generates_has_one_inverse() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
     let mut ir = compile_project(&fixture).unwrap();
@@ -164,7 +187,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 53);
+    assert_eq!(artifacts.len(), 56);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -234,7 +257,7 @@ fn admin_surface_is_wired_for_auth_and_audit_without_tenant() {
 
     let app = artifact_text(&artifacts, "web/src/app/App.tsx");
     assert!(app.contains("AdminPage"));
-    assert!(app.contains("path=\"admin\""));
+    assert!(app.contains("path: \"/admin\""));
     let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
     assert!(layout.contains("to=\"/admin\""));
     assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("adminFeatures"));
@@ -350,7 +373,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 47);
+    assert_eq!(artifacts.len(), 50);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")
@@ -381,6 +404,7 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("/health/ready"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("MakeRequestUuid"));
     assert!(artifact_text(artifacts, "web/pnpm-lock.yaml").contains("lockfileVersion"));
+    assert!(artifact_text(artifacts, "web/.gitignore").contains("node_modules/"));
     query_contract::assert_query_contract(artifacts);
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("resourceEtags"));
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("If-Match"));

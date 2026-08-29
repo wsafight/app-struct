@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "../navigation";
 import { authApi, type AuthUser } from "../generated/client";
+import { queryClient } from "../query";
 import { ResourceActorProvider } from "../resource";
 
 interface AuthContextValue {
@@ -24,9 +25,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(() => ({
     loading,
     user,
-    async login(email, password) { setUser(await authApi.login(email, password)); },
-    async register(email, password) { setUser(await authApi.register(email, password)); },
-    async logout() { await authApi.logout(); setUser(null); },
+    async login(email, password) { queryClient.clear(); setUser(await authApi.login(email, password)); },
+    async register(email, password) { queryClient.clear(); setUser(await authApi.register(email, password)); },
+    async logout() { await authApi.logout(); queryClient.clear(); setUser(null); },
   }), [loading, user]);
 
   return <AuthContext.Provider value={value}><ResourceActorProvider user={user}>{children}</ResourceActorProvider></AuthContext.Provider>;

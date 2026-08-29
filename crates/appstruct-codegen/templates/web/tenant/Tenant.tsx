@@ -1,6 +1,6 @@
 import { Building2, MailPlus, Plus, Trash2, Users } from "lucide-react";
 import { FormEvent, ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
-import { Link, Outlet, useSearchParams } from "react-router-dom";
+import { Link, Outlet, useSearchParams } from "../navigation";
 import { tenantApi, type TenantInvitation, type TenantOrganization } from "../generated/client";
 import { errorMessage } from "../resource";
 

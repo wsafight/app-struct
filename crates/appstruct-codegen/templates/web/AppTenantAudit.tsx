@@ -1,11 +1,11 @@
-import type { ComponentType } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useState, type ComponentType } from "react";
 import { AuditPage } from "../audit/AuditPage";
 import { AuthProvider, RequireAuth } from "../auth/Auth";
 import { AdminJobsPage, AdminPage, ApiTokensPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "../auth/AuthPages";
 import { auditAccess, resources } from "../generated/resources";
 import { customPages } from "../generated/registry";
 import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
+import { Navigate, Outlet, RuntimeRouter, createRuntimeRouter, type RuntimeRoute } from "../navigation";
 import { ResourceDetail } from "../pages/ResourceDetail";
 import { ResourceForm } from "../pages/ResourceForm";
 import { ResourceList } from "../pages/ResourceList";
@@ -14,21 +14,76 @@ import { InvitationAcceptPage, OrganizationPage, RequireTenant, TenantProvider }
 import { Layout } from "./Layout";
 
 export function App({ registry }: { registry?: AppStructRegistry }) {
+  const [router] = useState(() => createRuntimeRouter(AuthRoot, appRoutes(registry)));
+  return <RuntimeRouter router={router} />;
+}
+
+function AuthRoot() {
+  return <AuthProvider><Outlet /></AuthProvider>;
+}
+
+function TenantRoot() {
+  return <TenantProvider><RequireTenant /></TenantProvider>;
+}
+
+function appRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
   const pageComponents = registry?.pages as Record<string, ComponentType<PageComponentProps>> | undefined;
-  return <AuthProvider><Routes>
-    <Route path="login" element={<LoginPage />} /><Route path="register" element={<RegisterPage />} /><Route path="forgot-password" element={<ForgotPasswordPage />} /><Route path="reset-password" element={<ResetPasswordPage />} /><Route path="accept-invitation" element={<InvitationAcceptPage />} /><Route path="verify-email" element={<VerifyEmailPage />} />
-    <Route element={<RequireAuth />}><Route element={<TenantProvider><RequireTenant /></TenantProvider>}><Route element={<Layout resources={resources} pages={customPages} />}>
-      <Route index element={<HomeRedirect />} />
-      {resources.map((resource) => <Route key={resource.name}><Route path={resource.slug} element={<ResourceList resource={resource} resources={resources} />} /><Route path={`${resource.slug}/new`} element={<ResourceForm resource={resource} resources={resources} registry={registry} />} /><Route path={`${resource.slug}/:id`} element={<ResourceDetail resource={resource} />} /><Route path={`${resource.slug}/:id/edit`} element={<ResourceForm resource={resource} resources={resources} registry={registry} />} /></Route>)}
-      <Route path="audit" element={<AuditPage />} />
-      {customPages.map((page) => { const Component = pageComponents?.[String(page.component)]; return <Route key={page.name} path={page.path} element={Component ? <Component /> : <main className="page"><div className="alert" role="alert">Page renderer unavailable</div></main>} />; })}
-      <Route path="empty" element={<main className="page"><h1>No accessible resources</h1></main>} /><Route path="organization" element={<OrganizationPage />} /><Route path="tokens" element={<ApiTokensPage />} /><Route path="admin" element={<AdminPage />} /><Route path="admin/jobs" element={<AdminJobsPage />} />
-    </Route></Route></Route>
-  </Routes></AuthProvider>;
+  return [
+    { path: "/login", component: LoginPage },
+    { path: "/register", component: RegisterPage },
+    { path: "/forgot-password", component: ForgotPasswordPage },
+    { path: "/reset-password", component: ResetPasswordPage },
+    { path: "/accept-invitation", component: InvitationAcceptPage },
+    { path: "/verify-email", component: VerifyEmailPage },
+    {
+      id: "_authenticated",
+      component: RequireAuth,
+      children: [{
+        id: "_tenant",
+        component: TenantRoot,
+        children: [{
+          id: "_layout",
+          component: () => <Layout resources={resources} pages={customPages} />,
+          children: [
+            { path: "/", component: HomeRedirect },
+            ...resourceRoutes(registry),
+            { path: "/audit", component: AuditPage },
+            ...customPages.map((page) => ({ path: absolutePath(page.path), component: pageComponents?.[String(page.component)] ?? PageRendererUnavailable })),
+            { path: "/empty", component: EmptyPage },
+            { path: "/organization", component: OrganizationPage },
+            { path: "/tokens", component: ApiTokensPage },
+            { path: "/admin", component: AdminPage },
+            { path: "/admin/jobs", component: AdminJobsPage },
+          ],
+        }],
+      }],
+    },
+  ];
+}
+
+function resourceRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
+  return resources.flatMap((resource) => [
+    { path: `/${resource.slug}`, component: () => <ResourceList resource={resource} resources={resources} /> },
+    { path: `/${resource.slug}/new`, component: () => <ResourceForm resource={resource} resources={resources} registry={registry} /> },
+    { path: `/${resource.slug}/$id`, component: () => <ResourceDetail resource={resource} /> },
+    { path: `/${resource.slug}/$id/edit`, component: () => <ResourceForm resource={resource} resources={resources} registry={registry} /> },
+  ]);
 }
 
 function HomeRedirect() {
   const first = useVisibleResources(resources)[0];
   const canReadAudit = useCanAccessRule(auditAccess);
   return <Navigate to={`/${first?.slug ?? customPages[0]?.path ?? (canReadAudit ? "audit" : "empty")}`} replace />;
+}
+
+function EmptyPage() {
+  return <main className="page"><h1>No accessible resources</h1></main>;
+}
+
+function PageRendererUnavailable() {
+  return <main className="page"><div className="alert" role="alert">Page renderer unavailable</div></main>;
+}
+
+function absolutePath(path: string): string {
+  return `/${path.replace(/^\/+/, "")}`;
 }

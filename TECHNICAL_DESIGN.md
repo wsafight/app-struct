@@ -1236,8 +1236,9 @@ Registry key 由生成类型限制。Manifest 引用不存在的组件时 `tsc` 
 ### 17.5 状态管理
 
 - 服务端状态由 TanStack Query 管理。
+- 客户端路由和 URL 状态由 TanStack Router 管理。
 - 列表筛选、分页和排序同步到 URL。
-- 表单局部状态由 React Hook Form 管理。
+- 表单局部状态由 TanStack Form 管理，Zod 通过 Standard Schema 直接提供校验。
 - 不为 MVP 引入全局 Redux 类 store。
 - 权限信息用于显示和禁用操作，但后端仍执行完整授权。
 

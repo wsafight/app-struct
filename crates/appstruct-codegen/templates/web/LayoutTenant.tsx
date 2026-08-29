@@ -1,5 +1,5 @@
 import { Boxes, LogOut } from "lucide-react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "../navigation";
 import { useAuth } from "../auth/Auth";
 import { type ResourceDefinition, useVisibleResources } from "../resource";
 import { TenantSwitcher } from "../tenant/Tenant";

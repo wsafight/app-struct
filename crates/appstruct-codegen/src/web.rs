@@ -36,10 +36,19 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
             "web/index.html",
             include_str!("../templates/web/index.html"),
         ),
+        ("web/.gitignore", include_str!("../templates/web/gitignore")),
         ("web/src/main.tsx", main),
         (
             "web/src/resource.ts",
             include_str!("../templates/web/resource.ts"),
+        ),
+        (
+            "web/src/query.ts",
+            include_str!("../templates/web/query.ts"),
+        ),
+        (
+            "web/src/navigation.tsx",
+            include_str!("../templates/web/navigation.tsx"),
         ),
         ("web/src/app/App.tsx", app),
         ("web/src/app/Layout.tsx", layout),

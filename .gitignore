@@ -17,4 +17,4 @@
 # Browser test output.
 /playwright-report/
 /test-results/
-/node_modules/
+**/node_modules/

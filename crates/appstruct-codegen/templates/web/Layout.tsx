@@ -1,5 +1,5 @@
 import { Boxes } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet } from "../navigation";
 import { type ResourceDefinition, useVisibleResources } from "../resource";
 
 export function Layout({ resources, pages }: { resources: ResourceDefinition[]; pages: readonly { name: string; label: string; path: string }[] }) {
