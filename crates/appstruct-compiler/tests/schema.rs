@@ -9,7 +9,10 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
     let root = json!({
         "version": 1,
         "app": { "name": "project-hub" },
-        "database": { "provider": "postgres", "dev": { "mode": "external" } },
+        "database": {
+            "provider": "postgres",
+            "dev": { "mode": "external", "migration": "unmanaged" }
+        },
         "preset": { "name": "appstruct/saas", "version": 1 },
         "modules": {
             "mail": {
@@ -27,6 +30,11 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
         "includes": ["spec/project.yaml"]
     });
     assert!(validator.is_valid(&root));
+    for policy in ["auto", "prompt", "never", "unmanaged"] {
+        let mut candidate = root.clone();
+        candidate["database"]["dev"]["migration"] = policy.into();
+        assert!(validator.is_valid(&candidate), "{policy}");
+    }
 
     let domain = json!({
         "domain": "project",
@@ -101,4 +109,12 @@ fn app_spec_schema_rejects_unknown_keys_and_invalid_access() {
         }
     });
     assert!(!validator.is_valid(&invalid_access));
+
+    let invalid_migration = json!({
+        "version": 1,
+        "app": { "name": "demo" },
+        "database": { "provider": "postgres", "dev": { "migration": "sometimes" } },
+        "includes": []
+    });
+    assert!(!validator.is_valid(&invalid_migration));
 }

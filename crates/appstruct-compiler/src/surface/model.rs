@@ -17,6 +17,7 @@ pub(crate) struct SurfaceRoot {
     pub app_name: Located<String>,
     pub database_provider: Located<String>,
     pub database_mode: Located<String>,
+    pub database_migration: Located<String>,
     pub preset: Option<SurfacePreset>,
     pub expanded_modules: Option<MappingEntry>,
     pub auth: SurfaceAuth,

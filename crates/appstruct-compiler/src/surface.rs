@@ -2,6 +2,7 @@ mod access;
 mod audit;
 mod auth;
 mod context;
+mod database;
 mod extension;
 mod file;
 mod indexes;
@@ -52,7 +53,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
     ));
     let version = context.capture(decode_version(mapping, root));
     let app_name = context.capture(decode_app_name(mapping, root));
-    let database = context.capture(decode_database(mapping, root));
+    let database = context.capture(database::decode(mapping, root));
     let includes = context.capture(decode_string_list(mapping, "includes", true, root));
     let module_manifests =
         context.capture(decode_string_list(mapping, "module_manifests", false, root));
@@ -75,13 +76,14 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
     });
 
     let value = (|| {
-        let (database_provider, database_mode) = database?;
+        let database = database?;
         let (auth, tenant, audit, mail, jobs, file) = decoded_modules?;
         Some(SurfaceRoot {
             version: version?,
             app_name: app_name?,
-            database_provider,
-            database_mode,
+            database_provider: database.provider,
+            database_mode: database.mode,
+            database_migration: database.migration,
             preset: preset?,
             expanded_modules: modules?,
             auth: auth?,
@@ -160,35 +162,6 @@ fn decode_app_name(
     ensure_known_keys(app, &["name"], "`app`")?;
     let name = required(app, "name", &node.value.span)?;
     expect_string(&name.value, "`app.name`")
-}
-
-fn decode_database(
-    mapping: &std::collections::BTreeMap<String, MappingEntry>,
-    root: &Node,
-) -> Result<(Located<String>, Located<String>), Diagnostic> {
-    let node = required(mapping, "database", &root.span)?;
-    let database = expect_mapping(&node.value, "`database`")?;
-    ensure_known_keys(database, &["provider", "dev"], "`database`")?;
-    let provider_node = required(database, "provider", &node.value.span)?;
-    let provider = expect_string(&provider_node.value, "`database.provider`")?;
-    let mode = if let Some(dev_node) = database.get("dev") {
-        let dev = expect_mapping(&dev_node.value, "`database.dev`")?;
-        ensure_known_keys(dev, &["mode"], "`database.dev`")?;
-        if let Some(mode_node) = dev.get("mode") {
-            expect_string(&mode_node.value, "`database.dev.mode`")?
-        } else {
-            Located {
-                value: "managed".to_owned(),
-                span: dev_node.value.span.clone(),
-            }
-        }
-    } else {
-        Located {
-            value: "managed".to_owned(),
-            span: node.value.span.clone(),
-        }
-    };
-    Ok((provider, mode))
 }
 
 fn decode_string_list(

@@ -22,7 +22,7 @@
 | Generator Transaction | 已完成 | 跨进程项目锁、追加式恢复 journal、目录交换崩溃恢复和歧义状态保护 |
 | M5 Templates | 已完成 | `appstruct new`、`minimal/dashboard`、固定 Rust/Node 依赖和不覆盖的一次性项目骨架 |
 | M5 Build/Doctor | 已完成 | 工具链与数据库模式诊断、JSON 报告、锁定依赖的 Rust/TypeScript 生产构建门禁 |
-| M5 Dev Server | 已完成 | managed/external PostgreSQL 协调、安全迁移、生成与构建、API/Vite 日志聚合、监听重启和 Ctrl-C 清理 |
+| M5 Dev Server | 已完成 | managed/external PostgreSQL 协调、可配置迁移策略、生成与构建、API/Vite 日志聚合、监听重启和 Ctrl-C 清理 |
 | M5 Docs | 已完成 | 源码/归档安装、external/managed 首次运行、事务升级、生产构建/迁移/配置/回滚文档 |
 | M5 Quality Gates | 已完成 | 跨目录字节确定性、10/100 实体性能预算、PostgreSQL + Chromium 用户旅程、桌面/移动布局、readiness/request ID |
 | M6 Modules | 已完成 | Tenant、Audit、Mail、Jobs/Outbox 和本地/S3 File 能力及独立 PostgreSQL 验收 |
@@ -32,7 +32,7 @@
 | TP 升级事务 | 已完成 | staging workspace 全量生成/构建/测试、源文件并发检测及 lock/generated 联合 journal 提交与恢复 |
 | TP 发布准备 | 已完成 | crates.io 元数据与本地 package 验证、macOS/Linux tag 构建、压缩包及 SHA-256 |
 | Runtime/Module 边界 | 已完成 | 独立 `appstruct-runtime` 与 `appstruct-module-sdk`、官方 capability graph、生成 server composition root |
-| 内部契约加固 | 已完成 | Runtime/Module 版本、IR v9 兼容迁移、本地 manifest Artifact 隔离、增量缓存、布局 v1/v2 和故障恢复注入测试 |
+| 内部契约加固 | 已完成 | Runtime/Module 版本、IR v7-v11 兼容迁移、本地 manifest Artifact 隔离、增量缓存、布局 v1/v2 和故障恢复注入测试 |
 
 M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
@@ -54,7 +54,7 @@ ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新�
 
 `appstruct doctor --format text|json` 检查 1.98 Rust/Cargo、rustfmt、Clippy、固定 pnpm 版本和数据库开发模式。managed 模式验证 Compose 文件及 Docker/Compose 服务；external 模式从进程环境或 `.env` 读取 `DATABASE_URL` 并执行 migration status，不在输出中暴露连接串。`appstruct build` 先生成 canonical Artifact，再对固定 Rust dependency lock 执行 fmt、release Clippy 和 release build，并对 pnpm lock 执行 Prettier check、TypeScript 检查和 Vite build。生成 TypeScript 在 manifest hash 计算前由 lockfile 固定的 Prettier 格式化，`generate --check` 与 build 因此使用同一份字节输出。
 
-`appstruct dev [--api-port <port>] [--web-port <port>]` 已实现完整开发协调。external 模式从进程环境或 `.env` 读取并连接 `DATABASE_URL`；managed 模式只启动 Compose 的 `postgres` service，并只在退出时停止本次 session 启动的 service，命名 volume 保留。启动与重载均先拒绝破坏性或需要人工审查的迁移，只自动提交并应用安全迁移，再生成、构建后端并 frozen install Web 依赖。CLI 监听 App Spec、lockfile、`spec/`、`modules/` 和 `app/backend/`，以 `[api]`/`[web]` 聚合日志；Unix 子进程使用独立进程组，重载或 Ctrl-C 会终止完整进程树。外部 PostgreSQL 17.10 验收已覆盖自定义端口、健康检查、Vite 页面、安全字段变更热重载、破坏性删除阻断、保留上一版服务和端口释放。
+`appstruct dev [--api-port <port>] [--web-port <port>]` 已实现完整开发协调。external 模式从进程环境或 `.env` 读取并连接 `DATABASE_URL`；managed 模式只启动 Compose 的 `postgres` service，并只在退出时停止本次 session 启动的 service，命名 volume 保留。`database.dev.migration` 支持 `auto/prompt/never/unmanaged`：managed 默认 prompt，external 默认 unmanaged；unmanaged 完全跳过 AppStruct migration plan/status/apply，never 只读检查并在不一致时阻止重启。迁移策略通过后再生成、构建后端并 frozen install Web 依赖。CLI 监听 App Spec、lockfile、`spec/`、`modules/` 和 `app/backend/`，以 `[api]`/`[web]` 聚合日志；Unix 子进程使用独立进程组，重载或 Ctrl-C 会终止完整进程树。生产后端启动始终不执行迁移，由独立 release job 运行 status/apply。
 
 M5 交付文档已提供源码与校验后二进制安装、external/managed PostgreSQL 首次运行、事务化 `appstruct update`、生产 Artifact、运行时变量、迁移顺序、健康验证和回滚边界。数据库 down migration 仍未实现，升级后的数据库风险继续由显式 `migrate plan/status` 和人工审查控制。
 
@@ -271,6 +271,7 @@ database:
   provider: postgres
   dev:
     mode: managed
+    migration: prompt
 
 modules:
   auth:
@@ -697,7 +698,7 @@ help: did you mean `User`?
 
 `appstruct dev` 负责协调后端、前端和配置监听：
 
-- 初次启动和输入变化时先规划迁移；只自动接受 `NonDestructive + Online` 变更，危险迁移失败关闭。
+- 根据 `database.dev.migration` 选择自动迁移、按需询问、只读校验或完全由用户管理。
 - 迁移通过后完整重新编译和生成，只提交内容发生变化的 Artifact，再构建后端并启动 API/Vite。
 - 配置、迁移、生成或构建失败时不重启服务；上一版进程保持运行。
 - `appstruct.yaml`、`appstruct.lock`、`spec/`、`modules/` 和 `app/backend/` 变化触发协调重载，用户 React 变化由 Vite 处理。
@@ -707,8 +708,10 @@ help: did you mean `User`?
 `database.dev.mode` 决定本地数据库生命周期：
 
 - `managed` 是 `dashboard` Template 默认值。CLI 调用 Template 提供的 Docker Compose 启动 PostgreSQL，保留命名 volume，并在退出时停止由本次 dev session 启动的容器。
-- `external` 要求通过进程环境或 `.env` 提供 `DATABASE_URL`。CLI 连接并迁移该数据库，但不启动或停止数据库进程。
-- 生产构建始终使用外部数据库配置；secret 不进入 App Spec、IR 或生成物。
+- `external` 要求通过进程环境或 `.env` 提供 `DATABASE_URL`，但不启动或停止数据库进程。
+- `managed` 的迁移策略默认是 `prompt`，`external` 默认是 `unmanaged`。
+- `auto` 自动创建并应用安全迁移；`prompt` 仅在存在 plan 或 pending 时询问；`never` 只读检查并阻止不一致 schema；`unmanaged` 跳过所有 AppStruct 迁移检查后直接启动。
+- 生产后端始终不执行迁移；secret 不进入 App Spec、IR 或生成物。
 
 `appstruct doctor` 在 managed 模式检查 Docker/Compose，在 external 模式检查连接参数，并给出切换模式的明确提示。
 

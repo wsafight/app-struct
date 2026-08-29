@@ -1,5 +1,5 @@
 use appstruct_compiler::{compile_project, compile_project_report, updated_project_lock};
-use appstruct_ir::{ModuleOrigin, OperationTypeIr, to_canonical_json};
+use appstruct_ir::{DatabaseMigrationPolicy, ModuleOrigin, OperationTypeIr, to_canonical_json};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,6 +21,56 @@ fn compiles_fixture_to_canonical_golden() {
     }
     let expected = include_str!("../../../tests/golden/m0-app-ir.json");
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn normalizes_database_migration_policy_defaults() {
+    let managed = compile_database("  dev:\n    mode: managed\n").unwrap();
+    assert_eq!(
+        managed.database.dev_migration,
+        DatabaseMigrationPolicy::Prompt
+    );
+
+    let external = compile_database("  dev:\n    mode: external\n").unwrap();
+    assert_eq!(
+        external.database.dev_migration,
+        DatabaseMigrationPolicy::Unmanaged
+    );
+}
+
+#[test]
+fn lowers_all_explicit_database_migration_policies() {
+    for (source, expected) in [
+        ("auto", DatabaseMigrationPolicy::Auto),
+        ("prompt", DatabaseMigrationPolicy::Prompt),
+        ("never", DatabaseMigrationPolicy::Never),
+        ("unmanaged", DatabaseMigrationPolicy::Unmanaged),
+    ] {
+        let ir = compile_database(&format!(
+            "  dev:\n    mode: external\n    migration: {source}\n"
+        ))
+        .unwrap();
+        assert_eq!(ir.database.dev_migration, expected, "{source}");
+    }
+}
+
+#[test]
+fn rejects_unknown_database_migration_policy() {
+    let diagnostics = compile_database("  dev:\n    migration: sometimes\n").unwrap_err();
+    assert_eq!(diagnostics[0].code, "AS4003");
+    assert!(diagnostics[0].message.contains("sometimes"));
+}
+
+fn compile_database(dev: &str) -> Result<appstruct_ir::AppIr, Vec<appstruct_ir::Diagnostic>> {
+    let temporary = tempfile::tempdir().unwrap();
+    fs::write(
+        temporary.path().join("appstruct.yaml"),
+        format!(
+            "version: 1\napp:\n  name: database-policy\ndatabase:\n  provider: postgres\n{dev}includes: []\n"
+        ),
+    )
+    .unwrap();
+    compile_project(temporary.path())
 }
 
 #[test]

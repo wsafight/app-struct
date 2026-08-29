@@ -1,11 +1,12 @@
 {
-  "ir_version": 10,
+  "ir_version": 11,
   "app": {
     "name": "project-hub"
   },
   "database": {
     "provider": "postgres",
-    "dev_mode": "managed"
+    "dev_mode": "managed",
+    "dev_migration": "prompt"
   },
   "preset": null,
   "auth": {

@@ -39,15 +39,15 @@ M5 Template 初始化已进入 CLI。`new` 在项目发现前执行，以当前�
 
 M5 build/doctor 已实现。项目 `.env` 使用 dotenv parser 读取但不修改 CLI 进程环境，显式环境变量始终优先；错误和诊断只报告变量名或连接结果。doctor 根据 IR 的 `database.dev.mode` 选择 Docker/Compose 或 PostgreSQL migration status 检查，并提供 text/JSON 两种确定性结构。build 先完成生成事务，若缺少 backend `Cargo.lock` 则生成一次，之后目录交换在 Cargo.toml 未变化时保留该 transient lock；Clippy 与 release build 均使用 `--locked` 和 `.appstruct/cache/backend-target`。Web Artifact 在 ownership manifest 计算前由临时目录内、pnpm lock 固定的 Prettier 3.9.6 格式化；build 再运行 frozen install、format check、`tsc --noEmit` 与 Vite build。
 
-M5 dev server 已实现。CLI 在 external 模式显式传递从进程环境或 `.env` 得到的数据库 URL，不修改父进程环境；managed 模式只协调 Compose `postgres` service，并记录本次 session 是否拥有其生命周期。启动和输入变化都按“安全迁移 -> canonical generation -> debug backend build -> frozen Web install”执行，迁移拒绝先于生成目录交换。协调器指纹覆盖 `appstruct.yaml`、`appstruct.lock`、`spec/` 与 `app/backend/`；重载时为 API 和 pnpm/Vite 分配独立 Unix 进程组，TERM 整组退出并在超时后 kill，避免包装进程退出后遗留 Vite。Ctrl-C 与 Drop 路径幂等清理子进程，只停止本 session 启动的 managed PostgreSQL。外部 PostgreSQL 17.10 E2E 已验证自定义端口、初始迁移、nullable 字段热重载、破坏性变更阻断、旧服务保留和退出清理。
+M5 dev server 已实现。CLI 在 external 模式显式传递从进程环境或 `.env` 得到的数据库 URL，不修改父进程环境；managed 模式只协调 Compose `postgres` service，并记录本次 session 是否拥有其生命周期。`database.dev.migration` 提供 `auto/prompt/never/unmanaged`，managed 默认 prompt，external 默认 unmanaged；never 同时只读检查 Spec diff、pending/history 和 catalog drift，unmanaged 不调用迁移子系统。策略检查通过后执行 canonical generation、debug backend build 和 frozen Web install。协调器指纹覆盖 `appstruct.yaml`、`appstruct.lock`、`spec/` 与 `app/backend/`；重载时为 API 和 pnpm/Vite 分配独立 Unix 进程组，TERM 整组退出并在超时后 kill，避免包装进程退出后遗留 Vite。Ctrl-C 与 Drop 路径幂等清理子进程，只停止本 session 启动的 managed PostgreSQL。生产 backend runtime 始终不执行迁移。
 
 M5 交付文档已落在根 README 与 `docs/installation.md`、`docs/upgrading.md`、`docs/deployment.md`。安装路径支持 workspace 锁定源码构建，并为发布后的校验和二进制包与 crates.io CLI 保留协议。升级使用显式 `appstruct update` staging 事务，再独立执行数据库 plan/status；部署文档把 build-time `VITE_API_URL` 与 backend runtime environment 分开，并规定 migration status/apply、不可变 Artifact、健康/业务 smoke 和无自动 down migration 的回滚边界。
 
 M5 确定性、性能和浏览器门禁已实现。CLI 集成测试在两个独立 project root 生成并递归比较所有 Artifact bytes；Prettier 依赖按 package/lock SHA-256 缓存在 `.appstruct/cache/web-formatter/`，ready marker 与 executable 同时存在才命中。Backend Generator 按 `available_parallelism` 分块并行规划 Entity/API 文件，顶层 planner 最终按路径排序维持确定性；同一计划的 Rust Artifact 由一次 `rustfmt` 子进程批量完成最终格式化。生成 crate 测试按 manifest 与 `src/` 内容生成隔离包名，并共享 `target/appstruct-generated-tests` 的依赖缓存，避免每个临时项目重复冷编译。性能 gate 计入 Compiler 与 Generator，当前 10 实体为 518 ms、100 实体为 7774 ms。根 pnpm lock 固定 Playwright 1.62.1；`scripts/run-m5-browser-e2e.sh` 从 dashboard Template 创建临时 external project，等待数据库 readiness 后验证 request ID、Auth 和 Project owner CRUD，并对桌面 dashboard 与移动登录页输出截图。生成后端新增数据库 ping `/health/ready`，`SetRequestIdLayer`/`PropagateRequestIdLayer` 为响应提供 `X-Request-Id`。dev signal handler 在所有启动动作前安装，测试脚本以独立进程组运行，冷构建中断也能清理子进程与临时目录。
 
-M6 已完成。Tenant、Audit、Mail、Jobs 和 File Module 以及 `appstruct/saas@1` Preset 已进入 Compiler：Surface 配置先展开官方默认模块映射，再递归合并用户映射覆盖，最后降低到 IR v9 的 `PresetIr` 和模块 IR。IR 中的 `modules` 包含每个启用模块的来源、精确版本、provides/requires capability、确定性启动顺序和隔离静态 Artifact。Compiler 对 `appstruct.lock` 中的 AppStruct 版本、Preset 名称/版本/内容摘要及精确模块版本集合执行失败关闭校验；CLI 可用 `preset show [--expanded]` 检查契约。`saas` Template 与 `examples/saas-demo` 提供锁定 Preset、managed PostgreSQL、开发 Mail/File 配置和 Tenant/Audit 化的 Project/Task 骨架；专用 external PostgreSQL/Chromium E2E 验证五个模块表、用户旅程、租户隔离、Audit 和桌面/移动布局。
+M6 已完成。Tenant、Audit、Mail、Jobs 和 File Module 以及 `appstruct/saas@1` Preset 已进入 Compiler：Surface 配置先展开官方默认模块映射，再递归合并用户映射覆盖，最后降低到版本化 `PresetIr` 和模块 IR。IR 中的 `modules` 包含每个启用模块的来源、精确版本、provides/requires capability、确定性启动顺序和隔离静态 Artifact。Compiler 对 `appstruct.lock` 中的 AppStruct 版本、Preset 名称/版本/内容摘要及精确模块版本集合执行失败关闭校验；CLI 可用 `preset show [--expanded]` 检查契约。`saas` Template 与 `examples/saas-demo` 提供锁定 Preset、managed PostgreSQL、开发 Mail/File 配置和 Tenant/Audit 化的 Project/Task 骨架；专用 external PostgreSQL/Chromium E2E 验证五个模块表、用户旅程、租户隔离、Audit 和桌面/移动布局。
 
-内部契约加固已完成。IR v7 的空模块图和 IR v8 官方模块图可在内存迁移到 v9，未来版本和语义不安全的旧模块图失败关闭。根 `module_manifests` 只加载 `modules/` 内的本地 TOML，拒绝 traversal、symlink、非 UTF-8 和超限文件；本地 Artifact 输出到模块专属 generated namespace，本地 Runtime starter 为 no-op。`appstruct.lock` 的 `project_layout_version` 明确区分 v1 generated backend 与 v2 server composition root，目录探测仅用于显式 update 迁移未版本化旧项目。生成和 dev build/install 使用内容缓存但仍执行 ownership 校验；Module Runtime 发出结构化 lifecycle phase，生成后端用 tracing 记录启动、失败、回滚和停止。generation transaction 的测试 failpoint 覆盖备份后与安装后恢复。
+内部契约加固已完成。IR v7-v10 可在内存迁移到 v11，旧 IR 的数据库迁移策略安全降级为 unmanaged；未来版本和语义不安全的旧模块图失败关闭。根 `module_manifests` 只加载 `modules/` 内的本地 TOML，拒绝 traversal、symlink、非 UTF-8 和超限文件；本地 Artifact 输出到模块专属 generated namespace，本地 Runtime starter 为 no-op。`appstruct.lock` 的 `project_layout_version` 明确区分 v1 generated backend 与 v2 server composition root，目录探测仅用于显式 update 迁移未版本化旧项目。生成和 dev build/install 使用内容缓存但仍执行 ownership 校验；Module Runtime 发出结构化 lifecycle phase，生成后端用 tracing 记录启动、失败、回滚和停止。generation transaction 的测试 failpoint 覆盖备份后与安装后恢复。
 
 Technical Preview 契约加固已完成。Compiler 内嵌 Draft 2020-12 JSON Schema，`appstruct schema` 无需项目即可输出；编译报告保留非致命 warning，当前 `AS3070` 检测匿名写操作，`check --deny-warnings` 为 CI 提供失败策略。`appstruct update` 同时持有 generation/update lock，在项目内 staging workspace 写候选 lock、全量编译 Spec、生成、执行 release Rust/Web 构建和后端测试，再比对用户文件哈希；最终用独立 journal 联合交换 `appstruct.lock` 与 ownership 管理的 `generated/`。崩溃恢复要么回滚两者，要么完成已安装候选，普通 generate 遇到 update 遗留状态时失败关闭。
 
@@ -293,6 +293,7 @@ database:
   provider: postgres
   dev:
     mode: managed
+    migration: prompt
 
 modules:
   auth:
@@ -723,7 +724,7 @@ pub struct ChangeRisk {
 | 缩短 varchar | Destructive | MayLock | 阻止自动执行 |
 | enum 删除值 | Destructive | ManualReview | 要求手写迁移 |
 
-只有 `NonDestructive + Online` 可以在开发环境默认执行；其他组合均需要明确确认或手工迁移。生产环境始终执行已经审查并提交的迁移文件。Migration Runner 必须允许单个 migration 声明事务边界，不能把 `CREATE INDEX CONCURRENTLY` 包进普通事务。
+只有 `NonDestructive + Online` 可以由开发环境的 `auto` 或确认后的 `prompt` 执行；其他组合均需要手工迁移。生产环境始终执行已经审查并提交的迁移文件。Migration Runner 必须允许单个 migration 声明事务边界，不能把 `CREATE INDEX CONCURRENTLY` 包进普通事务。
 
 重命名提示可以临时写入 Spec：
 
@@ -1384,7 +1385,7 @@ CI 中检测到非 TTY 时：
 
 - 加载环境变量并要求 API/Web 端口不同
 - 根据 `database.dev.mode` 协调 managed PostgreSQL 或连接 external PostgreSQL
-- 初次启动与重载先执行只接受安全变更的开发迁移，再生成、构建后端和安装 Web 依赖
+- 根据 `database.dev.migration` 执行自动迁移、按需询问、只读校验或完全跳过迁移检查，再生成、构建后端和安装 Web 依赖
 - 监听 App Spec、lockfile、`spec/`、本地 `modules/` 与用户 Rust；用户 React 交由 Vite 监听
 - 迁移、生成或构建失败时不重启上一版服务
 - 聚合日志并以 `[api]`/`[web]` 标明来源
@@ -1395,7 +1396,9 @@ CI 中检测到非 TTY 时：
 | 模式 | 启动行为 | 退出行为 | 前置条件 |
 | --- | --- | --- | --- |
 | `managed` | 调用 Template 提供的 `docker compose up` 启动 PostgreSQL | 停止本次 session 启动的容器，保留命名 volume | Docker 与 Compose 可用 |
-| `external` | 从进程环境或 `.env` 读取 `DATABASE_URL`，连接并执行安全迁移 | 不管理数据库进程 | 外部 PostgreSQL 可连接 |
+| `external` | 从进程环境或 `.env` 读取 `DATABASE_URL` | 不管理数据库进程 | 外部 PostgreSQL 可连接 |
+
+迁移策略语义：`auto` 自动创建并应用 `NonDestructive + Online` 迁移；`prompt` 仅在新 plan 或 disk pending 存在时展示并询问；`never` 只读校验 Spec、snapshot、migration history 与 catalog，任何不一致均阻止启动；`unmanaged` 完全跳过 plan/status/apply 并带警告继续。managed 默认 prompt，external 默认 unmanaged。生产 backend runtime 不读取该开发策略且从不执行迁移，发布仍使用独立的 `migrate status/apply` job。
 
 `dashboard` Template 默认使用 managed 模式；生产环境没有 managed 模式。数据库密码只从运行时环境读取，不进入 Surface Spec、IR、日志或构建指纹。`appstruct doctor` 根据所选模式检查依赖，并在 Docker 不可用时给出 external 模式配置指引。
 
@@ -1403,10 +1406,10 @@ CI 中检测到非 TTY 时：
 
 | 变化 | 动作 |
 | --- | --- |
-| App Spec / `appstruct.lock` | 协调安全迁移、完整生成与服务重启，只提交内容变化的 Artifact |
+| App Spec / `appstruct.lock` | 按迁移策略检查、完整生成与服务重启，只提交内容变化的 Artifact |
 | 用户 Rust | 完整 debug build 并重启 API/Web |
 | 用户 React | 交给 Vite HMR |
-| migrations | 不作为 watch 输入；下次启动或其他输入重载时校验并应用 pending migration |
+| migrations | 不作为 watch 输入；下次启动或其他输入重载时按迁移策略处理 |
 
 实现使用 400 ms polling 指纹，不监听 `generated/`、`.appstruct/cache/` 或构建输出。API 与 Web 默认端口分别为 3000/5173，可由 CLI flag 覆盖；Vite 使用 strict port，端口冲突直接失败。generation 输入和 ownership tree 未变时跳过 Compiler/Codegen/formatter/目录事务；Rust 输入和 debug binary 未变时复用 backend build，Web package/lock 和 `.pnpm` 未变时复用安装。任一 cache state 缺失、损坏或输出缺失都回退完整流程。
 

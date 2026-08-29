@@ -48,7 +48,8 @@
             "dev": {
               "type": "object",
               "properties": {
-                "mode": { "enum": ["managed", "external"] }
+                "mode": { "enum": ["managed", "external"] },
+                "migration": { "enum": ["auto", "prompt", "never", "unmanaged"] }
               },
               "additionalProperties": false
             }

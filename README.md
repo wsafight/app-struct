@@ -27,6 +27,8 @@ Create a minimal project backed by an existing PostgreSQL database:
 appstruct new notes --template minimal
 cd notes
 cp .env.example .env
+export DATABASE_URL=postgresql://appstruct:appstruct-dev@127.0.0.1:5432/appstruct
+appstruct migrate dev --accept
 appstruct doctor
 appstruct dev
 ```
@@ -35,9 +37,25 @@ Update `DATABASE_URL` in `.env` before running `doctor`. For a Docker-managed Po
 development database, use `--template dashboard` or `--template saas` and ensure Docker Compose
 is available.
 
-`appstruct dev` starts the generated API and Vite, applies only safe development
-migrations, watches App Spec and user Rust inputs, and stops its child processes on Ctrl-C.
+`appstruct dev` starts the generated API and Vite, watches App Spec and user Rust inputs, and
+stops its child processes on Ctrl-C. Managed databases default to prompting only when migrations
+are required; external databases default to leaving migrations entirely to the operator.
 The default URLs are `http://127.0.0.1:3000` and `http://127.0.0.1:5173`.
+
+Configure development migration ownership explicitly when needed:
+
+```yaml
+database:
+  provider: postgres
+  dev:
+    mode: managed
+    migration: prompt # auto | prompt | never | unmanaged
+```
+
+`auto` creates and applies safe migrations, `prompt` asks only when work is pending, `never`
+performs read-only compatibility checks and blocks stale schemas, and `unmanaged` skips all
+AppStruct migration checks before starting. Production backend startup never runs migrations;
+use a dedicated `migrate status` / `migrate apply` release step.
 
 Create a review-only App Spec draft from an existing PostgreSQL schema:
 

@@ -1,5 +1,5 @@
 use crate::environment::ProjectEnvironment;
-use appstruct_ir::DatabaseDevMode;
+use appstruct_ir::{DatabaseDevMode, DatabaseMigrationPolicy};
 use std::io;
 use std::path::Path;
 use std::process::{Command, ExitCode};
@@ -56,6 +56,7 @@ struct DevSession<'project> {
     environment: ProjectEnvironment,
     database_url: String,
     database_mode: DatabaseDevMode,
+    migration_policy: DatabaseMigrationPolicy,
     database: ManagedDatabase,
     processes: DevProcesses,
     fingerprint: SourceFingerprint,
@@ -75,13 +76,14 @@ impl<'project> DevSession<'project> {
         let ir = compile(project)?;
         let environment = ProjectEnvironment::load(project)?;
         let database_mode = ir.database.dev_mode;
+        let migration_policy = ir.database.dev_migration;
         let (database, database_url) = match database_mode {
             DatabaseDevMode::Managed => {
                 let database = ManagedDatabase::start(project, &environment)?;
                 let url = environment
                     .get("DATABASE_URL")
                     .unwrap_or_else(|| MANAGED_DATABASE_URL.to_owned());
-                wait_for_database(project, &url, &stopping)?;
+                wait_for_database(&url, &stopping)?;
                 (database, url)
             }
             DatabaseDevMode::External => {
@@ -95,7 +97,14 @@ impl<'project> DevSession<'project> {
             }
         };
         check_stopping(&stopping)?;
-        prepare(project, &database_url, &environment, &stopping)?;
+        prepare(
+            project,
+            &database_url,
+            &environment,
+            migration_policy,
+            true,
+            &stopping,
+        )?;
         let processes =
             DevProcesses::spawn(project, &environment, &database_url, api_port, web_port)?;
         check_stopping(&stopping)?;
@@ -108,6 +117,7 @@ impl<'project> DevSession<'project> {
             environment,
             database_url,
             database_mode,
+            migration_policy,
             database,
             processes,
             fingerprint,
@@ -142,6 +152,8 @@ impl<'project> DevSession<'project> {
                     self.project,
                     &self.database_url,
                     &self.environment,
+                    self.migration_policy,
+                    false,
                     &self.stopping,
                 )
             })
@@ -169,6 +181,11 @@ impl<'project> DevSession<'project> {
                 "database development mode changed; restart `appstruct dev` to reconfigure it",
             ));
         }
+        if ir.database.dev_migration != self.migration_policy {
+            return Err(io::Error::other(
+                "database migration policy changed; restart `appstruct dev` to apply it",
+            ));
+        }
         let environment = ProjectEnvironment::load(self.project)?;
         let database_url = match self.database_mode {
             DatabaseDevMode::Managed => environment
@@ -182,7 +199,7 @@ impl<'project> DevSession<'project> {
             })?,
         };
         if self.database_mode == DatabaseDevMode::Managed {
-            wait_for_database(self.project, &database_url, &self.stopping)?;
+            wait_for_database(&database_url, &self.stopping)?;
         }
         self.database.update_environment(environment.clone());
         self.environment = environment;
@@ -215,17 +232,17 @@ fn prepare(
     project: &Path,
     database_url: &str,
     environment: &ProjectEnvironment,
+    migration_policy: DatabaseMigrationPolicy,
+    announce_unmanaged: bool,
     stopping: &AtomicBool,
 ) -> io::Result<()> {
     check_stopping(stopping)?;
-    if crate::migration::run_with_database(
+    crate::migration::prepare_development(
         project,
-        crate::migration::MigrateCommand::Dev { accept: true },
-        Some(database_url),
-    ) != ExitCode::SUCCESS
-    {
-        return Err(io::Error::other("migration failed"));
-    }
+        database_url,
+        migration_policy,
+        announce_unmanaged,
+    )?;
     check_stopping(stopping)?;
     if crate::generation::run(project, false) != ExitCode::SUCCESS {
         return Err(io::Error::other("generation failed"));
@@ -274,10 +291,10 @@ fn install_web(project: &Path, environment: &ProjectEnvironment) -> io::Result<(
     build_cache::record_web_dependencies(project, environment)
 }
 
-fn wait_for_database(project: &Path, database_url: &str, stopping: &AtomicBool) -> io::Result<()> {
+fn wait_for_database(database_url: &str, stopping: &AtomicBool) -> io::Result<()> {
     for _ in 0..60 {
         check_stopping(stopping)?;
-        match appstruct_migrate::status_project(project, database_url) {
+        match appstruct_migrate::connect_database(database_url) {
             Ok(_) => return Ok(()),
             Err(appstruct_migrate::MigrationError::Database(_)) => {}
             Err(error) => return Err(io::Error::other(error)),

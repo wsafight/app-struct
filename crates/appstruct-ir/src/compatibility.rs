@@ -61,12 +61,20 @@ pub fn from_compatible_json(source: &str) -> Result<AppIr, IrCompatibilityError>
         .ok_or(IrCompatibilityError::MissingVersion)?;
     match u32::try_from(version) {
         Ok(IR_VERSION) => {}
-        Ok(7) => migrate_v7(&mut value)?,
+        Ok(7) => {
+            migrate_v7(&mut value)?;
+            migrate_v10(&mut value)?;
+        }
         Ok(8) => {
             migrate_v8(&mut value)?;
             migrate_v9(&mut value)?;
+            migrate_v10(&mut value)?;
         }
-        Ok(9) => migrate_v9(&mut value)?,
+        Ok(9) => {
+            migrate_v9(&mut value)?;
+            migrate_v10(&mut value)?;
+        }
+        Ok(10) => migrate_v10(&mut value)?,
         _ => return Err(IrCompatibilityError::UnsupportedVersion { found: version }),
     }
     serde_json::from_value(value).map_err(IrCompatibilityError::from)
@@ -131,6 +139,19 @@ fn migrate_v9(value: &mut Value) -> Result<(), IrCompatibilityError> {
             artifact.insert("byte_len".to_owned(), Value::from(byte_len));
         }
     }
+    value["ir_version"] = Value::from(IR_VERSION);
+    Ok(())
+}
+
+fn migrate_v10(value: &mut Value) -> Result<(), IrCompatibilityError> {
+    let database = value
+        .get_mut("database")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| invalid_shape("IR v10 is missing object `database`"))?;
+    database.insert(
+        "dev_migration".to_owned(),
+        Value::String("unmanaged".to_owned()),
+    );
     value["ir_version"] = Value::from(IR_VERSION);
     Ok(())
 }
@@ -226,6 +247,24 @@ mod tests {
         assert_eq!(
             artifact.sha256,
             "sha256:777d90290a75129dbd33a5ac590f4633ec91d0eb381213761c728004961c3320"
+        );
+    }
+
+    #[test]
+    fn migrates_v10_database_policy_without_enabling_writes() {
+        let source = include_str!("../../../tests/golden/m0-app-ir.json");
+        let mut value: serde_json::Value = serde_json::from_str(source).unwrap();
+        value["ir_version"] = 10.into();
+        value["database"]
+            .as_object_mut()
+            .unwrap()
+            .remove("dev_migration");
+
+        let migrated = from_compatible_json(&serde_json::to_string(&value).unwrap()).unwrap();
+        assert_eq!(migrated.ir_version, IR_VERSION);
+        assert_eq!(
+            migrated.database.dev_migration,
+            crate::DatabaseMigrationPolicy::Unmanaged
         );
     }
 }

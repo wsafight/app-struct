@@ -1,11 +1,13 @@
 //! Stable, serialization-friendly intermediate representation for `AppStruct`.
 mod compatibility;
+mod database;
 mod extension;
 mod seed;
 mod service;
 mod validation;
 mod views;
 pub use compatibility::{IrCompatibilityError, from_compatible_json};
+pub use database::{DatabaseDevMode, DatabaseIr, DatabaseMigrationPolicy, DatabaseProvider};
 pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
 pub use seed::SeedIr;
 use serde::{Deserialize, Serialize};
@@ -46,26 +48,6 @@ pub struct AppIr {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppMeta {
     pub name: String,
-}
-
-/// Database settings relevant to deterministic generation.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DatabaseIr {
-    pub provider: DatabaseProvider,
-    pub dev_mode: DatabaseDevMode,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DatabaseProvider {
-    Postgres,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DatabaseDevMode {
-    Managed,
-    External,
 }
 
 /// Authentication facts known at compile time in the M0 compiler.

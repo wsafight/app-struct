@@ -17,9 +17,10 @@ use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceField, SurfaceRoot};
 use crate::tenant::lower_tenant;
 use crate::validation::{validate_entity_declarations, validate_primary_key};
 use appstruct_ir::{
-    AppIr, AppMeta, AuthIr, ConcurrencyIr, DatabaseDevMode, DatabaseIr, DatabaseProvider,
-    Diagnostic, EntityId, EntityIr, EntityViewsIr, FieldCapabilities, FieldId, FieldIr,
-    FieldTypeIr, GeneratedValueIr, HooksIr, IR_VERSION, RelationIr, SourceSpan, ValidationIr,
+    AppIr, AppMeta, AuthIr, ConcurrencyIr, DatabaseDevMode, DatabaseIr, DatabaseMigrationPolicy,
+    DatabaseProvider, Diagnostic, EntityId, EntityIr, EntityViewsIr, FieldCapabilities, FieldId,
+    FieldIr, FieldTypeIr, GeneratedValueIr, HooksIr, IR_VERSION, RelationIr, SourceSpan,
+    ValidationIr,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -92,19 +93,13 @@ pub(crate) fn build_ir(
                 )]
             })?;
     canonicalize_entities(&mut entities, &mut relations);
+    let database = lower_database(&root);
     Ok(AppIr {
         ir_version: IR_VERSION,
         app: AppMeta {
             name: root.app_name.value,
         },
-        database: DatabaseIr {
-            provider: DatabaseProvider::Postgres,
-            dev_mode: if root.database_mode.value == "external" {
-                DatabaseDevMode::External
-            } else {
-                DatabaseDevMode::Managed
-            },
-        },
+        database,
         preset: root.preset.map(|preset| appstruct_ir::PresetIr {
             name: preset.name.value,
             version: u32::try_from(preset.version.value).unwrap_or(u32::MAX),
@@ -126,6 +121,23 @@ pub(crate) fn build_ir(
         pages: extensions.pages,
         modules,
     })
+}
+
+fn lower_database(root: &SurfaceRoot) -> DatabaseIr {
+    DatabaseIr {
+        provider: DatabaseProvider::Postgres,
+        dev_mode: if root.database_mode.value == "external" {
+            DatabaseDevMode::External
+        } else {
+            DatabaseDevMode::Managed
+        },
+        dev_migration: match root.database_migration.value.as_str() {
+            "auto" => DatabaseMigrationPolicy::Auto,
+            "never" => DatabaseMigrationPolicy::Never,
+            "unmanaged" => DatabaseMigrationPolicy::Unmanaged,
+            _ => DatabaseMigrationPolicy::Prompt,
+        },
+    }
 }
 
 fn canonicalize_entities(entities: &mut [EntityIr], relations: &mut [RelationIr]) {

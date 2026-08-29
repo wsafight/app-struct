@@ -45,6 +45,19 @@ pub(crate) fn validate_root(root: &SurfaceRoot) -> Vec<Diagnostic> {
             root.database_mode.span.clone(),
         ));
     }
+    if !matches!(
+        root.database_migration.value.as_str(),
+        "auto" | "prompt" | "never" | "unmanaged"
+    ) {
+        diagnostics.push(Diagnostic::error(
+            "AS4003",
+            format!(
+                "unsupported database dev migration policy `{}`",
+                root.database_migration.value
+            ),
+            root.database_migration.span.clone(),
+        ));
+    }
     diagnostics
 }
 

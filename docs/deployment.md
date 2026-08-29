@@ -4,6 +4,9 @@ AppStruct produces a standalone Rust API binary, static Web assets, and explicit
 migrations. The CLI does not provision production infrastructure or automatically migrate a
 database when the API starts.
 
+`database.dev.migration` only controls `appstruct dev`. Production backend startup is always
+unmanaged: it connects to PostgreSQL but never plans, creates, validates, or applies migrations.
+
 ## Build Artifacts
 
 Set the public API URL before building because Vite embeds `VITE_API_URL` in the Web bundle:

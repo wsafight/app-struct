@@ -80,13 +80,16 @@ URL disables TLS for local development only.
 Validate the environment and start the application:
 
 ```bash
+export DATABASE_URL=postgresql://user:password@127.0.0.1:5432/notes
+appstruct migrate dev --accept
 appstruct doctor
 appstruct dev
 ```
 
-The CLI applies safe initial migrations, generates and builds the backend, installs Web
-dependencies with the committed pnpm lock, and starts both services. Override the defaults
-when necessary:
+External mode defaults to `database.dev.migration: unmanaged`, so the explicit migration command
+initializes the database before the first start. The dev server then generates and builds the
+backend, installs Web dependencies with the committed pnpm lock, and starts both services.
+Override the ports when necessary:
 
 ```bash
 appstruct dev --api-port 3100 --web-port 5200
@@ -108,6 +111,11 @@ appstruct dev
 Managed mode starts only the Compose `postgres` service. On Ctrl-C it stops that service only
 when the current dev session started it, and it preserves the named database volume. If the
 service was already running, AppStruct leaves it running.
+
+Managed mode defaults to `database.dev.migration: prompt`. The first start displays a safe plan
+and asks before creating or applying migrations; later starts do not ask when the database is
+current. Use `auto` for controlled automation, `never` for read-only compatibility enforcement,
+or `unmanaged` to start without AppStruct inspecting migration or schema state.
 
 Copy `.env.example` to `.env` only when overriding managed defaults. Process environment
 variables take precedence over values in `.env`; secrets are never written into generated

@@ -16,6 +16,9 @@ use transaction::MigrationTransaction;
 use transaction::next_migration_name;
 
 mod database;
+mod development;
+
+pub(crate) use development::prepare_development;
 
 #[derive(Clone, Copy, Debug, Subcommand)]
 pub(crate) enum MigrateCommand {
