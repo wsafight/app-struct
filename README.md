@@ -1,10 +1,13 @@
 # AppStruct
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 AppStruct is a configuration-driven Rust full-stack application generator. It compiles a
 multi-file YAML App Spec into a typed IR, PostgreSQL migrations, an Axum/SeaORM backend,
 OpenAPI, a TypeScript client, and a React/Vite application.
 
-The repository is currently a technical preview. M0-M6 are complete, including production builds,
+The repository is currently a technical preview. It is distributed from a source checkout for now;
+there is no crates.io package or binary installer yet. M0-M6 are complete, including production builds,
 the coordinated development server, Tenant/Audit/Mail/Jobs/File modules, the locked
 `appstruct/saas@1` preset, transactional project updates, and a runnable SaaS template and example.
 The SaaS preset includes an Admin operations overview and guarded Jobs retry/replay controls;
@@ -41,6 +44,11 @@ is available.
 stops its child processes on Ctrl-C. Managed databases default to prompting only when migrations
 are required; external databases default to leaving migrations entirely to the operator.
 The default URLs are `http://127.0.0.1:3000` and `http://127.0.0.1:5173`.
+
+Generated Web applications use a pinned modern baseline: React 19, TypeScript, and Vite with
+TanStack Query, TanStack Router, TanStack Table, and TanStack Form plus Zod validation. The
+generated dependency lockfile is part of the project output, so installs and builds remain
+repeatable across machines.
 
 Configure development migration ownership explicitly when needed:
 
@@ -211,6 +219,23 @@ APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_saas_
 Rust source files are limited to 400 lines by a repository test. Generated projects also pin
 their Rust and pnpm dependency graphs so repeated generation and production builds remain
 reviewable and reproducible.
+
+Before committing or pushing a change, inspect the worktree and run the checks that match the
+files you changed:
+
+```bash
+git status --short --branch
+git status --short --ignored
+git diff --check
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+Do not commit local secrets or generated machine state. In particular, keep `.env` files (except
+intentional `.env.example` templates), private keys and certificates, `node_modules/`, `target/`,
+`references/`, Playwright reports, and `test-results/` out of Git. The repository `.gitignore`
+already excludes these paths; verify tracked, untracked, and ignored state before the first push.
 
 ## License
 
