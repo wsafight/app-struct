@@ -1,7 +1,7 @@
-use super::super::access;
+use super::super::{access, module_name};
 use crate::CodegenError;
 use appstruct_ir::EntityIr;
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Ident, Literal, TokenStream};
 use quote::quote;
 
 pub(super) struct HandlerContext<'context> {
@@ -32,6 +32,10 @@ pub(super) fn handlers(
     let create_allowed = access::create_allowed(entity, &entity.access.create)?;
     let update_allowed = access::update_allowed(entity, &entity.access.update)?;
     let delete_allowed = access::row_allowed(entity, &entity.access.delete)?;
+    let event_prefix = module_name(entity);
+    let create_event = Literal::string(&format!("{event_prefix}.created"));
+    let update_event = Literal::string(&format!("{event_prefix}.updated"));
+    let delete_event = Literal::string(&format!("{event_prefix}.deleted"));
     let read = read_handler(module, policy, parse_id, &read_scope);
     let create_audit = audit_event(entity, primary, "create");
     let update_audit = audit_event(entity, primary, "update");
@@ -44,6 +48,7 @@ pub(super) fn handlers(
         active_default,
         &create_allowed,
         &create_audit,
+        &create_event,
     );
     let update = update_handler(
         context,
@@ -51,6 +56,7 @@ pub(super) fn handlers(
         &read_scope,
         &update_allowed,
         &update_audit,
+        &update_event,
     );
     let delete = delete_handler(
         module,
@@ -61,6 +67,7 @@ pub(super) fn handlers(
         &delete_allowed,
         &delete_audit,
         *soft_delete,
+        &delete_event,
     );
     let helpers = helper_functions(module, hooks);
     Ok(quote! {
@@ -98,6 +105,7 @@ fn read_handler(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_handler(
     module: &Ident,
     hooks: &Ident,
@@ -106,6 +114,7 @@ fn create_handler(
     active_default: Option<&TokenStream>,
     create_allowed: &TokenStream,
     audit: &TokenStream,
+    event: &Literal,
 ) -> TokenStream {
     quote! {
         async fn create(
@@ -141,6 +150,7 @@ fn create_handler(
                 model
             };
             transaction.commit().await?;
+            publish_realtime_event(&state, &context, #event, &model);
             run_after_commit(&state, crate::HookOperation::Create, &model, actor, tenant).await;
             Ok((StatusCode::CREATED, etag_header(&model), Json(redact_model(&context, model)?)))
         }
@@ -153,6 +163,7 @@ fn update_handler(
     read_scope: &TokenStream,
     update_allowed: &TokenStream,
     audit: &TokenStream,
+    event: &Literal,
 ) -> TokenStream {
     let HandlerContext {
         module,
@@ -215,6 +226,7 @@ fn update_handler(
                 after
             };
             transaction.commit().await?;
+            publish_realtime_event(&state, &context, #event, &after);
             run_after_commit(&state, crate::HookOperation::Update, &after, actor, tenant).await;
             Ok((etag_header(&after), Json(redact_model(&context, after)?)))
         }
@@ -231,6 +243,7 @@ fn delete_handler(
     delete_allowed: &TokenStream,
     audit: &TokenStream,
     soft_delete: bool,
+    event: &Literal,
 ) -> TokenStream {
     let delete_model = if soft_delete {
         quote! {
@@ -288,6 +301,7 @@ fn delete_handler(
                 deleted
             };
             transaction.commit().await?;
+            publish_realtime_event(&state, &context, #event, &deleted);
             run_after_commit(&state, crate::HookOperation::Delete, &deleted, actor, tenant).await;
             Ok(StatusCode::NO_CONTENT)
         }
@@ -336,6 +350,26 @@ fn helper_functions(module: &Ident, hooks: &Ident) -> TokenStream {
 
         fn etag_header(model: &#module::Model) -> [(header::HeaderName, String); 1] {
             [(header::ETAG, format!("\"rev-{}\"", model.revision))]
+        }
+
+        fn publish_realtime_event(
+            state: &AppState,
+            context: &RequestContext<'_>,
+            event: &str,
+            model: &#module::Model,
+        ) {
+            let Ok(payload) = redact_model(context, model.clone()) else {
+                tracing::warn!(event, "realtime event payload could not be serialized");
+                return;
+            };
+            if let Err(error) = state.realtime.publish(
+                event,
+                &payload,
+                context.actor().map(|actor| actor.id),
+                context.tenant(),
+            ) {
+                tracing::warn!(?error, event, "realtime event could not be published");
+            }
         }
 
         async fn run_after_commit(

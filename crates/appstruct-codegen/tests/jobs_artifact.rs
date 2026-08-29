@@ -37,6 +37,8 @@ fn jobs_contract_generates_a_compilable_backend() {
     let project_api = artifact_text(&artifacts, "backend/src/api/project.rs");
     assert!(project_api.contains("&state.realtime"));
     assert!(project_api.contains("RequestContext::connection_with_services"));
+    assert!(project_api.contains("\"project.created\""));
+    assert!(project_api.contains("publish_realtime_event(&state, &context"));
     assert!(jobs.contains("status = 'running' AND locked_until <= CURRENT_TIMESTAMP"));
     assert!(jobs.contains("pub struct JobWorkerHandle"));
     assert!(jobs.contains("SupervisedTaskHandle::spawn"));
