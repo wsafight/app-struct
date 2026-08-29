@@ -139,7 +139,8 @@ appstruct auth bootstrap-admin --email admin@example.com
 
 For production, replace capture/local providers through reviewed App Spec overrides and runtime
 environment variables. Keep the generated preset digest and exact module versions in
-`appstruct.lock`. Billing and Admin are not part of preset version 1.
+`appstruct.lock`. The Admin operations overview is read-only in this preview; Billing is not part of
+preset version 1.
 
 ## Troubleshooting
 

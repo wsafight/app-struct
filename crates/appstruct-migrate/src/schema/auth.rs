@@ -33,16 +33,7 @@ fn accounts() -> TableSchema {
                 false,
             ),
             column("accounts.roles", "roles", DatabaseType::Json, false, false),
-            ColumnSchema {
-                id: "appstruct::auth::accounts.email_verified_at".to_owned(),
-                name: "email_verified_at".to_owned(),
-                data_type: DatabaseType::Datetime,
-                nullable: true,
-                primary_key: false,
-                unique: false,
-                default: None,
-                generated: None,
-            },
+            nullable_datetime("accounts.email_verified_at", "email_verified_at"),
             column(
                 "accounts.created_at",
                 "created_at",
@@ -209,16 +200,7 @@ fn email_verifications() -> TableSchema {
                 false,
                 false,
             ),
-            ColumnSchema {
-                id: "appstruct::auth::email_verifications.used_at".to_owned(),
-                name: "used_at".to_owned(),
-                data_type: DatabaseType::Datetime,
-                nullable: true,
-                primary_key: false,
-                unique: false,
-                default: None,
-                generated: None,
-            },
+            nullable_datetime("email_verifications.used_at", "used_at"),
             column(
                 "email_verifications.created_at",
                 "created_at",
@@ -278,16 +260,7 @@ fn api_tokens() -> TableSchema {
                 false,
                 false,
             ),
-            ColumnSchema {
-                id: "appstruct::auth::api_tokens.token_hash".to_owned(),
-                name: "token_hash".to_owned(),
-                data_type: DatabaseType::Text,
-                nullable: false,
-                primary_key: false,
-                unique: true,
-                default: None,
-                generated: None,
-            },
+            unique_column("api_tokens.token_hash", "token_hash", DatabaseType::Text),
             column("api_tokens.name", "name", DatabaseType::Text, false, false),
             nullable_datetime("api_tokens.last_used_at", "last_used_at"),
             nullable_datetime("api_tokens.expires_at", "expires_at"),
@@ -341,6 +314,12 @@ fn column(
         default: None,
         generated: None,
     }
+}
+
+fn unique_column(id: &str, name: &str, data_type: DatabaseType) -> ColumnSchema {
+    let mut column = column(id, name, data_type, false, false);
+    column.unique = true;
+    column
 }
 
 pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {

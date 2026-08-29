@@ -33,7 +33,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let handle = JobWorker::new(database.clone(), Arc::new(TestHandler)).spawn();
     handle.shutdown().await;
-    clear(&database).await?;
+    seed_admin_jobs(&database, &mail, tenant_id).await?;
+    Ok(())
+}
+
+async fn seed_admin_jobs(
+    database: &DatabaseConnection,
+    mail: &MailState,
+    tenant_id: uuid::Uuid,
+) -> Result<(), Box<dyn std::error::Error>> {
+    clear(database).await?;
+    let context = RequestContext::connection(database, mail, None, Some(tenant_id));
+    let succeeded = context
+        .enqueue_job("default", "succeed", &serde_json::json!({"admin": true}), None, None)
+        .await?;
+    let dead = context
+        .enqueue_job("default", "fail", &serde_json::json!({"admin": true}), None, None)
+        .await?;
+    let success_worker = JobWorker::for_kind(database.clone(), Arc::new(TestHandler), "succeed");
+    assert!(success_worker.run_once().await?);
+    let failure_worker = JobWorker::for_kind(database.clone(), Arc::new(TestHandler), "fail");
+    assert!(failure_worker.run_once().await?);
+    database
+        .execute_unprepared(&format!(
+            "UPDATE \"_appstruct_jobs\" SET run_at = CURRENT_TIMESTAMP WHERE id = '{}'::uuid",
+            dead.id
+        ))
+        .await?;
+    assert!(failure_worker.run_once().await?);
+    assert_eq!(job_state(database, succeeded.id).await?, "succeeded|1");
+    assert_eq!(job_state(database, dead.id).await?, "dead|2");
     Ok(())
 }
 

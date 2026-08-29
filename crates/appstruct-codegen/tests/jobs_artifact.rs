@@ -27,6 +27,21 @@ fn jobs_contract_generates_a_compilable_backend() {
     assert!(jobs.contains("pub fn for_kind"));
     assert!(jobs.contains("pub struct MailJobPayload"));
     assert!(jobs.contains("impl JobHandler for MailJobHandler"));
+    let session = artifact_text(&artifacts, "backend/src/auth/session.rs");
+    assert!(session.contains("value.starts_with(\"Bearer \")"));
+    let handlers = artifact_text(&artifacts, "backend/src/auth/handlers.rs");
+    assert!(handlers.contains("/api/admin/jobs/{id}/retry"));
+    assert!(handlers.contains("Only dead jobs can be retried"));
+    assert!(handlers.contains("Only succeeded or dead jobs can be replayed"));
+    let client = artifact_text(&artifacts, "web/src/generated/client.ts");
+    assert!(client.contains("listJobs"));
+    assert!(client.contains("retryJob"));
+    assert!(client.contains("replayJob"));
+    let openapi: serde_json::Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    assert!(openapi["paths"]["/api/admin/jobs"]["get"].is_object());
+    assert!(openapi["paths"]["/api/admin/jobs/{id}/retry"]["post"].is_object());
+    assert!(openapi["paths"]["/api/admin/jobs/{id}/replay"]["post"].is_object());
     let extensions = artifact_text(&artifacts, "backend/src/extensions.rs");
     assert!(extensions.contains("pub async fn enqueue_job"));
     assert!(extensions.contains("pub fn job_handler"));

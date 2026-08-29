@@ -177,6 +177,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(project_api.contains("Column::OwnerId.eq(actor.id)"));
     assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("Argon2"));
     assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("verify_email"));
+    assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("admin_overview"));
     assert!(artifact_text(&artifacts, "backend/src/auth/session.rs").contains("Bearer "));
     let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
     assert!(resources.contains(r#""mode":"role","role":"admin""#));
@@ -216,6 +217,25 @@ fn m4_disabled_auth_flows_are_not_published() {
         artifact_text(&artifacts, "web/src/auth/AuthPages.tsx")
             .contains("if (!authFeatures.passwordReset)")
     );
+    let handlers = artifact_text(&artifacts, "backend/src/auth/handlers.rs");
+    assert!(!handlers.contains("start_oidc"));
+    assert!(!artifact_text(&artifacts, "backend/Cargo.toml").contains("reqwest"));
+}
+
+#[test]
+fn admin_surface_is_wired_for_auth_and_audit_without_tenant() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+    let mut ir = compile_project(&fixture).unwrap();
+    ir.audit.enabled = true;
+    ir.audit.reader_roles = vec!["admin".to_owned()];
+    let artifacts = plan(&ir).unwrap();
+
+    let app = artifact_text(&artifacts, "web/src/app/App.tsx");
+    assert!(app.contains("AdminPage"));
+    assert!(app.contains("path=\"admin\""));
+    let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
+    assert!(layout.contains("to=\"/admin\""));
+    assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("adminFeatures"));
 }
 
 #[test]
@@ -316,6 +336,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
     assert!(openapi["paths"]["/api/auth/password/request"]["post"].is_object());
     assert!(openapi["paths"]["/api/auth/email/verify"]["post"].is_object());
     assert!(openapi["paths"]["/api/auth/tokens"]["post"].is_object());
+    assert!(openapi["paths"]["/api/admin/overview"]["get"].is_object());
     assert_eq!(
         openapi["paths"]["/api/auth/logout"]["post"]["parameters"][0]["name"],
         "X-CSRF-Token"

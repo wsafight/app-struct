@@ -125,6 +125,7 @@ fn error_schema() -> Value {
         }
     })
 }
+mod admin;
 mod audit;
 mod auth;
 mod bulk;

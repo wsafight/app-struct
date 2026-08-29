@@ -19,6 +19,13 @@ fn collect_oversized(directory: &Path, oversized: &mut Vec<String>) {
     for entry in fs::read_dir(directory).unwrap() {
         let path = entry.unwrap().path();
         if path.is_dir() {
+            // Templates and test fixtures are inputs or verification code, not shipped crate modules.
+            if matches!(
+                path.file_name().and_then(|name| name.to_str()),
+                Some("tests" | "templates")
+            ) {
+                continue;
+            }
             collect_oversized(&path, oversized);
         } else if path.extension().is_some_and(|extension| extension == "rs") {
             record_if_oversized(&path, oversized);

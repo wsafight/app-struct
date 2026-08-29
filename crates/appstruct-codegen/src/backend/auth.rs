@@ -22,7 +22,7 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         generated("backend/src/auth/session.rs", template("auth/session.rs")?),
         generated(
             "backend/src/auth/handlers.rs",
-            template("auth/handlers.rs")?,
+            handlers_template(ir.auth.oauth_enabled)?,
         ),
         generated("backend/src/auth/mail.rs", template("auth/mail.rs")?),
     ])
@@ -52,6 +52,11 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
     let registration = ir.auth.registration_enabled;
     let password_reset = ir.auth.password_reset_enabled;
     let oauth = ir.auth.oauth_enabled;
+    let jobs = ir.jobs.enabled;
+    let mail = ir.mail.enabled;
+    let file = ir.file.enabled;
+    let tenant = ir.tenant.enabled;
+    let audit = ir.audit.enabled;
     let default_role = ir
         .auth
         .default_role
@@ -63,7 +68,13 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
     render(quote! {
         pub const REGISTRATION_ENABLED: bool = #registration;
         pub const PASSWORD_RESET_ENABLED: bool = #password_reset;
+        #[allow(dead_code)]
         pub const OAUTH_ENABLED: bool = #oauth;
+        pub const JOBS_ENABLED: bool = #jobs;
+        pub const MAIL_ENABLED: bool = #mail;
+        pub const FILE_ENABLED: bool = #file;
+        pub const TENANT_ENABLED: bool = #tenant;
+        pub const AUDIT_ENABLED: bool = #audit;
         pub const DEFAULT_ROLE: &str = #default_role;
         pub const USER_TABLE: &str = #user_table;
         pub const USER_ID_COLUMN: &str = #user_id_column;
@@ -109,4 +120,30 @@ fn template(name: &str) -> Result<String, CodegenError> {
         _ => unreachable!(),
     };
     super::rust_template(source)
+}
+
+fn handlers_template(oauth_enabled: bool) -> Result<String, CodegenError> {
+    let source = include_str!("../../templates/backend/auth/handlers.rs");
+    if oauth_enabled {
+        return super::rust_template(source);
+    }
+    let source = strip_oauth_sections(source)?;
+    super::rust_template(&source)
+}
+
+fn strip_oauth_sections(source: &str) -> Result<String, CodegenError> {
+    const START: &str = "// appstruct:oauth:start";
+    const END: &str = "// appstruct:oauth:end";
+    let mut output = String::with_capacity(source.len());
+    let mut remaining = source;
+    while let Some(start) = remaining.find(START) {
+        output.push_str(&remaining[..start]);
+        let after_start = &remaining[start + START.len()..];
+        let end = after_start.find(END).ok_or_else(|| {
+            CodegenError::new("auth OAuth template section is missing its end marker")
+        })?;
+        remaining = &after_start[end + END.len()..];
+    }
+    output.push_str(remaining);
+    Ok(output)
 }

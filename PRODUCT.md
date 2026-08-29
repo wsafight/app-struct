@@ -770,7 +770,7 @@ project-hub/
 | Mail | 通用模板、Provider 路由和业务事件邮件 | V1 |
 | Jobs | 延迟任务、重试和任务状态 | V1 |
 | Billing | Stripe 等订阅 Provider | V2 |
-| Admin | 用户、租户和系统运营后台 | V2 |
+| Admin | 用户、租户和系统运营后台 | V1 Preview |
 
 模块通过明确的配置 schema、运行时接口和迁移安装，不允许任意修改其他模块的生成模板。Module manifest 必须声明 `provides` 和 `requires` capability；Compiler 在生成前检查缺失 provider、重复 provider 和依赖环。模块间只通过窄化、类型化 capability 协作，例如 Auth 依赖 `AuthMailSender`，而不是依赖整个 Mail Module。
 
@@ -840,7 +840,7 @@ modules:
     provider: smtp
 ```
 
-`appstruct/saas@1` 只组合已经实现的 Auth、RBAC、Tenant、Audit、Mail、Jobs 和 File。默认启用注册与密码重置，提供 `member/admin` 角色，启用租户和审计，使用开发期 capture Mail、本地文件存储，以及 `default/mail` 两个 Jobs 队列。Billing 和 Admin 不属于版本 1。
+`appstruct/saas@1` 只组合已经实现的 Auth、RBAC、Tenant、Audit、Mail、Jobs 和 File。默认启用注册与密码重置，提供 `member/admin` 角色，启用租户和审计，使用开发期 capture Mail、本地文件存储，以及 `default/mail` 两个 Jobs 队列。Billing 不属于版本 1；Admin 提供运营总览、模块入口和受保护的 Jobs 重试/重放。
 
 Preset 的展开结果进入统一 Typed IR，用户只维护覆盖默认行为的差异配置。映射节点递归合并，标量和列表由用户值整体替换。`appstruct.lock` 锁定 Preset 名称、版本、展开内容 SHA-256，以及精确的模块名和锁步版本；缺失、摘要不匹配或模块集不完整时，`check`、`generate` 和 `build` 都失败关闭。`appstruct preset show` 显示锁定摘要，`--expanded` 输出合并项目覆盖后的规范化有效模块配置。只有显式 `appstruct update` 可在完整 staging 验证后规范化并事务提交新 lock；普通命令不隐式升级。
 
@@ -852,7 +852,7 @@ Template 是创建项目时复制一次的用户代码和资源骨架，可以�
 | --- | --- | --- |
 | `minimal` | 最小 AppStruct 工程和单实体示例 | Technical Preview |
 | `dashboard` | 认证、RBAC 和项目管理后台示例 | MVP |
-| `saas` | V1 提供租户、审计、邮件、任务和文件骨架；V2 再加入支付和运营能力 | V1 Preview，V2 完整版 |
+| `saas` | V1 提供租户、审计、邮件、任务、文件和运营总览/Jobs 恢复；V2 再加入支付和完整运营能力 | V1 Preview，V2 完整版 |
 
 Template 可以包含初始领域配置、用户可修改的 React 页面、邮件模板、品牌资源、Hook、Command 和测试。文件复制后归用户所有，AppStruct 不对其执行自动三方合并。长期升级由 Runtime、Module 和 Preset 版本完成。
 
@@ -1043,7 +1043,7 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 - 官方 Module capability graph 与生成 Runtime/server 边界
 - 数据库 schema 反向生成 App Spec（后续）
 - 第三方模块和自定义字段组件分发协议（后续）
-- 发布不含完整 Billing/Admin 的 AppStruct SaaS Preview
+- 发布不含完整 Billing/Admin 的 AppStruct SaaS Preview；Admin Preview 提供运营总览、模块入口和 Jobs 恢复操作
 
 ### 阶段 3：V2
 
@@ -1135,7 +1135,7 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 - Create 权限作用于最终输入，Update 权限可以检查旧记录、patch 和更新后状态；不可见记录按 ID 操作时返回 404。
 - Module 使用显式 capability 图和可清理的生命周期 handle，MVP 不支持动态 Rust 插件。
 - 首个编译器闭环除 canonical IR 外还必须生成并编译最小 Rust artifact。
-- Open SaaS 类型的能力由官方 `appstruct/saas` Preset 组合，支付、邮件和运营模块不进入最小核心。
+- Open SaaS 类型的能力由官方 `appstruct/saas` Preset 组合，支付、邮件和运营模块不进入最小核心；Admin Preview 不改变最小核心边界。
 
 ## 25. 一句话发布描述
 

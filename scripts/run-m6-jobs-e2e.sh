@@ -68,6 +68,21 @@ tenant="$(jq -er '.id' "$temporary_root/tenant.json")"
 
 DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" TENANT_ID="$tenant" \
   cargo run --quiet --manifest-path "$project/app/jobs-e2e/Cargo.toml"
+
+curl --fail --silent --show-error -c "$jar" -b "$jar" \
+  "$api/api/admin/jobs" >"$temporary_root/jobs.json"
+dead_job="$(jq -er '.data[] | select(.kind == "fail" and .status == "dead") | .id' "$temporary_root/jobs.json")"
+succeeded_job="$(jq -er '.data[] | select(.kind == "succeed" and .status == "succeeded") | .id' "$temporary_root/jobs.json")"
+curl --fail --silent --show-error -c "$jar" -b "$jar" \
+  -H "X-CSRF-Token: $csrf" -X POST \
+  "$api/api/admin/jobs/$dead_job/retry" >"$temporary_root/retried.json"
+jq -e '.id == $id and .status == "queued" and .attempts == 0' \
+  --arg id "$dead_job" "$temporary_root/retried.json" >/dev/null
+curl --fail --silent --show-error -c "$jar" -b "$jar" \
+  -H "X-CSRF-Token: $csrf" -X POST \
+  "$api/api/admin/jobs/$succeeded_job/replay" >"$temporary_root/replayed.json"
+jq -e '.id != $id and .status == "queued" and .attempts == 0' \
+  --arg id "$succeeded_job" "$temporary_root/replayed.json" >/dev/null
 pnpm --dir "$project/generated/web" exec tsc --noEmit
 
 kill -INT -- "-$dev_pid"
@@ -88,4 +103,4 @@ if grep -q "panicked at" "$temporary_root/config-error.log"; then
   cat "$temporary_root/config-error.log" >&2
   exit 1
 fi
-echo "Jobs PostgreSQL transaction and worker E2E passed"
+echo "Jobs PostgreSQL worker and admin retry/replay E2E passed"

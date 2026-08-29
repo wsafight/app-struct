@@ -32,6 +32,7 @@ pub enum ApiError {
     TooManyRequests,
     Forbidden,
     NotFound,
+    Conflict(String),
     Validation(Vec<FieldViolation>),
     Database(DbErr),
     Internal,
@@ -158,6 +159,12 @@ impl IntoResponse for ApiError {
                 StatusCode::NOT_FOUND,
                 "NOT_FOUND",
                 "The requested resource was not found".to_owned(),
+                vec![],
+            ),
+            Self::Conflict(message) => (
+                StatusCode::CONFLICT,
+                "CONFLICT",
+                message,
                 vec![],
             ),
             Self::Forbidden => (

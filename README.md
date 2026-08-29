@@ -7,7 +7,8 @@ OpenAPI, a TypeScript client, and a React/Vite application.
 The repository is currently a technical preview. M0-M6 are complete, including production builds,
 the coordinated development server, Tenant/Audit/Mail/Jobs/File modules, the locked
 `appstruct/saas@1` preset, transactional project updates, and a runnable SaaS template and example.
-Billing and Admin remain out of scope for preset version 1.
+The SaaS preset includes an Admin operations overview and guarded Jobs retry/replay controls;
+Billing remains out of scope for preset version 1.
 
 ## Quick Start
 
@@ -113,8 +114,8 @@ preset:
 The project must commit an `appstruct.lock` containing the preset digest and exact module versions.
 User `modules` mappings override defaults recursively; scalar and list values replace their defaults.
 Inspect the locked contract with `appstruct preset show` or print the effective module
-configuration after project overrides with `appstruct preset show --expanded`. Billing and Admin
-are not part of preset version 1.
+configuration after project overrides with `appstruct preset show --expanded`. Admin is available
+as an operations preview with Jobs recovery controls; Billing is not part of preset version 1.
 
 ## Commands
 

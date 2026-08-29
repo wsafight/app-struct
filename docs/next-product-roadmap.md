@@ -77,8 +77,9 @@ remains out of scope.
 - [x] Email verification.
 - [x] OAuth/OIDC.
 - [x] Personal API tokens.
-- Jobs, mail, file, user, tenant, and audit administration pages.
-- Recurring schedules, signed webhooks, retry, and replay.
+- [x] Jobs, mail, file, user, tenant, and audit administration pages (overview and module links).
+- [x] Admin job inspection, dead-letter retry, and terminal-job replay.
+- Recurring schedules and signed webhooks.
 - Optional SSE updates and record presence/locks.
 
 ### Phase C: Distribution and delivery

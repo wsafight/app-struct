@@ -1,3 +1,4 @@
+mod auth;
 mod bulk;
 mod entity;
 mod modules;
@@ -19,7 +20,7 @@ fn client_source(ir: &AppIr) -> String {
         tenant_storage_source().to_owned(),
     ];
     if ir.auth.enabled {
-        sections.push(auth_source(ir));
+        sections.push(auth::source(ir));
     }
     if ir.tenant.enabled {
         sections.push(tenant_source());
@@ -252,58 +253,6 @@ function appendFilterParams(params: URLSearchParams, query: FilterQuery): void {
   }
 }
 "#
-}
-
-fn auth_source(ir: &AppIr) -> String {
-    let registration = ir.auth.registration_enabled;
-    let password_reset = ir.auth.password_reset_enabled;
-    let oauth = ir.auth.oauth_enabled;
-    format!(
-        r#"export interface AuthUser {{
-  id: string;
-  email: string;
-  roles: string[];
-}}
-
-interface AuthResponse {{ user: AuthUser; email_verified: boolean; }}
-
-export interface ApiToken {{
-  id: string;
-  name: string;
-  created_at: string;
-  last_used_at: string | null;
-  expires_at: string | null;
-  revoked_at: string | null;
-}}
-
-export interface CreatedApiToken extends ApiToken {{ token: string; }}
-
-export const authFeatures = {{ registration: {registration}, passwordReset: {password_reset}, emailVerification: true, oauth: {oauth} }} as const;
-
-export const authApi = {{
-  me: async () => (await request<AuthResponse>("/api/auth/me")).user,
-  login: async (email: string, password: string) =>
-    (await request<AuthResponse>("/api/auth/login", {{ method: "POST", body: JSON.stringify({{ email, password }}) }})).user,
-  register: async (email: string, password: string) =>
-    (await request<AuthResponse>("/api/auth/register", {{ method: "POST", body: JSON.stringify({{ email, password }}) }})).user,
-  logout: async () => {{
-    await request<void>("/api/auth/logout", {{ method: "POST" }});
-    resourceEtags.clear();
-    selectTenant();
-  }},
-  requestPasswordReset: (email: string) =>
-    request<void>("/api/auth/password/request", {{ method: "POST", body: JSON.stringify({{ email }}) }}),
-  resetPassword: (token: string, password: string) =>
-    request<void>("/api/auth/password/reset", {{ method: "POST", body: JSON.stringify({{ token, password }}) }}),
-  requestEmailVerification: () => request<void>("/api/auth/email/request", {{ method: "POST" }}),
-  verifyEmail: (token: string) => request<void>("/api/auth/email/verify", {{ method: "POST", body: JSON.stringify({{ token }}) }}),
-  startOidc: () => {{ window.location.assign(`${{API_BASE}}/api/auth/oauth/oidc/start`); }},
-  listApiTokens: () => request<ApiToken[]>("/api/auth/tokens"),
-  createApiToken: (name: string, expiresInDays?: number) => request<CreatedApiToken>("/api/auth/tokens", {{ method: "POST", body: JSON.stringify({{ name, expires_in_days: expiresInDays }}) }}),
-  revokeApiToken: (id: string) => request<void>(`/api/auth/tokens/${{id}}`, {{ method: "DELETE" }}),
-}};
-"#
-    )
 }
 
 fn entity_types(entity: &EntityIr) -> String {

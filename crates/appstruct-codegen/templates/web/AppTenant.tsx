@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, RequireAuth } from "../auth/Auth";
-import { ApiTokensPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "../auth/AuthPages";
+import { AdminJobsPage, AdminPage, ApiTokensPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "../auth/AuthPages";
 import { resources } from "../generated/resources";
 import { customPages } from "../generated/registry";
 import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
@@ -38,6 +38,8 @@ export function App({ registry }: { registry?: AppStructRegistry }) {
           <Route path="empty" element={<main className="page"><h1>No resources</h1></main>} />
           <Route path="organization" element={<OrganizationPage />} />
           <Route path="tokens" element={<ApiTokensPage />} />
+          <Route path="admin" element={<AdminPage />} />
+          <Route path="admin/jobs" element={<AdminJobsPage />} />
         </Route>
       </Route>
     </Route>

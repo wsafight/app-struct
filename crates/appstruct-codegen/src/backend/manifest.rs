@@ -32,7 +32,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
     if ir.auth.enabled {
         manifest.push_str(concat!("argon2 = \"=0.5.3\"\n", "rand = \"=0.9.2\"\n",));
     }
-    if ir.auth.enabled {
+    if ir.auth.oauth_enabled || (ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend) {
         manifest.push_str("reqwest = { version = \"=0.13.4\", default-features = false, features = [\"json\", \"form\", \"rustls\"] }\n");
     }
     if ir.auth.enabled || ir.file.enabled {
@@ -48,11 +48,6 @@ pub(super) fn cargo(ir: &AppIr) -> String {
     }
     if ir.mail.enabled {
         manifest.push_str("minijinja = \"=2.12.0\"\n");
-    }
-    if ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend && !ir.auth.enabled {
-        manifest.push_str(
-            "reqwest = { version = \"=0.13.4\", default-features = false, features = [\"json\", \"rustls\"] }\n",
-        );
     }
     manifest
 }

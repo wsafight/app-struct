@@ -83,6 +83,7 @@ pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Valu
     }
     add_email_verification_paths(paths);
     add_token_paths(paths, schemas);
+    super::admin::add(paths, schemas, ir.jobs.enabled);
 }
 
 fn add_token_paths(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {

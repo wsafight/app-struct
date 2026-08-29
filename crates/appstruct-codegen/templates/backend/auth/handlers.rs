@@ -3,8 +3,10 @@ use super::session::{cookie_value, random_token, token_hash};
 use crate::{Actor, ApiError, AppState};
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+#[allow(unused_imports)]
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
+#[allow(unused_imports)]
 use axum::response::Redirect;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -19,10 +21,16 @@ pub(super) fn router() -> Router<AppState> {
         .route("/api/auth/me", get(me))
         .route("/api/auth/email/request", post(request_email_verification))
         .route("/api/auth/email/verify", post(verify_email))
+        // appstruct:oauth:start
         .route("/api/auth/oauth/oidc/start", get(start_oidc))
         .route("/api/auth/oauth/oidc/callback", get(oidc_callback))
+        // appstruct:oauth:end
         .route("/api/auth/tokens", get(list_api_tokens).post(create_api_token))
         .route("/api/auth/tokens/{id}", axum::routing::delete(revoke_api_token))
+        .route("/api/admin/overview", get(admin_overview))
+        .route("/api/admin/jobs", get(list_admin_jobs))
+        .route("/api/admin/jobs/{id}/retry", post(retry_admin_job))
+        .route("/api/admin/jobs/{id}/replay", post(replay_admin_job))
         .route("/api/auth/password/request", post(request_password_reset))
         .route("/api/auth/password/reset", post(reset_password))
 }
@@ -49,11 +57,13 @@ struct VerifyEmailInput {
     token: String,
 }
 
+// appstruct:oauth:start
 #[derive(Deserialize)]
 struct OidcCallback {
     code: String,
     state: String,
 }
+// appstruct:oauth:end
 
 #[derive(Deserialize)]
 struct CreateApiTokenInput {
@@ -76,6 +86,45 @@ struct CreatedApiToken {
     #[serde(flatten)]
     metadata: ApiToken,
     token: String,
+}
+
+#[derive(Serialize)]
+struct AdminOverview {
+    users: i64,
+    organizations: i64,
+    invitations: i64,
+    sessions: i64,
+    jobs_queued: i64,
+    jobs_dead: i64,
+    mail_deliveries: i64,
+    files: i64,
+    audit_events: i64,
+}
+
+#[derive(Deserialize)]
+struct AdminJobQuery {
+    status: Option<String>,
+    limit: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct AdminJob {
+    id: uuid::Uuid,
+    queue: String,
+    kind: String,
+    status: String,
+    tenant_id: Option<uuid::Uuid>,
+    attempts: i32,
+    max_attempts: i32,
+    run_at: chrono::DateTime<chrono::Utc>,
+    last_error: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    completed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Serialize)]
+struct AdminJobList {
+    data: Vec<AdminJob>,
 }
 
 #[derive(Serialize)]
@@ -258,6 +307,7 @@ async fn verify_email(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// appstruct:oauth:start
 async fn start_oidc() -> Result<(HeaderMap, Redirect), ApiError> {
     if !config::OAUTH_ENABLED {
         return Err(ApiError::NotFound);
@@ -315,7 +365,10 @@ async fn oidc_callback(
         return Err(ApiError::OAuthProvider);
     }
     let token_body: serde_json::Value = token_response.json().await.map_err(|_| ApiError::OAuthProvider)?;
-    let access_token = token_body.get("access_token").and_then(serde_json::Value::as_str).ok_or(ApiError::OAuthProvider)?;
+    let access_token = token_body
+        .get("access_token")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(ApiError::OAuthProvider)?;
     let userinfo_url = required_env("APPSTRUCT_OIDC_USERINFO_URL")?;
     let userinfo_response = reqwest::Client::new()
         .get(userinfo_url)
@@ -327,17 +380,28 @@ async fn oidc_callback(
         return Err(ApiError::OAuthProvider);
     }
     let claims: serde_json::Value = userinfo_response.json().await.map_err(|_| ApiError::OAuthProvider)?;
-    let subject = claims.get("sub").and_then(serde_json::Value::as_str).ok_or(ApiError::OAuthProvider)?;
-    let email = normalize_email(claims.get("email").and_then(serde_json::Value::as_str).ok_or(ApiError::OAuthProvider)?)?;
+    let subject = claims
+        .get("sub")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(ApiError::OAuthProvider)?;
+    let email = normalize_email(
+        claims
+            .get("email")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(ApiError::OAuthProvider)?,
+    )?;
     let user_id = find_or_create_oauth_user(&state, subject, &email).await?;
     let (session, csrf) = state.auth.create_session(&state.database, user_id).await?;
     let mut response_headers = state.auth.session_headers(&session, &csrf);
     response_headers.append(
         axum::http::header::SET_COOKIE,
-        "appstruct_oidc_state=; Path=/api/auth/oauth/oidc; Max-Age=0; HttpOnly; SameSite=Lax".parse().map_err(|_| ApiError::Internal)?,
+        "appstruct_oidc_state=; Path=/api/auth/oauth/oidc; Max-Age=0; HttpOnly; SameSite=Lax"
+            .parse()
+            .map_err(|_| ApiError::Internal)?,
     );
     Ok((response_headers, Redirect::temporary("/")))
 }
+// appstruct:oauth:end
 
 async fn list_api_tokens(
     State(state): State<AppState>,
@@ -435,6 +499,158 @@ async fn revoke_api_token(
         ))
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn admin_overview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<AdminOverview>, ApiError> {
+    require_admin(&state, &headers).await?;
+    Ok(Json(AdminOverview {
+        users: count_table(&state, config::USER_TABLE).await?,
+        organizations: optional_count(&state, config::TENANT_ENABLED, "_appstruct_tenant_organizations").await?,
+        invitations: optional_count(&state, config::TENANT_ENABLED, "_appstruct_tenant_invitations").await?,
+        sessions: count_table(&state, "_appstruct_auth_sessions").await?,
+        jobs_queued: optional_count_where(&state, config::JOBS_ENABLED, "_appstruct_jobs", "status = 'queued'").await?,
+        jobs_dead: optional_count_where(&state, config::JOBS_ENABLED, "_appstruct_jobs", "status = 'dead'").await?,
+        mail_deliveries: optional_count(&state, config::MAIL_ENABLED, "_appstruct_mail_deliveries").await?,
+        files: optional_count(&state, config::FILE_ENABLED, "_appstruct_files").await?,
+        audit_events: optional_count(&state, config::AUDIT_ENABLED, "_appstruct_audit_events").await?,
+    }))
+}
+
+async fn list_admin_jobs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(input): Query<AdminJobQuery>,
+) -> Result<Json<AdminJobList>, ApiError> {
+    require_admin(&state, &headers).await?;
+    if !config::JOBS_ENABLED {
+        return Err(ApiError::NotFound);
+    }
+    if input.status.as_deref().is_some_and(|status| {
+        !matches!(status, "queued" | "running" | "succeeded" | "dead")
+    }) {
+        return Err(ApiError::InvalidQuery(
+            "status must be queued, running, succeeded, or dead".to_owned(),
+        ));
+    }
+    let limit = input.limit.unwrap_or(50);
+    if !(1..=100).contains(&limit) {
+        return Err(ApiError::InvalidQuery(
+            "limit must be between 1 and 100".to_owned(),
+        ));
+    }
+    let rows = state.database.query_all_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT id, queue, kind, status::text AS status, tenant_id, attempts, max_attempts, run_at, last_error, created_at, completed_at FROM \"_appstruct_jobs\" WHERE ($1::text IS NULL OR status::text = $1) ORDER BY created_at DESC, id DESC LIMIT $2",
+        [input.status.into(), i64::try_from(limit).unwrap_or(100).into()],
+    )).await?;
+    let data = rows.into_iter().map(admin_job_from_row).collect::<Result<Vec<_>, _>>()?;
+    Ok(Json(AdminJobList { data }))
+}
+
+async fn retry_admin_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<AdminJob>, ApiError> {
+    state.auth.verify_csrf(&state.database, &headers).await?;
+    require_admin(&state, &headers).await?;
+    ensure_jobs_enabled()?;
+    let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
+    let transaction = state.database.begin().await?;
+    let status = lock_admin_job(&transaction, id).await?;
+    if status != "dead" {
+        return Err(ApiError::Conflict(
+            "Only dead jobs can be retried".to_owned(),
+        ));
+    }
+    let row = transaction.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "UPDATE \"_appstruct_jobs\" SET status = 'queued', attempts = 0, run_at = CURRENT_TIMESTAMP, locked_by = NULL, locked_until = NULL, last_error = NULL, completed_at = NULL WHERE id = $1 RETURNING id, queue, kind, status::text AS status, tenant_id, attempts, max_attempts, run_at, last_error, created_at, completed_at",
+        [id.into()],
+    )).await?.ok_or(ApiError::NotFound)?;
+    let job = admin_job_from_row(row)?;
+    transaction.commit().await?;
+    Ok(Json(job))
+}
+
+async fn replay_admin_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<(StatusCode, Json<AdminJob>), ApiError> {
+    state.auth.verify_csrf(&state.database, &headers).await?;
+    require_admin(&state, &headers).await?;
+    ensure_jobs_enabled()?;
+    let source_id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
+    let transaction = state.database.begin().await?;
+    let status = lock_admin_job(&transaction, source_id).await?;
+    if !matches!(status.as_str(), "succeeded" | "dead") {
+        return Err(ApiError::Conflict(
+            "Only succeeded or dead jobs can be replayed".to_owned(),
+        ));
+    }
+    let id = uuid::Uuid::now_v7();
+    let row = transaction.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "INSERT INTO \"_appstruct_jobs\" (id, queue, kind, payload, idempotency_key, tenant_id, status, attempts, max_attempts, backoff_seconds, run_at, created_at) SELECT $1, queue, kind, payload, NULL, tenant_id, 'queued', 0, max_attempts, backoff_seconds, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM \"_appstruct_jobs\" WHERE id = $2 RETURNING id, queue, kind, status::text AS status, tenant_id, attempts, max_attempts, run_at, last_error, created_at, completed_at",
+        [id.into(), source_id.into()],
+    )).await?.ok_or(ApiError::NotFound)?;
+    let job = admin_job_from_row(row)?;
+    transaction.commit().await?;
+    Ok((StatusCode::CREATED, Json(job)))
+}
+
+async fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+    let actor = state.auth.actor(&state.database, headers).await?
+        .ok_or(ApiError::Unauthorized)?;
+    if actor.has_role("admin") { Ok(()) } else { Err(ApiError::Forbidden) }
+}
+
+fn ensure_jobs_enabled() -> Result<(), ApiError> {
+    if config::JOBS_ENABLED { Ok(()) } else { Err(ApiError::NotFound) }
+}
+
+async fn lock_admin_job<C: ConnectionTrait>(
+    database: &C,
+    id: uuid::Uuid,
+) -> Result<String, ApiError> {
+    let row = database.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT status::text AS status FROM \"_appstruct_jobs\" WHERE id = $1 FOR UPDATE",
+        [id.into()],
+    )).await?.ok_or(ApiError::NotFound)?;
+    Ok(row.try_get("", "status")?)
+}
+
+fn admin_job_from_row(row: sea_orm::QueryResult) -> Result<AdminJob, sea_orm::DbErr> {
+    Ok(AdminJob {
+        id: row.try_get("", "id")?, queue: row.try_get("", "queue")?,
+        kind: row.try_get("", "kind")?, status: row.try_get("", "status")?,
+        tenant_id: row.try_get("", "tenant_id")?, attempts: row.try_get("", "attempts")?,
+        max_attempts: row.try_get("", "max_attempts")?, run_at: row.try_get("", "run_at")?,
+        last_error: row.try_get("", "last_error")?, created_at: row.try_get("", "created_at")?,
+        completed_at: row.try_get("", "completed_at")?,
+    })
+}
+
+async fn count_table(state: &AppState, table: &str) -> Result<i64, ApiError> {
+    let sql = format!("SELECT COUNT(*) AS count FROM {}", quote_ident(table));
+    let row = state.database.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres, sql, [])).await?.ok_or(ApiError::Internal)?;
+    Ok(row.try_get("", "count")?)
+}
+
+async fn optional_count(state: &AppState, enabled: bool, table: &str) -> Result<i64, ApiError> {
+    if enabled { count_table(state, table).await } else { Ok(0) }
+}
+
+async fn optional_count_where(state: &AppState, enabled: bool, table: &str, predicate: &str) -> Result<i64, ApiError> {
+    if !enabled { return Ok(0); }
+    let sql = format!("SELECT COUNT(*) AS count FROM {} WHERE {}", quote_ident(table), predicate);
+    let row = state.database.query_one_raw(Statement::from_sql_and_values(DbBackend::Postgres, sql, [])).await?.ok_or(ApiError::Internal)?;
+    Ok(row.try_get("", "count")?)
 }
 
 async fn request_password_reset(
@@ -623,6 +839,7 @@ async fn issue_email_verification(
     Ok(())
 }
 
+// appstruct:oauth:start
 async fn find_or_create_oauth_user(
     state: &AppState,
     subject: &str,
@@ -709,7 +926,8 @@ fn query_escape(value: &str) -> String {
         })
         .collect()
 }
+// appstruct:oauth:end
 
-fn quote_ident(value: &str) -> String {
+pub(super) fn quote_ident(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }

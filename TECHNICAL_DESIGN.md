@@ -918,6 +918,11 @@ Worker 是 at-least-once：进程可在 Handler 成功后、状态更新前崩�
 等待清理。last_error 截断到 2000 字符，不记录 secret。Mail 与 Jobs 同时启用时可用
 `MailJobPayload`/`MailJobHandler` 处理 `mail.send`，但 Auth 不依赖 Jobs。
 
+Admin Jobs API 只向 `admin` actor 发布最近任务元数据，不返回 payload。死信 retry 在行锁事务内复用
+原 ID、重置 attempts 并立即入队；succeeded/dead replay 在锁定源记录后复制 queue、kind、payload、tenant
+和重试预算到新 ID，并清除 idempotency key。Cookie mutation 必须通过 CSRF，Bearer token 沿用 Actor
+授权；queued/running 任务不允许 replay，避免主动复制正在执行的副作用。
+
 M6 File 契约如下：
 
 ```yaml
@@ -1300,7 +1305,7 @@ modules:
   file: { enabled: true, provider: local }
 ```
 
-版本 1 不包含 Billing 或 Admin。默认 Mail 同时提供 invitation/welcome 模板；Jobs 提供 default/mail 队列；File 限制为 10 MiB 和明确的 MIME allowlist。合并项目覆盖后的完整有效配置由 `appstruct preset show --expanded` 输出。
+版本 1 不包含 Billing；Admin 以运营总览、模块入口和 Jobs 恢复操作提供 Preview。默认 Mail 同时提供 invitation/welcome 模板；Jobs 提供 default/mail 队列；File 限制为 10 MiB 和明确的 MIME allowlist。合并项目覆盖后的完整有效配置由 `appstruct preset show --expanded` 输出。
 
 用户 `modules` 映射在 Preset 默认值之上递归合并；标量和序列整体替换。所有模块仍执行普通 Compiler 依赖与安全校验，因此覆盖不能绕过 Auth、Tenant 或 Audit 契约。`appstruct.lock` 必须包含锁步 AppStruct 版本、Preset 名称/版本、展开文本 SHA-256，以及七个模块的精确版本；编译器不在普通命令中隐式补锁或升级。
 
@@ -1639,7 +1644,7 @@ Pull Request 使用最小必要矩阵；主分支和发布构建运行完整示�
 - `saas` Template 和端到端示例
 - 官方 capability graph、`appstruct-module-sdk` 和 `appstruct-runtime`
 
-Billing 和运营 Admin 在对应模块达到生产安全标准后加入完整 SaaS Template，不阻塞 Core MVP。
+Billing 和完整运营 Admin 在对应模块达到生产安全标准后加入完整 SaaS Template，不阻塞 Core MVP；当前 Preview 提供运营总览、模块入口和 Jobs 恢复操作。
 
 ## 28. 性能预算
 

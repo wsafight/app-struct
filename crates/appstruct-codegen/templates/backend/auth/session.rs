@@ -163,6 +163,16 @@ impl AuthState {
         headers: &HeaderMap,
     ) -> Result<(), ApiError> {
         self.validate_origin(headers)?;
+        // Bearer tokens are not sent automatically by browsers, so CSRF protection is
+        // only required for cookie-authenticated mutations.
+        if cookie_value(headers, SESSION_COOKIE).is_none()
+            && headers
+                .get(header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.starts_with("Bearer "))
+        {
+            return Ok(());
+        }
         let Some(session) = cookie_value(headers, SESSION_COOKIE) else { return Ok(()) };
         let csrf = headers
             .get("x-csrf-token")

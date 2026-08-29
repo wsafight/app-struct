@@ -3,7 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { FieldDefinition, ResourceDefinition, ResourceInput, ResourceRecord } from "../resource";
 import type { AppStructRegistry, FieldComponentProps } from "../generated/registry";
-import { canAccessResource, errorMessage, fieldErrors, useCanAccess, useResourceActor } from "../resource";
+import { canAccessResource, canAccessRule, errorMessage, fieldErrors, useCanAccess, useResourceActor } from "../resource";
 
 type FormValues = Record<string, string | boolean>;
 

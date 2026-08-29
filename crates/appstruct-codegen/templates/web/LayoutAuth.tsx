@@ -7,6 +7,7 @@ export function Layout({ resources, pages }: { resources: ResourceDefinition[]; 
   const auth = useAuth();
   const navigate = useNavigate();
   const visibleResources = useVisibleResources(resources);
+  const isAdmin = auth.user?.roles.includes("admin") ?? false;
   async function logout() {
     await auth.logout();
     navigate("/login", { replace: true });
@@ -18,6 +19,7 @@ export function Layout({ resources, pages }: { resources: ResourceDefinition[]; 
         {visibleResources.map((resource) => <NavLink key={resource.name} to={`/${resource.slug}`}>{resource.label}</NavLink>)}
         {pages.map((page) => <NavLink key={page.name} to={`/${page.path}`}>{page.label}</NavLink>)}
         <NavLink to="/tokens">API tokens</NavLink>
+        {isAdmin && <NavLink to="/admin">Administration</NavLink>}
       </nav>
     </aside>
     <div className="workspace">
