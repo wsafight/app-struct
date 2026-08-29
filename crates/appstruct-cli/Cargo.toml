@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 readme.workspace = true
+repository.workspace = true
 description = "Command-line compiler and development workflow for AppStruct applications"
 documentation = "https://docs.rs/appstruct-cli"
 keywords = ["codegen", "postgresql", "rust", "saas", "web"]

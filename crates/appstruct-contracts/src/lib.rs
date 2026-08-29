@@ -1,5 +1,11 @@
 //! Central compatibility policy for persisted and generated `AppStruct` contracts.
 
+/// Source files embedded by the generated backend runtime.
+#[doc(hidden)]
+pub mod __source {
+    pub const LIB: &str = include_str!("lib.rs");
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VersionRange {
     pub minimum: u32,

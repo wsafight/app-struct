@@ -17,6 +17,7 @@ edition = "2024"
 rust-version = "1.98"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
+repository = "https://github.com/wsafight/app-struct"
 
 [workspace.dependencies]
 appstruct-codegen = { version = "0.1.0", path = "crates/appstruct-codegen" }

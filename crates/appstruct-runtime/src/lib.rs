@@ -9,6 +9,14 @@ use std::error::Error;
 use std::fmt;
 use std::time::Duration;
 
+/// Source files embedded into generated backend projects.
+#[doc(hidden)]
+pub mod __source {
+    pub const LIB: &str = include_str!("lib.rs");
+    pub const LIFECYCLE: &str = include_str!("lifecycle.rs");
+    pub const SUPERVISOR: &str = include_str!("supervisor.rs");
+}
+
 pub use lifecycle::{
     ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase, ModulePlan, ModuleRuntime,
     ModuleStarter,

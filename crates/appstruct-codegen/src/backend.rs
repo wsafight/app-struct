@@ -41,7 +41,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         ),
         Artifact::text(
             "backend/contracts/src/lib.rs",
-            embedded_crate_source(include_str!("../../appstruct-contracts/src/lib.rs")),
+            embedded_crate_source(appstruct_contracts::__source::LIB),
             ArtifactKind::RustSource,
         ),
     ];
@@ -112,7 +112,7 @@ fn embedded_runtime_artifacts() -> [Artifact; 3] {
     [
         Artifact::text(
             "backend/runtime/src/lib.rs",
-            embedded_crate_source(include_str!("../../appstruct-runtime/src/lib.rs")),
+            embedded_crate_source(appstruct_runtime::__source::LIB),
             ArtifactKind::RustSource,
         ),
         Artifact::text(
@@ -120,7 +120,7 @@ fn embedded_runtime_artifacts() -> [Artifact; 3] {
             format!(
                 "{}{}",
                 generated_header("//"),
-                include_str!("../../appstruct-runtime/src/lifecycle.rs")
+                appstruct_runtime::__source::LIFECYCLE
             ),
             ArtifactKind::RustSource,
         ),
@@ -129,7 +129,7 @@ fn embedded_runtime_artifacts() -> [Artifact; 3] {
             format!(
                 "{}{}",
                 generated_header("//"),
-                include_str!("../../appstruct-runtime/src/supervisor.rs")
+                appstruct_runtime::__source::SUPERVISOR
             ),
             ArtifactKind::RustSource,
         ),

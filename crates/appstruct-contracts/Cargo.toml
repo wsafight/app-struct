@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 readme.workspace = true
+repository.workspace = true
 description = "Central compatibility versions for AppStruct internal and generated contracts"
 documentation = "https://docs.rs/appstruct-contracts"
 keywords = ["compatibility", "contracts", "schema", "versioning"]
