@@ -69,10 +69,10 @@ export function useVisibleResources(resources: ResourceDefinition[]): ResourceDe
 }
 
 export interface ResourceApi {
-  list(query?: ListQuery): Promise<ListResponse<ResourceRecord>>;
-  listCursor(query?: CursorListQuery): Promise<CursorListResponse<ResourceRecord>>;
-  aggregate(query?: AggregateQuery): Promise<AggregateResponse>;
-  get(id: string): Promise<ResourceRecord>;
+  list(query?: ListQuery, options?: { signal?: AbortSignal }): Promise<ListResponse<ResourceRecord>>;
+  listCursor(query?: CursorListQuery, options?: { signal?: AbortSignal }): Promise<CursorListResponse<ResourceRecord>>;
+  aggregate(query?: AggregateQuery, options?: { signal?: AbortSignal }): Promise<AggregateResponse>;
+  get(id: string, options?: { signal?: AbortSignal }): Promise<ResourceRecord>;
   create(input: ResourceInput): Promise<ResourceRecord>;
   update(id: string, input: ResourceInput): Promise<ResourceRecord>;
   remove(id: string): Promise<void>;
@@ -81,7 +81,7 @@ export interface ResourceApi {
   exportCsv(): Promise<string>;
   importCsv(csv: string): Promise<BulkResult>;
   restore?(input: BulkDeleteRequest): Promise<BulkResult>;
-  trash?(query?: Pick<ListQuery, "page" | "page_size">): Promise<ListResponse<ResourceRecord>>;
+  trash?(query?: Pick<ListQuery, "page" | "page_size">, options?: { signal?: AbortSignal }): Promise<ListResponse<ResourceRecord>>;
 }
 
 export type FieldKind =

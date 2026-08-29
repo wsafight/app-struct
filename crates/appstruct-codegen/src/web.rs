@@ -37,6 +37,10 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
             include_str!("../templates/web/index.html"),
         ),
         ("web/.gitignore", include_str!("../templates/web/gitignore")),
+        (
+            "web/eslint.config.js",
+            include_str!("../templates/web/eslint.config.js"),
+        ),
         ("web/src/main.tsx", main),
         (
             "web/src/resource.ts",
@@ -50,11 +54,23 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
             "web/src/navigation.tsx",
             include_str!("../templates/web/navigation.tsx"),
         ),
+        (
+            "web/src/framework.test.ts",
+            include_str!("../templates/web/framework.test.ts"),
+        ),
         ("web/src/app/App.tsx", app),
+        (
+            "web/src/app/ResourceRoutes.tsx",
+            include_str!("../templates/web/ResourceRoutes.tsx"),
+        ),
         ("web/src/app/Layout.tsx", layout),
         (
             "web/src/pages/ResourceList.tsx",
             include_str!("../templates/web/ResourceList.tsx"),
+        ),
+        (
+            "web/src/pages/ResourceFilters.tsx",
+            include_str!("../templates/web/ResourceFilters.tsx"),
         ),
         (
             "web/src/pages/ResourceForm.tsx",
@@ -204,6 +220,21 @@ fn registry_source(ir: &AppIr) -> String {
         .map(|component| format!("    {component}: ComponentType<PageComponentProps>;"))
         .collect::<Vec<_>>()
         .join("\n");
+    let component_import = if field_components.is_empty() && page_components.is_empty() {
+        ""
+    } else {
+        "import type { ComponentType } from \"react\";\n\n"
+    };
+    let field_registry = if field_members.is_empty() {
+        "Record<string, never>".to_owned()
+    } else {
+        format!("{{\n{field_members}\n  }}")
+    };
+    let page_registry = if page_members.is_empty() {
+        "Record<string, never>".to_owned()
+    } else {
+        format!("{{\n{page_members}\n  }}")
+    };
     let pages = ir
         .pages
         .iter()
@@ -216,7 +247,7 @@ fn registry_source(ir: &AppIr) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "{}import type {{ ComponentType }} from \"react\";\n\nexport interface FieldComponentProps {{\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport type PageComponentProps = Record<string, never>;\n\nexport interface AppStructRegistry {{\n  fields: {{\n{field_members}\n  }};\n  pages: {{\n{page_members}\n  }};\n}}\n\nexport interface CustomPageDefinition {{\n  name: string;\n  label: string;\n  path: string;\n  component: keyof AppStructRegistry[\"pages\"];\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages: readonly CustomPageDefinition[] = [\n{pages}\n];\n",
-        generated_header("//")
+        "{}{component_import}export interface FieldComponentProps {{\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport type PageComponentProps = Record<string, never>;\n\nexport interface AppStructRegistry {{\n  fields: {field_registry};\n  pages: {page_registry};\n}}\n\nexport interface CustomPageDefinition {{\n  name: string;\n  label: string;\n  path: string;\n  component: keyof AppStructRegistry[\"pages\"];\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages: readonly CustomPageDefinition[] = [\n{pages}\n];\n",
+        generated_header("//"),
     )
 }

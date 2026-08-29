@@ -1,14 +1,11 @@
-import { lazy, useState, type ComponentType } from "react";
+import { useState, type ComponentType } from "react";
 import { resources } from "../generated/resources";
 import { customPages } from "../generated/registry";
 import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
 import { Navigate, Outlet, RuntimeRouter, createRuntimeRouter, type RuntimeRoute } from "../navigation";
 import { ResourceActorProvider, useVisibleResources } from "../resource";
 import { Layout } from "./Layout";
-
-const ResourceDetail = lazy(() => import("../pages/ResourceDetail").then(({ ResourceDetail: component }) => ({ default: component })));
-const ResourceForm = lazy(() => import("../pages/ResourceForm").then(({ ResourceForm: component }) => ({ default: component })));
-const ResourceList = lazy(() => import("../pages/ResourceList").then(({ ResourceList: component }) => ({ default: component })));
+import { resourceRoutes } from "./ResourceRoutes";
 
 export function App({ registry }: { registry?: AppStructRegistry }) {
   const [router] = useState(() => {
@@ -35,15 +32,6 @@ export function App({ registry }: { registry?: AppStructRegistry }) {
 
 function PublicRoot() {
   return <ResourceActorProvider user={null}><Outlet /></ResourceActorProvider>;
-}
-
-function resourceRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
-  return resources.flatMap((resource) => [
-    { path: `/${resource.slug}`, component: () => <ResourceList resource={resource} resources={resources} /> },
-    { path: `/${resource.slug}/new`, component: () => <ResourceForm resource={resource} resources={resources} registry={registry} /> },
-    { path: `/${resource.slug}/$id`, component: () => <ResourceDetail resource={resource} /> },
-    { path: `/${resource.slug}/$id/edit`, component: () => <ResourceForm resource={resource} resources={resources} registry={registry} /> },
-  ]);
 }
 
 function HomeRedirect() {

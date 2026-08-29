@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"*.ts\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"*.{js,ts}\"",
+    "lint": "eslint src --max-warnings 0",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -20,12 +22,19 @@
     "zod": "4.5.2"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@typescript/native": "npm:typescript@7.0.2",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
     "@vitejs/plugin-react": "6.1.0",
+    "eslint": "10.9.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.11.0",
     "prettier": "3.9.6",
-    "typescript": "7.0.2",
-    "vite": "8.2.2"
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "8.68.0",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
   },
   "packageManager": "pnpm@9.12.3"
 }

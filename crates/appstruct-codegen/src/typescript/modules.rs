@@ -1,13 +1,13 @@
 pub(super) fn tenant_storage_source() -> &'static str {
-    r#"const TENANT_STORAGE_KEY = "appstruct_tenant";
+    r#"export const tenantStorageKey = "appstruct_tenant";
 
 function currentTenant(): string | undefined {
-  return window.localStorage.getItem(TENANT_STORAGE_KEY) ?? undefined;
+  return window.localStorage.getItem(tenantStorageKey) ?? undefined;
 }
 
 function selectTenant(id?: string): void {
-  if (id) window.localStorage.setItem(TENANT_STORAGE_KEY, id);
-  else window.localStorage.removeItem(TENANT_STORAGE_KEY);
+  if (id) window.localStorage.setItem(tenantStorageKey, id);
+  else window.localStorage.removeItem(tenantStorageKey);
   resourceEtags.clear();
 }
 "#
@@ -66,8 +66,8 @@ pub(super) fn audit_source() -> String {
 }
 
 export const auditApi = {
-  list: (query: Pick<ListQuery, "page" | "page_size"> = {}) =>
-    request<ListResponse<AuditEvent>>(listPath("/api/audit/events", query)),
+  list: (query: Pick<ListQuery, "page" | "page_size"> = {}, options: RequestOptions = {}) =>
+    request<ListResponse<AuditEvent>>(listPath("/api/audit/events", query), options),
 };
 "#
     .to_owned()

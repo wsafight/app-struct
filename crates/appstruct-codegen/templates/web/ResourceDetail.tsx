@@ -12,7 +12,7 @@ export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
   const canRead = useCanAccess(resource, "read");
   const recordQuery = useQuery({
     queryKey: resourceQueryKeys.detail(resource.id, id ?? ""),
-    queryFn: () => resource.api.get(id!),
+    queryFn: ({ signal }) => resource.api.get(id!, { signal }),
     enabled: Boolean(id && canRead),
   });
   const record = recordQuery.data;

@@ -70,15 +70,22 @@ export const authFeatures = {{ registration: {registration}, passwordReset: {pas
 export const adminFeatures = {{ tenant: {tenant}, audit: {audit}, jobs: {jobs} }} as const;
 
 export const authApi = {{
-  me: async () => (await request<AuthResponse>("/api/auth/me")).user,
-  login: async (email: string, password: string) =>
-    (await request<AuthResponse>("/api/auth/login", {{ method: "POST", body: JSON.stringify({{ email, password }}) }})).user,
-  register: async (email: string, password: string) =>
-    (await request<AuthResponse>("/api/auth/register", {{ method: "POST", body: JSON.stringify({{ email, password }}) }})).user,
+  me: async (options: RequestOptions = {{}}) => (await request<AuthResponse>("/api/auth/me", options)).user,
+  login: async (email: string, password: string) => {{
+    const user = (await request<AuthResponse>("/api/auth/login", {{ method: "POST", body: JSON.stringify({{ email, password }}) }})).user;
+    broadcastSessionChange();
+    return user;
+  }},
+  register: async (email: string, password: string) => {{
+    const user = (await request<AuthResponse>("/api/auth/register", {{ method: "POST", body: JSON.stringify({{ email, password }}) }})).user;
+    broadcastSessionChange();
+    return user;
+  }},
   logout: async () => {{
     await request<void>("/api/auth/logout", {{ method: "POST" }});
     resourceEtags.clear();
     selectTenant();
+    broadcastSessionChange();
   }},
   requestPasswordReset: (email: string) =>
     request<void>("/api/auth/password/request", {{ method: "POST", body: JSON.stringify({{ email }}) }}),

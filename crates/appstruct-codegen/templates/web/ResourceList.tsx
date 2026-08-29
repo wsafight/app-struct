@@ -12,6 +12,7 @@ import { Link, useSearchParams } from "../navigation";
 import { resourceQueryKeys } from "../query";
 import type { FieldDefinition, ResourceDefinition, ResourceRecord } from "../resource";
 import { canAccessResource, canAccessRule, errorMessage, useCanAccess, useResourceActor } from "../resource";
+import { buildResourceFilterQuery, ResourceFilters } from "./ResourceFilters";
 
 interface SavedView {
   id: string;
@@ -63,27 +64,22 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
 
   const listQuery = useQuery({
     queryKey: resourceQueryKeys.list(resource.id, `${trashMode ? "trash" : "active"}:${queryString}`),
-    queryFn: async (): Promise<ListResult> => {
+    queryFn: async ({ signal }): Promise<ListResult> => {
       if (trashMode) {
-        const response = await resource.api.trash?.({ page, page_size: pageSize });
+        const response = await resource.api.trash?.({ page, page_size: pageSize }, { signal });
         return { data: response?.data ?? [], total: response?.meta.total ?? 0 };
       }
-      const exact = Object.fromEntries(filterFields.map((field) => [field.name, searchParams.get(`filter[${field.name}]`) ?? ""]));
-      const ranges = Object.fromEntries(filterFields.filter(supportsRange).map((field) => [field.name, {
-        gte: searchParams.get(`filter[${field.name}][gte]`) ?? "",
-        lte: searchParams.get(`filter[${field.name}][lte]`) ?? "",
-      }]));
       const response = await resource.api.list({
         page,
         page_size: pageSize,
         sort: sort || undefined,
         q: searchParams.get("q") ?? undefined,
-        filters: exact,
-        range_filters: ranges,
-      });
+        ...buildResourceFilterQuery(filterFields, searchParams),
+      }, { signal });
       return { data: response.data, total: response.meta.total };
     },
     enabled: canList,
+    placeholderData: (previous) => previous,
   });
   const { data: records, total } = listQuery.data ?? EMPTY_LIST_RESULT;
 
@@ -108,7 +104,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
   });
 
   useEffect(() => {
-    setSearch(searchParams.get("q") ?? "");
+    setSearch(new URLSearchParams(queryString).get("q") ?? "");
     setActionError("");
     setRowSelection({});
   }, [queryString]);
@@ -253,7 +249,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
     }
   }
 
-  const tableColumns = useMemo(() => [
+  const tableColumns = [
     resourceColumnHelper.display({
       id: "selection",
       header: ({ table }) => <SelectionCheckbox aria-label="Select page" checked={table.getIsAllPageRowsSelected()} indeterminate={table.getIsSomePageRowsSelected() && !table.getIsAllPageRowsSelected()} onChange={table.getToggleAllPageRowsSelectedHandler()} />,
@@ -275,7 +271,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
         return <div className="row-actions">{canRead && <Link className="icon-button" to={`/${resource.slug}/${encodeURIComponent(id)}`} title="View" aria-label="View"><Eye size={16} /></Link>}{trashMode ? <button className="icon-button" onClick={() => void restoreOne(id)} title="Restore" aria-label="Restore"><RotateCcw size={16} /></button> : canDelete && <button className="icon-button danger" onClick={() => void remove(id)} title={resource.softDelete ? "Move to trash" : "Delete"} aria-label={resource.softDelete ? "Move to trash" : "Delete"}><Trash2 size={16} /></button>}</div>;
       },
     }),
-  ], [actor, resource, sort, trashMode, visibleFields]);
+  ];
 
   const table = useTable({
     features: resourceTableFeatures,
@@ -294,7 +290,7 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
     <div className="page-heading"><div><h1>{trashMode ? `${resource.label} trash` : resource.label}</h1><p>{total} records</p></div><div className="toolbar">{resource.softDelete && <button className="icon-button" onClick={() => updateParam("trash", trashMode ? undefined : "1")} title={trashMode ? "Show active records" : "Show trash"} aria-label={trashMode ? "Show active records" : "Show trash"}>{trashMode ? <RotateCcw size={17} /> : <Trash2 size={17} />}</button>}<button className="icon-button" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending} title="Export CSV" aria-label="Export CSV"><Download size={17} /></button>{canCreate && !trashMode && <><input ref={importInput} className="sr-only" type="file" accept=".csv,text/csv" onChange={(event) => void importCsv(event.target.files?.[0])} /><button className="icon-button" onClick={() => importInput.current?.click()} disabled={busy} title="Import CSV" aria-label="Import CSV"><Upload size={17} /></button></>}<button className="icon-button" onClick={() => void listQuery.refetch()} disabled={listQuery.isFetching} title="Refresh" aria-label="Refresh"><RefreshCw size={17} /></button>{canCreate && !trashMode && <Link className="primary-button" to={`/${resource.slug}/new`}><Plus size={17} /> Add</Link>}</div></div>
     {!trashMode && <div className="list-controls">
       {resource.fields.some((field) => field.searchable && canAccessRule(field.readAccess ?? { mode: "public" }, actor)) && <form className="search-control" onSubmit={submitSearch}><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search" placeholder="Search" /></form>}
-      {filterFields.map((field) => <FilterControl key={field.name} field={field} resources={resources} searchParams={searchParams} updateParam={updateParam} />)}
+      <ResourceFilters fields={filterFields} resources={resources} searchParams={searchParams} updateParam={updateParam} />
     </div>}
     <div className="view-toolbar"><Bookmark size={16} /><select aria-label="Saved views" value="" onChange={(event) => { const view = savedViews.find((item) => item.id === event.target.value); if (view) applyView(view); }}><option value="">Saved views</option>{savedViews.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}</select><input aria-label="View name" placeholder="Name this view" value={viewName} onChange={(event) => setViewName(event.target.value)} /><button className="secondary-button" onClick={saveView} disabled={!viewName.trim()}>Save</button><button className="icon-button" onClick={() => void copyViewLink()} title="Copy share link" aria-label="Copy share link"><Copy size={16} /></button>{savedViews.length > 0 && <button className="icon-button danger" onClick={() => { const view = savedViews.at(-1); if (view) deleteView(view); }} title="Delete last saved view" aria-label="Delete last saved view"><Trash2 size={16} /></button>}</div>
     {selectedIds().length > 0 && <div className="bulk-toolbar"><strong>{selectedIds().length} selected</strong>{!trashMode && writableFields.length > 0 && <><select aria-label="Field to update" value={bulkField} onChange={(event) => setBulkField(event.target.value)}>{writableFields.map((field) => <option key={field.name} value={field.name}>{field.label}</option>)}</select><input aria-label="Bulk value" value={bulkValue} onChange={(event) => setBulkValue(event.target.value)} /><button className="secondary-button" disabled={busy} onClick={() => void bulkUpdate()}><Check size={16} /> Apply</button></>}{trashMode ? <button className="secondary-button" disabled={busy} onClick={() => void restoreSelected()}><RotateCcw size={16} /> Restore</button> : <button className="icon-button danger" disabled={busy} onClick={() => void bulkDelete()} title="Delete selected" aria-label="Delete selected"><Trash2 size={16} /></button>}</div>}
@@ -308,58 +304,6 @@ export function ResourceList({ resource, resources }: { resource: ResourceDefini
   </main>;
 }
 
-function FilterControl({ field, resources, searchParams, updateParam }: { field: FieldDefinition; resources: ResourceDefinition[]; searchParams: URLSearchParams; updateParam(name: string, value?: string, replace?: boolean): void }) {
-  if (supportsRange(field)) {
-    return <label className="filter-control"><span>{field.label}</span><span className="range-filter">
-      {(["gte", "lte"] as const).map((operator) => { const name = `filter[${field.name}][${operator}]`; return <DebouncedFilterInput key={operator} type={filterInputType(field.kind)} aria-label={`${field.label} ${operator === "gte" ? "from" : "to"}`} placeholder={operator === "gte" ? "From" : "To"} value={filterDisplayValue(searchParams.get(name) ?? "", field.kind)} onValueChange={(value) => updateParam(name, filterApiValue(value, field.kind), true)} step={field.kind === "decimal" ? "any" : undefined} />; })}
-    </span></label>;
-  }
-  if (field.kind === "relation") {
-    return <RelationFilter field={field} target={resources.find((resource) => resource.id === field.relation)} value={searchParams.get(`filter[${field.name}]`) ?? ""} onChange={(value) => updateParam(`filter[${field.name}]`, value, true)} />;
-  }
-  const name = `filter[${field.name}]`;
-  if (field.kind === "enum" || field.kind === "boolean") {
-    const values = field.kind === "boolean" ? ["true", "false"] : field.values ?? [];
-    return <label className="filter-control"><span>{field.label}</span><select value={searchParams.get(name) ?? ""} onChange={(event) => updateParam(name, event.target.value || undefined, true)}><option value="">All</option>{values.map((value) => <option key={value} value={value}>{field.kind === "boolean" ? value === "true" ? "Yes" : "No" : value}</option>)}</select></label>;
-  }
-  return <label className="filter-control"><span>{field.label}</span><DebouncedFilterInput value={searchParams.get(name) ?? ""} onValueChange={(value) => updateParam(name, value || undefined, true)} /></label>;
-}
-
-function DebouncedFilterInput({ value, onValueChange, ...props }: { value: string; onValueChange(value: string): void } & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
-  const [draft, setDraft] = useState(value);
-  const committed = useRef(value);
-  useEffect(() => { committed.current = value; setDraft(value); }, [value]);
-  useEffect(() => {
-    if (draft === committed.current) return;
-    const timer = window.setTimeout(() => onValueChange(draft), 300);
-    committed.current = draft;
-    return () => window.clearTimeout(timer);
-  }, [draft, onValueChange]);
-  return <input {...props} value={draft} onChange={(event) => setDraft(event.target.value)} />;
-}
-
-function RelationFilter({ field, target, value, onChange }: { field: FieldDefinition; target?: ResourceDefinition; value: string; onChange(value?: string): void }) {
-  const actor = useResourceActor();
-  const canLoad = Boolean(target && canAccessResource(target, "list", actor));
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const deferredSearch = useDebouncedValue(search, 250);
-  const optionsQuery = useQuery({
-    queryKey: resourceQueryKeys.options(target?.id ?? "unavailable", `${deferredSearch}:${page}`),
-    queryFn: () => target!.api.list({ page, page_size: 25, q: deferredSearch || undefined }),
-    enabled: canLoad,
-  });
-  const selectedQuery = useQuery({
-    queryKey: resourceQueryKeys.detail(target?.id ?? "unavailable", value),
-    queryFn: () => target!.api.get(value),
-    enabled: canLoad && Boolean(value),
-  });
-  const labelField = target?.fields.find((item) => !item.primaryKey && (item.kind === "string" || item.kind === "text"));
-  const pages = Math.max(1, Math.ceil((optionsQuery.data?.meta.total ?? 0) / 25));
-  const options = [...(selectedQuery.data && value ? [selectedQuery.data] : []), ...(optionsQuery.data?.data ?? [])].filter((record, index, items) => String(record[target?.primaryKey ?? "id"]) && items.findIndex((candidate) => String(candidate[target?.primaryKey ?? "id"]) === String(record[target?.primaryKey ?? "id"])) === index);
-  return <div className="filter-control"><span>{field.label}</span><input value={search} placeholder="Search" onChange={(event) => { setSearch(event.target.value); setPage(1); }} /><select value={value} disabled={optionsQuery.isPending && canLoad} onChange={(event) => onChange(event.target.value || undefined)}><option value="">All</option>{options.map((record) => { const optionValue = String(record[target?.primaryKey ?? "id"]); return <option key={optionValue} value={optionValue}>{String(record[labelField?.name ?? target?.primaryKey ?? "id"])}</option>; })}</select><span className="relation-pages"><button type="button" className="icon-button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)} aria-label="Previous options"><ChevronLeft size={14} /></button><span>{page} / {pages}</span><button type="button" className="icon-button" disabled={page >= pages} onClick={() => setPage((current) => current + 1)} aria-label="Next options"><ChevronRight size={14} /></button></span></div>;
-}
-
 function SelectionCheckbox({ indeterminate, ...props }: InputHTMLAttributes<HTMLInputElement> & { indeterminate?: boolean }) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { if (ref.current) ref.current.indeterminate = Boolean(indeterminate); }, [indeterminate]);
@@ -368,34 +312,6 @@ function SelectionCheckbox({ indeterminate, ...props }: InputHTMLAttributes<HTML
 
 function AccessDenied() {
   return <main className="page"><div className="alert" role="alert">You do not have permission to view this resource.</div></main>;
-}
-
-function supportsRange(field: FieldDefinition): boolean {
-  return ["integer", "bigint", "decimal", "date", "datetime"].includes(field.kind);
-}
-
-function filterInputType(kind: FieldDefinition["kind"]): string {
-  if (kind === "date") return "date";
-  if (kind === "datetime") return "datetime-local";
-  return "number";
-}
-
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delay);
-    return () => window.clearTimeout(timer);
-  }, [delay, value]);
-  return debounced;
-}
-
-function filterDisplayValue(value: string, kind: FieldDefinition["kind"]): string {
-  return kind === "datetime" ? value.slice(0, 16) : value;
-}
-
-function filterApiValue(value: string, kind: FieldDefinition["kind"]): string | undefined {
-  if (!value) return undefined;
-  return kind === "datetime" ? new Date(value).toISOString() : value;
 }
 
 function boundedInteger(value: string | null, minimum: number, maximum: number, fallback: number): number {

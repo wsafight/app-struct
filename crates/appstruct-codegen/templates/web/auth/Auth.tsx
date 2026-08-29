@@ -1,6 +1,6 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { Navigate, Outlet, useLocation } from "../navigation";
-import { authApi, type AuthUser } from "../generated/client";
+import { authApi, sessionSyncKey, type AuthUser } from "../generated/client";
 import { queryClient } from "../query";
 import { ResourceActorProvider } from "../resource";
 
@@ -19,17 +19,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
+    let controller = new AbortController();
+    const refreshUser = () => {
+      controller.abort();
+      controller = new AbortController();
+      const requestController = controller;
+      setLoading(true);
+      authApi.me({ signal: requestController.signal }).then(setUser).catch((reason) => {
+        if ((reason as { name?: string }).name !== "AbortError") setUser(null);
+      }).finally(() => { if (!requestController.signal.aborted) setLoading(false); });
+    };
     const handleUnauthorized = () => {
       queryClient.clear();
       setUser(null);
       setLoading(false);
     };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === sessionSyncKey) { queryClient.clear(); refreshUser(); }
+    };
     window.addEventListener("appstruct:unauthorized", handleUnauthorized);
-    return () => window.removeEventListener("appstruct:unauthorized", handleUnauthorized);
-  }, []);
-
-  useEffect(() => {
-    authApi.me().then(setUser).catch(() => setUser(null)).finally(() => setLoading(false));
+    window.addEventListener("storage", handleStorage);
+    refreshUser();
+    return () => {
+      controller.abort();
+      window.removeEventListener("appstruct:unauthorized", handleUnauthorized);
+      window.removeEventListener("storage", handleStorage);
+    };
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({

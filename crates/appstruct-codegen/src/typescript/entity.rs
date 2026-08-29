@@ -6,21 +6,21 @@ pub(super) fn client(entity: &EntityIr) -> String {
     let path = format!("/api/{}/", entity.table_name);
     let restore = if entity.views.soft_delete {
         format!(
-            "  trash: (query: Pick<ListQuery, \"page\" | \"page_size\"> = {{}}) => request<ListResponse<{model}>>(listPath(\"{path}_trash\", query)),\n  restore: (input: BulkDeleteRequest) => request<BulkResult>(\"{path}_restore\", {{ method: \"POST\", body: JSON.stringify(input) }}),\n"
+            "  trash: (query: Pick<ListQuery, \"page\" | \"page_size\"> = {{}}, options: RequestOptions = {{}}) => request<ListResponse<{model}>>(listPath(\"{path}_trash\", query), options),\n  restore: (input: BulkDeleteRequest) => request<BulkResult>(\"{path}_restore\", {{ method: \"POST\", body: JSON.stringify(input) }}),\n"
         )
     } else {
         String::new()
     };
     format!(
         r#"export const {variable}Api = {{
-  list: (query: ListQuery = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query)),
-  listCursor: (query: CursorListQuery = {{}}) =>
-    request<CursorListResponse<{model}>>(listPath("{path}", {{ limit: 25, ...query }})),
-  aggregate: (query: AggregateQuery = {{}}) =>
-    request<AggregateResponse>(aggregatePath("{path}_aggregate", query)),
-  get: (id: string) => {{
+  list: (query: ListQuery = {{}}, options: RequestOptions = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query), options),
+  listCursor: (query: CursorListQuery = {{}}, options: RequestOptions = {{}}) =>
+    request<CursorListResponse<{model}>>(listPath("{path}", {{ limit: 25, ...query }}), options),
+  aggregate: (query: AggregateQuery = {{}}, options: RequestOptions = {{}}) =>
+    request<AggregateResponse>(aggregatePath("{path}_aggregate", query), options),
+  get: (id: string, options: RequestOptions = {{}}) => {{
     const member = `{path}${{encodeURIComponent(id)}}`;
-    return request<{model}>(member, undefined, member);
+    return request<{model}>(member, options, member);
   }},
   create: (input: Create{model}Input) =>
     request<{model}>("{path}", {{ method: "POST", body: JSON.stringify(input) }}),

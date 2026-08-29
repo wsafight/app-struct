@@ -99,18 +99,28 @@ fn generated_web_uses_the_tanstack_runtime() {
     let package = artifact_text(&artifacts, "web/package.json");
     let main = artifact_text(&artifacts, "web/src/main.tsx");
     let navigation = artifact_text(&artifacts, "web/src/navigation.tsx");
+    let framework_test = artifact_text(&artifacts, "web/src/framework.test.ts");
+    let routes = artifact_text(&artifacts, "web/src/app/ResourceRoutes.tsx");
     let list = artifact_text(&artifacts, "web/src/pages/ResourceList.tsx");
+    let filters = artifact_text(&artifacts, "web/src/pages/ResourceFilters.tsx");
     let form = artifact_text(&artifacts, "web/src/pages/ResourceForm.tsx");
 
     assert!(package.contains("@tanstack/react-query"));
     assert!(package.contains("@tanstack/react-router"));
     assert!(package.contains("@tanstack/react-table"));
     assert!(package.contains("@tanstack/react-form"));
+    assert!(package.contains("typescript-eslint"));
+    assert!(package.contains("vitest run"));
     assert!(!package.contains("react-router-dom"));
     assert!(main.contains("QueryClientProvider"));
     assert!(navigation.contains("createRuntimeRouter"));
+    assert!(framework_test.contains("validateResourceSearch"));
+    assert!(framework_test.contains("shouldRetryQuery"));
+    assert!(routes.contains("validateSearch: validateResourceSearch"));
     assert!(list.contains("useTable"));
     assert!(list.contains("useMutation"));
+    assert!(list.contains("ResourceFilters"));
+    assert!(filters.contains("buildResourceFilterQuery"));
     assert!(form.contains("useForm"));
     assert!(form.contains("buildValidationSchema"));
 }
@@ -187,7 +197,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 58);
+    assert_eq!(artifacts.len(), 62);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -383,7 +393,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 52);
+    assert_eq!(artifacts.len(), 56);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")

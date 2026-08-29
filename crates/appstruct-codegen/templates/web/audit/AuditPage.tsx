@@ -20,11 +20,12 @@ export function AuditPage() {
     let active = true;
     setLoading(true);
     setError("");
-    auditApi.list({ page, page_size: pageSize })
+    const controller = new AbortController();
+    auditApi.list({ page, page_size: pageSize }, { signal: controller.signal })
       .then((response) => { if (active && currentRequest === requestId.current) { setEvents(response.data); setTotal(response.meta.total); } })
       .catch((reason) => { if (active && currentRequest === requestId.current) setError(errorMessage(reason)); })
       .finally(() => { if (active && currentRequest === requestId.current) setLoading(false); });
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [canRead, page]);
 
   const pages = Math.max(1, Math.ceil(total / pageSize));

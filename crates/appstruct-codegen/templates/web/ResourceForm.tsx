@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Save } from "lucide-re
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { z } from "zod";
 import type { AppStructRegistry, FieldComponentProps } from "../generated/registry";
-import { Link, useNavigate, useParams } from "../navigation";
+import { Link, useNavigate, useParams, useUnsavedChanges } from "../navigation";
 import { resourceQueryKeys } from "../query";
 import type { FieldDefinition, ResourceDefinition, ResourceInput, ResourceRecord } from "../resource";
 import { canAccessResource, canAccessRule, errorMessage, fieldErrors, useCanAccess, useResourceActor } from "../resource";
@@ -31,7 +31,7 @@ export function ResourceForm({ resource, resources, registry }: { resource: Reso
 
   const recordQuery = useQuery({
     queryKey: resourceQueryKeys.detail(resource.id, id ?? ""),
-    queryFn: () => resource.api.get(id!),
+    queryFn: ({ signal }) => resource.api.get(id!, { signal }),
     enabled: Boolean(editing && id && canSubmit),
   });
 
@@ -103,10 +103,15 @@ export function ResourceForm({ resource, resources, registry }: { resource: Reso
   return <main className="page form-page">
     <div className="page-heading"><div><Link className="back-link" to={`/${resource.slug}`}><ArrowLeft size={16} /> {resource.label}</Link><h1>{editing ? "Edit" : "Add"} {resource.label}</h1></div></div>
     {pageError && <div className="alert" role="alert">{pageError}{conflict && <button type="button" className="secondary-button" onClick={() => void reloadRecord()}><RefreshCw size={16} /> Reload latest</button>}</div>}
-    {recordQuery.isPending && editing ? <div className="form-frame">Loading...</div> : <form className="form-frame" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); void form.handleSubmit(); }}><div className="form-grid">
+    {recordQuery.isPending && editing ? <div className="form-frame">Loading...</div> : <form className="form-frame" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); void form.handleSubmit(); }}><form.Subscribe selector={(state) => [state.isDirty, state.isSubmitting] as const}>{([dirty, submitting]) => <UnsavedChangesGuard enabled={dirty && !submitting} />}</form.Subscribe><div className="form-grid">
       {fields.map((field) => <form.Field key={field.name} name={field.name}>{(formField) => <FieldControl field={field} resources={resources} registry={registry} value={formField.state.value} error={serverErrors[field.name] ?? validationMessage(formField.state.meta.errors)} onBlur={formField.handleBlur} onChange={(value) => { clearServerError(field.name); formField.handleChange(value); }} />}</form.Field>)}
     </div><div className="form-actions"><Link className="secondary-button" to={`/${resource.slug}`}>Cancel</Link><form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>{([ready, submitting]) => <button className="primary-button" disabled={!ready || submitting}><Save size={17} /> {submitting ? "Saving..." : "Save"}</button>}</form.Subscribe></div></form>}
   </main>;
+}
+
+function UnsavedChangesGuard({ enabled }: { enabled: boolean }) {
+  useUnsavedChanges(enabled);
+  return null;
 }
 
 function FieldControl({ field, resources, registry, value, error, onBlur, onChange }: { field: FieldDefinition; resources: ResourceDefinition[]; registry?: AppStructRegistry; value: FormValue; error?: string; onBlur(): void; onChange(value: FormValue): void }) {
@@ -135,19 +140,21 @@ function RelationSelect({ id, field, target, value, error, onBlur, onChange }: {
   const deferredSearch = useDebouncedValue(search, 250);
   const optionsQuery = useQuery({
     queryKey: resourceQueryKeys.options(target?.id ?? "unavailable", `${deferredSearch}:${page}`),
-    queryFn: () => target!.api.list({ page, page_size: 25, q: deferredSearch || undefined }),
+    queryFn: ({ signal }) => target!.api.list({ page, page_size: 25, q: deferredSearch || undefined }, { signal }),
     enabled: canLoad,
+    placeholderData: (previous) => previous,
   });
   const selectedQuery = useQuery({
     queryKey: resourceQueryKeys.detail(target?.id ?? "unavailable", value),
-    queryFn: () => target!.api.get(value),
+    queryFn: ({ signal }) => target!.api.get(value, { signal }),
     enabled: canLoad && Boolean(value),
   });
   const labelField = target?.fields.find((item) => !item.primaryKey && (item.kind === "string" || item.kind === "text"));
   const loadError = optionsQuery.error ? errorMessage(optionsQuery.error) : "";
   const options = [...(selectedQuery.data && value ? [selectedQuery.data] : []), ...(optionsQuery.data?.data ?? [])].filter((record, index, items) => String(record[target?.primaryKey ?? "id"]) && items.findIndex((candidate) => String(candidate[target?.primaryKey ?? "id"]) === String(record[target?.primaryKey ?? "id"])) === index);
   const pages = Math.max(1, Math.ceil((optionsQuery.data?.meta.total ?? 0) / 25));
-  return <div className="field"><label htmlFor={id}>{field.label}{field.required && <span aria-hidden> *</span>}</label><input value={search} placeholder="Search" onChange={(event) => { setSearch(event.target.value); setPage(1); }} /><select id={id} required={field.required} value={value} onBlur={onBlur} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error || loadError)} disabled={optionsQuery.isPending && canLoad}><option value="">Select</option>{options.map((record) => { const optionValue = String(record[target?.primaryKey ?? "id"]); return <option key={optionValue} value={optionValue}>{String(record[labelField?.name ?? target?.primaryKey ?? "id"])}</option>; })}</select><span className="relation-pages"><button type="button" className="icon-button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)} aria-label="Previous options"><ChevronLeft size={14} /></button><span>{page} / {pages}</span><button type="button" className="icon-button" disabled={page >= pages} onClick={() => setPage((current) => current + 1)} aria-label="Next options"><ChevronRight size={14} /></button></span>{(error || loadError) && <small className="field-error">{error || loadError}</small>}</div>;
+  const errorId = `${id}-error`;
+  return <div className="field"><label htmlFor={id}>{field.label}{field.required && <span aria-hidden> *</span>}</label><label className="sr-only" htmlFor={`${id}-search`}>Search {field.label}</label><input id={`${id}-search`} value={search} placeholder="Search" onChange={(event) => { setSearch(event.target.value); setPage(1); }} /><select id={id} required={field.required} value={value} onBlur={onBlur} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error || loadError)} aria-describedby={error || loadError ? errorId : undefined} aria-busy={optionsQuery.isFetching} disabled={optionsQuery.isPending && canLoad}><option value="">Select</option>{options.map((record) => { const optionValue = String(record[target?.primaryKey ?? "id"]); return <option key={optionValue} value={optionValue}>{String(record[labelField?.name ?? target?.primaryKey ?? "id"])}</option>; })}</select><span className="relation-pages"><button type="button" className="icon-button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)} aria-label="Previous options"><ChevronLeft size={14} /></button><span aria-live="polite">{page} / {pages}</span><button type="button" className="icon-button" disabled={page >= pages} onClick={() => setPage((current) => current + 1)} aria-label="Next options"><ChevronRight size={14} /></button></span><span className="sr-only" role="status" aria-live="polite">{optionsQuery.isFetching ? `Loading ${field.label} options` : `${options.length} ${field.label} options loaded`}</span>{(error || loadError) && <small id={errorId} className="field-error">{error || loadError}</small>}</div>;
 }
 
 function useDebouncedValue<T>(value: T, delay: number): T {

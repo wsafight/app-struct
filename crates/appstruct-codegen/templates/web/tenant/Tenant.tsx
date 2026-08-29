@@ -1,7 +1,8 @@
 import { Building2, MailPlus, Plus, Trash2, Users } from "lucide-react";
-import { FormEvent, ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useSearchParams } from "../navigation";
-import { tenantApi, type TenantInvitation, type TenantOrganization } from "../generated/client";
+import { tenantApi, tenantStorageKey, type TenantInvitation, type TenantOrganization } from "../generated/client";
+import { queryClient } from "../query";
 import { errorMessage } from "../resource";
 
 interface TenantContextValue {
@@ -19,7 +20,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [organizations, setOrganizations] = useState<TenantOrganization[]>([]);
   const [current, setCurrent] = useState<TenantOrganization | null>(null);
 
-  useEffect(() => {
+  const loadOrganizations = useCallback(() => {
+    setLoading(true);
     tenantApi.listOrganizations()
       .then(({ data }) => {
         setOrganizations(data);
@@ -31,6 +33,18 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    loadOrganizations();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== tenantStorageKey) return;
+      void queryClient.cancelQueries();
+      queryClient.clear();
+      loadOrganizations();
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [loadOrganizations]);
+
   const value = useMemo<TenantContextValue>(() => ({
     loading,
     organizations,
@@ -38,13 +52,17 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     async create(name) {
       const organization = await tenantApi.createOrganization(name);
       tenantApi.select(organization.id);
+      void queryClient.cancelQueries();
+      queryClient.clear();
       setOrganizations((items) => [...items, organization].sort((a, b) => a.name.localeCompare(b.name)));
       setCurrent(organization);
     },
     select(id) {
       if (id === current?.id) return;
       tenantApi.select(id);
-      window.location.reload();
+      void queryClient.cancelQueries();
+      queryClient.clear();
+      setCurrent(organizations.find((organization) => organization.id === id) ?? null);
     },
   }), [current, loading, organizations]);
 
@@ -69,7 +87,6 @@ export function TenantSwitcher() {
     const name = window.prompt("Organization name")?.trim();
     if (name) {
       await tenant.create(name);
-      window.location.reload();
     }
   }
   return <div className="tenant-switcher">

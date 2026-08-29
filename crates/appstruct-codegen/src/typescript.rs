@@ -147,6 +147,9 @@ fn runtime_source() -> String {
 fn request_runtime_source() -> &'static str {
     r#"const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://127.0.0.1:3000";
 
+export interface RequestOptions { signal?: AbortSignal; }
+export const sessionSyncKey = "appstruct_session_sync";
+
 export interface FieldViolation {
   field: string;
   message: string;
@@ -172,6 +175,10 @@ export class ApiError extends Error {
 }
 
 const resourceEtags = new Map<string, string>();
+
+function broadcastSessionChange(): void {
+  try { window.localStorage.setItem(sessionSyncKey, `${Date.now()}:${Math.random()}`); } catch { /* Storage can be unavailable in privacy modes. */ }
+}
 
 async function request<T>(path: string, init?: RequestInit, revisionKey?: string): Promise<T> {
   const headers = new Headers(init?.headers);
