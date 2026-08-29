@@ -1,4 +1,4 @@
-mod aggregate;
+pub(super) mod aggregate;
 mod helpers;
 mod relation;
 use super::access;
@@ -6,13 +6,14 @@ use super::{parse_ident, rust_type};
 use crate::CodegenError;
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
 use helpers::column_ident;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
 pub(super) fn list_support(
     ir: &AppIr,
     entity: &EntityIr,
     module: &syn::Ident,
+    policy: &Ident,
 ) -> Result<TokenStream, CodegenError> {
     let filters = filter_rules(entity, module)?;
     let relation_filters = relation::filter_rules(ir, entity, module)?;
@@ -34,6 +35,7 @@ pub(super) fn list_support(
     let query_trait = relation::has_filters(ir, entity)?.then(|| quote! { QueryTrait as _, });
     let handler = list_handler(&ListHandlerTokens {
         module,
+        policy,
         filter_validation: &filter_validation,
         access_scope: &access_scope,
         filters: &filters,
@@ -74,9 +76,9 @@ pub(super) fn list_support(
         #cursor_helpers
     })
 }
-pub(super) use aggregate::aggregate_support;
 struct ListHandlerTokens<'a> {
     module: &'a syn::Ident,
+    policy: &'a Ident,
     filter_validation: &'a TokenStream,
     access_scope: &'a TokenStream,
     filters: &'a [TokenStream],
@@ -87,9 +89,11 @@ struct ListHandlerTokens<'a> {
     primary_name: &'a syn::Ident,
     sorts: &'a [TokenStream],
 }
+#[allow(clippy::too_many_lines)]
 fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
     let ListHandlerTokens {
         module,
+        policy,
         filter_validation,
         access_scope,
         filters,
@@ -107,6 +111,7 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
             axum::extract::Query(query): axum::extract::Query<ListQuery>,
         ) -> Result<Json<ListResponse<serde_json::Value>>, ApiError> {
             let context = state.context(&headers).await?;
+            if !state.extensions.#policy().can_list(&context).await? { return Err(access_denied(&context)); }
             #filter_validation
             let mut select = #module::Entity::find();
             #access_scope

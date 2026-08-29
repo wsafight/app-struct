@@ -119,8 +119,10 @@ fn m3_extensions_require_every_handler_at_compile_time() {
     assert!(extensions.contains("pub trait ProjectMetricsHandler"));
     assert!(extensions.contains("pub trait ProjectHooks"));
     assert!(extensions.contains("pub trait ProjectPolicy"));
+    assert!(extensions.contains("async fn can_list(&self, _ctx: &RequestContext)"));
     let project_api = artifact_text(&artifacts, "backend/src/api/project.rs");
     assert!(project_api.contains("after_commit hook failed"));
+    assert!(project_api.contains("can_list(&context).await?"));
     assert!(!project_api.contains("HookOperation::Create, &model).await?"));
     assert!(artifact_text(&artifacts, "web/src/main.tsx").contains("../../../app/web/registry"));
     assert!(

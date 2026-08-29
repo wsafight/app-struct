@@ -65,7 +65,7 @@ pub(super) fn source(
     let update = bulk_update(&context);
     let delete = bulk_delete(&context);
     let csv_helpers = csv::helpers();
-    let export = csv::export(entity, module, list_scope);
+    let export = csv::export(entity, module, policy, list_scope);
     let import = csv::import(entity, &context);
     let restore = context.soft_delete.then(|| restore_handler(&context));
     let trash = context.soft_delete.then(|| trash_handler(&context));
@@ -100,6 +100,7 @@ pub(super) fn source(
 fn trash_handler(context: &BulkContext<'_>) -> TokenStream {
     let BulkContext {
         module,
+        policy,
         trash_scope,
         ..
     } = context;
@@ -111,6 +112,9 @@ fn trash_handler(context: &BulkContext<'_>) -> TokenStream {
             State(state): State<AppState>, headers: HeaderMap,
         ) -> Result<Json<TrashResponse>, ApiError> {
             let context = state.context(&headers).await?;
+            if !state.extensions.#policy().can_list(&context).await? {
+                return Err(access_denied(&context));
+            }
             let mut select = #module::Entity::find();
             #trash_scope
             let data = select.limit(100).all(&state.database).await?

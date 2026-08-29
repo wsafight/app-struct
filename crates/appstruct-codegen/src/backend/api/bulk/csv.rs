@@ -38,7 +38,12 @@ pub(super) fn helpers() -> TokenStream {
     }
 }
 
-pub(super) fn export(entity: &EntityIr, module: &Ident, list_scope: &TokenStream) -> TokenStream {
+pub(super) fn export(
+    entity: &EntityIr,
+    module: &Ident,
+    policy: &Ident,
+    list_scope: &TokenStream,
+) -> TokenStream {
     let headers = entity
         .fields
         .iter()
@@ -52,6 +57,9 @@ pub(super) fn export(entity: &EntityIr, module: &Ident, list_scope: &TokenStream
     quote! {
         async fn export_csv(State(state): State<AppState>, headers: HeaderMap) -> Result<([(header::HeaderName, String); 1], String), ApiError> {
             let context = state.context(&headers).await?;
+            if !state.extensions.#policy().can_list(&context).await? {
+                return Err(access_denied(&context));
+            }
             let mut select = #module::Entity::find(); #list_scope
             let models = select.all(&state.database).await?;
             let mut csv = String::new(); csv.push_str(&[#(csv_escape(#headers)),*].join(",")); csv.push('\n');

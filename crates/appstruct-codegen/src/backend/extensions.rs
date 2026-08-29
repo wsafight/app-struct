@@ -100,6 +100,7 @@ fn policy_contract(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
     Ok(quote! {
         #[async_trait]
         pub trait #trait_name: Send + Sync {
+            async fn can_list(&self, _ctx: &RequestContext) -> Result<bool, ApiError> { Ok(true) }
             async fn can_read(&self, _ctx: &RequestContext, _model: &entities::#module::Model) -> Result<bool, ApiError> { Ok(true) }
             async fn can_create(&self, _ctx: &RequestContext, _input: &api::#module::CreateInput) -> Result<bool, ApiError> { Ok(true) }
             async fn can_update(&self, _ctx: &RequestContext, _before: &entities::#module::Model, _input: &api::#module::UpdateInput, _after: &entities::#module::Model) -> Result<bool, ApiError> { Ok(true) }

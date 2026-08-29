@@ -36,7 +36,7 @@
 
 M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
-M3 将用户实现固定在 `app/` 边界，生成目录只保存可重复构建的契约和运行时。Rust 端以一个实现全部必需 Command/Query handler trait 的聚合对象完成类型状态注册，缺少任一 trait 时编译失败；Entity Hook 和 Policy 是有安全默认实现的可选注册项。React 端生成字段组件和自定义页面的必需 registry key；存在引用时，生成入口从用户所有的 `app/web/registry.tsx` 导入实现，并通过 TypeScript `satisfies` 在构建期检查完整性。真实 PostgreSQL 验收已覆盖输入 Hook、归档 Command、指标 Query 和拒绝删除 Policy。
+M3 将用户实现固定在 `app/` 边界，生成目录只保存可重复构建的契约和运行时。Rust 端以一个实现全部必需 Command/Query handler trait 的聚合对象完成类型状态注册，缺少任一 trait 时编译失败；Entity Hook 和 Policy 是有安全默认实现的可选注册项，Policy 同时提供集合级 `can_list` 检查和逐记录读写检查。React 端生成字段组件和自定义页面的必需 registry key；存在引用时，生成入口从用户所有的 `app/web/registry.tsx` 导入实现，并通过 TypeScript `satisfies` 在构建期检查完整性。真实 PostgreSQL 验收已覆盖输入 Hook、归档 Command、指标 Query 和拒绝删除 Policy。
 
 CRUD 写路径已在显式 SeaORM 事务内执行：`before_create/update/delete`、主记录写入和 `after_create/update/delete` 共享事务连接，任一步失败都会放弃事务；`after_commit` 在提交后以普通连接 best-effort 执行，失败只记录日志。Update Policy 同时看到旧记录、类型化 patch 和最终候选记录。每个实体由框架管理 `revision bigint not null default 1`，详情/创建/更新返回 ETag，更新和删除要求 `If-Match`；陈旧 revision 返回 412，生成客户端自动维护 ETag，表单冲突时保留输入并允许重新加载。
 
@@ -577,7 +577,7 @@ access:
 
 每种操作具有独立、可测试的授权语义：
 
-- `list` 和关系搜索将完整规则转换为数据库查询范围，禁止读取后过滤。
+- `can_list` 在列表、聚合、CSV 导出和回收站读取前执行集合级 Policy 检查；`list` 和关系搜索将完整静态规则转换为数据库查询范围，禁止读取后过滤。
 - `read` 对目标记录应用与列表一致的可见性规则。
 - `create` 针对应用默认值、Hook 和校验后的最终输入判断。
 - `update` 同时允许 Policy 检查旧记录、类型化 patch 和将要写入的新状态。

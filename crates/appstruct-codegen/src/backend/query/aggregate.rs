@@ -10,6 +10,7 @@ pub fn aggregate_support(
     ir: &AppIr,
     entity: &EntityIr,
     module: &syn::Ident,
+    policy: &syn::Ident,
 ) -> Result<TokenStream, CodegenError> {
     let mut keys = filter_keys(entity);
     keys.extend(relation::filter_keys(ir, entity)?);
@@ -22,6 +23,7 @@ pub fn aggregate_support(
     let group_arms = group_arms(entity, module)?;
     let handler = aggregate_handler(&AggregateHandlerTokens {
         module,
+        policy,
         filter_validation: &filter_validation,
         access_scope: &access_scope,
         filters: &filters,
@@ -62,6 +64,7 @@ pub fn aggregate_support(
 
 struct AggregateHandlerTokens<'a> {
     module: &'a syn::Ident,
+    policy: &'a syn::Ident,
     filter_validation: &'a TokenStream,
     access_scope: &'a TokenStream,
     filters: &'a [TokenStream],
@@ -74,6 +77,7 @@ struct AggregateHandlerTokens<'a> {
 fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
     let AggregateHandlerTokens {
         module,
+        policy,
         filter_validation,
         access_scope,
         filters,
@@ -89,6 +93,9 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
             axum::extract::Query(query): axum::extract::Query<AggregateQuery>,
         ) -> Result<Json<AggregateResponse>, ApiError> {
             let context = state.context(&headers).await?;
+            if !state.extensions.#policy().can_list(&context).await? {
+                return Err(access_denied(&context));
+            }
             #filter_validation
             let limit = query.limit.unwrap_or(100);
             if !(1..=500).contains(&limit) {
