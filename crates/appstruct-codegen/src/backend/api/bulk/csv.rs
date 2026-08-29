@@ -118,7 +118,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                 for (column, raw) in header_row.iter().zip(row.iter()) { match column.as_str() { #(#field_match)* _ => {} } }
                 let mut input: CreateInput = match serde_json::from_value(serde_json::Value::Object(object)) { Ok(input) => input, Err(error) => { result.failed.push(bulk_failure(&index.to_string(), "invalid_row", error.to_string())); continue; } };
                 authorize_create_fields(&context, &input)?; validate_create(&input)?;
-                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, actor.clone(), tenant);
+                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant);
                 if !(#create_allowed) || !state.extensions.#policy().can_create(&context, &input).await? { result.failed.push(bulk_failure(&index.to_string(), "forbidden", "record creation is not allowed")); continue; }
                 state.extensions.#hooks().before_create(&context, &mut input).await?;
                 let active = #module::ActiveModel { #(#create_values,)* #active_default }; let model = active.insert(&transaction).await?;

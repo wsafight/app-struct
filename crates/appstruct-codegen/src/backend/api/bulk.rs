@@ -166,7 +166,7 @@ fn restore_handler(context: &BulkContext<'_>) -> TokenStream {
                     continue;
                 };
                 let id = { let id = id_text.clone(); #parse_id };
-                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, actor.clone(), tenant);
+                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant);
                 #select_decl
                 #tenant_filter
                 let Some(before) = select.lock_exclusive().one(&transaction).await? else {
@@ -234,7 +234,7 @@ fn bulk_update(context: &BulkContext<'_>) -> TokenStream {
                     Ok(_) => { let id = id_text.clone(); #parse_id }
                     Err(_) => { result.failed.push(bulk_failure(id_text, "invalid_id", "invalid record id")); continue; }
                 };
-                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, actor.clone(), tenant);
+                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant);
                 let mut select = #module::Entity::find_by_id(id);
                 #list_scope
                 let model = select.lock_exclusive().one(&transaction).await?;
@@ -304,7 +304,7 @@ fn bulk_delete(context: &BulkContext<'_>) -> TokenStream {
                     continue;
                 };
                 let id = { let id = id_text.clone(); #parse_id };
-                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, actor.clone(), tenant);
+                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant);
                 let mut select = #module::Entity::find_by_id(id);
                 #list_scope
                 let Some(model) = select.lock_exclusive().one(&transaction).await? else {

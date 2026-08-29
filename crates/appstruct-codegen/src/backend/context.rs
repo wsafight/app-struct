@@ -76,10 +76,14 @@ fn methods() -> TokenStream {
                 database: &'db DatabaseTransaction,
                 mail: &'db crate::MailState,
                 file: &'db crate::FileState,
+                realtime: &'db crate::RealtimeState,
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Transaction(database), mail, file: Some(file), realtime: None, actor, tenant }
+                Self {
+                    database: RequestDatabase::Transaction(database), mail, file: Some(file),
+                    realtime: Some(realtime), actor, tenant,
+                }
             }
 
             pub fn database(&self) -> &Self { self }

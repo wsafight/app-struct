@@ -123,7 +123,7 @@ fn create_handler(
             let transaction = state.database.begin().await?;
             let model = {
                 let context = RequestContext::transaction_with_file(
-                    &transaction, &state.mail, &state.file, actor.clone(), tenant,
+                    &transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant,
                 );
                 state.extensions.#hooks().before_create(&context, &mut input).await?;
                 authorize_create_fields(&context, &input)?;
@@ -180,7 +180,7 @@ fn update_handler(
             let transaction = state.database.begin().await?;
             let after = {
                 let context = RequestContext::transaction_with_file(
-                    &transaction, &state.mail, &state.file, actor.clone(), tenant,
+                    &transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant,
                 );
                 #read_scope
                 let before = #module::Entity::find_by_id(id)
@@ -262,7 +262,7 @@ fn delete_handler(
             let transaction = state.database.begin().await?;
             let deleted = {
                 let context = RequestContext::transaction_with_file(
-                    &transaction, &state.mail, &state.file, actor.clone(), tenant,
+                    &transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant,
                 );
                 #read_scope
                 let model = #module::Entity::find_by_id(id)
@@ -345,8 +345,8 @@ fn helper_functions(module: &Ident, hooks: &Ident) -> TokenStream {
             actor: Option<crate::Actor>,
             tenant: Option<crate::TenantId>,
         ) {
-            let context = RequestContext::connection_with_file(
-                &state.database, &state.mail, &state.file, actor, tenant,
+            let context = RequestContext::connection_with_services(
+                &state.database, &state.mail, &state.file, &state.realtime, actor, tenant,
             );
             if let Err(error) = state.extensions.#hooks().after_commit(&context, operation, model).await {
                 tracing::error!(?error, ?operation, entity = stringify!(#module), "after_commit hook failed");
