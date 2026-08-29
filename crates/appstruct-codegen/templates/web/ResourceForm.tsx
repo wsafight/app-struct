@@ -1,6 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw, Save } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Save } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { z } from "zod";
 import type { AppStructRegistry, FieldComponentProps } from "../generated/registry";
@@ -122,7 +122,7 @@ function FieldControl({ field, resources, registry, value, error, onBlur, onChan
   return <div className="field"><label htmlFor={id}>{field.label}{field.required && <span aria-hidden> *</span>}</label>
     {field.kind === "enum" ? <select {...common}><option value="">Select</option>{field.values?.map((item) => <option key={item}>{item}</option>)}</select>
       : field.kind === "text" || field.kind === "json" ? <textarea {...common} rows={field.kind === "json" ? 7 : 4} />
-      : <input {...common} type={inputType(field.kind)} min={field.minimum} max={field.maximum} />}
+      : <input {...common} type={inputType(field.kind)} min={field.minimum} max={field.maximum} step={field.kind === "decimal" ? "any" : undefined} />}
     {error && <small id={`${id}-error`} className="field-error">{error}</small>}
   </div>;
 }
@@ -130,14 +130,33 @@ function FieldControl({ field, resources, registry, value, error, onBlur, onChan
 function RelationSelect({ id, field, target, value, error, onBlur, onChange }: { id: string; field: FieldDefinition; target?: ResourceDefinition; value: string; error?: string; onBlur(): void; onChange(value: string): void }) {
   const actor = useResourceActor();
   const canLoad = Boolean(target && canAccessResource(target, "list", actor));
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const deferredSearch = useDebouncedValue(search, 250);
   const optionsQuery = useQuery({
-    queryKey: resourceQueryKeys.options(target?.id ?? "unavailable"),
-    queryFn: () => target!.api.list({ page_size: 100 }),
+    queryKey: resourceQueryKeys.options(target?.id ?? "unavailable", `${deferredSearch}:${page}`),
+    queryFn: () => target!.api.list({ page, page_size: 25, q: deferredSearch || undefined }),
     enabled: canLoad,
+  });
+  const selectedQuery = useQuery({
+    queryKey: resourceQueryKeys.detail(target?.id ?? "unavailable", value),
+    queryFn: () => target!.api.get(value),
+    enabled: canLoad && Boolean(value),
   });
   const labelField = target?.fields.find((item) => !item.primaryKey && (item.kind === "string" || item.kind === "text"));
   const loadError = optionsQuery.error ? errorMessage(optionsQuery.error) : "";
-  return <div className="field"><label htmlFor={id}>{field.label}{field.required && <span aria-hidden> *</span>}</label><select id={id} required={field.required} value={value} onBlur={onBlur} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error || loadError)} disabled={optionsQuery.isPending && canLoad}><option value="">Select</option>{optionsQuery.data?.data.map((record) => { const optionValue = String(record[target?.primaryKey ?? "id"]); return <option key={optionValue} value={optionValue}>{String(record[labelField?.name ?? target?.primaryKey ?? "id"])}</option>; })}</select>{(error || loadError) && <small className="field-error">{error || loadError}</small>}</div>;
+  const options = [...(selectedQuery.data && value ? [selectedQuery.data] : []), ...(optionsQuery.data?.data ?? [])].filter((record, index, items) => String(record[target?.primaryKey ?? "id"]) && items.findIndex((candidate) => String(candidate[target?.primaryKey ?? "id"]) === String(record[target?.primaryKey ?? "id"])) === index);
+  const pages = Math.max(1, Math.ceil((optionsQuery.data?.meta.total ?? 0) / 25));
+  return <div className="field"><label htmlFor={id}>{field.label}{field.required && <span aria-hidden> *</span>}</label><input value={search} placeholder="Search" onChange={(event) => { setSearch(event.target.value); setPage(1); }} /><select id={id} required={field.required} value={value} onBlur={onBlur} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error || loadError)} disabled={optionsQuery.isPending && canLoad}><option value="">Select</option>{options.map((record) => { const optionValue = String(record[target?.primaryKey ?? "id"]); return <option key={optionValue} value={optionValue}>{String(record[labelField?.name ?? target?.primaryKey ?? "id"])}</option>; })}</select><span className="relation-pages"><button type="button" className="icon-button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)} aria-label="Previous options"><ChevronLeft size={14} /></button><span>{page} / {pages}</span><button type="button" className="icon-button" disabled={page >= pages} onClick={() => setPage((current) => current + 1)} aria-label="Next options"><ChevronRight size={14} /></button></span>{(error || loadError) && <small className="field-error">{error || loadError}</small>}</div>;
+}
+
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [delay, value]);
+  return debounced;
 }
 
 function emptyFormValues(fields: FieldDefinition[]): FormValues {

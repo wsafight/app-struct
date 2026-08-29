@@ -9,6 +9,7 @@ mod csv;
 pub(super) struct BulkContext<'context> {
     pub module: &'context Ident,
     pub primary: &'context Ident,
+    pub primary_column: &'context Ident,
     pub parse_id: &'context TokenStream,
     pub hooks: &'context Ident,
     pub policy: &'context Ident,
@@ -43,9 +44,17 @@ pub(super) fn source(
     updates: &[TokenStream],
 ) -> Result<TokenStream, CodegenError> {
     let trash_scope = access::trash_scope(entity, module, &entity.access.list)?;
+    let primary_column = super::super::query::helpers::column_ident(
+        entity
+            .fields
+            .iter()
+            .find(|field| field.primary_key)
+            .ok_or_else(|| CodegenError::new("entity must define a primary key"))?,
+    )?;
     let context = BulkContext {
         module,
         primary,
+        primary_column: &primary_column,
         parse_id,
         hooks,
         policy,
@@ -100,27 +109,43 @@ pub(super) fn source(
 fn trash_handler(context: &BulkContext<'_>) -> TokenStream {
     let BulkContext {
         module,
+        primary_column,
         policy,
         trash_scope,
         ..
     } = context;
     quote! {
-        #[derive(Debug, Serialize)]
-        struct TrashResponse { data: Vec<serde_json::Value> }
-
         async fn trash(
             State(state): State<AppState>, headers: HeaderMap,
-        ) -> Result<Json<TrashResponse>, ApiError> {
+            axum::extract::Query(query): axum::extract::Query<ListQuery>,
+        ) -> Result<Json<ListResponse<serde_json::Value>>, ApiError> {
             let context = state.context(&headers).await?;
             if !state.extensions.#policy().can_list(&context).await? {
                 return Err(access_denied(&context));
             }
+            if query.cursor.is_some() || query.limit.is_some() || query.sort.is_some() || query.q.is_some() || !query.filters.is_empty() {
+                return Err(ApiError::InvalidQuery(
+                    "trash only supports `page` and `page_size` pagination".to_owned()
+                ));
+            }
+            let page = query.page.unwrap_or(1);
+            let page_size = query.page_size.unwrap_or(25);
+            if page == 0 || !(1..=100).contains(&page_size) {
+                return Err(ApiError::InvalidQuery(
+                    "`page` must be at least 1 and `page_size` must be between 1 and 100".to_owned()
+                ));
+            }
             let mut select = #module::Entity::find();
             #trash_scope
-            let data = select.limit(100).all(&state.database).await?
+            select = select.order_by_asc(#module::Column::#primary_column);
+            let total = select.clone().count(&state.database).await?;
+            let data = select.paginate(&state.database, page_size).fetch_page(page - 1).await?
                 .into_iter().map(|model| redact_model(&context, model))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(Json(TrashResponse { data }))
+            Ok(Json(ListResponse {
+                data,
+                meta: ListMeta::Page { page, page_size, total },
+            }))
         }
     }
 }
@@ -284,9 +309,25 @@ fn bulk_delete(context: &BulkContext<'_>) -> TokenStream {
         primary,
         audit_enabled,
         entity_id,
+        soft_delete,
         ..
     } = context;
     let audit = audit_event(*audit_enabled, entity_id, primary, "delete");
+    let delete_model = if *soft_delete {
+        quote! {
+            let mut active = model.clone().into_active_model();
+            active.deleted_at = Set(Some(chrono::Utc::now()));
+            active.revision = Set(model.revision.checked_add(1)
+                .ok_or_else(|| sea_orm::DbErr::Custom("revision overflow".to_owned()))?);
+            active.update(&transaction).await?
+        }
+    } else {
+        quote! {
+            let deleted = model.clone();
+            model.delete(&transaction).await?;
+            deleted
+        }
+    };
     quote! {
         async fn bulk_delete(
             State(state): State<AppState>, headers: HeaderMap,
@@ -316,8 +357,7 @@ fn bulk_delete(context: &BulkContext<'_>) -> TokenStream {
                     continue;
                 }
                 state.extensions.#hooks().before_delete(&context, &model).await?;
-                let deleted = model.clone();
-                model.delete(&transaction).await?;
+                let deleted = { #delete_model };
                 state.extensions.#hooks().after_delete(&context, &deleted).await?;
                 #audit
                 result.succeeded.push(id_text.clone());

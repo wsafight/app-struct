@@ -19,6 +19,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
+    const handleUnauthorized = () => {
+      queryClient.clear();
+      setUser(null);
+      setLoading(false);
+    };
+    window.addEventListener("appstruct:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("appstruct:unauthorized", handleUnauthorized);
+  }, []);
+
+  useEffect(() => {
     authApi.me().then(setUser).catch(() => setUser(null)).finally(() => setLoading(false));
   }, []);
 

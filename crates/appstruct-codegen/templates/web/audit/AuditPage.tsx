@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, History } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { auditApi, type AuditEvent } from "../generated/client";
 import { auditAccess } from "../generated/resources";
 import { errorMessage, useCanAccessRule } from "../resource";
@@ -11,16 +11,20 @@ export function AuditPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const requestId = useRef(0);
   const pageSize = 25;
 
   useEffect(() => {
     if (!canRead) return;
+    const currentRequest = ++requestId.current;
+    let active = true;
     setLoading(true);
     setError("");
     auditApi.list({ page, page_size: pageSize })
-      .then((response) => { setEvents(response.data); setTotal(response.meta.total); })
-      .catch((reason) => setError(errorMessage(reason)))
-      .finally(() => setLoading(false));
+      .then((response) => { if (active && currentRequest === requestId.current) { setEvents(response.data); setTotal(response.meta.total); } })
+      .catch((reason) => { if (active && currentRequest === requestId.current) setError(errorMessage(reason)); })
+      .finally(() => { if (active && currentRequest === requestId.current) setLoading(false); });
+    return () => { active = false; };
   }, [canRead, page]);
 
   const pages = Math.max(1, Math.ceil(total / pageSize));

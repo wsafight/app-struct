@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Copy, CopyPlus, KeyRound, LogIn, Mail, Plus, RotateCcw, Trash2, UserPlus } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "../navigation";
 import { adminApi, adminFeatures, authApi, authFeatures, type AdminJob, type AdminJobStatus, type AdminOverview, type AdminUser, type ApiToken, type CreatedApiToken } from "../generated/client";
@@ -29,7 +29,10 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
     setError("");
     try {
       if (mode === "login") await auth.login(email, password); else await auth.register(email, password);
-      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? "/";
+      const fromState = (location.state as { from?: { pathname?: string; searchStr?: string; hash?: string } } | null)?.from;
+      const search = fromState?.searchStr ? (fromState.searchStr.startsWith("?") ? fromState.searchStr : `?${fromState.searchStr}`) : "";
+      const hash = fromState?.hash ? (fromState.hash.startsWith("#") ? fromState.hash : `#${fromState.hash}`) : "";
+      const from = fromState?.pathname ? `${fromState.pathname}${search}${hash}` : "/";
       navigate(from, { replace: true });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The request could not be completed");
@@ -90,11 +93,16 @@ export function VerifyEmailPage() {
   const [state, setState] = useState<"pending" | "success" | "error">("pending");
   const [message, setMessage] = useState("");
   const token = params.get("token") ?? "";
+  const requestedToken = useRef<string | null>(null);
   useEffect(() => {
     if (!token) { setState("error"); setMessage("This verification link is missing its token."); return; }
+    if (requestedToken.current === token) return;
+    requestedToken.current = token;
+    let active = true;
     authApi.verifyEmail(token)
-      .then(() => { setState("success"); setMessage("Your email address is verified."); })
-      .catch((reason) => { setState("error"); setMessage(reason instanceof Error ? reason.message : "The verification link is invalid or expired"); });
+      .then(() => { if (active) { setState("success"); setMessage("Your email address is verified."); } })
+      .catch((reason) => { if (active) setState("error"); if (active) setMessage(reason instanceof Error ? reason.message : "The verification link is invalid or expired"); });
+    return () => { active = false; };
   }, [token]);
   return <AuthFrame title={state === "success" ? "Email verified" : state === "error" ? "Verification unavailable" : "Verifying email"}>
     {state === "pending" ? <div className="auth-loading" aria-label="Loading" /> : state === "success" ? <><div className="auth-success"><Mail size={20} /> {message}</div><button type="button" className="primary-button" onClick={() => navigate("/", { replace: true })}>Continue</button></> : <div className="alert" role="alert">{message}</div>}

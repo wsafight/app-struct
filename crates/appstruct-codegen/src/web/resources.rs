@@ -49,9 +49,10 @@ fn resource_source(entity: &EntityIr) -> String {
         .map_or("id", |field| field.rust_name.as_str());
     let api = format!("{}Api", lower_camel(&entity.rust_name));
     format!(
-        "{{\n  id: {:?},\n  name: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  softDelete: {},\n  access: {},\n  fields: [\n{}\n  ],\n  api: {} as unknown as ResourceApi,\n}}",
+        "{{\n  id: {:?},\n  name: {:?},\n  eventPrefix: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  softDelete: {},\n  access: {},\n  fields: [\n{}\n  ],\n  api: {} as unknown as ResourceApi,\n}}",
         entity.id.0,
         entity.rust_name,
+        event_prefix(entity),
         entity.label,
         entity.table_name,
         primary_key,
@@ -60,6 +61,21 @@ fn resource_source(entity: &EntityIr) -> String {
         indent(&fields, 4),
         api,
     )
+}
+
+fn event_prefix(entity: &EntityIr) -> String {
+    let mut output = String::new();
+    for (index, character) in entity.rust_name.chars().enumerate() {
+        if character.is_ascii_uppercase() {
+            if index > 0 {
+                output.push('_');
+            }
+            output.push(character.to_ascii_lowercase());
+        } else {
+            output.push(character);
+        }
+    }
+    output
 }
 
 fn audit_access_source(ir: &AppIr) -> String {

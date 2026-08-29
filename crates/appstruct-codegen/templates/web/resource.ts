@@ -81,7 +81,7 @@ export interface ResourceApi {
   exportCsv(): Promise<string>;
   importCsv(csv: string): Promise<BulkResult>;
   restore?(input: BulkDeleteRequest): Promise<BulkResult>;
-  trash?(): Promise<{ data: ResourceRecord[] }>;
+  trash?(query?: Pick<ListQuery, "page" | "page_size">): Promise<ListResponse<ResourceRecord>>;
 }
 
 export type FieldKind =
@@ -120,6 +120,7 @@ export interface FieldDefinition {
 export interface ResourceDefinition {
   id: string;
   name: string;
+  eventPrefix: string;
   label: string;
   slug: string;
   primaryKey: string;

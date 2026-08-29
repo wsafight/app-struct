@@ -15,6 +15,7 @@ import {
 import {
   type AnchorHTMLAttributes,
   type ComponentType,
+  Suspense,
   useCallback,
   useMemo,
 } from "react";
@@ -59,17 +60,18 @@ export function useLocation() {
 
 type SearchParamsInput = URLSearchParams | ((current: URLSearchParams) => URLSearchParams);
 
-export function useSearchParams(): [URLSearchParams, (next: SearchParamsInput) => void] {
+export function useSearchParams(): [URLSearchParams, (next: SearchParamsInput, options?: { replace?: boolean }) => void] {
   const navigate = useRouterNavigate();
   const location = useRouterState({ select: (state) => state.location });
   const searchParams = useMemo(() => new URLSearchParams(location.searchStr), [location.searchStr]);
   const setSearchParams = useCallback(
-    (next: SearchParamsInput) => {
+    (next: SearchParamsInput, options?: { replace?: boolean }) => {
       const current = new URLSearchParams(location.searchStr);
       const resolved = typeof next === "function" ? next(current) : next;
       void navigate({
         to: location.pathname as never,
         search: Object.fromEntries(resolved.entries()) as never,
+        replace: options?.replace,
       });
     },
     [location.pathname, location.searchStr, navigate],
@@ -102,7 +104,7 @@ function createRuntimeRoute(parent: AnyRoute, definition: RuntimeRoute): AnyRout
 }
 
 export function RuntimeRouter({ router }: { router: AnyRouter }) {
-  return <RouterProvider router={router} />;
+  return <Suspense fallback={<div className="auth-loading" aria-label="Loading" />}><RouterProvider router={router} /></Suspense>;
 }
 
 export { Outlet };

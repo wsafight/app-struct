@@ -6,7 +6,7 @@ pub(super) fn client(entity: &EntityIr) -> String {
     let path = format!("/api/{}/", entity.table_name);
     let restore = if entity.views.soft_delete {
         format!(
-            "  trash: () => request<{{ data: {model}[] }}>(\"{path}_trash\"),\n  restore: (input: BulkDeleteRequest) => request<BulkResult>(\"{path}_restore\", {{ method: \"POST\", body: JSON.stringify(input) }}),\n"
+            "  trash: (query: Pick<ListQuery, \"page\" | \"page_size\"> = {{}}) => request<ListResponse<{model}>>(listPath(\"{path}_trash\", query)),\n  restore: (input: BulkDeleteRequest) => request<BulkResult>(\"{path}_restore\", {{ method: \"POST\", body: JSON.stringify(input) }}),\n"
         )
     } else {
         String::new()

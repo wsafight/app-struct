@@ -1,13 +1,14 @@
-import { useState, type ComponentType } from "react";
+import { lazy, useState, type ComponentType } from "react";
 import { resources } from "../generated/resources";
 import { customPages } from "../generated/registry";
 import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
 import { Navigate, Outlet, RuntimeRouter, createRuntimeRouter, type RuntimeRoute } from "../navigation";
-import { ResourceDetail } from "../pages/ResourceDetail";
-import { ResourceForm } from "../pages/ResourceForm";
-import { ResourceList } from "../pages/ResourceList";
 import { ResourceActorProvider, useVisibleResources } from "../resource";
 import { Layout } from "./Layout";
+
+const ResourceDetail = lazy(() => import("../pages/ResourceDetail").then(({ ResourceDetail: component }) => ({ default: component })));
+const ResourceForm = lazy(() => import("../pages/ResourceForm").then(({ ResourceForm: component }) => ({ default: component })));
+const ResourceList = lazy(() => import("../pages/ResourceList").then(({ ResourceList: component }) => ({ default: component })));
 
 export function App({ registry }: { registry?: AppStructRegistry }) {
   const [router] = useState(() => {

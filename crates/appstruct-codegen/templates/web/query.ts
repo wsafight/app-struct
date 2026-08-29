@@ -19,5 +19,5 @@ export const resourceQueryKeys = {
   list: (resourceId: string, query: string) => [...resourceQueryKeys.lists(resourceId), query] as const,
   details: (resourceId: string) => [...resourceQueryKeys.all(resourceId), "detail"] as const,
   detail: (resourceId: string, id: string) => [...resourceQueryKeys.details(resourceId), id] as const,
-  options: (resourceId: string) => [...resourceQueryKeys.all(resourceId), "options"] as const,
+  options: (resourceId: string, query = "") => [...resourceQueryKeys.all(resourceId), "options", query] as const,
 };

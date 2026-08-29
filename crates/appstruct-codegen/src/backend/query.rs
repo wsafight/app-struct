@@ -1,5 +1,5 @@
 pub(super) mod aggregate;
-mod helpers;
+pub(super) mod helpers;
 mod relation;
 use super::access;
 use super::{parse_ident, rust_type};

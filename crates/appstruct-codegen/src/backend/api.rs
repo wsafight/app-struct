@@ -64,7 +64,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         .views
         .soft_delete
         .then(|| quote! { .route("/_restore", axum::routing::post(restore)).route("/_trash", get(trash)) });
-
+    let model_trait = (!entity.views.soft_delete).then(|| quote! { ModelTrait, });
     render(quote! {
         use crate::{AppState, ApiError, FieldViolation, RequestContext, entities::#module};
         use axum::{
@@ -75,7 +75,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         };
         use sea_orm::{
             ActiveModelTrait, ActiveValue::Set, EntityTrait, IntoActiveModel,
-            ModelTrait, QuerySelect, TransactionTrait, TryIntoModel,
+            #model_trait QuerySelect, TransactionTrait, TryIntoModel,
         };
         use serde::{Deserialize, Serialize};
         use std::collections::BTreeMap;

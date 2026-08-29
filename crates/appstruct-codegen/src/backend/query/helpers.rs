@@ -2,7 +2,7 @@ use super::super::parse_ident;
 use crate::CodegenError;
 use appstruct_ir::FieldIr;
 
-pub(super) fn column_ident(field: &FieldIr) -> Result<syn::Ident, CodegenError> {
+pub(crate) fn column_ident(field: &FieldIr) -> Result<syn::Ident, CodegenError> {
     let name = field
         .rust_name
         .split('_')

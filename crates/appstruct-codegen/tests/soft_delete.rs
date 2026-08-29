@@ -20,6 +20,9 @@ fn soft_delete_resources_publish_trash_and_restore_contracts() {
     assert!(source.contains("/_restore"));
     assert!(source.contains("active.deleted_at = Set(Some"));
     assert!(source.contains("active.deleted_at = Set(None"));
+    assert!(source.contains("Result<Json<ListResponse<serde_json::Value>>, ApiError>"));
+    assert!(source.contains("ListMeta::Page"));
+    assert!(source.contains("let mut active = model.clone().into_active_model();"));
     let openapi = artifacts
         .iter()
         .find(|artifact| artifact.relative_path.to_string_lossy() == "openapi/openapi.json")

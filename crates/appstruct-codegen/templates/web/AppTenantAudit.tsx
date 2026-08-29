@@ -1,17 +1,18 @@
-import { useState, type ComponentType } from "react";
-import { AuditPage } from "../audit/AuditPage";
+import { lazy, useState, type ComponentType } from "react";
 import { AuthProvider, RequireAuth } from "../auth/Auth";
 import { AdminJobsPage, AdminPage, AdminUsersPage, ApiTokensPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "../auth/AuthPages";
 import { auditAccess, resources } from "../generated/resources";
 import { customPages } from "../generated/registry";
 import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
 import { Navigate, Outlet, RuntimeRouter, createRuntimeRouter, type RuntimeRoute } from "../navigation";
-import { ResourceDetail } from "../pages/ResourceDetail";
-import { ResourceForm } from "../pages/ResourceForm";
-import { ResourceList } from "../pages/ResourceList";
 import { useCanAccessRule, useVisibleResources } from "../resource";
 import { InvitationAcceptPage, OrganizationPage, RequireTenant, TenantProvider } from "../tenant/Tenant";
 import { Layout } from "./Layout";
+
+const AuditPage = lazy(() => import("../audit/AuditPage").then(({ AuditPage: component }) => ({ default: component })));
+const ResourceDetail = lazy(() => import("../pages/ResourceDetail").then(({ ResourceDetail: component }) => ({ default: component })));
+const ResourceForm = lazy(() => import("../pages/ResourceForm").then(({ ResourceForm: component }) => ({ default: component })));
+const ResourceList = lazy(() => import("../pages/ResourceList").then(({ ResourceList: component }) => ({ default: component })));
 
 export function App({ registry }: { registry?: AppStructRegistry }) {
   const [router] = useState(() => createRuntimeRouter(AuthRoot, appRoutes(registry)));

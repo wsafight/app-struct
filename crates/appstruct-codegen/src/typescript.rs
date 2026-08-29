@@ -194,6 +194,9 @@ async function request<T>(path: string, init?: RequestInit, revisionKey?: string
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as ErrorEnvelope | null;
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("appstruct:unauthorized"));
+    }
     throw new ApiError(
       response.status,
       body?.error.code ?? "HTTP_ERROR",

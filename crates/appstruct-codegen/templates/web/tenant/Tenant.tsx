@@ -1,5 +1,5 @@
 import { Building2, MailPlus, Plus, Trash2, Users } from "lucide-react";
-import { FormEvent, ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useSearchParams } from "../navigation";
 import { tenantApi, type TenantInvitation, type TenantOrganization } from "../generated/client";
 import { errorMessage } from "../resource";
@@ -122,14 +122,20 @@ export function InvitationAcceptPage() {
   const [params] = useSearchParams();
   const [status, setStatus] = useState<"loading" | "accepted" | "error">("loading");
   const [message, setMessage] = useState("");
+  const requestedToken = useRef<string | null>(null);
+  const token = params.get("token");
   useEffect(() => {
-    const token = params.get("token");
     if (!token) { setStatus("error"); setMessage("This invitation link is missing its token."); return; }
+    if (requestedToken.current === token) return;
+    requestedToken.current = token;
+    let active = true;
     tenantApi.acceptInvitation(token).then((organization) => {
+      if (!active) return;
       tenantApi.select(organization.id); setStatus("accepted"); setMessage(`You joined ${organization.name}.`);
       window.history.replaceState({}, "", "/organization");
-    }).catch((reason) => { setStatus("error"); setMessage(errorMessage(reason)); });
-  }, [params]);
+    }).catch((reason) => { if (active) { setStatus("error"); setMessage(errorMessage(reason)); } });
+    return () => { active = false; };
+  }, [token]);
   return <main className="auth-page"><div className="auth-panel"><div className="auth-brand">AppStruct</div><h1>{status === "loading" ? "Accepting invitation" : status === "accepted" ? "Invitation accepted" : "Invitation unavailable"}</h1>{status === "loading" ? <div className="auth-loading" aria-label="Loading" /> : status === "accepted" ? <><p>{message}</p><Link className="primary-button" to="/organization">Open organization</Link></> : <div className="alert" role="alert">{message}</div>}</div></main>;
 }
 
