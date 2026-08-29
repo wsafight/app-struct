@@ -13,11 +13,14 @@ mod loading;
 mod lower;
 mod mail;
 mod module;
+mod module_registry;
 mod naming;
 mod preset;
+mod realtime;
 mod surface;
 mod tenant;
 mod validation;
+mod webhooks;
 mod yaml;
 
 pub use loading::discover_project;
@@ -67,6 +70,8 @@ pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<
         diagnostics.extend(preset::validate_local_module_lock(&root, &local_modules));
     }
     diagnostics.extend(module_diagnostics);
+    let (remote_modules, remote_diagnostics) = module_registry::load(&root);
+    diagnostics.extend(remote_diagnostics);
     let mut canonical_includes = BTreeMap::<PathBuf, SourceSpan>::new();
     let mut application = surface::SurfaceDomain::default();
 
@@ -104,7 +109,9 @@ pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<
         return Err(diagnostics);
     }
     let warnings = lint::warnings(&application);
-    lower::build_ir(surface_root, application, local_modules).map(|ir| CompileReport {
+    let mut modules = local_modules;
+    modules.extend(remote_modules);
+    lower::build_ir(surface_root, application, modules).map(|ir| CompileReport {
         ir,
         diagnostics: warnings,
     })

@@ -84,7 +84,8 @@ remains out of scope.
 
 ### Phase C: Distribution and delivery
 
-- Remote module registry with lockfile, checksum, signature, and compatibility validation.
+- Remote module registry with `appstruct.modules.lock`, checksum/signature verification, offline
+  cache validation, and AppStruct/Module API compatibility checks.
 - Deployment adapters and environment promotion without a mandatory hosted control plane.
 - Billing and subscription operations.
 - Visual schema, permission, page, and migration editor that produces reviewable App Spec diffs.

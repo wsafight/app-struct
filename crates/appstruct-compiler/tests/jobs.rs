@@ -23,6 +23,26 @@ fn lowers_jobs_settings_and_sorted_queues() {
     );
     assert_eq!(jobs.queues[0].max_attempts, 2);
     assert_eq!(jobs.queues[1].backoff_seconds, 2);
+    assert_eq!(jobs.schedules[0].name, "cleanup");
+    assert_eq!(jobs.schedules[0].interval_seconds, 900);
+    assert_eq!(jobs.schedules[0].kind, "maintenance.cleanup");
+}
+
+#[test]
+fn jobs_rejects_invalid_schedules() {
+    for (old, new, code) in [
+        ("queue: default", "queue: missing", "AS3054"),
+        ("cron: \"*/15 * * * *\"", "cron: yearly", "AS3057"),
+        (
+            "payload: '{\"scope\":\"expired\"}'",
+            "payload: '{oops'",
+            "AS3056",
+        ),
+    ] {
+        let temporary = copied_fixture();
+        replace(&temporary.path().join("appstruct.yaml"), old, new);
+        assert_diagnostic(temporary.path(), code);
+    }
 }
 
 #[test]

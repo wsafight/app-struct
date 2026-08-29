@@ -1,6 +1,7 @@
 use super::{
     SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobs, SurfaceMail, SurfaceOperation,
-    SurfacePage, SurfacePreset, SurfaceTenant, SurfaceValueObject,
+    SurfacePage, SurfacePreset, SurfaceRealtime, SurfaceTenant, SurfaceValueObject,
+    SurfaceWebhooks,
 };
 use crate::yaml::MappingEntry;
 use appstruct_ir::SourceSpan;
@@ -25,6 +26,8 @@ pub(crate) struct SurfaceRoot {
     pub audit: SurfaceAudit,
     pub mail: SurfaceMail,
     pub jobs: SurfaceJobs,
+    pub webhooks: SurfaceWebhooks,
+    pub realtime: SurfaceRealtime,
     pub file: SurfaceFile,
     pub includes: Vec<Located<String>>,
     pub module_manifests: Vec<Located<String>>,

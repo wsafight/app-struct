@@ -11,9 +11,11 @@ mod mail;
 mod model;
 mod modules;
 mod preset;
+mod realtime;
 mod seeds;
 mod tenant;
 mod value;
+mod webhooks;
 
 pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
 pub(crate) use model::{
@@ -21,8 +23,9 @@ pub(crate) use model::{
     SurfaceField, SurfaceFieldAccess, SurfaceRoot,
 };
 pub(crate) use modules::{
-    SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobQueue, SurfaceJobs, SurfaceMail,
-    SurfaceMailTemplate, SurfacePreset, SurfaceTenant,
+    SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobQueue, SurfaceJobSchedule, SurfaceJobs,
+    SurfaceMail, SurfaceMailTemplate, SurfacePreset, SurfaceRealtime, SurfaceTenant,
+    SurfaceWebhookEndpoint, SurfaceWebhooks,
 };
 
 use self::context::DecodeContext;
@@ -71,13 +74,15 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
             context.capture(audit::decode(modules.as_ref())),
             context.capture(mail::decode(modules.as_ref())),
             context.capture(jobs::decode(modules.as_ref())),
+            context.capture(webhooks::decode(modules.as_ref())),
+            context.capture(realtime::decode(modules.as_ref())),
             context.capture(file::decode(modules.as_ref())),
         )
     });
 
     let value = (|| {
         let database = database?;
-        let (auth, tenant, audit, mail, jobs, file) = decoded_modules?;
+        let (auth, tenant, audit, mail, jobs, webhooks, realtime, file) = decoded_modules?;
         Some(SurfaceRoot {
             version: version?,
             app_name: app_name?,
@@ -91,6 +96,8 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
             audit: audit?,
             mail: mail?,
             jobs: jobs?,
+            webhooks: webhooks?,
+            realtime: realtime?,
             file: file?,
             includes: includes?,
             module_manifests: module_manifests?,

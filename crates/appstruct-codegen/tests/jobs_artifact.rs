@@ -15,10 +15,25 @@ fn jobs_contract_generates_a_compilable_backend() {
 
     let sql = artifact_text(&artifacts, "database/0001_initial.sql");
     assert!(sql.contains("_appstruct_jobs"));
+    assert!(sql.contains("_appstruct_job_schedules"));
+    assert!(sql.contains("_appstruct_webhook_deliveries"));
+    assert!(sql.contains("_appstruct_realtime_presence"));
     assert!(sql.contains("\"idempotency_key\" TEXT UNIQUE"));
     assert!(sql.contains("FOREIGN KEY (\"tenant_id\")"));
     let jobs = artifact_text(&artifacts, "backend/src/jobs.rs");
     assert!(jobs.contains("FOR UPDATE SKIP LOCKED"));
+    assert!(jobs.contains("schedule:{}:{}"));
+    assert!(jobs.contains("maintenance.cleanup"));
+    assert!(jobs.contains("schedule_due"));
+    let webhooks = artifact_text(&artifacts, "backend/src/webhooks.rs");
+    assert!(webhooks.contains("x-appstruct-signature"));
+    assert!(webhooks.contains("Hmac::<Sha256>"));
+    assert!(webhooks.contains("FOR UPDATE SKIP LOCKED"));
+    assert!(webhooks.contains("project.created"));
+    let realtime = artifact_text(&artifacts, "backend/src/realtime.rs");
+    assert!(realtime.contains("/api/realtime/events"));
+    assert!(realtime.contains("presence.online"));
+    assert!(realtime.contains("event.tenant_id == tenant_id"));
     assert!(jobs.contains("status = 'running' AND locked_until <= CURRENT_TIMESTAMP"));
     assert!(jobs.contains("pub struct JobWorkerHandle"));
     assert!(jobs.contains("SupervisedTaskHandle::spawn"));
@@ -37,13 +52,19 @@ fn jobs_contract_generates_a_compilable_backend() {
     assert!(client.contains("listJobs"));
     assert!(client.contains("retryJob"));
     assert!(client.contains("replayJob"));
+    assert!(client.contains("subscribeRealtime"));
+    assert!(client.contains("listPresence"));
     let openapi: serde_json::Value =
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
     assert!(openapi["paths"]["/api/admin/jobs"]["get"].is_object());
     assert!(openapi["paths"]["/api/admin/jobs/{id}/retry"]["post"].is_object());
     assert!(openapi["paths"]["/api/admin/jobs/{id}/replay"]["post"].is_object());
+    assert!(openapi["paths"]["/api/realtime/events"]["get"].is_object());
+    assert!(openapi["paths"]["/api/realtime/presence"]["get"].is_object());
     let extensions = artifact_text(&artifacts, "backend/src/extensions.rs");
     assert!(extensions.contains("pub async fn enqueue_job"));
+    assert!(extensions.contains("pub async fn publish_webhook"));
+    assert!(extensions.contains("pub fn publish_realtime"));
     assert!(extensions.contains("pub fn job_handler"));
     let library = artifact_text(&artifacts, "backend/src/lib.rs");
     assert!(library.contains("pub struct Application"));

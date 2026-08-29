@@ -89,6 +89,8 @@
         "audit": { "$ref": "#/$defs/auditModule" },
         "mail": { "$ref": "#/$defs/mailModule" },
         "jobs": { "$ref": "#/$defs/jobsModule" },
+        "webhooks": { "$ref": "#/$defs/webhooksModule" },
+        "realtime": { "$ref": "#/$defs/realtimeModule" },
         "file": { "$ref": "#/$defs/fileModule" }
       },
       "additionalProperties": false
@@ -168,6 +170,11 @@
           "type": "object",
           "propertyNames": { "pattern": "^[a-z0-9_-]+$" },
           "additionalProperties": { "$ref": "#/$defs/jobQueue" }
+        },
+        "schedules": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z0-9_-]+$" },
+          "additionalProperties": { "$ref": "#/$defs/jobSchedule" }
         }
       },
       "additionalProperties": false
@@ -177,6 +184,51 @@
       "properties": {
         "max_attempts": { "type": "integer", "minimum": 1, "maximum": 100 },
         "backoff_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+      },
+      "additionalProperties": false
+    },
+    "jobSchedule": {
+      "type": "object",
+      "required": ["cron", "queue", "kind"],
+      "properties": {
+        "cron": { "type": "string", "minLength": 1 },
+        "queue": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "payload": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "webhooksModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "poll_interval_ms": { "type": "integer", "minimum": 10, "maximum": 60000 },
+        "endpoints": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z0-9_-]+$" },
+          "additionalProperties": { "$ref": "#/$defs/webhookEndpoint" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "webhookEndpoint": {
+      "type": "object",
+      "required": ["url", "secret_env", "events"],
+      "properties": {
+        "url": { "type": "string", "minLength": 1 },
+        "secret_env": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "events": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "max_attempts": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "backoff_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+      },
+      "additionalProperties": false
+    },
+    "realtimeModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "heartbeat_seconds": { "type": "integer", "minimum": 5, "maximum": 300 },
+        "presence_ttl_seconds": { "type": "integer", "minimum": 15, "maximum": 900 }
       },
       "additionalProperties": false
     },

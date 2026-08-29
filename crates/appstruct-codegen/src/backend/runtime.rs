@@ -8,6 +8,7 @@ pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, 
     let application = application_source();
     let routing = router_source(routes);
     let start_worker = start_worker(ir);
+    let start_webhooks = start_webhook_worker(ir);
     let startup = super::startup::source(ir)?;
     let lifecycle = lifecycle_source();
     Ok(quote! {
@@ -31,6 +32,7 @@ pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, 
         #application
         #routing
         #start_worker
+        #start_webhooks
         #startup
         #lifecycle
     })
@@ -45,14 +47,15 @@ fn contract_source() -> TokenStream {
             pub auth: AuthState,
             pub mail: MailState,
             pub file: FileState,
+            pub realtime: RealtimeState,
             health: ApplicationHealth,
         }
         impl AppState {
             pub async fn context(&self, headers: &HeaderMap) -> Result<RequestContext<'_>, ApiError> {
                 let actor = self.auth.actor(&self.database, headers).await?;
                 let tenant = tenant::resolve(&self.database, headers, actor.as_ref()).await?;
-                Ok(RequestContext::connection_with_file(
-                    &self.database, &self.mail, &self.file, actor, tenant,
+                Ok(RequestContext::connection_with_services(
+                    &self.database, &self.mail, &self.file, &self.realtime, actor, tenant,
                 ))
             }
         }
@@ -127,6 +130,9 @@ fn application_source() -> TokenStream {
                     &database, &extensions, &mail, health.clone(),
                 ) {
                     runtime.push_service("appstruct/jobs", worker);
+                }
+                if let Some(worker) = start_webhook_worker(&database) {
+                    runtime.push_service("appstruct/webhooks", worker);
                 }
                 health.mark_ready();
                 let router = router_with_services_and_health(
@@ -217,12 +223,16 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
                 #(#routes)*
                 .merge(operations::router()).merge(audit::router())
                 .merge(auth::router()).merge(tenant::router())
+                .merge(realtime::router())
                 .route("/health/live", get(liveness)).route("/health/ready", get(readiness))
                 .route("/metrics", get(metrics))
                 .route("/openapi.json", get(openapi)).layer(cors)
                 .layer(PropagateRequestIdLayer::x_request_id()).layer(TraceLayer::new_for_http())
                 .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-                .with_state(AppState { database, extensions, auth, mail, file, health })
+                .with_state(AppState {
+                    database, extensions, auth, mail, file,
+                    realtime: RealtimeState::default(), health,
+                })
         }
         async fn liveness() -> StatusCode { StatusCode::NO_CONTENT }
         async fn readiness(State(state): State<AppState>) -> StatusCode {
@@ -317,6 +327,22 @@ fn start_worker(ir: &AppIr) -> TokenStream {
                     return None;
                 };
                 Some(JobWorker::new(database.clone(), handler).spawn_with_health(health))
+            }
+        }
+    }
+}
+
+fn start_webhook_worker(ir: &AppIr) -> TokenStream {
+    if ir.webhooks.enabled {
+        quote! {
+            fn start_webhook_worker(database: &DatabaseConnection) -> Option<WebhookWorkerHandle> {
+                Some(WebhookWorker::new(database.clone()).spawn())
+            }
+        }
+    } else {
+        quote! {
+            fn start_webhook_worker(_database: &DatabaseConnection) -> Option<WebhookWorkerHandle> {
+                None
             }
         }
     }

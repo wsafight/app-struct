@@ -228,7 +228,7 @@ fn descriptor_arm(
 
 fn starter_arm(module: &ResolvedModule, variant: &Ident) -> Result<TokenStream, CodegenError> {
     let name = module.name.as_str();
-    if module.origin == ModuleOrigin::Local {
+    if module.origin != ModuleOrigin::Official {
         return Ok(quote! { Self::#variant => Ok(None) });
     }
     let start = match name {
@@ -259,7 +259,14 @@ fn starter_arm(module: &ResolvedModule, variant: &Ident) -> Result<TokenStream, 
                 .map(|handle| Box::new(handle) as Box<dyn ServiceHandle>);
             Ok(handle)
         },
-        "appstruct/audit" | "appstruct/rbac" | "appstruct/tenant" => quote! { Ok(None) },
+        "appstruct/webhooks" => quote! {
+            let handle = start_webhook_worker(&context.database)
+                .map(|handle| Box::new(handle) as Box<dyn ServiceHandle>);
+            Ok(handle)
+        },
+        "appstruct/audit" | "appstruct/rbac" | "appstruct/realtime" | "appstruct/tenant" => {
+            quote! { Ok(None) }
+        }
         _ => {
             return Err(CodegenError::new(format!(
                 "module `{name}` has no generated runtime starter"
@@ -270,7 +277,7 @@ fn starter_arm(module: &ResolvedModule, variant: &Ident) -> Result<TokenStream, 
 }
 
 fn module_variant(module: &ResolvedModule) -> Result<Ident, CodegenError> {
-    if module.origin == ModuleOrigin::Local {
+    if module.origin != ModuleOrigin::Official {
         return Ok(format_ident!("Local{}", module.startup_order));
     }
     match module.name.as_str() {
@@ -280,7 +287,9 @@ fn module_variant(module: &ResolvedModule) -> Result<Ident, CodegenError> {
         "appstruct/jobs" => Ok(format_ident!("Jobs")),
         "appstruct/mail" => Ok(format_ident!("Mail")),
         "appstruct/rbac" => Ok(format_ident!("Rbac")),
+        "appstruct/realtime" => Ok(format_ident!("Realtime")),
         "appstruct/tenant" => Ok(format_ident!("Tenant")),
+        "appstruct/webhooks" => Ok(format_ident!("Webhooks")),
         name => Err(CodegenError::new(format!(
             "module `{name}` has no generated runtime variant"
         ))),

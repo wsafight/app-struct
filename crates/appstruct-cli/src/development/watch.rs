@@ -12,6 +12,7 @@ impl SourceFingerprint {
         for candidate in [
             project.join("appstruct.yaml"),
             project.join("appstruct.lock"),
+            project.join("appstruct.modules.lock"),
             project.join(".env"),
             project.join(".npmrc"),
             project.join("pnpm-workspace.yaml"),

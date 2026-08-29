@@ -16,6 +16,7 @@ pub(super) fn contract() -> TokenStream {
             database: RequestDatabase<'db>,
             mail: &'db crate::MailState,
             file: Option<&'db crate::FileState>,
+            realtime: Option<&'db crate::RealtimeState>,
             actor: Option<Actor>,
             tenant: Option<TenantId>,
         }
@@ -25,6 +26,7 @@ pub(super) fn contract() -> TokenStream {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn methods() -> TokenStream {
     quote! {
         impl<'db> RequestContext<'db> {
@@ -34,7 +36,7 @@ fn methods() -> TokenStream {
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Connection(database), mail, file: None, actor, tenant }
+                Self { database: RequestDatabase::Connection(database), mail, file: None, realtime: None, actor, tenant }
             }
 
             pub fn transaction(
@@ -43,7 +45,7 @@ fn methods() -> TokenStream {
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Transaction(database), mail, file: None, actor, tenant }
+                Self { database: RequestDatabase::Transaction(database), mail, file: None, realtime: None, actor, tenant }
             }
 
             pub fn connection_with_file(
@@ -53,7 +55,21 @@ fn methods() -> TokenStream {
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Connection(database), mail, file: Some(file), actor, tenant }
+                Self { database: RequestDatabase::Connection(database), mail, file: Some(file), realtime: None, actor, tenant }
+            }
+
+            pub(crate) fn connection_with_services(
+                database: &'db DatabaseConnection,
+                mail: &'db crate::MailState,
+                file: &'db crate::FileState,
+                realtime: &'db crate::RealtimeState,
+                actor: Option<Actor>,
+                tenant: Option<TenantId>,
+            ) -> Self {
+                Self {
+                    database: RequestDatabase::Connection(database), mail, file: Some(file),
+                    realtime: Some(realtime), actor, tenant,
+                }
             }
 
             pub(crate) fn transaction_with_file(
@@ -63,7 +79,7 @@ fn methods() -> TokenStream {
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Transaction(database), mail, file: Some(file), actor, tenant }
+                Self { database: RequestDatabase::Transaction(database), mail, file: Some(file), realtime: None, actor, tenant }
             }
 
             pub fn database(&self) -> &Self { self }
@@ -91,6 +107,26 @@ fn methods() -> TokenStream {
                 crate::jobs::enqueue(
                     self, queue, kind, payload, idempotency_key, run_at, self.tenant,
                 ).await
+            }
+            pub async fn publish_webhook<T: serde::Serialize>(
+                &self, event: &str, payload: &T, idempotency_key: Option<&str>,
+            ) -> Result<crate::WebhookReceipt, crate::WebhookError> {
+                crate::webhooks::publish(
+                    self, event, payload, idempotency_key, self.tenant,
+                ).await
+            }
+            pub fn publish_realtime<T: serde::Serialize>(
+                &self, event: &str, payload: &T,
+            ) -> Result<crate::RealtimeEvent, serde_json::Error> {
+                if let Some(realtime) = self.realtime {
+                    realtime.publish(
+                        event, payload, self.actor.as_ref().map(|actor| actor.id), self.tenant,
+                    )
+                } else {
+                    crate::RealtimeState::default().publish(
+                        event, payload, self.actor.as_ref().map(|actor| actor.id), self.tenant,
+                    )
+                }
             }
             pub async fn put_file(
                 &self, object_key: &str, original_name: &str,

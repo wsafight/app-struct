@@ -43,6 +43,9 @@ fn document(ir: &AppIr) -> Value {
     if ir.audit.enabled {
         audit::add(ir, &mut paths, &mut schemas);
     }
+    if ir.realtime.enabled {
+        realtime::add(&mut paths, &mut schemas);
+    }
     extension::add(ir, &mut paths, &mut schemas);
     let security_schemes = auth::security_schemes(ir.auth.enabled);
     json!({
@@ -131,4 +134,5 @@ mod auth;
 mod bulk;
 mod entity;
 mod extension;
+mod realtime;
 mod tenant;

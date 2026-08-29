@@ -9,7 +9,9 @@ mod auth;
 mod file;
 mod jobs;
 mod mail;
+mod realtime;
 mod tenant;
+mod webhooks;
 
 pub const SCHEMA_VERSION: u32 = appstruct_contracts::DATABASE_SCHEMA.current;
 pub const MIN_COMPATIBLE_SCHEMA_VERSION: u32 = appstruct_contracts::DATABASE_SCHEMA.minimum;
@@ -167,6 +169,14 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
     if ir.jobs.enabled {
         tables.extend(jobs::tables());
         foreign_keys.extend(jobs::foreign_keys(ir));
+    }
+    if ir.webhooks.enabled {
+        tables.extend(webhooks::tables());
+        foreign_keys.extend(webhooks::foreign_keys(ir));
+    }
+    if ir.realtime.enabled {
+        tables.extend(realtime::tables());
+        foreign_keys.extend(realtime::foreign_keys(ir));
     }
     if ir.file.enabled {
         tables.extend(file::tables());

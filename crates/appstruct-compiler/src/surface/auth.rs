@@ -12,7 +12,9 @@ pub(super) fn decode(modules_entry: Option<&MappingEntry>) -> Result<SurfaceAuth
     let modules = expect_mapping(&modules_entry.value, "`modules`")?;
     ensure_known_keys(
         modules,
-        &["auth", "rbac", "tenant", "audit", "mail", "jobs", "file"],
+        &[
+            "auth", "rbac", "tenant", "audit", "mail", "jobs", "webhooks", "realtime", "file",
+        ],
         "`modules`",
     )?;
     let mut output = decode_auth(modules.get("auth"))?;

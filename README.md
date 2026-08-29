@@ -224,6 +224,9 @@ Rust source files are limited to 400 lines by a repository test. Generated proje
 their Rust and pnpm dependency graphs so repeated generation and production builds remain
 reviewable and reproducible.
 
+Signed remote modules are installed with `appstruct module install`; see
+`docs/module-registry.md` for the lockfile and offline verification contract.
+
 Before committing or pushing a change, inspect the worktree and run the checks that match the
 files you changed:
 

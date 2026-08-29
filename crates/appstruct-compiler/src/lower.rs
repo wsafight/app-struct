@@ -9,6 +9,7 @@ use crate::jobs::lower_jobs;
 use crate::mail::lower_mail;
 use crate::module::{LoadedModule, resolve_modules_for_app};
 use crate::naming::{pluralize, to_snake_case};
+use crate::realtime::lower_realtime;
 mod indexes;
 use self::indexes::build_indexes;
 mod seeds;
@@ -16,6 +17,7 @@ use self::seeds::build_seeds;
 use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceField, SurfaceRoot};
 use crate::tenant::lower_tenant;
 use crate::validation::{validate_entity_declarations, validate_primary_key};
+use crate::webhooks::lower_webhooks;
 use appstruct_ir::{
     AppIr, AppMeta, AuthIr, ConcurrencyIr, DatabaseDevMode, DatabaseIr, DatabaseMigrationPolicy,
     DatabaseProvider, Diagnostic, EntityId, EntityIr, EntityViewsIr, FieldCapabilities, FieldId,
@@ -24,6 +26,7 @@ use appstruct_ir::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn build_ir(
     root: SurfaceRoot,
     definitions: SurfaceDomain,
@@ -57,6 +60,8 @@ pub(crate) fn build_ir(
     );
     let mail = lower_mail(&root.mail, &root.app_name.span, &mut diagnostics);
     let jobs = lower_jobs(&root.jobs, &root.app_name.span, &mut diagnostics);
+    let webhooks = lower_webhooks(&root.webhooks, &root.app_name.span, &mut diagnostics);
+    let realtime = lower_realtime(&root.realtime, &auth, &root.app_name.span, &mut diagnostics);
     let file = lower_file(&root.file, &root.app_name.span, &mut diagnostics);
     let known_entities = surface_entities
         .iter()
@@ -83,15 +88,24 @@ pub(crate) fn build_ir(
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
-    let modules =
-        resolve_modules_for_app(&auth, &tenant, &audit, &mail, &jobs, &file, local_modules)
-            .map_err(|error| {
-                vec![Diagnostic::error(
-                    "AS3062",
-                    error.to_string(),
-                    root.app_name.span.clone(),
-                )]
-            })?;
+    let modules = resolve_modules_for_app(
+        &auth,
+        &tenant,
+        &audit,
+        &mail,
+        &jobs,
+        &webhooks,
+        &realtime,
+        &file,
+        local_modules,
+    )
+    .map_err(|error| {
+        vec![Diagnostic::error(
+            "AS3062",
+            error.to_string(),
+            root.app_name.span.clone(),
+        )]
+    })?;
     canonicalize_entities(&mut entities, &mut relations);
     let database = lower_database(&root);
     Ok(AppIr {
@@ -110,6 +124,8 @@ pub(crate) fn build_ir(
         audit,
         mail,
         jobs,
+        webhooks,
+        realtime,
         file,
         enums: Vec::new(),
         value_objects: extensions.value_objects,

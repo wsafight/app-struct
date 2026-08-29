@@ -12,8 +12,8 @@ pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, V
 pub use seed::SeedIr;
 use serde::{Deserialize, Serialize};
 pub use service::{
-    AuditIr, FileIr, FileProviderIr, JobQueueIr, JobsIr, MailIr, MailProviderIr, MailTemplateIr,
-    PresetIr, TenantIr,
+    AuditIr, FileIr, FileProviderIr, JobQueueIr, JobScheduleIr, JobsIr, MailIr, MailProviderIr,
+    MailTemplateIr, PresetIr, RealtimeIr, TenantIr, WebhookEndpointIr, WebhooksIr,
 };
 use std::fmt;
 pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir};
@@ -31,6 +31,10 @@ pub struct AppIr {
     pub audit: AuditIr,
     pub mail: MailIr,
     pub jobs: JobsIr,
+    #[serde(default, skip_serializing_if = "WebhooksIr::is_disabled")]
+    pub webhooks: WebhooksIr,
+    #[serde(default, skip_serializing_if = "RealtimeIr::is_disabled")]
+    pub realtime: RealtimeIr,
     pub file: FileIr,
     pub enums: Vec<EnumIr>,
     pub value_objects: Vec<ValueObjectIr>,
@@ -268,6 +272,7 @@ pub struct ResolvedModule {
 pub enum ModuleOrigin {
     Official,
     Local,
+    Remote,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

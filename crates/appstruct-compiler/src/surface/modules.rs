@@ -55,6 +55,7 @@ pub(crate) struct SurfaceJobs {
     pub poll_interval_ms: Option<Located<u64>>,
     pub lease_seconds: Option<Located<u64>>,
     pub queues: Vec<SurfaceJobQueue>,
+    pub schedules: Vec<SurfaceJobSchedule>,
     pub span: Option<SourceSpan>,
 }
 
@@ -63,6 +64,41 @@ pub(crate) struct SurfaceJobQueue {
     pub name: Located<String>,
     pub max_attempts: Option<Located<u64>>,
     pub backoff_seconds: Option<Located<u64>>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceJobSchedule {
+    pub name: Located<String>,
+    pub cron: Located<String>,
+    pub queue: Located<String>,
+    pub kind: Located<String>,
+    pub payload: Option<Located<String>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SurfaceWebhooks {
+    pub enabled: bool,
+    pub poll_interval_ms: Option<Located<u64>>,
+    pub endpoints: Vec<SurfaceWebhookEndpoint>,
+    pub span: Option<SourceSpan>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceWebhookEndpoint {
+    pub name: Located<String>,
+    pub url: Located<String>,
+    pub secret_env: Located<String>,
+    pub events: Vec<Located<String>>,
+    pub max_attempts: Option<Located<u64>>,
+    pub backoff_seconds: Option<Located<u64>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SurfaceRealtime {
+    pub enabled: bool,
+    pub heartbeat_seconds: Option<Located<u64>>,
+    pub presence_ttl_seconds: Option<Located<u64>>,
+    pub span: Option<SourceSpan>,
 }
 
 #[derive(Clone, Debug, Default)]

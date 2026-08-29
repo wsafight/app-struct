@@ -1,5 +1,7 @@
-use super::value::{ensure_known_keys, expect_bool, expect_mapping, expect_u64};
-use super::{Located, SurfaceJobQueue, SurfaceJobs};
+use super::value::{
+    ensure_known_keys, expect_bool, expect_mapping, expect_scalar_string, expect_u64,
+};
+use super::{Located, SurfaceJobQueue, SurfaceJobSchedule, SurfaceJobs};
 use crate::yaml::MappingEntry;
 use appstruct_ir::Diagnostic;
 
@@ -14,7 +16,13 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceJobs, Diagno
     let jobs = expect_mapping(&entry.value, "`modules.jobs`")?;
     ensure_known_keys(
         jobs,
-        &["enabled", "poll_interval_ms", "lease_seconds", "queues"],
+        &[
+            "enabled",
+            "poll_interval_ms",
+            "lease_seconds",
+            "queues",
+            "schedules",
+        ],
         "`modules.jobs`",
     )?;
     let enabled = jobs
@@ -31,8 +39,54 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceJobs, Diagno
             .map(decode_queues)
             .transpose()?
             .unwrap_or_default(),
+        schedules: jobs
+            .get("schedules")
+            .map(decode_schedules)
+            .transpose()?
+            .unwrap_or_default(),
         span: Some(entry.value.span.clone()),
     })
+}
+
+fn decode_schedules(entry: &MappingEntry) -> Result<Vec<SurfaceJobSchedule>, Diagnostic> {
+    let schedules = expect_mapping(&entry.value, "`modules.jobs.schedules`")?;
+    schedules
+        .iter()
+        .map(|(name, entry)| {
+            let schedule = expect_mapping(&entry.value, "job schedule")?;
+            ensure_known_keys(
+                schedule,
+                &["cron", "queue", "kind", "payload"],
+                "job schedule",
+            )?;
+            let required = |key: &str, context: &str| {
+                schedule
+                    .get(key)
+                    .map(|entry| expect_scalar_string(&entry.value, context))
+                    .transpose()?
+                    .ok_or_else(|| {
+                        Diagnostic::error(
+                            "AS3053",
+                            format!("job schedule requires `{key}`"),
+                            entry.value.span.clone(),
+                        )
+                    })
+            };
+            Ok(SurfaceJobSchedule {
+                name: Located {
+                    value: name.clone(),
+                    span: entry.key_span.clone(),
+                },
+                cron: required("cron", "schedule cron")?,
+                queue: required("queue", "schedule queue")?,
+                kind: required("kind", "schedule kind")?,
+                payload: schedule
+                    .get("payload")
+                    .map(|entry| expect_scalar_string(&entry.value, "schedule payload"))
+                    .transpose()?,
+            })
+        })
+        .collect()
 }
 
 fn decode_queues(entry: &MappingEntry) -> Result<Vec<SurfaceJobQueue>, Diagnostic> {

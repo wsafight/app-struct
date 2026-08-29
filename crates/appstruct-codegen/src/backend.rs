@@ -11,10 +11,12 @@ mod mail;
 mod manifest;
 mod operations;
 mod query;
+mod realtime;
 mod runtime;
 mod startup;
 mod tenant;
 mod validation;
+mod webhooks;
 
 use crate::{Artifact, ArtifactKind, CodegenError, format_rust, generated_header};
 use appstruct_ir::{AppIr, EntityIr, FieldTypeIr};
@@ -103,7 +105,9 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     artifacts.extend(file::plan(ir)?);
     artifacts.extend(jobs::plan(ir)?);
     artifacts.extend(mail::plan(ir)?);
+    artifacts.extend(realtime::plan(ir)?);
     artifacts.extend(tenant::plan(ir)?);
+    artifacts.extend(webhooks::plan(ir)?);
     artifacts.extend(entity_artifacts(ir)?);
     Ok(artifacts)
 }
@@ -240,7 +244,9 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod mail;
         mod openapi;
         mod operations;
+        mod realtime;
         mod tenant;
+        mod webhooks;
 
         pub use error::{ApiError, FieldViolation};
         pub use appstruct_runtime::{
@@ -271,6 +277,8 @@ fn service_exports(ir: &AppIr) -> TokenStream {
         };
         #mail_job_exports
         pub use mail::{MailDelivery, MailError, MailMessage, MailProvider, MailState};
+        pub use realtime::{RealtimeEvent, RealtimeState};
+        pub use webhooks::{WebhookError, WebhookReceipt, WebhookWorker, WebhookWorkerHandle};
     }
 }
 

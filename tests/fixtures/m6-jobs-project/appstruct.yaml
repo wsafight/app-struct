@@ -35,6 +35,26 @@ modules:
     queues:
       default: { max_attempts: 2, backoff_seconds: 1 }
       mail: { max_attempts: 3, backoff_seconds: 2 }
+    schedules:
+      cleanup:
+        cron: "*/15 * * * *"
+        queue: default
+        kind: maintenance.cleanup
+        payload: '{"scope":"expired"}'
+  webhooks:
+    enabled: true
+    poll_interval_ms: 50
+    endpoints:
+      operations:
+        url: https://hooks.example.com/appstruct
+        secret_env: APPSTRUCT_WEBHOOK_OPERATIONS_SECRET
+        events: [project.created, project.archived]
+        max_attempts: 4
+        backoff_seconds: 3
+  realtime:
+    enabled: true
+    heartbeat_seconds: 10
+    presence_ttl_seconds: 30
 
 includes:
   - spec/project.yaml

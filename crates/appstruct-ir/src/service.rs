@@ -54,6 +54,8 @@ pub struct JobsIr {
     pub poll_interval_ms: u64,
     pub lease_seconds: u64,
     pub queues: Vec<JobQueueIr>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub schedules: Vec<JobScheduleIr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +63,57 @@ pub struct JobQueueIr {
     pub name: String,
     pub max_attempts: u32,
     pub backoff_seconds: u64,
+}
+
+/// Declarative recurring job schedule.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobScheduleIr {
+    pub name: String,
+    pub cron: String,
+    pub interval_seconds: u64,
+    pub queue: String,
+    pub kind: String,
+    pub payload: String,
+}
+
+/// PostgreSQL outbox-backed signed webhook settings.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WebhooksIr {
+    pub enabled: bool,
+    pub poll_interval_ms: u64,
+    pub endpoints: Vec<WebhookEndpointIr>,
+}
+
+impl WebhooksIr {
+    #[must_use]
+    pub fn is_disabled(&self) -> bool {
+        !self.enabled && self.endpoints.is_empty()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WebhookEndpointIr {
+    pub name: String,
+    pub url: String,
+    pub secret_env: String,
+    pub events: Vec<String>,
+    pub max_attempts: u32,
+    pub backoff_seconds: u64,
+}
+
+/// Authenticated server-sent events and database-backed online presence.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RealtimeIr {
+    pub enabled: bool,
+    pub heartbeat_seconds: u64,
+    pub presence_ttl_seconds: u64,
+}
+
+impl RealtimeIr {
+    #[must_use]
+    pub fn is_disabled(&self) -> bool {
+        !self.enabled
+    }
 }
 
 /// File metadata and object-storage settings.

@@ -14,6 +14,7 @@ mod doctor;
 mod environment;
 mod generation;
 mod migration;
+mod module_registry;
 mod preset;
 mod project_new;
 mod report;
@@ -85,6 +86,11 @@ enum Command {
     Migrate {
         #[command(subcommand)]
         command: migration::MigrateCommand,
+    },
+    /// Install and inspect signed remote modules.
+    Module {
+        #[command(subcommand)]
+        command: module_registry::ModuleCommand,
     },
     /// Inspect the locked official preset and its expanded module defaults.
     Preset {
@@ -167,6 +173,7 @@ fn run(cli: Cli) -> ExitCode {
         Command::Check { deny_warnings } => run_check(&project, cli.format, deny_warnings),
         Command::Generate { check } => generation::run(&project, check),
         Command::Migrate { command } => migration::run(&project, command),
+        Command::Module { command } => module_registry::run(&project, &command),
         Command::Preset { command } => preset::run(&project, &command),
         Command::Update => update::run(&project),
     }

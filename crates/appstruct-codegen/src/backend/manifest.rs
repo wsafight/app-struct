@@ -38,6 +38,16 @@ pub(super) fn cargo(ir: &AppIr) -> String {
     if ir.auth.enabled || ir.file.enabled {
         manifest.push_str("sha2 = \"=0.10.9\"\n");
     }
+    if ir.webhooks.enabled {
+        manifest.push_str("hmac = \"=0.12.1\"\n");
+        if !ir.auth.enabled && !ir.file.enabled {
+            manifest.push_str("sha2 = \"=0.10.9\"\n");
+        }
+    }
+    if ir.realtime.enabled {
+        manifest.push_str("async-stream = \"=0.3.6\"\n");
+        manifest.push_str("futures-core = \"=0.3.32\"\n");
+    }
     if ir.file.enabled {
         manifest.push_str("infer = \"=0.19.0\"\n");
         match ir.file.provider {
@@ -48,6 +58,12 @@ pub(super) fn cargo(ir: &AppIr) -> String {
     }
     if ir.mail.enabled {
         manifest.push_str("minijinja = \"=2.12.0\"\n");
+    }
+    if ir.webhooks.enabled
+        && !ir.auth.oauth_enabled
+        && !(ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend)
+    {
+        manifest.push_str("reqwest = { version = \"=0.13.4\", default-features = false, features = [\"rustls\"] }\n");
     }
     manifest
 }

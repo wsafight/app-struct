@@ -1,7 +1,7 @@
 use crate::surface::Located;
 use appstruct_ir::{
     AuditIr, AuthIr, Diagnostic, FileIr, JobsIr, MailIr, ModuleArtifactIr, ModuleOrigin,
-    ResolvedModule, TenantIr,
+    RealtimeIr, ResolvedModule, TenantIr, WebhooksIr,
 };
 use appstruct_module_sdk::{
     ModuleGraphError, ModuleManifest, resolve_modules, validate_manifest, validate_relative_path,
@@ -20,6 +20,7 @@ const MAX_MODULE_ARTIFACT_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Clone, Debug)]
 pub(crate) struct LoadedModule {
     pub(crate) manifest: ModuleManifest,
+    pub(crate) origin: ModuleOrigin,
     pub(crate) manifest_path: String,
     pub(crate) content_sha256: String,
     pub(crate) artifacts: Vec<ModuleArtifactIr>,
@@ -137,10 +138,24 @@ fn load_local_module(
     }
     Ok(LoadedModule {
         manifest,
+        origin: ModuleOrigin::Local,
         manifest_path: declaration.value.clone(),
         content_sha256: content_sha256(&bytes),
         artifacts,
     })
+}
+
+pub(crate) fn load_remote_module(
+    project_root: &Path,
+    manifest_path: &str,
+) -> Result<LoadedModule, Diagnostic> {
+    let declaration = Located {
+        value: manifest_path.to_owned(),
+        span: crate::loading::synthetic_span("appstruct.modules.lock"),
+    };
+    let mut module = load_local_module(project_root, &declaration)?;
+    module.origin = ModuleOrigin::Remote;
+    Ok(module)
 }
 
 fn content_sha256(content: &[u8]) -> String {
@@ -158,7 +173,11 @@ fn module_path_error(declaration: &Located<String>, reason: &str) -> Diagnostic 
     )
 }
 
-fn read_isolated_file(base: &Path, relative: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
+pub(crate) fn read_isolated_file(
+    base: &Path,
+    relative: &str,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
     validate_relative_path(relative).map_err(str::to_owned)?;
     let mut current = base.to_path_buf();
     let components = Path::new(relative).components().collect::<Vec<_>>();
@@ -194,19 +213,23 @@ fn read_isolated_file(base: &Path, relative: &str, max_bytes: usize) -> Result<V
     Ok(bytes)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn resolve_modules_for_app(
     auth: &AuthIr,
     tenant: &TenantIr,
     audit: &AuditIr,
     mail: &MailIr,
     jobs: &JobsIr,
+    webhooks: &WebhooksIr,
+    realtime: &RealtimeIr,
     file: &FileIr,
     local_modules: Vec<LoadedModule>,
 ) -> Result<Vec<ResolvedModule>, ModuleGraphError> {
-    let mut manifests = official_manifests(auth, tenant, audit, mail, jobs, file);
+    let mut manifests =
+        official_manifests(auth, tenant, audit, mail, jobs, webhooks, realtime, file);
     manifests.extend(local_modules.iter().map(|module| module.manifest.clone()));
     let resolved = resolve_modules(manifests)?;
-    let local_modules = local_modules
+    let external_modules = local_modules
         .into_iter()
         .map(|module| (module.manifest.name.clone(), module))
         .collect::<BTreeMap<_, _>>();
@@ -214,22 +237,18 @@ pub(crate) fn resolve_modules_for_app(
         .into_iter()
         .map(|module| {
             let name = module.manifest.name;
-            let origin = if local_modules.contains_key(&name) {
-                ModuleOrigin::Local
-            } else {
-                ModuleOrigin::Official
-            };
-            let local = local_modules.get(&name);
+            let external = external_modules.get(&name);
+            let origin = external.map_or(ModuleOrigin::Official, |module| module.origin);
             ResolvedModule {
                 name,
                 version: module.manifest.version,
                 origin,
-                manifest_path: local.map(|module| module.manifest_path.clone()),
-                content_sha256: local.map(|module| module.content_sha256.clone()),
+                manifest_path: external.map(|module| module.manifest_path.clone()),
+                content_sha256: external.map(|module| module.content_sha256.clone()),
                 provides: module.manifest.provides,
                 requires: module.manifest.requires,
                 startup_order: module.startup_order,
-                artifacts: local
+                artifacts: external
                     .map(|module| module.artifacts.clone())
                     .unwrap_or_default(),
             }
@@ -237,12 +256,15 @@ pub(crate) fn resolve_modules_for_app(
         .collect())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn official_manifests(
     auth: &AuthIr,
     tenant: &TenantIr,
     audit: &AuditIr,
     mail: &MailIr,
     jobs: &JobsIr,
+    webhooks: &WebhooksIr,
+    realtime: &RealtimeIr,
     file: &FileIr,
 ) -> Vec<ModuleManifest> {
     let mut manifests = Vec::new();
@@ -268,6 +290,16 @@ fn official_manifests(
             &[]
         };
         manifests.push(manifest("jobs", &["jobs.outbox"], requires));
+    }
+    if webhooks.enabled {
+        manifests.push(manifest("webhooks", &["webhooks.delivery"], &[]));
+    }
+    if realtime.enabled {
+        manifests.push(manifest(
+            "realtime",
+            &["realtime.events", "presence.online"],
+            &[AUTH_IDENTITY],
+        ));
     }
     if file.enabled {
         manifests.push(manifest("file", &["file.storage"], &[]));

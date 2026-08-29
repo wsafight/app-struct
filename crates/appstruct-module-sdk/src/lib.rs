@@ -1,10 +1,15 @@
 //! Stable module manifests and deterministic capability graph resolution.
 
 mod manifest;
+mod registry;
 
 pub use manifest::{
     MODULE_API_VERSION, ModuleArtifact, ModuleManifest, module_namespace, validate_manifest,
     validate_relative_path,
+};
+pub use registry::{
+    RegistryArtifact, RegistryEnvelope, RegistryPackage, RegistryVerificationError,
+    verify_registry_envelope,
 };
 
 use std::collections::{BTreeMap, BTreeSet};

@@ -1,5 +1,5 @@
 use crate::surface::{SurfaceJobQueue, SurfaceJobs};
-use appstruct_ir::{Diagnostic, JobQueueIr, JobsIr, SourceSpan};
+use appstruct_ir::{Diagnostic, JobQueueIr, JobScheduleIr, JobsIr, SourceSpan};
 
 pub(crate) fn lower_jobs(
     jobs: &SurfaceJobs,
@@ -39,16 +39,22 @@ pub(crate) fn lower_jobs(
             diagnostics,
         )
     });
-    let queues = jobs
+    let queues: Vec<JobQueueIr> = jobs
         .queues
         .iter()
         .map(|queue| lower_queue(queue, diagnostics))
+        .collect();
+    let schedules = jobs
+        .schedules
+        .iter()
+        .map(|schedule| lower_schedule(schedule, &queues, diagnostics))
         .collect();
     JobsIr {
         enabled: true,
         poll_interval_ms,
         lease_seconds,
         queues,
+        schedules,
     }
 }
 
@@ -58,7 +64,97 @@ fn disabled() -> JobsIr {
         poll_interval_ms: 250,
         lease_seconds: 30,
         queues: Vec::new(),
+        schedules: Vec::new(),
     }
+}
+
+fn lower_schedule(
+    schedule: &crate::surface::SurfaceJobSchedule,
+    queues: &[JobQueueIr],
+    diagnostics: &mut Vec<Diagnostic>,
+) -> JobScheduleIr {
+    if !valid_name(&schedule.name.value) {
+        diagnostics.push(Diagnostic::error(
+            "AS3053",
+            "schedule name must use lowercase letters, digits, `_`, or `-`",
+            schedule.name.span.clone(),
+        ));
+    }
+    if !queues
+        .iter()
+        .any(|queue| queue.name == schedule.queue.value)
+    {
+        diagnostics.push(Diagnostic::error(
+            "AS3054",
+            format!(
+                "schedule references unknown queue `{}`",
+                schedule.queue.value
+            ),
+            schedule.queue.span.clone(),
+        ));
+    }
+    if schedule.kind.value.trim().is_empty() || schedule.kind.value.len() > 120 {
+        diagnostics.push(Diagnostic::error(
+            "AS3055",
+            "schedule kind must contain between 1 and 120 bytes",
+            schedule.kind.span.clone(),
+        ));
+    }
+    let payload = schedule
+        .payload
+        .as_ref()
+        .map_or_else(|| "{}".to_owned(), |value| value.value.clone());
+    if serde_json::from_str::<serde_json::Value>(&payload).is_err() {
+        diagnostics.push(Diagnostic::error(
+            "AS3056",
+            "schedule payload must be valid JSON",
+            schedule
+                .payload
+                .as_ref()
+                .map_or(schedule.kind.span.clone(), |value| value.span.clone()),
+        ));
+    }
+    let interval_seconds = cron_interval(&schedule.cron.value).unwrap_or_else(|| {
+        diagnostics.push(Diagnostic::error(
+            "AS3057",
+            "schedule cron must be `@every Ns` or a five-field expression with a fixed minute interval",
+            schedule.cron.span.clone(),
+        ));
+        60
+    });
+    JobScheduleIr {
+        name: schedule.name.value.clone(),
+        cron: schedule.cron.value.clone(),
+        interval_seconds,
+        queue: schedule.queue.value.clone(),
+        kind: schedule.kind.value.clone(),
+        payload,
+    }
+}
+
+fn cron_interval(value: &str) -> Option<u64> {
+    if let Some(seconds) = value
+        .strip_prefix("@every ")
+        .and_then(|value| value.strip_suffix('s'))
+    {
+        return seconds
+            .parse::<u64>()
+            .ok()
+            .filter(|seconds| (1..=86_400).contains(seconds));
+    }
+    let fields = value.split_whitespace().collect::<Vec<_>>();
+    if fields.len() != 5 || fields[1..].iter().any(|field| *field != "*") {
+        return None;
+    }
+    let minute = fields[0];
+    if minute == "*" {
+        return Some(60);
+    }
+    minute
+        .strip_prefix("*/")
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|minutes| (1..=1_440).contains(minutes))
+        .map(|minutes| minutes * 60)
 }
 
 fn lower_queue(queue: &SurfaceJobQueue, diagnostics: &mut Vec<Diagnostic>) -> JobQueueIr {

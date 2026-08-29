@@ -4,6 +4,7 @@ use appstruct_ir::AppIr;
 use quote::quote;
 
 mod disabled;
+mod schedule;
 
 use disabled::disabled_source;
 
@@ -23,8 +24,10 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
 fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let contract = contract_source();
     let queues = queue_source(ir);
+    let schedules = schedule::definitions(ir);
     let enqueue = enqueue_source();
     let worker = worker_source(ir.jobs.poll_interval_ms, ir.jobs.lease_seconds);
+    let schedule_persistence = schedule::persistence();
     let persistence = persistence_source();
     let mail = (ir.mail.enabled).then(mail_source);
     render(quote! {
@@ -38,8 +41,10 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         };
         #contract
         #queues
+        #schedules
         #enqueue
         #worker
+        #schedule_persistence
         #persistence
         #mail
     })
@@ -203,8 +208,14 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
                 let observer = JobWorkerObserver { health };
                 let task = appstruct_runtime::SupervisedTaskHandle::spawn(
                     "appstruct/jobs", observer, move |mut receiver| async move {
+                    if let Err(error) = ensure_schedules(&self.database).await {
+                        tracing::error!(%error, "job schedule registration failed");
+                    }
                     loop {
                         if *receiver.borrow() { break; }
+                        if let Err(error) = schedule_due(&self.database).await {
+                            tracing::error!(%error, "job schedule iteration failed");
+                        }
                         match self.run_once().await {
                             Ok(true) => continue,
                             Ok(false) => {}
