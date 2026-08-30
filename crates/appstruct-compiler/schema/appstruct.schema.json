@@ -203,6 +203,9 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "poll_interval_ms": { "type": "integer", "minimum": 10, "maximum": 60000 },
+        "connect_timeout_ms": { "type": "integer", "minimum": 100, "maximum": 25000 },
+        "read_timeout_ms": { "type": "integer", "minimum": 100, "maximum": 25000 },
+        "request_timeout_ms": { "type": "integer", "minimum": 100, "maximum": 25000 },
         "endpoints": {
           "type": "object",
           "propertyNames": { "pattern": "^[a-z0-9_-]+$" },

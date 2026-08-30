@@ -28,6 +28,30 @@ pub(crate) fn lower_webhooks(
         }
         value.value.clamp(10, 60_000)
     });
+    let connect_timeout_ms = ranged(
+        webhooks.connect_timeout_ms.as_ref(),
+        3_000,
+        100,
+        25_000,
+        "AS3084",
+        diagnostics,
+    );
+    let read_timeout_ms = ranged(
+        webhooks.read_timeout_ms.as_ref(),
+        10_000,
+        100,
+        25_000,
+        "AS3085",
+        diagnostics,
+    );
+    let request_timeout_ms = ranged(
+        webhooks.request_timeout_ms.as_ref(),
+        15_000,
+        100,
+        25_000,
+        "AS3086",
+        diagnostics,
+    );
     let mut names = BTreeSet::new();
     let mut endpoints = webhooks
         .endpoints
@@ -38,6 +62,9 @@ pub(crate) fn lower_webhooks(
     WebhooksIr {
         enabled: true,
         poll_interval_ms,
+        connect_timeout_ms,
+        read_timeout_ms,
+        request_timeout_ms,
         endpoints,
     }
 }

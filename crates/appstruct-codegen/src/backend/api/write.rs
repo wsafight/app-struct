@@ -33,6 +33,7 @@ pub(super) fn handlers(
     let update_allowed = access::update_allowed(entity, &entity.access.update)?;
     let delete_allowed = access::row_allowed(entity, &entity.access.delete)?;
     let event_prefix = module_name(entity);
+    let resource = Literal::string(&entity.table_name);
     let create_event = Literal::string(&format!("{event_prefix}.created"));
     let update_event = Literal::string(&format!("{event_prefix}.updated"));
     let delete_event = Literal::string(&format!("{event_prefix}.deleted"));
@@ -69,7 +70,7 @@ pub(super) fn handlers(
         *soft_delete,
         &delete_event,
     );
-    let helpers = helper_functions(module, hooks);
+    let helpers = helper_functions(module, hooks, primary, &resource);
     Ok(quote! {
         #read
         #create
@@ -336,7 +337,12 @@ fn audit_event(entity: &EntityIr, primary: &Ident, operation: &str) -> TokenStre
     }
 }
 
-fn helper_functions(module: &Ident, hooks: &Ident) -> TokenStream {
+fn helper_functions(
+    module: &Ident,
+    hooks: &Ident,
+    primary: &Ident,
+    resource: &Literal,
+) -> TokenStream {
     quote! {
         fn expected_revision(headers: &HeaderMap) -> Result<i64, ApiError> {
             let value = headers.get(header::IF_MATCH).ok_or(ApiError::PreconditionRequired)?;
@@ -358,13 +364,8 @@ fn helper_functions(module: &Ident, hooks: &Ident) -> TokenStream {
             event: &str,
             model: &#module::Model,
         ) {
-            let Ok(payload) = redact_model(context, model.clone()) else {
-                tracing::warn!(event, "realtime event payload could not be serialized");
-                return;
-            };
-            if let Err(error) = state.realtime.publish(
-                event,
-                &payload,
+            if let Err(error) = state.realtime.publish_resource_model(
+                event, #resource, &model.#primary.to_string(), model,
                 context.actor().map(|actor| actor.id),
                 context.tenant(),
             ) {

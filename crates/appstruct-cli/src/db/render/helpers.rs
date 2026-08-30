@@ -1,4 +1,4 @@
-use super::SpecType;
+use super::types::SpecType;
 use std::collections::BTreeSet;
 
 pub(super) fn render_capabilities(output: &mut String, kind: &SpecType, relation: bool) {

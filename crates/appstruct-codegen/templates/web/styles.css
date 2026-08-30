@@ -24,6 +24,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .admin-links { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 22px; font-size: 13px; }
 .admin-jobs-table th:first-child, .admin-jobs-table td:first-child { width: 180px; }
 .admin-jobs-table th:nth-child(4), .admin-jobs-table td:nth-child(4) { width: 92px; }
+.admin-webhooks-table th:first-child, .admin-webhooks-table td:first-child { width: 180px; }
 .job-status { display: inline-block; min-width: 68px; padding: 3px 7px; border-radius: 4px; background: #e8edef; color: #415159; text-align: center; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 .job-status.queued { background: #e4eef5; color: #315f7b; }
 .job-status.succeeded { background: #dcefe9; color: #176451; }
@@ -117,9 +118,22 @@ tr:last-child td { border-bottom: 0; }
 .audit-operation.delete { background: #f8e2e0; color: #973c38; }
 .audit-payload td { height: auto; padding: 0 14px 10px; white-space: normal; background: #fafbfb; }
 .audit-payload summary { cursor: pointer; color: #536168; font-size: 12px; }
+.audit-payload > td > details > summary { display: flex; align-items: center; gap: 8px; }
+.audit-change-count { color: #78868b; }
+.audit-diff { width: 100%; min-width: 560px; margin-top: 10px; border: 1px solid #d8dfe1; background: white; }
+.audit-diff th, .audit-diff td { width: auto; height: auto; padding: 7px 9px; white-space: normal; text-align: left; vertical-align: top; }
+.audit-diff thead th { background: #eef2f3; }
+.audit-diff tbody th { width: 22%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.audit-raw { margin-top: 10px; }
 .audit-json { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-top: 10px; }
 .audit-json section { min-width: 0; }
 .audit-json h2 { margin: 0 0 5px; font-size: 12px; }
 .audit-json pre { max-height: 260px; margin: 0; overflow: auto; border: 1px solid #d8dfe1; border-radius: 5px; background: white; padding: 10px; font-size: 11px; }
+.inline-value { min-width: 110px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.inline-edit-button { width: 26px; height: 26px; flex: 0 0 26px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #536168; cursor: pointer; }
+.inline-edit-button:hover { background: #e8edef; color: #26343a; }
+.inline-edit-button:disabled { cursor: not-allowed; opacity: .45; }
+.inline-editor { min-width: 180px; display: flex; align-items: center; gap: 3px; }
+.inline-editor > input:not([type="checkbox"]), .inline-editor > select { width: 120px; height: 30px; border: 1px solid #9babad; border-radius: 4px; padding: 0 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 760px) { .shell { display: block; } .sidebar { padding: 8px 12px; border-right: 0; border-bottom: 1px solid #2e393e; } .brand { height: 38px; } .sidebar nav { display: flex; overflow-x: auto; margin-top: 4px; } .sidebar nav a { flex: 0 0 auto; } .topbar { display: none; } .page { padding: 18px 14px; } .page-heading { align-items: center; } .list-controls { align-items: stretch; flex-direction: column; } .search-control, .filter-control select, .filter-control > input { width: 100%; } .range-filter input { flex: 1 1 0; width: auto; } .form-grid, .detail-grid, .admin-grid { grid-template-columns: 1fr; } .detail-grid > div:nth-child(odd) { border-right: 0; } .table-frame { overflow-x: auto; } table { min-width: 680px; } }

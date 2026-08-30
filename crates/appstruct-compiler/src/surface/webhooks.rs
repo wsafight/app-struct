@@ -16,7 +16,14 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceWebhooks, Di
     let webhooks = expect_mapping(&entry.value, "`modules.webhooks`")?;
     ensure_known_keys(
         webhooks,
-        &["enabled", "poll_interval_ms", "endpoints"],
+        &[
+            "enabled",
+            "poll_interval_ms",
+            "connect_timeout_ms",
+            "read_timeout_ms",
+            "request_timeout_ms",
+            "endpoints",
+        ],
         "`modules.webhooks`",
     )?;
     let enabled = webhooks
@@ -29,6 +36,18 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceWebhooks, Di
         poll_interval_ms: webhooks
             .get("poll_interval_ms")
             .map(|entry| expect_u64(&entry.value, "webhook poll interval"))
+            .transpose()?,
+        connect_timeout_ms: webhooks
+            .get("connect_timeout_ms")
+            .map(|entry| expect_u64(&entry.value, "webhook connect timeout"))
+            .transpose()?,
+        read_timeout_ms: webhooks
+            .get("read_timeout_ms")
+            .map(|entry| expect_u64(&entry.value, "webhook read timeout"))
+            .transpose()?,
+        request_timeout_ms: webhooks
+            .get("request_timeout_ms")
+            .map(|entry| expect_u64(&entry.value, "webhook request timeout"))
             .transpose()?,
         endpoints: webhooks
             .get("endpoints")

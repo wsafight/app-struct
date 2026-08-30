@@ -87,7 +87,7 @@ enum Command {
         #[command(subcommand)]
         command: migration::MigrateCommand,
     },
-    /// Install and inspect signed remote modules.
+    /// Install, update, verify, remove, and inspect signed remote modules.
     Module {
         #[command(subcommand)]
         command: module_registry::ModuleCommand,

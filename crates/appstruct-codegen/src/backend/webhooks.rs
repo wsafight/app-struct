@@ -20,6 +20,9 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
 fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let endpoints = endpoint_source(ir);
     let poll_interval = ir.webhooks.poll_interval_ms;
+    let connect_timeout = ir.webhooks.connect_timeout_ms;
+    let read_timeout = ir.webhooks.read_timeout_ms;
+    let request_timeout = ir.webhooks.request_timeout_ms;
     render(quote! {
         use hmac::{Hmac, Mac};
         use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
@@ -101,7 +104,13 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         }
         impl WebhookWorker {
             pub fn new(database: DatabaseConnection) -> Self {
-                Self { database, client: reqwest::Client::new(), worker_id: uuid::Uuid::now_v7().to_string() }
+                let client = reqwest::Client::builder()
+                    .connect_timeout(Duration::from_millis(#connect_timeout))
+                    .read_timeout(Duration::from_millis(#read_timeout))
+                    .timeout(Duration::from_millis(#request_timeout))
+                    .build()
+                    .expect("static webhook HTTP client configuration is valid");
+                Self { database, client, worker_id: uuid::Uuid::now_v7().to_string() }
             }
             pub async fn run_once(&self) -> Result<bool, WebhookError> {
                 let Some(delivery) = claim(&self.database, &self.worker_id).await? else {
@@ -138,7 +147,13 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                     .header("x-appstruct-timestamp", timestamp)
                     .header("x-appstruct-signature", format!("v1={signature}"))
                     .body(body).send().await
-                    .map_err(|error| WebhookError::Delivery(error.to_string()))?;
+                    .map_err(|error| {
+                        if error.is_timeout() {
+                            WebhookError::Delivery(format!("request timed out: {error}"))
+                        } else {
+                            WebhookError::Delivery(error.to_string())
+                        }
+                    })?;
                 let status = i32::from(response.status().as_u16());
                 if response.status().is_success() { Ok(status) } else {
                     Err(WebhookError::Delivery(format!("endpoint returned HTTP {status}")))

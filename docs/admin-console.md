@@ -24,6 +24,14 @@ All Admin endpoints require the `admin` role. Cookie-authenticated mutations als
 generated CSRF header; Bearer tokens retain their normal Actor authorization. Row locks serialize
 retry/replay with competing administrative actions, and queued or running jobs cannot be replayed.
 
+When Webhooks is enabled, `GET /api/admin/webhooks` returns up to 100 recent deliveries and accepts
+`status=pending|delivering|succeeded|dead`. It exposes endpoint/event names, attempt state, response
+status, timing, tenant, and the bounded last error; payloads and endpoint secrets are omitted.
+
+`POST /api/admin/webhooks/{id}/retry` resets a dead delivery in place. `POST
+/api/admin/webhooks/{id}/replay` copies a succeeded or dead delivery into a new pending row with no
+idempotency key. The same admin, CSRF, and row-lock requirements used by Jobs apply to deliveries.
+
 `GET /api/admin/users?limit=50` returns at most 100 registered accounts. It only exposes the user
 identity, roles, verification state, creation time, and a count of non-revoked, non-expired sessions;
 session tokens and password hashes are never returned.

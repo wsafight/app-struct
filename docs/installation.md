@@ -1,8 +1,8 @@
 # Installation
 
 AppStruct is currently installed from a source checkout. The repository is prepared to publish
-crates.io packages and checksummed macOS/Linux archives, but no public package or binary installer
-is assumed to exist during the technical preview.
+crates.io packages and checksummed macOS/Linux/Windows archives, but no public package or binary
+installer is assumed to exist during the technical preview.
 
 ## Requirements
 
@@ -62,6 +62,17 @@ install -m 0755 appstruct-<version>-<target>/appstruct "$HOME/.local/bin/appstru
 Linux users may use `sha256sum -c` instead. Do not install an archive when its checksum fails.
 After the crates are published, `cargo install appstruct-cli --version <version> --locked` is the
 registry equivalent; source and binary release versions remain lockstep.
+
+Release tags publish glibc and static musl archives for Linux x86-64/ARM64, native archives for
+Apple Silicon and Intel macOS, and an x86-64 Windows `.zip`. On Windows, verify and expand it from
+PowerShell:
+
+```powershell
+$archive = "appstruct-<version>-x86_64-pc-windows-msvc.zip"
+$expected = (Get-Content "$archive.sha256").Split()[0]
+if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw "checksum mismatch" }
+Expand-Archive $archive -DestinationPath .
+```
 
 ## Start With External PostgreSQL
 

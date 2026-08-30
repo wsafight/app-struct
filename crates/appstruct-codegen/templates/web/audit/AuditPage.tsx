@@ -43,7 +43,34 @@ export function AuditPage() {
 }
 
 function AuditRow({ event }: { event: AuditEvent }) {
-  return <><tr><td>{new Date(event.occurred_at).toLocaleString()}</td><td><span className={`audit-operation ${event.operation}`}>{event.operation}</span></td><td>{event.entity}</td><td>{event.record_id}</td><td>{event.actor_id ?? "System"}</td></tr><tr className="audit-payload"><td colSpan={5}><details><summary>Change snapshot</summary><div className="audit-json"><section><h2>Before</h2><pre>{formatJson(event.before)}</pre></section><section><h2>After</h2><pre>{formatJson(event.after)}</pre></section></div></details></td></tr></>;
+  const changes = diffSnapshots(event.before, event.after);
+  return <><tr><td>{new Date(event.occurred_at).toLocaleString()}</td><td><span className={`audit-operation ${event.operation}`}>{event.operation}</span></td><td>{event.entity}</td><td>{event.record_id}</td><td>{event.actor_id ?? "System"}</td></tr><tr className="audit-payload"><td colSpan={5}><details><summary><span>Change snapshot</span><span className="audit-change-count">{changes.length} changed fields</span></summary>
+    {changes.length > 0 ? <table className="audit-diff"><thead><tr><th>Changed fields</th><th>Before</th><th>After</th></tr></thead><tbody>{changes.map((change) => <tr key={change.field}><th>{change.field}</th><td>{formatValue(change.before)}</td><td>{formatValue(change.after)}</td></tr>)}</tbody></table> : <p className="empty">No field changes</p>}
+    <details className="audit-raw"><summary>Raw snapshots</summary><div className="audit-json"><section><h2>Before</h2><pre>{formatJson(event.before)}</pre></section><section><h2>After</h2><pre>{formatJson(event.after)}</pre></section></div></details>
+  </details></td></tr></>;
+}
+
+interface AuditChange { field: string; before: unknown; after: unknown; }
+
+export function diffSnapshots(before: unknown, after: unknown): AuditChange[] {
+  const previous = snapshotObject(before);
+  const current = snapshotObject(after);
+  const fields = [...new Set([...Object.keys(previous), ...Object.keys(current)])].sort();
+  return fields
+    .filter((field) => JSON.stringify(previous[field]) !== JSON.stringify(current[field]))
+    .map((field) => ({ field, before: previous[field], after: current[field] }));
+}
+
+function snapshotObject(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function formatValue(value: unknown): string {
+  if (value === undefined || value === null) return "-";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
 }
 
 function formatJson(value: unknown): string {

@@ -1,7 +1,7 @@
 # AppStruct Next Product Roadmap
 
-> Status: active implementation (Phase A data onboarding is complete; Phase B operations is mostly complete)
-> Date: 2026-08-28
+> Status: active implementation (Phase A is complete; Phase B correctness and operations are mostly complete)
+> Date: 2026-08-30
 > Scope: product work after the M0-M6 technical preview baseline
 
 ## 1. Outcome
@@ -26,9 +26,10 @@ OpenAPI, generated clients, and any future protocol adapter retain identical aut
 ### 2.1 Existing database onboarding
 
 The read-only `appstruct db pull` workflow now derives a reviewable App Spec draft from PostgreSQL.
-The remaining gap is migration from real-world schemas: composite keys, cross-schema relations,
-arrays, domains, generated columns, and unsupported types still require manual review, and access
-rules cannot be inferred from database metadata.
+The remaining gap is migration from real-world schemas: composite keys and cross-schema relations
+still require manual modeling. Domains are imported as their base scalar with a constraint warning;
+arrays, generated columns, and unsupported types are omitted with warnings rather than emitted as
+runtime-incompatible fields. Access rules cannot be inferred from database metadata.
 
 ### 2.2 Data access and reporting
 
@@ -40,14 +41,17 @@ keys.
 ### 2.3 Admin productivity
 
 The Web runtime now has explicit bulk operations, saved views, import/export, soft delete, restore,
-and audit-backed history. Remaining productivity gaps are inline editing, richer history diff UI,
-and a more complete reusable headless controller for custom screens.
+revision-safe inline scalar editing, and audit-backed history with field-level diffs. Remaining
+productivity gaps are record-scoped history navigation and a more complete reusable headless
+form/URL controller for custom screens. Generated list/detail pages and custom page props now share
+the first headless controller slice for query keys, permission gates, request state, refetching, and
+mutation invalidation.
 
 ### 2.4 Operational administration
 
 The implemented modules expose infrastructure capabilities but only limited operational UI. An
-Admin module should cover users, organizations, invitations, sessions, job retry/dead-letter state,
-mail capture, file usage, and audit diffs before Billing is added to the SaaS preset.
+Admin module should complete organization/session operations, mail capture, file usage, and
+record-scoped audit navigation before Billing is added to the SaaS preset.
 
 ### 2.5 Automation and ecosystem
 
@@ -71,25 +75,49 @@ remains out of scope.
 ### Phase B: Usable operations
 
 - [x] Bulk update/delete and CSV import/export.
-- [x] Private and shared saved list views.
+- [x] Browser-private saved list views and shareable URL query snapshots.
+- [ ] Server-backed private and team-shared saved views.
 - [x] Soft delete, trash, restore, and audit-backed history display.
+- [x] Revision-safe inline scalar editing and field-level audit snapshot diffs.
 - [x] Organization invitations.
 - [x] Email verification.
 - [x] OAuth/OIDC.
 - [x] Personal API tokens.
 - [x] Jobs, mail, file, user, tenant, and audit administration pages (overview and module links).
 - [x] Admin job inspection, dead-letter retry, and terminal-job replay.
-- Recurring schedules and signed webhooks.
-- Optional SSE updates and record presence/locks.
+- [x] Admin webhook delivery inspection, dead-letter retry, and terminal-delivery replay.
+- [x] Interval schedules with skip-missed execution and stale-definition disable.
+- [x] Signed webhook outbox with bounded HTTP timeouts.
+- [x] Resource-authorized SSE, PostgreSQL multi-replica fan-out, presence, and optional TTL edit leases.
 
 ### Phase C: Distribution and delivery
 
-- Remote module registry with `appstruct.modules.lock`, checksum/signature verification, offline
-  cache validation, and AppStruct/Module API compatibility checks.
+- [x] Remote module registry lifecycle (`install`, `update`, `verify`, `uninstall`, and `list`) with
+  `appstruct.modules.lock`, signature verification, offline cache validation, and compatibility checks.
 - Deployment adapters and environment promotion without a mandatory hosted control plane.
 - Billing and subscription operations.
 - Visual schema, permission, page, and migration editor that produces reviewable App Spec diffs.
 - Project-local agent instructions and a policy-governed MCP adapter.
+
+### Next contract freeze
+
+The next data and Web runtime slice must settle its public contracts before implementation:
+
+1. Computed fields use typed, portable IR expressions rather than embedding unchecked SQL in App
+   Spec. The contract must define supported operators, null propagation, field dependencies, and
+   read-access behavior before adding syntax to the schema.
+2. Sorted cursor tokens bind the ordered sort specification and typed key values, define null
+   ordering, and always include the primary key as the final tie-breaker. A cursor from a different
+   filter or sort contract must be rejected.
+3. Server-backed saved views record an owner, resource, versioned query state, and `private` or
+   tenant-scoped `team` visibility. Team write/delete permissions and behavior outside tenant mode
+   must be explicit rather than inferred by the browser.
+4. The headless controller becomes complete only when it owns URL query parsing plus form
+   validation, field errors, revision conflicts, and unsaved-change state. Generated pages and
+   custom pages must consume the same controller contract.
+
+Until these contracts are implemented, cursor mode remains primary-key ordered, saved views remain
+browser-private, and custom forms continue to own their form and URL state.
 
 ## 4. First Slice: `appstruct db pull`
 
@@ -129,11 +157,11 @@ original table or column through explicit `table` and `column` declarations.
 
 ### 4.3 Review-required shapes
 
-Composite primary keys, composite foreign keys, cross-schema relations, arrays, domains, generated
-columns, expressions, and unsupported PostgreSQL types are reported as warnings. Tables without
-exactly one primary-key column are omitted because AppStruct entities require a single key.
-Unsupported scalar columns are represented as JSON placeholders with a nearby review comment; the
-draft is never added to `includes` automatically.
+Composite primary keys, composite foreign keys, and cross-schema relations are reported as
+warnings. Domains are lowered to supported base scalars with a constraint warning. Arrays,
+generated columns, expressions, and unsupported PostgreSQL types are omitted with warnings. Tables
+without exactly one primary-key column are omitted because AppStruct entities require a single key.
+The draft is never added to `includes` automatically.
 
 Access rules cannot be inferred from a database schema. Generated entities intentionally omit
 `access`, so adding the draft to an application fails closed until the developer declares public,

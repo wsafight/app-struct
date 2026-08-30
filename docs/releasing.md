@@ -1,7 +1,8 @@
 # Releasing AppStruct
 
-The repository can build crates.io packages and checksummed macOS/Linux binaries. Publishing is a
-maintainer action: credentials and the final repository URL are intentionally not stored here.
+The repository can build crates.io packages and checksummed macOS/Linux/Windows binaries.
+Publishing is a maintainer action: credentials and the final repository URL are intentionally not
+stored here.
 
 ## First GitHub Push
 
@@ -85,11 +86,16 @@ strict Clippy, and workspace tests, then builds these archives:
 
 ```text
 x86_64-unknown-linux-gnu
+aarch64-unknown-linux-gnu
+x86_64-unknown-linux-musl
+aarch64-unknown-linux-musl
 aarch64-apple-darwin
 x86_64-apple-darwin
+x86_64-pc-windows-msvc
 ```
 
-Each archive contains `appstruct` and the root README, with a sibling `.sha256` file. The workflow
-rejects a tag whose version does not match Cargo metadata and uploads artifacts only after the
-quality job succeeds. Inspect the created GitHub release and test one fresh installation before
+Linux and macOS releases are `.tar.gz` archives; Windows is a `.zip` archive containing
+`appstruct.exe`. Each archive also contains the root README and has a sibling `.sha256` file. The
+workflow rejects a tag whose version does not match Cargo metadata and uploads artifacts only after
+the quality job succeeds. Inspect the created GitHub release and test one fresh installation before
 announcing it.

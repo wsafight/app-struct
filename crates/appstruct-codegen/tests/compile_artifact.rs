@@ -86,10 +86,10 @@ fn resources_publish_bulk_and_csv_contracts() {
 fn resource_lists_publish_saved_view_controls() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
     let artifacts = plan(&compile_project(&fixture).unwrap()).unwrap();
-    let list = artifact_text(&artifacts, "web/src/pages/ResourceList.tsx");
-    assert!(list.contains("appstruct.saved-views"));
-    assert!(list.contains("copyViewLink"));
-    assert!(list.contains("Saved views"));
+    let saved_views = artifact_text(&artifacts, "web/src/pages/resource-list/SavedViews.tsx");
+    assert!(saved_views.contains("appstruct.saved-views"));
+    assert!(saved_views.contains("copyViewLink"));
+    assert!(saved_views.contains("Saved views"));
 }
 
 #[test]
@@ -114,15 +114,25 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(!package.contains("react-router-dom"));
     assert!(main.contains("QueryClientProvider"));
     assert!(navigation.contains("createRuntimeRouter"));
+    let controller = artifact_text(&artifacts, "web/src/controller.ts");
+    assert!(controller.contains("useResourceListController"));
+    assert!(controller.contains("useResourceDetailController"));
+    assert!(controller.contains("useMutation"));
     assert!(framework_test.contains("validateResourceSearch"));
     assert!(framework_test.contains("shouldRetryQuery"));
     assert!(routes.contains("validateSearch: validateResourceSearch"));
-    assert!(list.contains("useTable"));
-    assert!(list.contains("useMutation"));
+    let table = artifact_text(&artifacts, "web/src/pages/resource-list/ResourceTable.tsx");
+    assert!(list.contains("useRealtimeResource"));
+    assert!(table.contains("useTable"));
+    assert!(table.contains("InlineEditor"));
+    let inline_editor = artifact_text(&artifacts, "web/src/pages/resource-list/InlineEditor.tsx");
+    assert!(inline_editor.contains("supportsInlineEdit"));
+    assert!(list.contains("expected_revisions"));
     assert!(list.contains("ResourceFilters"));
     assert!(filters.contains("buildResourceFilterQuery"));
     assert!(form.contains("useForm"));
     assert!(form.contains("buildValidationSchema"));
+    assert!(list.contains("useResourceListController"));
 }
 
 #[test]
@@ -165,6 +175,14 @@ fn m3_extensions_require_every_handler_at_compile_time() {
         artifact_text(&artifacts, "web/src/generated/registry.ts")
             .contains("ProjectMetadataEditor")
     );
+    assert!(
+        artifact_text(&artifacts, "web/src/generated/registry.ts")
+            .contains("resources: readonly ResourceDefinition[]")
+    );
+    assert!(
+        artifact_text(&artifacts, "web/src/app/App.tsx")
+            .contains("<Component resources={resources} />")
+    );
     let openapi: Value =
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
     assert!(openapi["paths"]["/api/commands/archive-project"]["post"].is_object());
@@ -197,7 +215,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 62);
+    assert_eq!(artifacts.len(), 73);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -212,8 +230,8 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(project_api.contains("actor.has_role(\"admin\")"));
     assert!(project_api.contains("Column::OwnerId.eq(actor.id)"));
     assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("Argon2"));
-    assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("verify_email"));
-    assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("admin_overview"));
+    assert!(artifact_text(&artifacts, "backend/src/auth/recovery.rs").contains("verify_email"));
+    assert!(artifact_text(&artifacts, "backend/src/auth/admin.rs").contains("admin_overview"));
     assert!(artifact_text(&artifacts, "backend/src/auth/session.rs").contains("Bearer "));
     let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
     assert!(resources.contains(r#""mode":"role","role":"admin""#));
@@ -253,8 +271,8 @@ fn m4_disabled_auth_flows_are_not_published() {
         artifact_text(&artifacts, "web/src/auth/AuthPages.tsx")
             .contains("if (!authFeatures.passwordReset)")
     );
-    let handlers = artifact_text(&artifacts, "backend/src/auth/handlers.rs");
-    assert!(!handlers.contains("start_oidc"));
+    let oauth = artifact_text(&artifacts, "backend/src/auth/oauth.rs");
+    assert!(!oauth.contains("start_oidc"));
     assert!(!artifact_text(&artifacts, "backend/Cargo.toml").contains("reqwest"));
 }
 
@@ -291,7 +309,7 @@ fn oauth_enabled_auth_publishes_oidc_contracts() {
     let artifacts = plan(&ir).unwrap();
     let sql = artifact_text(&artifacts, "database/0001_initial.sql");
     assert!(sql.contains("_appstruct_auth_oauth_accounts"));
-    assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("start_oidc"));
+    assert!(artifact_text(&artifacts, "backend/src/auth/oauth.rs").contains("start_oidc"));
     assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("startOidc"));
     let openapi: Value =
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
@@ -393,7 +411,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 56);
+    assert_eq!(artifacts.len(), 63);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")

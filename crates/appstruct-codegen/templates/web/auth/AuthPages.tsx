@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Copy, CopyPlus, KeyRound, LogIn, Mail, Plus, RotateCcw, Trash2, UserPlus } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "../navigation";
-import { adminApi, adminFeatures, authApi, authFeatures, type AdminJob, type AdminJobStatus, type AdminOverview, type AdminUser, type ApiToken, type CreatedApiToken } from "../generated/client";
+import { adminApi, adminFeatures, authApi, authFeatures, type AdminJob, type AdminJobStatus, type AdminOverview, type AdminUser, type AdminWebhookDelivery, type AdminWebhookStatus, type ApiToken, type CreatedApiToken } from "../generated/client";
 import { useAuth } from "./Auth";
 
 export function LoginPage() {
@@ -141,7 +141,7 @@ export function AdminPage() {
     ["Users", overview.users], ["Organizations", overview.organizations], ["Invitations", overview.invitations], ["Sessions", overview.sessions],
     ["Jobs queued", overview.jobs_queued], ["Jobs dead", overview.jobs_dead], ["Mail deliveries", overview.mail_deliveries], ["Files", overview.files], ["Audit events", overview.audit_events],
   ] as const : [];
-  return <main className="page"><div className="page-heading"><div><h1>Administration</h1><p>Operational status across generated modules.</p></div></div>{error && <div className="alert" role="alert">{error}</div>}{overview ? <div className="admin-grid">{metrics.map(([label, value]) => <section className="admin-metric" key={label}><span>{label}</span><strong>{value.toLocaleString()}</strong></section>)}</div> : !error && <div className="auth-loading" aria-label="Loading" />}<nav className="admin-links" aria-label="Administration pages"><Link to="/admin/users">Users</Link><Link to="/tokens">API tokens</Link>{adminFeatures.jobs && <Link to="/admin/jobs">Jobs</Link>}{adminFeatures.tenant && <Link to="/organization">Organization</Link>}{adminFeatures.audit && <Link to="/audit">Audit log</Link>}</nav></main>;
+  return <main className="page"><div className="page-heading"><div><h1>Administration</h1><p>Operational status across generated modules.</p></div></div>{error && <div className="alert" role="alert">{error}</div>}{overview ? <div className="admin-grid">{metrics.map(([label, value]) => <section className="admin-metric" key={label}><span>{label}</span><strong>{value.toLocaleString()}</strong></section>)}</div> : !error && <div className="auth-loading" aria-label="Loading" />}<nav className="admin-links" aria-label="Administration pages"><Link to="/admin/users">Users</Link><Link to="/tokens">API tokens</Link>{adminFeatures.jobs && <Link to="/admin/jobs">Jobs</Link>}{adminFeatures.webhooks && <Link to="/admin/webhooks">Webhook deliveries</Link>}{adminFeatures.tenant && <Link to="/organization">Organization</Link>}{adminFeatures.audit && <Link to="/audit">Audit log</Link>}</nav></main>;
 }
 
 export function AdminUsersPage() {
@@ -188,6 +188,29 @@ export function AdminJobsPage() {
     }
   }
   return <main className="page"><Link className="back-link" to="/admin"><ArrowLeft size={15} /> Administration</Link><div className="page-heading"><div><h1>Jobs</h1><p>Inspect recent work and recover terminal jobs.</p></div><label className="filter-control">Status<select value={status} onChange={(event) => setStatus(event.target.value as "" | AdminJobStatus)}><option value="">All statuses</option><option value="queued">Queued</option><option value="running">Running</option><option value="succeeded">Succeeded</option><option value="dead">Dead</option></select></label></div>{error && <div className="alert" role="alert">{error}</div>}<section className="table-frame admin-jobs-table"><table><thead><tr><th>Job</th><th>Queue</th><th>Status</th><th>Attempts</th><th>Run at</th><th>Last error</th><th aria-label="Actions" /></tr></thead><tbody>{jobs.map((job) => <tr key={job.id}><td title={job.id}><strong>{job.kind}</strong></td><td>{job.queue}</td><td><span className={`job-status ${job.status}`}>{job.status}</span></td><td>{job.attempts} / {job.max_attempts}</td><td>{new Date(job.run_at).toLocaleString()}</td><td title={job.last_error ?? undefined}>{job.last_error ?? "-"}</td><td><div className="row-actions">{job.status === "dead" && <button type="button" className="icon-button" title="Retry job" aria-label={`Retry ${job.kind}`} disabled={Boolean(busy)} onClick={() => void mutate(job.id, "retry")}><RotateCcw size={15} /></button>}{(job.status === "succeeded" || job.status === "dead") && <button type="button" className="icon-button" title="Replay as a new job" aria-label={`Replay ${job.kind}`} disabled={Boolean(busy)} onClick={() => void mutate(job.id, "replay")}><CopyPlus size={15} /></button>}</div></td></tr>)}</tbody></table>{jobs.length === 0 && <div className="empty">No jobs match this status</div>}</section></main>;
+}
+
+export function AdminWebhooksPage() {
+  const auth = useAuth();
+  const [deliveries, setDeliveries] = useState<AdminWebhookDelivery[]>([]);
+  const [status, setStatus] = useState<"" | AdminWebhookStatus>("");
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!adminFeatures.webhooks || !auth.user?.roles.includes("admin")) return;
+    setError("");
+    adminApi.listWebhooks(status || undefined).then(setDeliveries).catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to load webhook deliveries"));
+  }, [auth.user, status]);
+  if (!auth.user?.roles.includes("admin") || !adminFeatures.webhooks) return <Navigate to="/admin" replace />;
+  async function mutate(id: string, operation: "retry" | "replay") {
+    setBusy(`${operation}:${id}`); setError("");
+    try {
+      const delivery = operation === "retry" ? await adminApi.retryWebhook(id) : await adminApi.replayWebhook(id);
+      setDeliveries((items) => operation === "retry" ? items.map((item) => item.id === id ? delivery : item) : [delivery, ...items]);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : `Unable to ${operation} webhook delivery`); }
+    finally { setBusy(""); }
+  }
+  return <main className="page"><Link className="back-link" to="/admin"><ArrowLeft size={15} /> Administration</Link><div className="page-heading"><div><h1>Webhook deliveries</h1><p>Inspect downstream delivery failures and replay terminal events.</p></div><label className="filter-control">Status<select value={status} onChange={(event) => setStatus(event.target.value as "" | AdminWebhookStatus)}><option value="">All statuses</option><option value="pending">Pending</option><option value="delivering">Delivering</option><option value="succeeded">Succeeded</option><option value="dead">Dead</option></select></label></div>{error && <div className="alert" role="alert">{error}</div>}<section className="table-frame admin-webhooks-table"><table><thead><tr><th>Event</th><th>Endpoint</th><th>Status</th><th>Attempts</th><th>HTTP</th><th>Last error</th><th aria-label="Actions" /></tr></thead><tbody>{deliveries.map((delivery) => <tr key={delivery.id}><td title={delivery.id}><strong>{delivery.event}</strong></td><td>{delivery.endpoint}</td><td><span className={`job-status ${delivery.status}`}>{delivery.status}</span></td><td>{delivery.attempts} / {delivery.max_attempts}</td><td>{delivery.response_status ?? "-"}</td><td title={delivery.last_error ?? undefined}>{delivery.last_error ?? "-"}</td><td><div className="row-actions">{delivery.status === "dead" && <button type="button" className="icon-button" title="Retry delivery" aria-label={`Retry ${delivery.event}`} disabled={Boolean(busy)} onClick={() => void mutate(delivery.id, "retry")}><RotateCcw size={15} /></button>}{(delivery.status === "succeeded" || delivery.status === "dead") && <button type="button" className="icon-button" title="Replay as a new delivery" aria-label={`Replay ${delivery.event}`} disabled={Boolean(busy)} onClick={() => void mutate(delivery.id, "replay")}><CopyPlus size={15} /></button>}</div></td></tr>)}</tbody></table>{deliveries.length === 0 && <div className="empty">No webhook deliveries match this status</div>}</section></main>;
 }
 
 function AuthFrame({ title, children }: { title: string; children: ReactNode }) {

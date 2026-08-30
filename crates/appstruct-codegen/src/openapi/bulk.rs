@@ -35,16 +35,16 @@ fn trash_parameters() -> Vec<Value> {
     vec![
         query_parameter(
             "page",
-            json!({ "type": "integer", "minimum": 1, "default": 1 }),
+            &json!({ "type": "integer", "minimum": 1, "default": 1 }),
         ),
         query_parameter(
             "page_size",
-            json!({ "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }),
+            &json!({ "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }),
         ),
     ]
 }
 
-fn query_parameter(name: &str, schema: Value) -> Value {
+fn query_parameter(name: &str, schema: &Value) -> Value {
     json!({ "name": name, "in": "query", "required": false, "schema": schema })
 }
 

@@ -64,6 +64,39 @@ Roll back the application and CLI binaries to their previous versions only if th
 still compatible. AppStruct does not generate down migrations and does not automatically undo an
 applied schema change. Use a separately reviewed forward repair or database restore when needed.
 
+For a compatible repair, create a new, monotonically ordered migration; never edit the migration
+that introduced the problem. For example, if a release added a required `region` field before all
+customer rows could be populated, first change that field to `required: false` in the App Spec.
+Then generate the forward repair through the normal snapshot transaction:
+
+```bash
+appstruct migrate plan
+appstruct migrate lint --deny-warnings
+appstruct migrate dev --accept
+```
+
+Review the newly generated migration. Its effective schema change should be equivalent to:
+
+```sql
+ALTER TABLE "customers"
+    ALTER COLUMN "region" DROP NOT NULL;
+```
+
+Commit the Spec, migration, and updated `.appstruct/schema.snapshot.json` together. Test them
+against a production snapshot, then use the normal runner in the release so history, checksums,
+locking, and drift checks remain authoritative:
+
+```bash
+appstruct migrate status
+appstruct migrate apply
+appstruct migrate status
+```
+
+This pattern is for schema-compatible forward repair. Use an application data migration before a
+constraint repair when existing rows need backfilling. If the old binary cannot operate against
+the changed schema, stop traffic and restore from the tested database backup instead of improvising
+a reverse migration during an incident.
+
 Keep the previous backend binary and Web artifact until the new release passes health and
 user-journey checks. A generated backend should not start against migration history from a newer
 incompatible release.

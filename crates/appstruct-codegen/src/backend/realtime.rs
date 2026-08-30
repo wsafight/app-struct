@@ -1,7 +1,10 @@
-use super::render;
+use super::{module_name, parse_ident, render};
 use crate::{Artifact, ArtifactKind, CodegenError};
 use appstruct_ir::AppIr;
 use quote::quote;
+
+mod fanout;
+mod locks;
 
 pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     let source = if ir.realtime.enabled {
@@ -20,6 +23,27 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
 fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let heartbeat_seconds = ir.realtime.heartbeat_seconds;
     let ttl_seconds = i64::try_from(ir.realtime.presence_ttl_seconds).unwrap_or(45);
+    let mut scope_arms = Vec::new();
+    let mut event_arms = Vec::new();
+    let mut inferred_resources = Vec::new();
+    for entity in &ir.entities {
+        let module_name = module_name(entity);
+        let module = parse_ident(&module_name)?;
+        let resource = &entity.table_name;
+        scope_arms.push(quote! {
+            #resource => crate::api::#module::authorize_realtime_scope(
+                state, context, record_id,
+            ).await
+        });
+        event_arms.push(quote! {
+            Some(#resource) => crate::api::#module::authorize_realtime_event(
+                state, context, event,
+            ).await
+        });
+        inferred_resources.push(quote! { #module_name => Some(#resource) });
+    }
+    let fanout = fanout::state(&inferred_resources);
+    let locks = locks::support();
     render(quote! {
         use crate::{ApiError, AppState};
         use axum::{
@@ -34,39 +58,8 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         use std::{convert::Infallible, time::Duration};
         use tokio::sync::broadcast;
 
-        #[derive(Clone, Debug, Serialize)]
-        pub struct RealtimeEvent {
-            pub id: uuid::Uuid,
-            pub event: String,
-            pub data: serde_json::Value,
-            pub actor_id: Option<uuid::Uuid>,
-            pub tenant_id: Option<uuid::Uuid>,
-            pub occurred_at: chrono::DateTime<chrono::Utc>,
-        }
-
-        #[derive(Clone)]
-        pub struct RealtimeState { sender: broadcast::Sender<RealtimeEvent> }
-        impl Default for RealtimeState {
-            fn default() -> Self {
-                let (sender, _) = broadcast::channel(1_024);
-                Self { sender }
-            }
-        }
-        impl RealtimeState {
-            pub fn publish<T: Serialize>(
-                &self, event: &str, data: &T, actor_id: Option<uuid::Uuid>,
-                tenant_id: Option<uuid::Uuid>,
-            ) -> Result<RealtimeEvent, serde_json::Error> {
-                let event = RealtimeEvent {
-                    id: uuid::Uuid::now_v7(), event: event.to_owned(),
-                    data: serde_json::to_value(data)?, actor_id, tenant_id,
-                    occurred_at: chrono::Utc::now(),
-                };
-                let _ = self.sender.send(event.clone());
-                Ok(event)
-            }
-            fn subscribe(&self) -> broadcast::Receiver<RealtimeEvent> { self.sender.subscribe() }
-        }
+        #fanout
+        #locks
 
         #[derive(Debug, Deserialize)]
         struct RealtimeQuery {
@@ -88,6 +81,8 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             Router::new()
                 .route("/api/realtime/events", get(events))
                 .route("/api/realtime/presence", get(presence))
+                .route("/api/realtime/locks", get(lock_status).post(acquire_lock))
+                .route("/api/realtime/locks/{token}", axum::routing::patch(renew_lock).delete(release_lock))
         }
 
         async fn events(
@@ -97,23 +92,31 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             let context = scoped_context(&state, headers, query.tenant_id).await?;
             let actor = context.actor().ok_or(ApiError::Unauthorized)?.clone();
             let tenant_id = context.tenant();
+            let resource = query.resource.clone().ok_or_else(|| {
+                ApiError::InvalidQuery("realtime resource is required".to_owned())
+            })?;
+            authorize_resource_scope(
+                &state, &context, &resource, query.record_id.as_deref(),
+            ).await?;
             let connection_id = uuid::Uuid::now_v7();
             register_presence(
                 &state.database, connection_id, actor.id, tenant_id,
-                query.resource.as_deref(), query.record_id.as_deref(),
+                &resource, query.record_id.as_deref(),
             ).await?;
             let mut receiver = state.realtime.subscribe();
             let realtime = state.realtime.clone();
             let database = state.database.clone();
-            let resource = query.resource;
             let record_id = query.record_id;
+            let event_state = state.clone();
+            let event_actor = actor.clone();
             let stream = async_stream::stream! {
                 let _lease = PresenceLease {
                     database: database.clone(), realtime: realtime.clone(), connection_id,
                     actor_id: actor.id, tenant_id, resource: resource.clone(), record_id: record_id.clone(),
                 };
-                let joined = realtime.publish(
-                    "presence.online", &presence_payload(connection_id, actor.id, resource.as_deref(), record_id.as_deref()),
+                let joined = realtime.publish_scoped(
+                    "presence.online", Some(&resource), record_id.as_deref(),
+                    &presence_payload(connection_id, actor.id, &resource, record_id.as_deref()),
                     Some(actor.id), tenant_id,
                 ).ok();
                 if let Some(joined) = joined { yield Ok(sse_event(&joined)); }
@@ -125,7 +128,19 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                             if heartbeat_presence(&database, connection_id).await.is_err() { break; }
                         }
                         received = receiver.recv() => match received {
-                            Ok(event) if event.tenant_id == tenant_id => yield Ok(sse_event(&event)),
+                            Ok(event) if event_matches_scope(&event, tenant_id, &resource, record_id.as_deref()) => {
+                                let allowed = if event.resource_model {
+                                    let context = crate::RequestContext::connection_with_services(
+                                        &event_state.database, &event_state.mail, &event_state.file,
+                                        &event_state.realtime, Some(event_actor.clone()), tenant_id,
+                                    );
+                                    authorize_resource_event(&event_state, &context, &event)
+                                        .await.unwrap_or(false)
+                                } else {
+                                    true
+                                };
+                                if allowed { yield Ok(sse_event(&event)); }
+                            }
                             Ok(_) => {}
                             Err(broadcast::error::RecvError::Lagged(_)) => {
                                 yield Ok(Event::default().event("resync").data("{}"));
@@ -144,9 +159,13 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             validate_scope(&query)?;
             let context = scoped_context(&state, headers, query.tenant_id).await?;
             if context.actor().is_none() { return Err(ApiError::Unauthorized); }
+            let resource = query.resource.as_deref().ok_or_else(|| {
+                ApiError::InvalidQuery("realtime resource is required".to_owned())
+            })?;
+            authorize_resource_scope(&state, &context, resource, query.record_id.as_deref()).await?;
             let rows = state.database.query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
-                "SELECT connection_id, actor_id, tenant_id, resource, record_id, connected_at, last_seen_at, expires_at FROM \"_appstruct_realtime_presence\" WHERE expires_at > CURRENT_TIMESTAMP AND (($1::uuid IS NULL AND tenant_id IS NULL) OR tenant_id = $1) AND ($2::text IS NULL OR resource = $2) AND ($3::text IS NULL OR record_id = $3) ORDER BY connected_at, connection_id LIMIT 500",
+                "SELECT connection_id, actor_id, tenant_id, resource, record_id, connected_at, last_seen_at, expires_at FROM \"_appstruct_realtime_presence\" WHERE expires_at > CURRENT_TIMESTAMP AND (($1::uuid IS NULL AND tenant_id IS NULL) OR tenant_id = $1) AND resource = $2 AND (($3::text IS NULL AND record_id IS NULL) OR record_id = $3) ORDER BY connected_at, connection_id LIMIT 500",
                 [context.tenant().into(), query.resource.into(), query.record_id.into()],
             )).await?;
             let data = rows.into_iter().map(presence_from_row)
@@ -165,7 +184,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         }
 
         fn validate_scope(query: &RealtimeQuery) -> Result<(), ApiError> {
-            if query.resource.as_ref().is_some_and(|value| value.is_empty() || value.len() > 120)
+            if query.resource.as_ref().is_none_or(|value| value.is_empty() || value.len() > 120)
                 || query.record_id.as_ref().is_some_and(|value| value.is_empty() || value.len() > 200)
             {
                 return Err(ApiError::InvalidQuery("invalid presence scope".to_owned()));
@@ -173,14 +192,46 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             Ok(())
         }
 
+        async fn authorize_resource_scope(
+            state: &AppState, context: &crate::RequestContext<'_>,
+            resource: &str, record_id: Option<&str>,
+        ) -> Result<(), ApiError> {
+            match resource {
+                #(#scope_arms,)*
+                _ => Err(ApiError::InvalidQuery("unknown realtime resource".to_owned())),
+            }
+        }
+
+        async fn authorize_resource_event(
+            state: &AppState, context: &crate::RequestContext<'_>, event: &RealtimeEvent,
+        ) -> Result<bool, ApiError> {
+            match event.resource.as_deref() {
+                #(#event_arms,)*
+                _ => Ok(false),
+            }
+        }
+
+        fn event_matches_scope(
+            event: &RealtimeEvent, tenant_id: Option<uuid::Uuid>, resource: &str,
+            record_id: Option<&str>,
+        ) -> bool {
+            if event.tenant_id != tenant_id || event.resource.as_deref() != Some(resource) {
+                return false;
+            }
+            if let Some(record_id) = record_id {
+                return event.record_id.as_deref() == Some(record_id);
+            }
+            !event.event.starts_with("presence.") || event.record_id.is_none()
+        }
+
         async fn register_presence(
             database: &DatabaseConnection, connection_id: uuid::Uuid, actor_id: uuid::Uuid,
-            tenant_id: Option<uuid::Uuid>, resource: Option<&str>, record_id: Option<&str>,
+            tenant_id: Option<uuid::Uuid>, resource: &str, record_id: Option<&str>,
         ) -> Result<(), DbErr> {
             database.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "INSERT INTO \"_appstruct_realtime_presence\" (connection_id, actor_id, tenant_id, resource, record_id, connected_at, last_seen_at, expires_at) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + ($6 * INTERVAL '1 second'))",
-                [connection_id.into(), actor_id.into(), tenant_id.into(), resource.map(str::to_owned).into(), record_id.map(str::to_owned).into(), #ttl_seconds.into()],
+                [connection_id.into(), actor_id.into(), tenant_id.into(), resource.to_owned().into(), record_id.map(str::to_owned).into(), #ttl_seconds.into()],
             )).await?;
             Ok(())
         }
@@ -196,7 +247,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
 
         struct PresenceLease {
             database: DatabaseConnection, realtime: RealtimeState, connection_id: uuid::Uuid,
-            actor_id: uuid::Uuid, tenant_id: Option<uuid::Uuid>, resource: Option<String>,
+            actor_id: uuid::Uuid, tenant_id: Option<uuid::Uuid>, resource: String,
             record_id: Option<String>,
         }
         impl Drop for PresenceLease {
@@ -214,8 +265,9 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                         "DELETE FROM \"_appstruct_realtime_presence\" WHERE connection_id = $1",
                         [connection_id.into()],
                     )).await;
-                    let _ = realtime.publish(
-                        "presence.offline", &presence_payload(connection_id, actor_id, resource.as_deref(), record_id.as_deref()),
+                    let _ = realtime.publish_scoped(
+                        "presence.offline", Some(&resource), record_id.as_deref(),
+                        &presence_payload(connection_id, actor_id, &resource, record_id.as_deref()),
                         Some(actor_id), tenant_id,
                     );
                 });
@@ -224,13 +276,20 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
 
         fn presence_payload(
             connection_id: uuid::Uuid, actor_id: uuid::Uuid,
-            resource: Option<&str>, record_id: Option<&str>,
+            resource: &str, record_id: Option<&str>,
         ) -> serde_json::Value {
             serde_json::json!({ "connection_id": connection_id, "actor_id": actor_id, "resource": resource, "record_id": record_id })
         }
         fn sse_event(event: &RealtimeEvent) -> Event {
+            let mut event = event.clone();
+            if event.resource_model {
+                event.data = serde_json::json!({
+                    "resource": event.resource.clone(),
+                    "record_id": event.record_id.clone(),
+                });
+            }
             Event::default().id(event.id.to_string()).event(&event.event)
-                .json_data(event).unwrap_or_else(|_| Event::default().event("serialization_error"))
+                .json_data(&event).unwrap_or_else(|_| Event::default().event("serialization_error"))
         }
         fn presence_from_row(row: sea_orm::QueryResult) -> Result<PresenceEntry, DbErr> {
             Ok(PresenceEntry {
@@ -247,15 +306,21 @@ fn disabled_source() -> Result<String, CodegenError> {
     render(quote! {
         use crate::AppState;
         use axum::Router;
+        use sea_orm::DatabaseConnection;
         use serde::Serialize;
         #[derive(Clone, Debug, Serialize)]
         pub struct RealtimeEvent;
         #[derive(Clone, Default)]
         pub struct RealtimeState;
         impl RealtimeState {
+            pub(crate) fn new(_database: DatabaseConnection) -> Self { Self }
             pub fn publish<T: Serialize>(
                 &self, _event: &str, _data: &T, _actor_id: Option<uuid::Uuid>,
                 _tenant_id: Option<uuid::Uuid>,
+            ) -> Result<RealtimeEvent, serde_json::Error> { Ok(RealtimeEvent) }
+            pub(crate) fn publish_resource_model<T: Serialize>(
+                &self, _event: &str, _resource: &str, _record_id: &str, _data: &T,
+                _actor_id: Option<uuid::Uuid>, _tenant_id: Option<uuid::Uuid>,
             ) -> Result<RealtimeEvent, serde_json::Error> { Ok(RealtimeEvent) }
         }
         pub fn router() -> Router<AppState> { Router::new() }

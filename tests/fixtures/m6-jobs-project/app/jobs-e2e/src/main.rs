@@ -2,7 +2,9 @@ use appstruct_generated_backend::{
     Job, JobHandler, JobHandlerError, JobWorker, MailJobPayload, MailState, RequestContext,
 };
 use async_trait::async_trait;
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sea_orm::{
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait,
+};
 use std::{collections::BTreeMap, env, sync::Arc};
 
 struct TestHandler;
@@ -30,11 +32,71 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_retry_and_dead_state(&database, &mail, tenant_id).await?;
     assert_expired_lease_recovery(&database, &mail, tenant_id).await?;
     assert_mail_job(&database, &mail, tenant_id).await?;
+    assert_webhook_delivery(&database, &mail, tenant_id).await?;
 
     let handle = JobWorker::new(database.clone(), Arc::new(TestHandler)).spawn();
-    handle.shutdown().await;
+    handle.shutdown().await?;
     seed_admin_jobs(&database, &mail, tenant_id).await?;
     Ok(())
+}
+
+async fn assert_webhook_delivery(
+    database: &DatabaseConnection,
+    mail: &MailState,
+    tenant_id: uuid::Uuid,
+) -> Result<(), Box<dyn std::error::Error>> {
+    database
+        .execute_unprepared("DELETE FROM \"_appstruct_webhook_deliveries\"")
+        .await?;
+    let context = RequestContext::connection(database, mail, None, Some(tenant_id));
+    let delivered = context
+        .publish_webhook(
+            "project.created",
+            &serde_json::json!({"project_id": "project-1"}),
+            Some("created-project-1"),
+        )
+        .await?;
+    let timed_out = context
+        .publish_webhook(
+            "project.archived",
+            &serde_json::json!({"project_id": "project-2"}),
+            Some("archived-project-2"),
+        )
+        .await?;
+    assert_eq!(delivered.ids.len(), 1);
+    assert_eq!(timed_out.ids.len(), 1);
+
+    wait_for_delivery(database, delivered.ids[0], "succeeded").await?;
+    wait_for_delivery(database, timed_out.ids[0], "dead").await?;
+    assert_eq!(
+        delivery_state(database, delivered.ids[0]).await?,
+        "succeeded|1|204"
+    );
+    let timeout = delivery_state(database, timed_out.ids[0]).await?;
+    assert!(
+        timeout.starts_with("dead|1|"),
+        "unexpected timeout state: {timeout}"
+    );
+    assert!(
+        delivery_error(database, timed_out.ids[0])
+            .await?
+            .contains("timed out")
+    );
+    Ok(())
+}
+
+async fn wait_for_delivery(
+    database: &DatabaseConnection,
+    id: uuid::Uuid,
+    expected: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for _ in 0..100 {
+        if delivery_status(database, id).await? == expected {
+            return Ok(());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    Err(format!("webhook delivery {id} did not reach {expected}").into())
 }
 
 async fn seed_admin_jobs(
@@ -45,10 +107,22 @@ async fn seed_admin_jobs(
     clear(database).await?;
     let context = RequestContext::connection(database, mail, None, Some(tenant_id));
     let succeeded = context
-        .enqueue_job("default", "succeed", &serde_json::json!({"admin": true}), None, None)
+        .enqueue_job(
+            "default",
+            "succeed",
+            &serde_json::json!({"admin": true}),
+            None,
+            None,
+        )
         .await?;
     let dead = context
-        .enqueue_job("default", "fail", &serde_json::json!({"admin": true}), None, None)
+        .enqueue_job(
+            "default",
+            "fail",
+            &serde_json::json!({"admin": true}),
+            None,
+            None,
+        )
         .await?;
     let success_worker = JobWorker::for_kind(database.clone(), Arc::new(TestHandler), "succeed");
     assert!(success_worker.run_once().await?);
@@ -208,12 +282,18 @@ async fn assert_mail_job(
 }
 
 async fn clear(database: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
-    database.execute_unprepared("DELETE FROM \"_appstruct_jobs\"").await?;
+    database
+        .execute_unprepared("DELETE FROM \"_appstruct_jobs\"")
+        .await?;
     Ok(())
 }
 
 async fn count_jobs(database: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
-    scalar_i64(database, "SELECT COUNT(*)::bigint AS value FROM \"_appstruct_jobs\"").await
+    scalar_i64(
+        database,
+        "SELECT COUNT(*)::bigint AS value FROM \"_appstruct_jobs\"",
+    )
+    .await
 }
 
 async fn capture_count(database: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
@@ -246,9 +326,11 @@ async fn job_tenant(
     database: &DatabaseConnection,
     id: uuid::Uuid,
 ) -> Result<uuid::Uuid, sea_orm::DbErr> {
-    let row = query(database, &format!(
-        "SELECT tenant_id AS value FROM \"_appstruct_jobs\" WHERE id = '{id}'::uuid"
-    )).await?;
+    let row = query(
+        database,
+        &format!("SELECT tenant_id AS value FROM \"_appstruct_jobs\" WHERE id = '{id}'::uuid"),
+    )
+    .await?;
     row.try_get("", "value")
 }
 
@@ -261,12 +343,40 @@ async fn retry_is_delayed(
     )).await
 }
 
-async fn completed(
-    database: &DatabaseConnection,
-    id: uuid::Uuid,
-) -> Result<bool, sea_orm::DbErr> {
+async fn completed(database: &DatabaseConnection, id: uuid::Uuid) -> Result<bool, sea_orm::DbErr> {
     scalar_bool(database, &format!(
         "SELECT completed_at IS NOT NULL AS value FROM \"_appstruct_jobs\" WHERE id = '{id}'::uuid"
+    )).await
+}
+
+async fn delivery_status(
+    database: &DatabaseConnection,
+    id: uuid::Uuid,
+) -> Result<String, sea_orm::DbErr> {
+    scalar_string(
+        database,
+        &format!(
+            "SELECT status AS value FROM \"_appstruct_webhook_deliveries\" WHERE id = '{id}'::uuid"
+        ),
+    )
+    .await
+}
+
+async fn delivery_state(
+    database: &DatabaseConnection,
+    id: uuid::Uuid,
+) -> Result<String, sea_orm::DbErr> {
+    scalar_string(database, &format!(
+        "SELECT status || '|' || attempts::text || '|' || COALESCE(response_status::text, '') AS value FROM \"_appstruct_webhook_deliveries\" WHERE id = '{id}'::uuid"
+    )).await
+}
+
+async fn delivery_error(
+    database: &DatabaseConnection,
+    id: uuid::Uuid,
+) -> Result<String, sea_orm::DbErr> {
+    scalar_string(database, &format!(
+        "SELECT COALESCE(last_error, '') AS value FROM \"_appstruct_webhook_deliveries\" WHERE id = '{id}'::uuid"
     )).await
 }
 
@@ -274,10 +384,7 @@ async fn scalar_i64(database: &DatabaseConnection, sql: &str) -> Result<i64, sea
     query(database, sql).await?.try_get("", "value")
 }
 
-async fn scalar_string(
-    database: &DatabaseConnection,
-    sql: &str,
-) -> Result<String, sea_orm::DbErr> {
+async fn scalar_string(database: &DatabaseConnection, sql: &str) -> Result<String, sea_orm::DbErr> {
     query(database, sql).await?.try_get("", "value")
 }
 

@@ -1,10 +1,12 @@
 mod bulk;
+mod fields;
+mod realtime;
 mod write;
 use super::query::list_support;
 use super::validation::validation_rules;
 use super::{module_name, parse_ident, render, rust_type};
 use crate::CodegenError;
-use appstruct_ir::{AccessRuleIr, AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
+use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
@@ -40,7 +42,12 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         &updates,
     )?;
     let validators = validation_functions(entity)?;
-    let field_access = field_access_support(entity, &module)?;
+    let field_access = fields::support(entity, &module)?;
+    let realtime = if ir.realtime.enabled {
+        realtime::support(entity, &module, &policy, &parse_id)?
+    } else {
+        TokenStream::new()
+    };
     let list_scope = super::access::scope(entity, &module, &entity.access.list)?;
     let create_allowed = super::access::create_allowed(entity, &entity.access.create)?;
     let update_allowed = super::access::update_allowed(entity, &entity.access.update)?;
@@ -99,121 +106,10 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         #handlers
         #validators
         #field_access
+        #realtime
         #bulk
     })
 }
-fn field_access_support(
-    entity: &EntityIr,
-    module: &syn::Ident,
-) -> Result<TokenStream, CodegenError> {
-    let read_arms = field_access_arms(entity, |field| field.read_access.as_ref());
-    let write_arms = field_access_arms(entity, |field| field.write_access.as_ref());
-    let read_redactions = entity
-        .fields
-        .iter()
-        .filter(|field| field.read_access.is_some())
-        .map(|field| {
-            let key = field.rust_name.as_str();
-            quote! {
-                if !field_read_allowed(context, #key) {
-                    if let serde_json::Value::Object(object) = &mut value {
-                        object.remove(#key);
-                    }
-                }
-            }
-        });
-    let create_guards = write_guards(entity, false)?;
-    let update_guards = write_guards(entity, true)?;
-    Ok(quote! {
-        #[allow(dead_code, unused_variables, unused_mut)]
-        fn field_read_allowed(context: &RequestContext, field: &str) -> bool {
-            match field {
-                #(#read_arms,)*
-                _ => true,
-            }
-        }
-
-        #[allow(dead_code, unused_variables, unused_mut)]
-        fn field_write_allowed(context: &RequestContext, field: &str) -> bool {
-            match field {
-                #(#write_arms,)*
-                _ => true,
-            }
-        }
-
-        #[allow(dead_code, unused_variables, unused_mut)]
-        fn redact_model(
-            context: &RequestContext,
-            model: #module::Model,
-        ) -> Result<serde_json::Value, ApiError> {
-            let mut value = serde_json::to_value(model).map_err(|_| ApiError::Internal)?;
-            #(#read_redactions)*
-            Ok(value)
-        }
-
-        #[allow(dead_code, unused_variables, unused_mut)]
-        fn authorize_create_fields(
-            context: &RequestContext,
-            input: &CreateInput,
-        ) -> Result<(), ApiError> {
-            #(#create_guards)*
-            Ok(())
-        }
-
-        #[allow(dead_code, unused_variables, unused_mut)]
-        fn authorize_update_fields(
-            context: &RequestContext,
-            input: &UpdateInput,
-        ) -> Result<(), ApiError> {
-            #(#update_guards)*
-            Ok(())
-        }
-    })
-}
-
-fn field_access_arms(
-    entity: &EntityIr,
-    access: impl Fn(&FieldIr) -> Option<&AccessRuleIr>,
-) -> Vec<TokenStream> {
-    entity
-        .fields
-        .iter()
-        .filter_map(|field| {
-            access(field).map(|rule| {
-                let name = &field.rust_name;
-                let allowed = super::access::operation_allowed(rule);
-                quote! { #name => #allowed }
-            })
-        })
-        .collect::<Vec<_>>()
-}
-
-fn write_guards(entity: &EntityIr, update: bool) -> Result<Vec<TokenStream>, CodegenError> {
-    entity
-        .fields
-        .iter()
-        .filter(|field| {
-            field.write_access.is_some()
-                && field.generated.is_none()
-                && (!update || !field.primary_key)
-        })
-        .map(|field| {
-            let name = parse_ident(&field.rust_name)?;
-            let key = field.rust_name.as_str();
-            let check = quote! {
-                if !field_write_allowed(context, #key) {
-                    return Err(access_denied(context));
-                }
-            };
-            if update || field.nullable || field.default.is_some() {
-                Ok(quote! { if input.#name.is_some() { #check } })
-            } else {
-                Ok(check)
-            }
-        })
-        .collect()
-}
-
 fn validation_functions(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
     let create_rules = validation_rules(entity, false)?;
     let update_rules = validation_rules(entity, true)?;

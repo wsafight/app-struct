@@ -171,8 +171,14 @@ non-null changes without writing files; use `--deny-warnings` in CI to enforce o
 - [Upgrading](docs/upgrading.md)
 - [Deployment](docs/deployment.md)
 - [Generated resource queries](docs/data-querying.md)
+- [Headless Web controllers](docs/headless-controller.md)
 - [Schema indexes](docs/schema-indexes.md)
 - [Seed data](docs/seeding.md)
+- [Interval schedules](docs/schedules.md)
+- [Signed webhooks](docs/webhooks.md)
+- [Realtime events, presence, and edit leases](docs/realtime.md)
+- [Saved views](docs/saved-views.md)
+- [Operations Admin console](docs/admin-console.md)
 - [Releasing](docs/releasing.md)
 - [Next product roadmap](docs/next-product-roadmap.md)
 - [Product requirements](PRODUCT.md)
@@ -224,8 +230,8 @@ Rust source files are limited to 400 lines by a repository test. Generated proje
 their Rust and pnpm dependency graphs so repeated generation and production builds remain
 reviewable and reproducible.
 
-Signed remote modules are installed with `appstruct module install`; see
-`docs/module-registry.md` for the lockfile and offline verification contract.
+Signed remote modules support `install`, `update`, `verify`, `uninstall`, and `list`; see
+`docs/module-registry.md` for the lockfile, trust pinning, and offline verification contract.
 
 Before committing or pushing a change, inspect the worktree and run the checks that match the
 files you changed:

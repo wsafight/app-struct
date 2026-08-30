@@ -12,8 +12,8 @@ fn fixture() -> PathBuf {
 fn lowers_realtime_presence_settings() {
     let realtime = compile_project(&fixture()).unwrap().realtime;
     assert!(realtime.enabled);
-    assert_eq!(realtime.heartbeat_seconds, 10);
-    assert_eq!(realtime.presence_ttl_seconds, 30);
+    assert_eq!(realtime.heartbeat_seconds, 5);
+    assert_eq!(realtime.presence_ttl_seconds, 15);
 }
 
 #[test]
@@ -25,11 +25,11 @@ fn realtime_requires_auth_and_a_longer_ttl() {
             "AS3080",
         ),
         (
-            "presence_ttl_seconds: 30",
+            "presence_ttl_seconds: 15",
             "presence_ttl_seconds: 10",
             "AS3082",
         ),
-        ("heartbeat_seconds: 10", "heartbeat_seconds: 30", "AS3083"),
+        ("heartbeat_seconds: 5", "heartbeat_seconds: 15", "AS3083"),
     ] {
         let temporary = tempfile::tempdir().unwrap();
         copy_project(&fixture(), temporary.path());

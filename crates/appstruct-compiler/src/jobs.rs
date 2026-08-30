@@ -117,7 +117,7 @@ fn lower_schedule(
     let interval_seconds = cron_interval(&schedule.cron.value).unwrap_or_else(|| {
         diagnostics.push(Diagnostic::error(
             "AS3057",
-            "schedule cron must be `@every Ns` or a five-field expression with a fixed minute interval",
+            "interval schedule must be `@every Ns` or a five-field fixed-minute compatibility expression",
             schedule.cron.span.clone(),
         ));
         60

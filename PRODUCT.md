@@ -1,13 +1,13 @@
 # AppStruct 产品需求文档
 
 > 状态：Implementation Baseline v1.3<br>
-> 日期：2026-08-27<br>
+> 日期：2026-08-30<br>
 > 产品类型：配置驱动的 Rust 全栈应用生成框架<br>
 > 文档范围：产品定位、用户体验、功能边界、MVP 和验收标准
 
 ## 0. 当前实现基线
 
-截至 2026-08-27，仓库已完成 M0 至 M6，并在 M1 后完成生成器与编译器的模块化重构：
+截至 2026-08-30，仓库已完成 M0 至 M6，并在 M1 后完成生成器与编译器的模块化重构：
 
 | 里程碑 | 状态 | 已固化能力 |
 | --- | --- | --- |
@@ -61,6 +61,8 @@ M5 交付文档已提供源码与校验后二进制安装、external/managed Pos
 M5 质量门禁已固化。两个独立项目的完整 `generated/` 树逐字节比较；后端 Entity/API Artifact 按可用 CPU 并行规划但最终统一排序，实测 10 实体 IR 编译 70 ms、编译加生成 518 ms，100 实体编译加生成 7774 ms，分别低于 500/1000/10000 ms 预算。Playwright 1.62.1 由根 pnpm lock 固定，external PostgreSQL 17.10 E2E 从 dashboard Template 启动，覆盖 liveness/readiness、`X-Request-Id` 生成与透传、注册、owner Project 创建与编辑、退出重登录和数据保持；1440x900 dashboard 与 390x844 登录页截图无重叠或水平溢出。启动冷构建期间的 SIGINT 也验证了 Cargo 子进程、临时项目和端口全部回收。
 
 M6 SaaS Template 门禁从 CLI 创建真实 `saas` 项目并切换到专用 external PostgreSQL，验证 Preset lock、五个模块数据表、迁移、生成 Web TypeScript、注册、组织选择、Project/Task 写入、Audit 事件和跨租户空结果。Playwright 对 1440x900 Audit 页面和 390x844 Project 页面截图，移动表格保持在视口内并使用局部横向滚动。`examples/saas-demo` 与 CLI 模板逐文件字节比对，防止示例漂移。
+
+2026-08-30 的 operations 加固补齐了 interval-only Schedule、签名 Webhook 和 Realtime 的生产语义。Schedule 只接受固定间隔表达式，进程停机后 fire-once 并跳过积压，启动时禁用 Spec 已删除的定义；Webhook worker 使用可配置连接/读取/总超时并提供 Admin delivery retry/replay；Realtime 按 resource/record Policy 裁剪事件，以 PostgreSQL 短期事件表跨实例 fan-out，生成 CRUD payload 对浏览器脱敏，并提供数据库 TTL presence 与可选 exclusive edit lease。Saved views 当前仍是浏览器私有命名状态，URL 只共享查询快照，不是服务端团队视图。
 
 实体支持有序的复合索引和带 `where` 谓词的部分索引。索引进入 IR、schema snapshot、初始迁移 SQL，并由迁移 status 检查漂移；已有表新增索引标记为可能锁表，删除或变更索引不会自动生成破坏性 SQL。
 
@@ -1111,7 +1113,7 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 4. 后续：Session 是否增加 Redis Provider。
 5. 后续：第三方 Module API 和远程分发协议的冻结范围。
 6. 已决策：Module capability graph、provider 唯一性、拓扑启动顺序和逆序清理。
-7. 部分完成：当前 Web 资源契约已稳定；完整可复用 headless Controller 仍是后续 Runtime 演进项。
+7. 部分完成：当前 Web 资源契约已稳定，生成列表/详情页与自定义页面可复用同一 headless Controller 的查询键、权限、请求状态和 mutation invalidation；URL 参数与表单/冲突状态尚待继续收敛。
 8. 已决策：CRUD、关系和 Command/Query 统一经过后端授权入口；批量操作已实现并复用逐记录授权与并发控制。
 9. 已决策：迁移 rename/危险变更阻断、checksum、非事务步骤和 drift 诊断协议。
 10. 后续：第三方 Module 可注入的 IR fragment 和 Artifact ownership 边界。
@@ -1128,7 +1130,8 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 - 后端生成代码，前端生成编译期 Manifest 并使用稳定 React Runtime 渲染。
 - React Runtime 以 Resource Definition、DataProvider 和 headless Controller 分离传输、状态与展示；MVP 写操作默认等待服务端确认。
 - React 是首个官方 Renderer，但 UI IR 不包含 React 专属概念。
-- 默认使用页码分页；游标分页在大数据实体需求明确后增加。
+- 默认使用页码分页；当前游标分页按主键升序稳定遍历，用户自选排序键的游标需要在冻结
+  token、空值顺序和主键 tie-breaker 契约后增加。
 - 实体必须显式声明授权或继承应用级授权默认值，不能隐式公开。
 - `appstruct.lock` 与数据库 schema snapshot 分别承担依赖锁定和迁移基线。
 - `generated/` 及其确定性 ownership manifest 默认进入版本控制，用户代码不得放入该目录。

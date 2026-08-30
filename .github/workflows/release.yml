@@ -34,10 +34,27 @@ jobs:
         include:
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
+            package: unix
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            package: unix
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            package: unix
+            musl: true
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            package: unix
+            musl: true
           - os: macos-15
             target: aarch64-apple-darwin
+            package: unix
           - os: macos-15-intel
             target: x86_64-apple-darwin
+            package: unix
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            package: windows
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -51,9 +68,16 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           manifest_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
           test "$version" = "$manifest_version"
+      - name: Install musl toolchain
+        if: matrix.musl == true
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build binary
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
         run: cargo build --release --locked -p appstruct-cli --target ${{ matrix.target }}
-      - name: Package binary
+      - name: Package Unix binary
+        if: matrix.package == 'unix'
         shell: bash
         run: |
           archive="appstruct-${GITHUB_REF_NAME#v}-${{ matrix.target }}"
@@ -66,11 +90,23 @@ jobs:
           else
             (cd dist && shasum -a 256 "$archive.tar.gz" > "$archive.tar.gz.sha256")
           fi
+      - name: Package Windows binary
+        if: matrix.package == 'windows'
+        shell: pwsh
+        run: |
+          $archive = "appstruct-$($env:GITHUB_REF_NAME.Substring(1))-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path "dist/$archive" -Force | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/appstruct.exe" "dist/$archive/"
+          Copy-Item README.md "dist/$archive/"
+          Compress-Archive -Path "dist/$archive" -DestinationPath "dist/$archive.zip"
+          $hash = (Get-FileHash "dist/$archive.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $archive.zip" | Set-Content -Encoding ascii "dist/$archive.zip.sha256"
       - uses: actions/upload-artifact@v4
         with:
           name: appstruct-${{ matrix.target }}
           path: |
             dist/*.tar.gz
+            dist/*.zip
             dist/*.sha256
           if-no-files-found: error
 

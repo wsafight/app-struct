@@ -72,6 +72,12 @@ invalid-query response. Relation filters are implemented as target-key subquerie
 entity's list access rule and tenant scope are applied inside each subquery before its value filter,
 so result rows and offset totals cannot reveal inaccessible related records.
 
+List and detail payloads currently expose relation fields as foreign-key values. They do not issue
+per-record target lookups and therefore do not create an implicit N+1 query path. A future relation
+expansion contract must batch target keys, preserve target read policy and tenant scope, and publish
+the expanded response shape in OpenAPI and generated TypeScript clients before the Admin table can
+display related labels instead of identifiers.
+
 ## Aggregates and grouping
 
 Each generated resource exposes a bounded reporting endpoint:

@@ -2,6 +2,7 @@ mod auth;
 mod bulk;
 mod entity;
 mod modules;
+mod realtime;
 use crate::{Artifact, ArtifactKind, generated_header};
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, OperationTypeIr, ValueObjectIr};
 use modules::{audit_source, tenant_source, tenant_storage_source};
@@ -29,7 +30,7 @@ fn client_source(ir: &AppIr) -> String {
         sections.push(audit_source());
     }
     if ir.realtime.enabled {
-        sections.push(realtime_source().to_owned());
+        sections.push(realtime::source().to_owned());
     }
     sections.extend(ir.value_objects.iter().map(value_object_type));
     for entity in &ir.entities {
@@ -40,42 +41,6 @@ fn client_source(ir: &AppIr) -> String {
     format!("{}\n", sections.join("\n"))
 }
 
-fn realtime_source() -> &'static str {
-    r#"export interface PresenceEntry {
-  connection_id: string;
-  actor_id: string;
-  tenant_id: string | null;
-  resource: string | null;
-  record_id: string | null;
-  connected_at: string;
-  last_seen_at: string;
-  expires_at: string;
-}
-
-export interface RealtimeScope { resource?: string; recordId?: string; }
-
-export function subscribeRealtime(scope: RealtimeScope = {}): EventSource {
-  const params = new URLSearchParams();
-  const tenant = currentTenant();
-  if (tenant) params.set("tenant_id", tenant);
-  if (scope.resource) params.set("resource", scope.resource);
-  if (scope.recordId) params.set("record_id", scope.recordId);
-  const query = params.toString();
-  return new EventSource(`${API_BASE}/api/realtime/events${query ? `?${query}` : ""}`, {
-    withCredentials: true,
-  });
-}
-
-export function listPresence(scope: RealtimeScope = {}): Promise<PresenceEntry[]> {
-  const params = new URLSearchParams();
-  if (scope.resource) params.set("resource", scope.resource);
-  if (scope.recordId) params.set("record_id", scope.recordId);
-  const query = params.toString();
-  return request<{ data: PresenceEntry[] }>(`/api/realtime/presence${query ? `?${query}` : ""}`)
-    .then((response) => response.data);
-}
-"#
-}
 fn value_object_type(value: &ValueObjectIr) -> String {
     let fields = value
         .fields

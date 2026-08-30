@@ -44,17 +44,26 @@ modules:
   webhooks:
     enabled: true
     poll_interval_ms: 50
+    connect_timeout_ms: 200
+    read_timeout_ms: 300
+    request_timeout_ms: 500
     endpoints:
       operations:
-        url: https://hooks.example.com/appstruct
+        url: http://127.0.0.1:__WEBHOOK_PORT__/ok
         secret_env: APPSTRUCT_WEBHOOK_OPERATIONS_SECRET
-        events: [project.created, project.archived]
+        events: [project.created]
         max_attempts: 4
         backoff_seconds: 3
+      hanging:
+        url: http://127.0.0.1:__WEBHOOK_PORT__/hang
+        secret_env: APPSTRUCT_WEBHOOK_HANGING_SECRET
+        events: [project.archived]
+        max_attempts: 1
+        backoff_seconds: 1
   realtime:
     enabled: true
-    heartbeat_seconds: 10
-    presence_ttl_seconds: 30
+    heartbeat_seconds: 5
+    presence_ttl_seconds: 15
 
 includes:
   - spec/project.yaml

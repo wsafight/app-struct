@@ -1,100 +1,13 @@
+mod app;
 mod resources;
 
 use crate::{Artifact, ArtifactKind, generated_header};
 use appstruct_ir::AppIr;
 
 pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
-    let main = if requires_registry(ir) {
-        include_str!("../templates/web/main_with_registry.tsx")
-    } else {
-        include_str!("../templates/web/main.tsx")
-    };
-    let app = if ir.tenant.enabled && ir.audit.enabled {
-        include_str!("../templates/web/AppTenantAudit.tsx")
-    } else if ir.tenant.enabled {
-        include_str!("../templates/web/AppTenant.tsx")
-    } else if ir.audit.enabled {
-        include_str!("../templates/web/AppAudit.tsx")
-    } else if ir.auth.enabled {
-        include_str!("../templates/web/AppAuth.tsx")
-    } else {
-        include_str!("../templates/web/App.tsx")
-    };
-    let layout = if ir.tenant.enabled && ir.audit.enabled {
-        include_str!("../templates/web/LayoutTenantAudit.tsx")
-    } else if ir.tenant.enabled {
-        include_str!("../templates/web/LayoutTenant.tsx")
-    } else if ir.audit.enabled {
-        include_str!("../templates/web/LayoutAudit.tsx")
-    } else if ir.auth.enabled {
-        include_str!("../templates/web/LayoutAuth.tsx")
-    } else {
-        include_str!("../templates/web/Layout.tsx")
-    };
-    let static_files = vec![
-        (
-            "web/index.html",
-            include_str!("../templates/web/index.html"),
-        ),
-        ("web/.gitignore", include_str!("../templates/web/gitignore")),
-        (
-            "web/eslint.config.js",
-            include_str!("../templates/web/eslint.config.js"),
-        ),
-        ("web/src/main.tsx", main),
-        (
-            "web/src/resource.ts",
-            include_str!("../templates/web/resource.ts"),
-        ),
-        (
-            "web/src/query.ts",
-            include_str!("../templates/web/query.ts"),
-        ),
-        (
-            "web/src/navigation.tsx",
-            include_str!("../templates/web/navigation.tsx"),
-        ),
-        (
-            "web/src/framework.test.ts",
-            include_str!("../templates/web/framework.test.ts"),
-        ),
-        ("web/src/app/App.tsx", app),
-        (
-            "web/src/app/ResourceRoutes.tsx",
-            include_str!("../templates/web/ResourceRoutes.tsx"),
-        ),
-        ("web/src/app/Layout.tsx", layout),
-        (
-            "web/src/pages/ResourceList.tsx",
-            include_str!("../templates/web/ResourceList.tsx"),
-        ),
-        (
-            "web/src/pages/ResourceFilters.tsx",
-            include_str!("../templates/web/ResourceFilters.tsx"),
-        ),
-        (
-            "web/src/pages/ResourceForm.tsx",
-            include_str!("../templates/web/ResourceForm.tsx"),
-        ),
-        (
-            "web/src/pages/ResourceDetail.tsx",
-            include_str!("../templates/web/ResourceDetail.tsx"),
-        ),
-        (
-            "web/src/styles.css",
-            include_str!("../templates/web/styles.css"),
-        ),
-        (
-            "web/package.json",
-            include_str!("../templates/web/package.json"),
-        ),
-        (
-            "web/pnpm-lock.yaml",
-            include_str!("../templates/web/pnpm-lock.yaml"),
-        ),
-    ];
-    let mut artifacts = static_files
+    let mut artifacts = framework_files(ir)
         .into_iter()
+        .chain(page_files(ir))
         .map(|(path, content)| Artifact::text(path, content, ArtifactKind::Web))
         .collect::<Vec<_>>();
     extend_module_artifacts(ir, &mut artifacts);
@@ -113,6 +26,117 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
         ),
     ]);
     artifacts
+}
+
+fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
+    let main = if requires_registry(ir) {
+        include_str!("../templates/web/main_with_registry.tsx")
+    } else {
+        include_str!("../templates/web/main.tsx")
+    };
+    vec![
+        (
+            "web/index.html",
+            include_str!("../templates/web/index.html").to_owned(),
+        ),
+        (
+            "web/.gitignore",
+            include_str!("../templates/web/gitignore").to_owned(),
+        ),
+        (
+            "web/eslint.config.js",
+            include_str!("../templates/web/eslint.config.js").to_owned(),
+        ),
+        ("web/src/main.tsx", main.to_owned()),
+        (
+            "web/src/resource.ts",
+            include_str!("../templates/web/resource.ts").to_owned(),
+        ),
+        (
+            "web/src/query.ts",
+            include_str!("../templates/web/query.ts").to_owned(),
+        ),
+        (
+            "web/src/controller.ts",
+            include_str!("../templates/web/controller.ts").to_owned(),
+        ),
+        (
+            "web/src/navigation.tsx",
+            include_str!("../templates/web/navigation.tsx").to_owned(),
+        ),
+        (
+            "web/src/framework.test.ts",
+            include_str!("../templates/web/framework.test.ts").to_owned(),
+        ),
+        ("web/src/app/App.tsx", app::source(ir)),
+        (
+            "web/src/app/ResourceRoutes.tsx",
+            include_str!("../templates/web/ResourceRoutes.tsx").to_owned(),
+        ),
+        ("web/src/app/Layout.tsx", app::layout_source(ir)),
+        (
+            "web/src/pages/ResourceList.tsx",
+            include_str!("../templates/web/ResourceList.tsx").to_owned(),
+        ),
+    ]
+}
+
+fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
+    let realtime_resource = if ir.realtime.enabled {
+        include_str!("../templates/web/realtime/useRealtimeResource.ts")
+    } else {
+        include_str!("../templates/web/realtime/useRealtimeResourceDisabled.ts")
+    };
+    vec![
+        (
+            "web/src/pages/ResourceFilters.tsx",
+            include_str!("../templates/web/ResourceFilters.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/BulkActions.tsx",
+            include_str!("../templates/web/pages/resource-list/BulkActions.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/ResourceTable.tsx",
+            include_str!("../templates/web/pages/resource-list/ResourceTable.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/InlineEditor.tsx",
+            include_str!("../templates/web/pages/resource-list/InlineEditor.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/SavedViews.tsx",
+            include_str!("../templates/web/pages/resource-list/SavedViews.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/useCsvTransfer.ts",
+            include_str!("../templates/web/pages/resource-list/useCsvTransfer.ts").to_owned(),
+        ),
+        (
+            "web/src/pages/ResourceForm.tsx",
+            include_str!("../templates/web/ResourceForm.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/ResourceDetail.tsx",
+            include_str!("../templates/web/ResourceDetail.tsx").to_owned(),
+        ),
+        (
+            "web/src/realtime/useRealtimeResource.ts",
+            realtime_resource.to_owned(),
+        ),
+        (
+            "web/src/styles.css",
+            include_str!("../templates/web/styles.css").to_owned(),
+        ),
+        (
+            "web/package.json",
+            include_str!("../templates/web/package.json").to_owned(),
+        ),
+        (
+            "web/pnpm-lock.yaml",
+            include_str!("../templates/web/pnpm-lock.yaml").to_owned(),
+        ),
+    ]
 }
 
 fn extend_module_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
@@ -247,7 +271,7 @@ fn registry_source(ir: &AppIr) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "{}{component_import}export interface FieldComponentProps {{\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport type PageComponentProps = Record<string, never>;\n\nexport interface AppStructRegistry {{\n  fields: {field_registry};\n  pages: {page_registry};\n}}\n\nexport interface CustomPageDefinition {{\n  name: string;\n  label: string;\n  path: string;\n  component: keyof AppStructRegistry[\"pages\"];\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages: readonly CustomPageDefinition[] = [\n{pages}\n];\n",
+        "{}{component_import}import type {{ ResourceDefinition }} from \"../resource\";\n\nexport interface FieldComponentProps {{\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport interface PageComponentProps {{\n  resources: readonly ResourceDefinition[];\n}}\n\nexport interface AppStructRegistry {{\n  fields: {field_registry};\n  pages: {page_registry};\n}}\n\nexport interface CustomPageDefinition {{\n  name: string;\n  label: string;\n  path: string;\n  component: keyof AppStructRegistry[\"pages\"];\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages: readonly CustomPageDefinition[] = [\n{pages}\n];\n",
         generated_header("//"),
     )
 }

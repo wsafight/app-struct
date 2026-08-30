@@ -173,7 +173,7 @@ fn restore_handler(context: &BulkContext<'_>) -> TokenStream {
     } else {
         quote! { let select = #module::Entity::find_by_id(id); }
     };
-    let audit = audit_event(*audit_enabled, entity_id, primary, "restore");
+    let audit = audit_event(*audit_enabled, entity_id, primary, "update");
     quote! {
         async fn restore(
             State(state): State<AppState>, headers: HeaderMap,

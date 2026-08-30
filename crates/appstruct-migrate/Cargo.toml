@@ -25,5 +25,8 @@ sha2.workspace = true
 appstruct-compiler.workspace = true
 tempfile.workspace = true
 
+[target.'cfg(target_env = "musl")'.dependencies]
+native-tls = { workspace = true, features = ["vendored"] }
+
 [lints]
 workspace = true

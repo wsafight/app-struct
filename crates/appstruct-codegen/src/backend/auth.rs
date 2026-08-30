@@ -19,12 +19,25 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             })?,
         ),
         generated("backend/src/auth/mod.rs", template("auth/mod.rs")?),
+        generated("backend/src/auth/admin.rs", template("auth/admin.rs")?),
         generated("backend/src/auth/session.rs", template("auth/session.rs")?),
         generated(
             "backend/src/auth/handlers.rs",
-            handlers_template(ir.auth.oauth_enabled)?,
+            template("auth/handlers.rs")?,
+        ),
+        generated(
+            "backend/src/auth/admin_webhooks.rs",
+            template("auth/admin_webhooks.rs")?,
         ),
         generated("backend/src/auth/mail.rs", template("auth/mail.rs")?),
+        generated(
+            "backend/src/auth/oauth.rs",
+            oauth_template(ir.auth.oauth_enabled)?,
+        ),
+        generated(
+            "backend/src/auth/recovery.rs",
+            template("auth/recovery.rs")?,
+        ),
     ])
 }
 
@@ -53,6 +66,7 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
     let password_reset = ir.auth.password_reset_enabled;
     let oauth = ir.auth.oauth_enabled;
     let jobs = ir.jobs.enabled;
+    let webhooks = ir.webhooks.enabled;
     let mail = ir.mail.enabled;
     let file = ir.file.enabled;
     let tenant = ir.tenant.enabled;
@@ -71,6 +85,7 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
         #[allow(dead_code)]
         pub const OAUTH_ENABLED: bool = #oauth;
         pub const JOBS_ENABLED: bool = #jobs;
+        pub const WEBHOOKS_ENABLED: bool = #webhooks;
         pub const MAIL_ENABLED: bool = #mail;
         pub const FILE_ENABLED: bool = #file;
         pub const TENANT_ENABLED: bool = #tenant;
@@ -114,36 +129,22 @@ fn disabled_source() -> Result<String, CodegenError> {
 fn template(name: &str) -> Result<String, CodegenError> {
     let source = match name {
         "auth/mod.rs" => include_str!("../../templates/backend/auth/mod.rs"),
+        "auth/admin.rs" => include_str!("../../templates/backend/auth/admin.rs"),
         "auth/session.rs" => include_str!("../../templates/backend/auth/session.rs"),
         "auth/handlers.rs" => include_str!("../../templates/backend/auth/handlers.rs"),
+        "auth/admin_webhooks.rs" => include_str!("../../templates/backend/auth/admin_webhooks.rs"),
         "auth/mail.rs" => include_str!("../../templates/backend/auth/mail.rs"),
+        "auth/recovery.rs" => include_str!("../../templates/backend/auth/recovery.rs"),
         _ => unreachable!(),
     };
     super::rust_template(source)
 }
 
-fn handlers_template(oauth_enabled: bool) -> Result<String, CodegenError> {
-    let source = include_str!("../../templates/backend/auth/handlers.rs");
-    if oauth_enabled {
-        return super::rust_template(source);
-    }
-    let source = strip_oauth_sections(source)?;
-    super::rust_template(&source)
-}
-
-fn strip_oauth_sections(source: &str) -> Result<String, CodegenError> {
-    const START: &str = "// appstruct:oauth:start";
-    const END: &str = "// appstruct:oauth:end";
-    let mut output = String::with_capacity(source.len());
-    let mut remaining = source;
-    while let Some(start) = remaining.find(START) {
-        output.push_str(&remaining[..start]);
-        let after_start = &remaining[start + START.len()..];
-        let end = after_start.find(END).ok_or_else(|| {
-            CodegenError::new("auth OAuth template section is missing its end marker")
-        })?;
-        remaining = &after_start[end + END.len()..];
-    }
-    output.push_str(remaining);
-    Ok(output)
+fn oauth_template(enabled: bool) -> Result<String, CodegenError> {
+    let source = if enabled {
+        include_str!("../../templates/backend/auth/oauth.rs")
+    } else {
+        include_str!("../../templates/backend/auth/oauth_disabled.rs")
+    };
+    super::rust_template(source)
 }

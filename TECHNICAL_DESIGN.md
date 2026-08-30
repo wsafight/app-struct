@@ -1,7 +1,7 @@
 # AppStruct 技术设计文档
 
 > 状态：Implementation Baseline v1.2<br>
-> 日期：2026-08-27<br>
+> 日期：2026-08-30<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
 
@@ -50,6 +50,8 @@ M6 已完成。Tenant、Audit、Mail、Jobs 和 File Module 以及 `appstruct/sa
 内部契约加固已完成。IR v7-v10 可在内存迁移到 v11，旧 IR 的数据库迁移策略安全降级为 unmanaged；未来版本和语义不安全的旧模块图失败关闭。根 `module_manifests` 只加载 `modules/` 内的本地 TOML，拒绝 traversal、symlink、非 UTF-8 和超限文件；本地 Artifact 输出到模块专属 generated namespace，本地 Runtime starter 为 no-op。`appstruct.lock` 的 `project_layout_version` 明确区分 v1 generated backend 与 v2 server composition root，目录探测仅用于显式 update 迁移未版本化旧项目。生成和 dev build/install 使用内容缓存但仍执行 ownership 校验；Module Runtime 发出结构化 lifecycle phase，生成后端用 tracing 记录启动、失败、回滚和停止。generation transaction 的测试 failpoint 覆盖备份后与安装后恢复。
 
 Technical Preview 契约加固已完成。Compiler 内嵌 Draft 2020-12 JSON Schema，`appstruct schema` 无需项目即可输出；编译报告保留非致命 warning，当前 `AS3070` 检测匿名写操作，`check --deny-warnings` 为 CI 提供失败策略。`appstruct update` 同时持有 generation/update lock，在项目内 staging workspace 写候选 lock、全量编译 Spec、生成、执行 release Rust/Web 构建和后端测试，再比对用户文件哈希；最终用独立 journal 联合交换 `appstruct.lock` 与 ownership 管理的 `generated/`。崩溃恢复要么回滚两者，要么完成已安装候选，普通 generate 遇到 update 遗留状态时失败关闭。
+
+Operations correctness 在 2026-08-30 完成加固。Jobs Schedule 采用 interval-only、fire-once/skip-missed 语义，定义 reconcile 与 enqueue/advance 均使用 PostgreSQL 事务；Webhook outbox 的 HTTP 客户端有编译期校验的 connect/read/request timeout，Admin 可检查和恢复 terminal delivery。Realtime SSE 必须携带 resource scope，collection/record 分别执行 list/read Policy，CRUD raw model 仅在服务端用于逐订阅者授权，浏览器只收到 resource/record ID。每个 API 实例即时广播本地事件，并以数据库 sequence 游标轮询五分钟保留的 `_appstruct_realtime_events` 完成多副本 fan-out；presence 和 opt-in exclusive lease 通过 PostgreSQL TTL 协调。专用双 API PostgreSQL E2E 覆盖漏跑、定义删除、HMAC、超时、SSE 跨实例、presence 续租、lease 接管及 Admin retry/replay，CI 独立运行该门禁。
 
 ## 2. 架构决策摘要
 

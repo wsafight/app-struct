@@ -9,7 +9,6 @@ import { resourceRoutes } from "./ResourceRoutes";
 
 export function App({ registry }: { registry?: AppStructRegistry }) {
   const [router] = useState(() => {
-    const pageComponents = registry?.pages as Record<string, ComponentType<PageComponentProps>> | undefined;
     const routes: RuntimeRoute[] = [
       {
         id: "_layout",
@@ -17,10 +16,7 @@ export function App({ registry }: { registry?: AppStructRegistry }) {
         children: [
           { path: "/", component: HomeRedirect },
           ...resourceRoutes(registry),
-          ...customPages.map((page) => ({
-            path: absolutePath(page.path),
-            component: pageComponents?.[String(page.component)] ?? PageRendererUnavailable,
-          })),
+          ...customPageRoutes(registry),
           { path: "/empty", component: EmptyPage },
         ],
       },
@@ -45,6 +41,17 @@ function EmptyPage() {
 
 function PageRendererUnavailable() {
   return <main className="page"><div className="alert" role="alert">Page renderer unavailable</div></main>;
+}
+
+function customPageRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
+  const pageComponents = registry?.pages as Record<string, ComponentType<PageComponentProps>> | undefined;
+  return customPages.map((page) => {
+    const Component = pageComponents?.[String(page.component)];
+    return {
+      path: absolutePath(page.path),
+      component: Component ? () => <Component resources={resources} /> : PageRendererUnavailable,
+    };
+  });
 }
 
 function absolutePath(path: string): string {

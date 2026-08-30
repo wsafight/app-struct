@@ -32,7 +32,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let mail = (ir.mail.enabled).then(mail_source);
     render(quote! {
         use async_trait::async_trait;
-        use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
+        use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement, TransactionTrait};
         use serde::Serialize;
         use std::{
             fmt,

@@ -34,10 +34,11 @@ pub(super) fn definitions(ir: &AppIr) -> TokenStream {
 pub(super) fn persistence() -> TokenStream {
     quote! {
         async fn ensure_schedules(database: &DatabaseConnection) -> Result<(), JobError> {
+            let transaction = database.begin().await?;
             for schedule in schedule_configs() {
-                database.execute_raw(Statement::from_sql_and_values(
+                transaction.execute_raw(Statement::from_sql_and_values(
                     DbBackend::Postgres,
-                    "INSERT INTO \"_appstruct_job_schedules\" (id, name, cron, interval_seconds, queue, kind, payload, enabled, next_run_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (name) DO UPDATE SET cron = EXCLUDED.cron, interval_seconds = EXCLUDED.interval_seconds, queue = EXCLUDED.queue, kind = EXCLUDED.kind, payload = EXCLUDED.payload",
+                    "INSERT INTO \"_appstruct_job_schedules\" AS schedule (id, name, cron, interval_seconds, queue, kind, payload, enabled, next_run_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (name) DO UPDATE SET cron = EXCLUDED.cron, interval_seconds = EXCLUDED.interval_seconds, queue = EXCLUDED.queue, kind = EXCLUDED.kind, payload = EXCLUDED.payload, enabled = TRUE, next_run_at = CASE WHEN schedule.enabled AND schedule.cron = EXCLUDED.cron AND schedule.interval_seconds = EXCLUDED.interval_seconds THEN schedule.next_run_at ELSE CURRENT_TIMESTAMP END",
                     [
                         uuid::Uuid::now_v7().into(), schedule.name.to_owned().into(),
                         schedule.cron.to_owned().into(), schedule.interval_seconds.into(),
@@ -47,25 +48,41 @@ pub(super) fn persistence() -> TokenStream {
                     ],
                 )).await?;
             }
+            transaction.execute_unprepared(
+                "UPDATE \"_appstruct_job_schedules\" SET enabled = FALSE WHERE enabled"
+            ).await?;
+            for schedule in schedule_configs() {
+                transaction.execute_raw(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "UPDATE \"_appstruct_job_schedules\" SET enabled = TRUE WHERE name = $1",
+                    [schedule.name.to_owned().into()],
+                )).await?;
+            }
+            transaction.commit().await?;
             Ok(())
         }
 
         async fn schedule_due(database: &DatabaseConnection) -> Result<(), JobError> {
             for schedule in schedule_configs() {
-                let row = database.query_one_raw(Statement::from_sql_and_values(
+                let transaction = database.begin().await?;
+                let row = transaction.query_one_raw(Statement::from_sql_and_values(
                     DbBackend::Postgres,
-                    "WITH due AS (SELECT id, next_run_at FROM \"_appstruct_job_schedules\" WHERE name = $1 AND enabled AND next_run_at <= CURRENT_TIMESTAMP FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE \"_appstruct_job_schedules\" AS schedule SET next_run_at = schedule.next_run_at + (schedule.interval_seconds * INTERVAL '1 second'), last_run_at = CURRENT_TIMESTAMP FROM due WHERE schedule.id = due.id RETURNING due.next_run_at",
+                    "WITH due AS (SELECT id, next_run_at FROM \"_appstruct_job_schedules\" WHERE name = $1 AND enabled AND next_run_at <= CURRENT_TIMESTAMP FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE \"_appstruct_job_schedules\" AS schedule SET next_run_at = CURRENT_TIMESTAMP + (schedule.interval_seconds * INTERVAL '1 second'), last_run_at = CURRENT_TIMESTAMP FROM due WHERE schedule.id = due.id RETURNING due.next_run_at",
                     [schedule.name.to_owned().into()],
                 )).await?;
-                let Some(row) = row else { continue };
+                let Some(row) = row else {
+                    transaction.commit().await?;
+                    continue;
+                };
                 let run_at: chrono::DateTime<chrono::Utc> = row.try_get("", "next_run_at")?;
                 let idempotency = format!("schedule:{}:{}", schedule.name, run_at.timestamp());
                 enqueue(
-                    database, schedule.queue, schedule.kind,
+                    &transaction, schedule.queue, schedule.kind,
                     &serde_json::from_str::<serde_json::Value>(schedule.payload)
                         .map_err(|error| JobError::Serialization(error.to_string()))?,
                     Some(&idempotency), Some(run_at), None,
                 ).await?;
+                transaction.commit().await?;
             }
             Ok(())
         }

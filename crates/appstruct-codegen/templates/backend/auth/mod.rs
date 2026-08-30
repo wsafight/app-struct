@@ -1,6 +1,10 @@
+mod admin;
+mod admin_webhooks;
 mod config;
 mod handlers;
 mod mail;
+mod oauth;
+mod recovery;
 mod session;
 #[allow(unused_imports)]
 pub(crate) use session::{random_token, token_hash};
@@ -13,4 +17,8 @@ use axum::Router;
 
 pub fn router() -> Router<AppState> {
     handlers::router()
+        .merge(recovery::router())
+        .merge(oauth::router())
+        .merge(admin::router())
+        .merge(admin_webhooks::router())
 }

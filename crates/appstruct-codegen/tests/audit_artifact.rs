@@ -27,6 +27,9 @@ fn audit_contract_generates_a_compilable_backend() {
     assert!(api.contains("Some(&after)"));
     let client = artifact_text(&artifacts, "web/src/generated/client.ts");
     assert!(client.contains("export const auditApi"));
+    let audit_page = artifact_text(&artifacts, "web/src/audit/AuditPage.tsx");
+    assert!(audit_page.contains("diffSnapshots"));
+    assert!(audit_page.contains("Changed fields"));
     assert!(
         artifacts
             .iter()

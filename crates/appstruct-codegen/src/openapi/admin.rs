@@ -5,6 +5,7 @@ pub(super) fn add(
     paths: &mut Map<String, Value>,
     schemas: &mut Map<String, Value>,
     jobs_enabled: bool,
+    webhooks_enabled: bool,
 ) {
     schemas.insert("AdminOverview".to_owned(), overview_schema());
     paths.insert("/api/admin/overview".to_owned(), overview_path());
@@ -20,6 +21,9 @@ pub(super) fn add(
     );
     if jobs_enabled {
         add_jobs(paths, schemas);
+    }
+    if webhooks_enabled {
+        add_webhooks(paths, schemas);
     }
 }
 
@@ -178,5 +182,80 @@ fn csrf_parameter() -> Value {
     json!({
         "name": "X-CSRF-Token", "in": "header", "required": true,
         "schema": { "type": "string" }
+    })
+}
+
+fn add_webhooks(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {
+    schemas.insert("AdminWebhookDelivery".to_owned(), webhook_schema());
+    paths.insert("/api/admin/webhooks".to_owned(), webhooks_path());
+    for (path, operation_id, description, status) in [
+        (
+            "/api/admin/webhooks/{id}/retry",
+            "retryAdminWebhook",
+            "Dead delivery queued for retry",
+            "200",
+        ),
+        (
+            "/api/admin/webhooks/{id}/replay",
+            "replayAdminWebhook",
+            "Terminal delivery copied into a new pending delivery",
+            "201",
+        ),
+    ] {
+        paths.insert(
+            path.to_owned(),
+            webhook_mutation_path(operation_id, description, status),
+        );
+    }
+}
+
+fn webhook_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["id", "endpoint", "event", "status", "tenant_id", "attempts", "max_attempts", "next_attempt_at", "response_status", "last_error", "created_at", "completed_at"],
+        "properties": {
+            "id": { "type": "string", "format": "uuid" },
+            "endpoint": { "type": "string" }, "event": { "type": "string" },
+            "status": { "type": "string", "enum": ["pending", "delivering", "succeeded", "dead"] },
+            "tenant_id": { "type": ["string", "null"], "format": "uuid" },
+            "attempts": { "type": "integer" }, "max_attempts": { "type": "integer" },
+            "next_attempt_at": { "type": "string", "format": "date-time" },
+            "response_status": { "type": ["integer", "null"] },
+            "last_error": { "type": ["string", "null"] },
+            "created_at": { "type": "string", "format": "date-time" },
+            "completed_at": { "type": ["string", "null"], "format": "date-time" }
+        }
+    })
+}
+
+fn webhooks_path() -> Value {
+    json!({
+        "get": {
+            "operationId": "listAdminWebhooks", "tags": ["Admin"],
+            "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
+            "parameters": [
+                { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "delivering", "succeeded", "dead"] } },
+                { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }
+            ],
+            "responses": {
+                "200": response("Recent webhook deliveries", &json!({ "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": schema_ref("AdminWebhookDelivery") } } })),
+                "400": error_response(), "401": error_response(), "403": error_response(), "404": error_response()
+            }
+        }
+    })
+}
+
+fn webhook_mutation_path(operation_id: &str, description: &str, status: &str) -> Value {
+    json!({
+        "post": {
+            "operationId": operation_id, "tags": ["Admin"],
+            "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
+            "parameters": [csrf_parameter(), { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+            "responses": {
+                (status): response(description, &schema_ref("AdminWebhookDelivery")),
+                "400": error_response(), "401": error_response(), "403": error_response(),
+                "404": error_response(), "409": error_response()
+            }
+        }
     })
 }

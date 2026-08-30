@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, env, fs, io, path::Path, process::ExitCode, time::Duration};
 
+mod lifecycle;
+mod verification;
+
 const LOCK_PATH: &str = "appstruct.modules.lock";
 const MAX_PACKAGE_BYTES: usize = 12 * 1024 * 1024;
 
@@ -23,6 +26,27 @@ pub(crate) enum ModuleCommand {
         /// Base64-encoded Ed25519 public key; defaults to `APPSTRUCT_REGISTRY_PUBLIC_KEY`.
         #[arg(long)]
         public_key: Option<String>,
+    },
+    /// Replace an installed module with an explicitly selected signed version.
+    Update {
+        /// Module reference in `vendor/name@version` form.
+        module: String,
+        /// Override the registry recorded in the lock.
+        #[arg(long)]
+        registry: Option<String>,
+        /// Rotate the locked Ed25519 public key while updating.
+        #[arg(long)]
+        public_key: Option<String>,
+    },
+    /// Remove a locked remote module and its unreferenced cache.
+    Uninstall {
+        /// Installed module name in `vendor/name` form.
+        module: String,
+    },
+    /// Revalidate locked signatures, digests, manifests, and cached artifacts offline.
+    Verify {
+        /// Optional installed module name; verifies all modules when omitted.
+        module: Option<String>,
     },
     /// List locked remote modules without contacting a registry.
     List,
@@ -59,6 +83,13 @@ pub(crate) fn run(project: &Path, command: &ModuleCommand) -> ExitCode {
             registry,
             public_key,
         } => install(project, module, registry, public_key.as_deref()),
+        ModuleCommand::Update {
+            module,
+            registry,
+            public_key,
+        } => lifecycle::update(project, module, registry.as_deref(), public_key.as_deref()),
+        ModuleCommand::Uninstall { module } => lifecycle::uninstall(project, module),
+        ModuleCommand::Verify { module } => verification::verify(project, module.as_deref()),
         ModuleCommand::List => list(project),
     };
     match result {

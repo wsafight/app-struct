@@ -34,6 +34,8 @@ pub struct IntrospectedColumn {
     pub data_type: String,
     pub udt_schema: String,
     pub udt_name: String,
+    pub domain_schema: Option<String>,
+    pub domain_name: Option<String>,
     pub nullable: bool,
     pub default: Option<String>,
     pub identity: bool,

@@ -79,6 +79,9 @@ pub(crate) struct SurfaceJobSchedule {
 pub(crate) struct SurfaceWebhooks {
     pub enabled: bool,
     pub poll_interval_ms: Option<Located<u64>>,
+    pub connect_timeout_ms: Option<Located<u64>>,
+    pub read_timeout_ms: Option<Located<u64>>,
+    pub request_timeout_ms: Option<Located<u64>>,
     pub endpoints: Vec<SurfaceWebhookEndpoint>,
     pub span: Option<SourceSpan>,
 }

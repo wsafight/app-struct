@@ -24,12 +24,13 @@ function ProjectMetadataEditor({
   );
 }
 
-function ProjectDashboard(_props: PageComponentProps) {
+function ProjectDashboard({ resources }: PageComponentProps) {
   return (
     <main className="page">
       <div className="page-heading">
         <div>
           <h1>Project dashboard</h1>
+          <p>{resources.length} resources</p>
         </div>
       </div>
     </main>

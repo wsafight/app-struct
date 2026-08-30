@@ -45,7 +45,8 @@ pub(super) fn columns(
 ) -> Result<Vec<(String, IntrospectedColumn)>, MigrationError> {
     client
         .query(
-            r"SELECT table_name, column_name, data_type, udt_schema, udt_name, is_nullable,
+            r"SELECT table_name, column_name, data_type, udt_schema, udt_name,
+       domain_schema, domain_name, is_nullable,
        column_default, is_identity, is_generated, character_maximum_length
 FROM information_schema.columns
 WHERE table_schema = $1
@@ -62,6 +63,8 @@ ORDER BY table_name, ordinal_position",
                     data_type: text(&row, "data_type")?,
                     udt_schema: text(&row, "udt_schema")?,
                     udt_name: text(&row, "udt_name")?,
+                    domain_schema: optional_text(&row, "domain_schema")?,
+                    domain_name: optional_text(&row, "domain_name")?,
                     nullable: text(&row, "is_nullable")? == "YES",
                     default: optional_text(&row, "column_default")?,
                     identity: text(&row, "is_identity")? == "YES",

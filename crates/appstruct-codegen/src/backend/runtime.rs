@@ -230,8 +230,8 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
                 .layer(PropagateRequestIdLayer::x_request_id()).layer(TraceLayer::new_for_http())
                 .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
                 .with_state(AppState {
-                    database, extensions, auth, mail, file,
-                    realtime: RealtimeState::default(), health,
+                    realtime: RealtimeState::new(database.clone()),
+                    database, extensions, auth, mail, file, health,
                 })
         }
         async fn liveness() -> StatusCode { StatusCode::NO_CONTENT }

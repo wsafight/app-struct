@@ -1,4 +1,4 @@
-use super::install_envelope;
+use super::{install_envelope, lifecycle, verification};
 use appstruct_ir::ModuleOrigin;
 use appstruct_module_sdk::{
     MODULE_API_VERSION, RegistryArtifact, RegistryEnvelope, RegistryPackage,
@@ -58,6 +58,8 @@ fn installs_and_compiles_a_signed_remote_module_offline() {
     )
     .unwrap();
 
+    verification::verify(project.path(), None).unwrap();
+
     let ir = appstruct_compiler::compile_project(project.path()).unwrap();
     let module = ir
         .modules
@@ -74,12 +76,20 @@ fn installs_and_compiles_a_signed_remote_module_offline() {
         "tampered\n",
     )
     .unwrap();
+    let verification_error =
+        verification::verify(project.path(), Some("vendor/analytics")).unwrap_err();
+    assert!(verification_error.contains("cached artifact"));
     let diagnostics = appstruct_compiler::compile_project(project.path()).unwrap_err();
     assert!(
         diagnostics
             .iter()
             .any(|diagnostic| diagnostic.code == "AS3090")
     );
+
+    let cache = manifest.parent().unwrap().to_owned();
+    lifecycle::uninstall(project.path(), "vendor/analytics").unwrap();
+    assert!(super::read_lock(project.path()).unwrap().modules.is_empty());
+    assert!(!cache.exists());
 }
 
 #[test]
