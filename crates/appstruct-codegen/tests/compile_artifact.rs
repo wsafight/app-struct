@@ -129,6 +129,9 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(controller.contains("useMutation"));
     assert!(framework_test.contains("validateResourceSearch"));
     assert!(framework_test.contains("shouldRetryQuery"));
+    assert!(framework_test.contains("canAccessRule"));
+    assert!(framework_test.contains("buildResourceFilterQuery"));
+    assert!(framework_test.contains("supportsInlineEdit"));
     assert!(routes.contains("validateSearch: validateResourceSearch"));
     let table = artifact_text(&artifacts, "web/src/pages/resource-list/ResourceTable.tsx");
     assert!(list.contains("useRealtimeResource"));
