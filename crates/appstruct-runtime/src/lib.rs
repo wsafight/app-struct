@@ -1,6 +1,7 @@
 //! Stable contracts shared by generated `AppStruct` backends.
 
 mod lifecycle;
+mod resource;
 mod supervisor;
 
 use async_trait::async_trait;
@@ -14,12 +15,18 @@ use std::time::Duration;
 pub mod __source {
     pub const LIB: &str = include_str!("lib.rs");
     pub const LIFECYCLE: &str = include_str!("lifecycle.rs");
+    pub const RESOURCE: &str = include_str!("resource.rs");
     pub const SUPERVISOR: &str = include_str!("supervisor.rs");
 }
 
 pub use lifecycle::{
     ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase, ModulePlan, ModuleRuntime,
     ModuleStarter,
+};
+pub use resource::{
+    BulkDeleteInput, BulkFailure, BulkResult, BulkUpdateInput, CsvError, ListMeta, ListQuery,
+    ListResponse, bulk_failure, csv_escape, csv_json_value, decode_cursor, encode_cursor,
+    parse_csv_rows, parse_revision_etag, revision_etag,
 };
 pub use supervisor::{
     BackgroundTaskExit, BackgroundTaskExitKind, BackgroundTaskObserver, SupervisedTaskHandle,

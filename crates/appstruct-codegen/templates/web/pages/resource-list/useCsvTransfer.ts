@@ -9,12 +9,18 @@ interface CsvTransferOptions {
   onError: (message: string) => void;
 }
 
-export function useCsvTransfer({ resource, runChange, onError }: CsvTransferOptions) {
+export function useCsvTransfer({
+  resource,
+  runChange,
+  onError,
+}: CsvTransferOptions) {
   const importInput = useRef<HTMLInputElement>(null);
   const exportMutation = useMutation({
     mutationFn: () => resource.api.exportCsv(),
     onSuccess: (csv) => {
-      const href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const href = URL.createObjectURL(
+        new Blob([csv], { type: "text/csv;charset=utf-8" }),
+      );
       const anchor = document.createElement("a");
       anchor.href = href;
       anchor.download = `${resource.slug}.csv`;
@@ -29,7 +35,8 @@ export function useCsvTransfer({ resource, runChange, onError }: CsvTransferOpti
     try {
       await runChange(async () => {
         const result = await resource.api.importCsv(await file.text());
-        if (result.failed.length) onError(`${result.failed.length} rows could not be imported`);
+        if (result.failed.length)
+          onError(`${result.failed.length} rows could not be imported`);
       });
     } finally {
       if (importInput.current) importInput.current.value = "";

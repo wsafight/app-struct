@@ -14,14 +14,23 @@ export interface ResourceListControllerOptions {
 
 const EMPTY_LIST = { data: [] as ResourceRecord[], total: 0 };
 
-export function useResourceListController(resource: ResourceDefinition, options: ResourceListControllerOptions) {
+export function useResourceListController(
+  resource: ResourceDefinition,
+  options: ResourceListControllerOptions,
+) {
   const canList = useCanAccess(resource, "list");
   const queryClient = useQueryClient();
   const listQuery = useQuery({
-    queryKey: resourceQueryKeys.list(resource.id, `${options.trashMode ? "trash" : "active"}:${options.cacheKey}`),
+    queryKey: resourceQueryKeys.list(
+      resource.id,
+      `${options.trashMode ? "trash" : "active"}:${options.cacheKey}`,
+    ),
     queryFn: async ({ signal }) => {
       if (options.trashMode) {
-        const response = await resource.api.trash?.({ page: options.query.page, page_size: options.query.page_size }, { signal });
+        const response = await resource.api.trash?.(
+          { page: options.query.page, page_size: options.query.page_size },
+          { signal },
+        );
         return { data: response?.data ?? [], total: response?.meta.total ?? 0 };
       }
       const response = await resource.api.list(options.query, { signal });
@@ -34,7 +43,9 @@ export function useResourceListController(resource: ResourceDefinition, options:
     mutationFn: (operation: () => Promise<void>) => operation(),
     onSuccess: async () => {
       options.onChangeSuccess?.();
-      await queryClient.invalidateQueries({ queryKey: resourceQueryKeys.all(resource.id) });
+      await queryClient.invalidateQueries({
+        queryKey: resourceQueryKeys.all(resource.id),
+      });
     },
   });
 
@@ -62,7 +73,10 @@ export function useResourceListController(resource: ResourceDefinition, options:
   };
 }
 
-export function useResourceDetailController(resource: ResourceDefinition, id?: string) {
+export function useResourceDetailController(
+  resource: ResourceDefinition,
+  id?: string,
+) {
   const canRead = useCanAccess(resource, "read");
   const query = useQuery({
     queryKey: resourceQueryKeys.detail(resource.id, id ?? ""),

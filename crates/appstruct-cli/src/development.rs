@@ -13,7 +13,7 @@ mod process;
 mod watch;
 
 use process::{DevProcesses, ManagedDatabase};
-use watch::SourceFingerprint;
+use watch::{ProjectChanges, ProjectWatcher};
 
 const MANAGED_DATABASE_URL: &str =
     "postgresql://appstruct:appstruct-dev@127.0.0.1:5432/appstruct?sslmode=disable";
@@ -59,7 +59,7 @@ struct DevSession<'project> {
     migration_policy: DatabaseMigrationPolicy,
     database: ManagedDatabase,
     processes: DevProcesses,
-    fingerprint: SourceFingerprint,
+    watcher: ProjectWatcher,
     api_port: u16,
     web_port: u16,
     stopping: Arc<AtomicBool>,
@@ -108,7 +108,7 @@ impl<'project> DevSession<'project> {
         let processes =
             DevProcesses::spawn(project, &environment, &database_url, api_port, web_port)?;
         check_stopping(&stopping)?;
-        let fingerprint = SourceFingerprint::read(project)?;
+        let watcher = ProjectWatcher::start(project)?;
         println!("AppStruct development environment is ready:");
         println!("- API: http://127.0.0.1:{api_port}");
         println!("- Web: http://127.0.0.1:{web_port}");
@@ -120,7 +120,7 @@ impl<'project> DevSession<'project> {
             migration_policy,
             database,
             processes,
-            fingerprint,
+            watcher,
             api_port,
             web_port,
             stopping,
@@ -132,31 +132,36 @@ impl<'project> DevSession<'project> {
             if let Some(failure) = self.processes.failure()? {
                 return Err(io::Error::other(failure));
             }
-            let next = SourceFingerprint::read(self.project)?;
-            if next != self.fingerprint {
-                self.fingerprint = next;
-                self.reload();
+            if let Some(changes) = self.watcher.changes(Duration::from_millis(250))? {
+                self.watcher.refresh()?;
+                self.reload(changes);
             }
-            thread::sleep(Duration::from_millis(400));
         }
         self.processes.stop();
         self.database.stop()
     }
 
-    fn reload(&mut self) {
-        println!("[appstruct] project inputs changed; rebuilding");
-        let result = self
-            .refresh_environment()
-            .and_then(|()| {
-                prepare(
-                    self.project,
-                    &self.database_url,
-                    &self.environment,
-                    self.migration_policy,
-                    false,
-                    &self.stopping,
-                )
-            })
+    fn reload(&mut self, changes: ProjectChanges) {
+        if changes.specification {
+            self.reload_specification();
+        } else if changes.backend {
+            self.reload_backend();
+        } else if changes.web {
+            println!("[appstruct] web extension changed; Vite will apply the update");
+        }
+    }
+
+    fn reload_specification(&mut self) {
+        println!("[appstruct] App Spec inputs changed; regenerating");
+        let result = match self.refresh_environment() {
+            Ok(()) => prepare(
+                self.project,
+                &self.database_url,
+                &self.environment,
+                self.migration_policy,
+                false,
+                &self.stopping,
+            )
             .and_then(|()| {
                 self.processes.restart(
                     self.project,
@@ -165,11 +170,46 @@ impl<'project> DevSession<'project> {
                     self.api_port,
                     self.web_port,
                 )
-            });
+            }),
+            Err(error) if error.kind() == io::ErrorKind::Unsupported => {
+                crate::report::warning(
+                    "AS6006",
+                    crate::report::ErrorCategory::Development,
+                    &error.to_string(),
+                );
+                return;
+            }
+            Err(error) => Err(error),
+        };
         match result {
-            Ok(()) => println!("[appstruct] services restarted"),
+            Ok(()) => println!("[appstruct] generated services restarted"),
             Err(error) => {
                 eprintln!("[appstruct] rebuild failed; services were not restarted: {error}");
+            }
+        }
+    }
+
+    fn reload_backend(&mut self) {
+        println!("[appstruct] backend extension changed; rebuilding API");
+        let result = (|| {
+            if crate::generation::run(self.project, false) != ExitCode::SUCCESS {
+                return Err(io::Error::other("generation failed"));
+            }
+            check_stopping(&self.stopping)?;
+            build_backend(self.project, &self.environment)?;
+            check_stopping(&self.stopping)?;
+            self.processes.restart_api(
+                self.project,
+                &self.environment,
+                &self.database_url,
+                self.api_port,
+                self.web_port,
+            )
+        })();
+        match result {
+            Ok(()) => println!("[appstruct] API restarted"),
+            Err(error) => {
+                eprintln!("[appstruct] API rebuild failed; the process was not restarted: {error}");
             }
         }
     }
@@ -177,12 +217,14 @@ impl<'project> DevSession<'project> {
     fn refresh_environment(&mut self) -> io::Result<()> {
         let ir = compile(self.project)?;
         if ir.database.dev_mode != self.database_mode {
-            return Err(io::Error::other(
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
                 "database development mode changed; restart `appstruct dev` to reconfigure it",
             ));
         }
         if ir.database.dev_migration != self.migration_policy {
-            return Err(io::Error::other(
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
                 "database migration policy changed; restart `appstruct dev` to apply it",
             ));
         }

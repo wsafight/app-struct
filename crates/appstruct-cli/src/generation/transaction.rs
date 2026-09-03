@@ -96,7 +96,7 @@ impl GenerationTransaction {
                 "generated directory recovery did not reach a clean state",
             ));
         }
-        if let Err(error) = write_staging(&self.paths.staging, files) {
+        if let Err(error) = write_staging(&self.paths.staging, &self.paths.root, files) {
             let _ = fs::remove_dir_all(&self.paths.staging);
             return Err(error);
         }
@@ -252,7 +252,11 @@ fn update_state_exists(project: &Path) -> bool {
     .any(|path| path.exists())
 }
 
-fn write_staging(staging: &Path, files: &BTreeMap<PathBuf, Vec<u8>>) -> io::Result<()> {
+fn write_staging(
+    staging: &Path,
+    current: &Path,
+    files: &BTreeMap<PathBuf, Vec<u8>>,
+) -> io::Result<()> {
     fs::create_dir(staging)?;
     for (relative, content) in files {
         let path = staging.join(relative);
@@ -260,6 +264,12 @@ fn write_staging(staging: &Path, files: &BTreeMap<PathBuf, Vec<u8>>) -> io::Resu
             .parent()
             .ok_or_else(|| invalid("artifact has no parent"))?;
         fs::create_dir_all(parent)?;
+        let previous = current.join(relative);
+        if fs::read(&previous).is_ok_and(|bytes| bytes == *content)
+            && fs::hard_link(&previous, &path).is_ok()
+        {
+            continue;
+        }
         let mut file = File::create(path)?;
         file.write_all(content)?;
         file.sync_all()?;

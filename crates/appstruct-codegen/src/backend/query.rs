@@ -50,34 +50,10 @@ pub(super) fn list_support(
         primary_name: &primary_name,
         sorts: &sorts,
     });
-    let cursor_helpers = cursor_helpers();
     Ok(quote! {
-        use base64::Engine as _;
+        use appstruct_runtime::{ListMeta, ListQuery, ListResponse, decode_cursor, encode_cursor};
         use sea_orm::{#column_trait #query_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
-        #[derive(Debug, Default, Deserialize)]
-        pub struct ListQuery {
-            page: Option<u64>,
-            page_size: Option<u64>,
-            cursor: Option<String>,
-            limit: Option<u64>,
-            sort: Option<String>,
-            q: Option<String>,
-            #[serde(flatten)]
-            filters: BTreeMap<String, String>,
-        }
-        #[derive(Debug, Serialize)]
-        #[serde(untagged)]
-        pub enum ListMeta {
-            Page { page: u64, page_size: u64, total: u64 },
-            Cursor { limit: u64, next_cursor: Option<String>, has_more: bool },
-        }
-        #[derive(Debug, Serialize)]
-        pub struct ListResponse<T> {
-            data: Vec<T>,
-            meta: ListMeta,
-        }
         #handler
-        #cursor_helpers
     })
 }
 struct ListHandlerTokens<'a> {
@@ -136,7 +112,8 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
                     ));
                 }
                 if let Some(cursor) = query.cursor.as_deref() {
-                    let raw_cursor = decode_cursor(cursor)?;
+                    let raw_cursor = decode_cursor(cursor)
+                        .ok_or_else(|| ApiError::InvalidQuery("invalid cursor".to_owned()))?;
                     let cursor_value = #cursor_value;
                     select = select.filter(#module::Column::#primary.gt(cursor_value));
                 }
@@ -192,23 +169,6 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
                 data,
                 meta: ListMeta::Page { page, page_size, total },
             }))
-        }
-    }
-}
-fn cursor_helpers() -> TokenStream {
-    quote! {
-        fn encode_cursor(value: &str) -> String {
-            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!("v1:{value}"))
-        }
-        fn decode_cursor(cursor: &str) -> Result<String, ApiError> {
-            let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
-                .decode(cursor)
-                .ok()
-                .and_then(|bytes| String::from_utf8(bytes).ok())
-                .and_then(|value| value.strip_prefix("v1:").map(str::to_owned))
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| ApiError::InvalidQuery("invalid cursor".to_owned()))?;
-            Ok(decoded)
         }
     }
 }

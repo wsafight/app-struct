@@ -78,7 +78,9 @@ pub(super) fn runtime_cargo() -> &'static str {
         "[dependencies]\n",
         "appstruct-contracts = { path = \"../contracts\" }\n",
         "async-trait = \"=0.1.89\"\n",
+        "base64 = \"=0.22.1\"\n",
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
+        "serde_json = \"=1.0.151\"\n",
         "tokio = { version = \"=1.53.1\", features = [\"rt\", \"time\"] }\n",
         "uuid = { version = \"=1.25.0\", features = [\"serde\", \"v7\"] }\n",
     )

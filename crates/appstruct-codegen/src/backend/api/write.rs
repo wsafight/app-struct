@@ -347,15 +347,12 @@ fn helper_functions(
         fn expected_revision(headers: &HeaderMap) -> Result<i64, ApiError> {
             let value = headers.get(header::IF_MATCH).ok_or(ApiError::PreconditionRequired)?;
             let value = value.to_str().map_err(|_| ApiError::InvalidPrecondition)?;
-            value.strip_prefix("\"rev-")
-                .and_then(|value| value.strip_suffix('"'))
-                .and_then(|value| value.parse().ok())
-                .filter(|value| *value >= 1)
+            appstruct_runtime::parse_revision_etag(value)
                 .ok_or(ApiError::InvalidPrecondition)
         }
 
         fn etag_header(model: &#module::Model) -> [(header::HeaderName, String); 1] {
-            [(header::ETAG, format!("\"rev-{}\"", model.revision))]
+            [(header::ETAG, appstruct_runtime::revision_etag(model.revision))]
         }
 
         fn publish_realtime_event(

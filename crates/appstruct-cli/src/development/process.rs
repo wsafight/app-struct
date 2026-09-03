@@ -23,59 +23,8 @@ impl DevProcesses {
     ) -> io::Result<Self> {
         let api_url = format!("http://127.0.0.1:{api_port}");
         let web_url = format!("http://127.0.0.1:{web_port}");
-        let mut api_command = Command::new(
-            project
-                .join(".appstruct/cache/backend-target/debug")
-                .join(crate::build::backend_binary_name(project)?),
-        );
-        api_command
-            .current_dir(project)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        environment.apply(&mut api_command);
-        api_command
-            .env("DATABASE_URL", database_url)
-            .env("APPSTRUCT_BIND", format!("127.0.0.1:{api_port}"))
-            .env(
-                "APPSTRUCT_ALLOWED_ORIGIN",
-                environment
-                    .get("APPSTRUCT_ALLOWED_ORIGIN")
-                    .unwrap_or_else(|| web_url.clone()),
-            )
-            .env(
-                "APPSTRUCT_FRONTEND_URL",
-                environment
-                    .get("APPSTRUCT_FRONTEND_URL")
-                    .unwrap_or_else(|| web_url.clone()),
-            );
-        isolate_process_group(&mut api_command);
-        let api = api_command.spawn()?;
-
-        let mut web_command = Command::new("pnpm");
-        web_command
-            .current_dir(project.join("generated/web"))
-            .args([
-                "run",
-                "dev",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                &web_port.to_string(),
-                "--strictPort",
-            ])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        environment.apply(&mut web_command);
-        web_command.env(
-            "VITE_API_URL",
-            environment
-                .get("VITE_API_URL")
-                .unwrap_or_else(|| api_url.clone()),
-        );
-        isolate_process_group(&mut web_command);
-        let web = match web_command.spawn() {
+        let api = start_api(project, environment, database_url, api_port, &web_url)?;
+        let web = match start_web(project, environment, web_port, &api_url) {
             Ok(web) => web,
             Err(error) => {
                 let mut api = api;
@@ -95,6 +44,34 @@ impl DevProcesses {
         .flatten()
         .collect();
         Ok(Self { api, web, logs })
+    }
+
+    pub(super) fn restart_api(
+        &mut self,
+        project: &Path,
+        environment: &ProjectEnvironment,
+        database_url: &str,
+        api_port: u16,
+        web_port: u16,
+    ) -> io::Result<()> {
+        terminate(&mut self.api);
+        let mut api = start_api(
+            project,
+            environment,
+            database_url,
+            api_port,
+            &format!("http://127.0.0.1:{web_port}"),
+        )?;
+        self.logs.extend(
+            [
+                log_pipe("api", api.stdout.take()),
+                log_pipe("api", api.stderr.take()),
+            ]
+            .into_iter()
+            .flatten(),
+        );
+        self.api = api;
+        Ok(())
     }
 
     pub(super) fn restart(
@@ -127,6 +104,75 @@ impl DevProcesses {
             let _ = handle.join();
         }
     }
+}
+
+fn start_api(
+    project: &Path,
+    environment: &ProjectEnvironment,
+    database_url: &str,
+    api_port: u16,
+    web_url: &str,
+) -> io::Result<Child> {
+    let mut command = Command::new(
+        project
+            .join(".appstruct/cache/backend-target/debug")
+            .join(crate::build::backend_binary_name(project)?),
+    );
+    command
+        .current_dir(project)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    environment.apply(&mut command);
+    command
+        .env("DATABASE_URL", database_url)
+        .env("APPSTRUCT_BIND", format!("127.0.0.1:{api_port}"))
+        .env(
+            "APPSTRUCT_ALLOWED_ORIGIN",
+            environment
+                .get("APPSTRUCT_ALLOWED_ORIGIN")
+                .unwrap_or_else(|| web_url.to_owned()),
+        )
+        .env(
+            "APPSTRUCT_FRONTEND_URL",
+            environment
+                .get("APPSTRUCT_FRONTEND_URL")
+                .unwrap_or_else(|| web_url.to_owned()),
+        );
+    isolate_process_group(&mut command);
+    command.spawn()
+}
+
+fn start_web(
+    project: &Path,
+    environment: &ProjectEnvironment,
+    web_port: u16,
+    api_url: &str,
+) -> io::Result<Child> {
+    let mut command = Command::new("pnpm");
+    command
+        .current_dir(project.join("generated/web"))
+        .args([
+            "run",
+            "dev",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &web_port.to_string(),
+            "--strictPort",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    environment.apply(&mut command);
+    command.env(
+        "VITE_API_URL",
+        environment
+            .get("VITE_API_URL")
+            .unwrap_or_else(|| api_url.to_owned()),
+    );
+    isolate_process_group(&mut command);
+    command.spawn()
 }
 
 impl Drop for DevProcesses {

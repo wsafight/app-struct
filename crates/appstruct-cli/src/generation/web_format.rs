@@ -1,4 +1,4 @@
-use appstruct_codegen::Artifact;
+use appstruct_codegen::{Artifact, ArtifactKind};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io;
@@ -12,7 +12,7 @@ pub(super) fn format(project: &Path, artifacts: &mut [Artifact]) -> io::Result<(
     let temporary = tempfile::Builder::new()
         .prefix("web-format-")
         .tempdir_in(cache)?;
-    for artifact in artifacts.iter().filter(|artifact| is_web(artifact)) {
+    for artifact in artifacts.iter().filter(|artifact| formatted(artifact)) {
         let path = temporary.path().join(&artifact.relative_path);
         fs::create_dir_all(
             path.parent()
@@ -98,16 +98,12 @@ fn prettier_path(formatter: &Path) -> PathBuf {
     formatter.join("node_modules/.bin/prettier.cmd")
 }
 
-fn is_web(artifact: &Artifact) -> bool {
-    artifact.relative_path.starts_with("web")
-}
-
 fn formatted(artifact: &Artifact) -> bool {
-    is_web(artifact)
-        && artifact
-            .relative_path
-            .extension()
-            .is_some_and(|extension| matches!(extension.to_str(), Some("ts" | "tsx" | "css")))
+    artifact.kind == ArtifactKind::TypeScript
+        || matches!(
+            artifact.relative_path.to_str(),
+            Some("web/src/app/App.tsx" | "web/src/app/Layout.tsx")
+        )
 }
 
 fn command(command: &mut Command, context: &str) -> io::Result<()> {
@@ -126,5 +122,39 @@ fn command(command: &mut Command, context: &str) -> io::Result<()> {
             "{context}: process exited with {}: {detail}",
             output.status
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn artifact(path: &str, kind: ArtifactKind) -> Artifact {
+        Artifact {
+            relative_path: path.into(),
+            content: Vec::new(),
+            executable: false,
+            kind,
+        }
+    }
+
+    #[test]
+    fn formats_only_ir_driven_web_sources() {
+        assert!(formatted(&artifact(
+            "web/src/generated/client.ts",
+            ArtifactKind::TypeScript,
+        )));
+        assert!(formatted(&artifact(
+            "web/src/app/App.tsx",
+            ArtifactKind::Web,
+        )));
+        assert!(formatted(&artifact(
+            "web/src/app/Layout.tsx",
+            ArtifactKind::Web,
+        )));
+        assert!(!formatted(&artifact(
+            "web/src/pages/ResourceList.tsx",
+            ArtifactKind::Web,
+        )));
     }
 }

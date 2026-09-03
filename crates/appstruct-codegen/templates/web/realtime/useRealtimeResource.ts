@@ -10,16 +10,28 @@ export interface RealtimeResourceOptions {
   eventPrefix: string;
 }
 
-export function useRealtimeResource({ enabled, resourceId, resourceSlug, eventPrefix }: RealtimeResourceOptions): void {
+export function useRealtimeResource({
+  enabled,
+  resourceId,
+  resourceSlug,
+  eventPrefix,
+}: RealtimeResourceOptions): void {
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!enabled) return;
     const source = subscribeRealtime({ resource: resourceSlug });
     const refresh = () => {
-      void queryClient.invalidateQueries({ queryKey: resourceQueryKeys.all(resourceId) });
+      void queryClient.invalidateQueries({
+        queryKey: resourceQueryKeys.all(resourceId),
+      });
     };
-    const events = [`${eventPrefix}.created`, `${eventPrefix}.updated`, `${eventPrefix}.deleted`, "resync"];
+    const events = [
+      `${eventPrefix}.created`,
+      `${eventPrefix}.updated`,
+      `${eventPrefix}.deleted`,
+      "resync",
+    ];
     for (const event of events) source.addEventListener(event, refresh);
     return () => source.close();
   }, [enabled, eventPrefix, queryClient, resourceId, resourceSlug]);

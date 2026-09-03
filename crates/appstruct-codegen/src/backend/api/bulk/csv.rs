@@ -3,41 +3,6 @@ use appstruct_ir::{EntityIr, FieldTypeIr};
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 
-pub(super) fn helpers() -> TokenStream {
-    quote! {
-        fn csv_escape(value: &str) -> String {
-            if value.contains([',', '"', '\n', '\r']) { format!("\"{}\"", value.replace('"', "\"\"")) } else { value.to_owned() }
-        }
-
-        fn parse_csv_rows(body: &str) -> Result<Vec<Vec<String>>, ApiError> {
-            let mut rows = Vec::new(); let mut row = Vec::new(); let mut value = String::new(); let mut quoted = false; let mut chars = body.chars().peekable();
-            while let Some(character) = chars.next() {
-                match character {
-                    '"' if quoted && chars.peek() == Some(&'"') => { value.push('"'); chars.next(); }
-                    '"' => quoted = !quoted,
-                    ',' if !quoted => row.push(std::mem::take(&mut value)),
-                    '\n' if !quoted => { row.push(std::mem::take(&mut value)); if !row.iter().all(String::is_empty) { rows.push(std::mem::take(&mut row)); } }
-                    '\r' if !quoted => {}
-                    _ => value.push(character),
-                }
-            }
-            if quoted { return Err(ApiError::InvalidQuery("CSV contains an unterminated quote".to_owned())); }
-            if !value.is_empty() || !row.is_empty() { row.push(value); if !row.iter().all(String::is_empty) { rows.push(row); } }
-            Ok(rows)
-        }
-
-        fn csv_json_value(value: &str, kind: &str) -> serde_json::Value {
-            if value.is_empty() { return serde_json::Value::Null; }
-            match kind {
-                "boolean" => value.parse::<bool>().map(serde_json::Value::Bool).unwrap_or_else(|_| serde_json::Value::String(value.to_owned())),
-                "integer" => value.parse::<i32>().map(|value| serde_json::json!(value)).unwrap_or_else(|_| serde_json::Value::String(value.to_owned())),
-                "bigint" => value.parse::<i64>().map(|value| serde_json::json!(value)).unwrap_or_else(|_| serde_json::Value::String(value.to_owned())),
-                _ => serde_json::Value::String(value.to_owned()),
-            }
-        }
-    }
-}
-
 pub(super) fn export(
     entity: &EntityIr,
     module: &Ident,
@@ -107,7 +72,9 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
     quote! {
         async fn import_csv(State(state): State<AppState>, headers: HeaderMap, body: String) -> Result<Json<BulkResult>, ApiError> {
             state.auth.verify_csrf(&state.database, &headers).await?;
-            let context = state.context(&headers).await?; let rows = parse_csv_rows(&body)?;
+            let context = state.context(&headers).await?;
+            let rows = parse_csv_rows(&body)
+                .map_err(|error| ApiError::InvalidQuery(error.to_string()))?;
             let Some(header_row) = rows.first() else { return Ok(Json(BulkResult { succeeded: Vec::new(), failed: Vec::new() })); };
             let expected = [#(#field_names),*];
             if header_row.iter().map(String::as_str).any(|name| !expected.contains(&name)) { return Err(ApiError::InvalidQuery("CSV contains an unknown column".to_owned())); }

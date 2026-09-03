@@ -94,6 +94,23 @@ fn injected_swap_failures_recover_to_a_complete_generation() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn replacement_reuses_unchanged_file_storage() {
+    use std::os::unix::fs::MetadataExt;
+
+    let temporary = tempfile::tempdir().unwrap();
+    let transaction = GenerationTransaction::acquire(temporary.path()).unwrap();
+    transaction.replace(&two_files("old")).unwrap();
+    let stable = temporary.path().join("generated/stable.txt");
+    let before = fs::metadata(&stable).unwrap().ino();
+    transaction.replace(&two_files("new")).unwrap();
+    let after = fs::metadata(&stable).unwrap().ino();
+
+    assert_eq!(before, after);
+    assert_eq!(tree_value(&temporary.path().join("generated")), "new");
+}
+
 fn install(project: &Path, value: &str) {
     let transaction = GenerationTransaction::acquire(project).unwrap();
     transaction.replace(&files(value)).unwrap();
@@ -115,6 +132,24 @@ fn files(value: &str) -> BTreeMap<PathBuf, Vec<u8>> {
         executable: false,
         kind: ArtifactKind::CanonicalIr,
     }])
+    .unwrap()
+}
+
+fn two_files(value: &str) -> BTreeMap<PathBuf, Vec<u8>> {
+    ownership::expected_files(&[
+        Artifact {
+            relative_path: PathBuf::from("value.txt"),
+            content: value.as_bytes().to_vec(),
+            executable: false,
+            kind: ArtifactKind::CanonicalIr,
+        },
+        Artifact {
+            relative_path: PathBuf::from("stable.txt"),
+            content: b"stable".to_vec(),
+            executable: false,
+            kind: ArtifactKind::CanonicalIr,
+        },
+    ])
     .unwrap()
 }
 

@@ -11,8 +11,15 @@ mod web;
 pub use artifact::{Artifact, ArtifactKind, CodegenError};
 
 use appstruct_ir::{AppIr, to_canonical_json, validate_app_ir};
+use quote::ToTokens;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
+
+const FORMAT_CACHE_LIMIT: usize = 4_096;
+type FormatCache = HashMap<[u8; 32], Vec<u8>>;
 
 /// Plan every M1 artifact in memory before any filesystem write.
 ///
@@ -27,12 +34,23 @@ pub fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         canonical_ir,
         ArtifactKind::CanonicalIr,
     )];
-    artifacts.extend(database::plan(ir)?);
-    artifacts.extend(backend::plan(ir)?);
-    artifacts.extend(openapi::plan(ir)?);
-    artifacts.extend(typescript::plan(ir));
-    artifacts.extend(web::plan(ir));
-    artifacts.extend(module_artifact::plan(ir)?);
+    let planned = std::thread::scope(|scope| {
+        let database = scope.spawn(|| database::plan(ir));
+        let backend = scope.spawn(|| backend::plan(ir));
+        let openapi = scope.spawn(|| openapi::plan(ir));
+        let typescript = scope.spawn(|| typescript::plan(ir));
+        let web = scope.spawn(|| web::plan(ir));
+        let modules = scope.spawn(|| module_artifact::plan(ir));
+        Ok::<_, CodegenError>([
+            join_planner(database, "database")??,
+            join_planner(backend, "backend")??,
+            join_planner(openapi, "OpenAPI")??,
+            join_planner(typescript, "TypeScript")?,
+            join_planner(web, "Web")?,
+            join_planner(modules, "module")??,
+        ])
+    })?;
+    artifacts.extend(planned.into_iter().flatten());
     format_rust_artifacts(&mut artifacts)?;
     artifacts.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     ensure_unique_paths(&artifacts)?;
@@ -61,8 +79,17 @@ pub(crate) fn format_rust(source: &str) -> Result<String, CodegenError> {
     Ok(format!(
         "{}{}",
         generated_header("//"),
-        prettyplease::unparse(&syntax)
+        syntax.into_token_stream()
     ))
+}
+
+fn join_planner<T>(
+    handle: std::thread::ScopedJoinHandle<'_, T>,
+    name: &str,
+) -> Result<T, CodegenError> {
+    handle
+        .join()
+        .map_err(|_| CodegenError::new(format!("{name} generation worker panicked")))
 }
 
 fn format_rust_artifacts(artifacts: &mut [Artifact]) -> Result<(), CodegenError> {
@@ -76,8 +103,74 @@ fn format_rust_artifacts(artifacts: &mut [Artifact]) -> Result<(), CodegenError>
     if rust_indexes.is_empty() {
         return Ok(());
     }
+    let cache = rust_format_cache();
+    let mut cache_keys = HashMap::new();
+    let mut misses = Vec::new();
+    {
+        let cache = cache
+            .lock()
+            .map_err(|_| CodegenError::new("Rust format cache lock was poisoned"))?;
+        for index in rust_indexes {
+            let key = format_cache_key(&artifacts[index]);
+            if let Some(content) = cache.get(&key) {
+                artifacts[index].content.clone_from(content);
+            } else {
+                cache_keys.insert(index, key);
+                misses.push(index);
+            }
+        }
+    }
+    if misses.is_empty() {
+        return Ok(());
+    }
+    let formatted = format_rust_chunks(artifacts, &misses)?;
+    for (index, content) in &formatted {
+        artifacts[*index].content.clone_from(content);
+    }
+    let cached = formatted
+        .into_iter()
+        .map(|(index, content)| (cache_keys[&index], content))
+        .collect::<Vec<_>>();
+    let mut cache = cache
+        .lock()
+        .map_err(|_| CodegenError::new("Rust format cache lock was poisoned"))?;
+    if cache.len() + cached.len() > FORMAT_CACHE_LIMIT {
+        cache.clear();
+    }
+    cache.extend(cached);
+    Ok(())
+}
+
+fn format_rust_chunks(
+    artifacts: &[Artifact],
+    indexes: &[usize],
+) -> Result<Vec<(usize, Vec<u8>)>, CodegenError> {
+    let workers = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(indexes.len());
+    let chunk_size = indexes.len().div_ceil(workers);
+    std::thread::scope(|scope| {
+        let handles = indexes
+            .chunks(chunk_size)
+            .map(|chunk| scope.spawn(move || format_rust_chunk(artifacts, chunk)))
+            .collect::<Vec<_>>();
+        let mut formatted = Vec::with_capacity(indexes.len());
+        for handle in handles {
+            let chunk = handle
+                .join()
+                .map_err(|_| CodegenError::new("Rust formatting worker panicked"))??;
+            formatted.extend(chunk);
+        }
+        Ok(formatted)
+    })
+}
+
+fn format_rust_chunk(
+    artifacts: &[Artifact],
+    indexes: &[usize],
+) -> Result<Vec<(usize, Vec<u8>)>, CodegenError> {
     let mut input = String::new();
-    for index in &rust_indexes {
+    for index in indexes {
         let source = std::str::from_utf8(&artifacts[*index].content)
             .map_err(|error| CodegenError::new(format!("generated Rust is not UTF-8: {error}")))?;
         input.push_str(&start_marker(*index));
@@ -88,18 +181,34 @@ fn format_rust_artifacts(artifacts: &mut [Artifact]) -> Result<(), CodegenError>
         input.push_str(&end_marker(*index));
     }
     let output = run_rustfmt(&input)?;
-    for index in rust_indexes {
-        let start = start_marker(index);
-        let end = end_marker(index);
-        let (_, remainder) = output
-            .split_once(&start)
-            .ok_or_else(|| CodegenError::new("rustfmt removed an artifact start marker"))?;
-        let (source, _) = remainder
-            .split_once(&end)
-            .ok_or_else(|| CodegenError::new("rustfmt removed an artifact end marker"))?;
-        artifacts[index].content = format!("{}\n", source.trim_matches('\n')).into_bytes();
-    }
-    Ok(())
+    indexes
+        .iter()
+        .map(|index| {
+            let start = start_marker(*index);
+            let end = end_marker(*index);
+            let (_, remainder) = output
+                .split_once(&start)
+                .ok_or_else(|| CodegenError::new("rustfmt removed an artifact start marker"))?;
+            let (source, _) = remainder
+                .split_once(&end)
+                .ok_or_else(|| CodegenError::new("rustfmt removed an artifact end marker"))?;
+            let content = format!("{}\n", source.trim_matches('\n')).into_bytes();
+            Ok((*index, content))
+        })
+        .collect()
+}
+
+fn rust_format_cache() -> &'static Mutex<FormatCache> {
+    static CACHE: OnceLock<Mutex<FormatCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn format_cache_key(artifact: &Artifact) -> [u8; 32] {
+    let mut hash = Sha256::new();
+    hash.update(artifact.relative_path.as_os_str().as_encoded_bytes());
+    hash.update([0]);
+    hash.update(&artifact.content);
+    hash.finalize().into()
 }
 
 fn run_rustfmt(source: &str) -> Result<String, CodegenError> {

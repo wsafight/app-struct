@@ -1,33 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -z "${APPSTRUCT_E2E_DATABASE_URL:-}" ]]; then
-  echo "APPSTRUCT_E2E_DATABASE_URL must name a dedicated PostgreSQL test database" >&2
-  exit 2
-fi
-
-workspace="$(cd "$(dirname "$0")/.." && pwd)"
-api_port="${APPSTRUCT_E2E_API_PORT:-33600}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/m6-e2e-common.sh"
+m6_init jobs 33600 55600
 secondary_api_port="${APPSTRUCT_E2E_SECONDARY_API_PORT:-33601}"
-web_port="${APPSTRUCT_E2E_WEB_PORT:-55600}"
 webhook_port="${APPSTRUCT_E2E_WEBHOOK_PORT:-57600}"
-temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/appstruct-m6-jobs.XXXXXX")"
-project="$temporary_root/project"
-log="$temporary_root/dev.log"
-dev_pid=""
 secondary_pid=""
 receiver_pid=""
 sse_pid=""
 
-cleanup() {
+m6_cleanup_pre() {
   if [[ -n "$sse_pid" ]] && kill -0 "$sse_pid" 2>/dev/null; then
     kill "$sse_pid" 2>/dev/null || true
     wait "$sse_pid" 2>/dev/null || true
   fi
-  if [[ -n "$dev_pid" ]] && kill -0 "$dev_pid" 2>/dev/null; then
-    kill -INT -- "-$dev_pid" 2>/dev/null || true
-    wait "$dev_pid" 2>/dev/null || true
-  fi
+}
+
+m6_cleanup_extra() {
   if [[ -n "$secondary_pid" ]] && kill -0 "$secondary_pid" 2>/dev/null; then
     kill -INT "$secondary_pid" 2>/dev/null || true
     wait "$secondary_pid" 2>/dev/null || true
@@ -36,20 +25,10 @@ cleanup() {
     kill -INT "$receiver_pid" 2>/dev/null || true
     wait "$receiver_pid" 2>/dev/null || true
   fi
-  case "$temporary_root" in
-    "${TMPDIR:-/tmp}"/appstruct-m6-jobs.*) rm -r "$temporary_root" ;;
-    *) echo "refusing to remove unexpected path: $temporary_root" >&2 ;;
-  esac
 }
-trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
 
-mkdir -p "$project"
-cp -R "$workspace/tests/fixtures/m6-jobs-project/." "$project/"
+m6_prepare_fixture m6-jobs-project
 perl -pi -e "s/__WEBHOOK_PORT__/$webhook_port/g" "$project/appstruct.yaml"
-cd "$workspace"
-cargo build --locked -p appstruct-cli
 
 node "$project/webhook-receiver.mjs" "$webhook_port" \
   "$temporary_root/webhooks.jsonl" "operations-e2e-secret" \
@@ -67,26 +46,10 @@ for ((attempt = 0; attempt < 50; attempt += 1)); do
 done
 grep -q "ready" "$temporary_root/webhook-receiver.log"
 
-set -m
-DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
-  APPSTRUCT_WEBHOOK_OPERATIONS_SECRET="operations-e2e-secret" \
-  APPSTRUCT_WEBHOOK_HANGING_SECRET="hanging-e2e-secret" \
-  target/debug/appstruct --project "$project" dev --api-port "$api_port" --web-port "$web_port" \
-  >"$log" 2>&1 &
-dev_pid=$!
-set +m
-
-for ((attempt = 0; attempt < 180; attempt += 1)); do
-  if curl --fail --silent --max-time 2 "http://127.0.0.1:$api_port/health/ready" >/dev/null 2>&1; then
-    break
-  fi
-  if ! kill -0 "$dev_pid" 2>/dev/null; then
-    tail -n 240 "$log" >&2
-    exit 1
-  fi
-  sleep 1
-done
-curl --fail --silent --max-time 2 "http://127.0.0.1:$api_port/health/ready" >/dev/null
+m6_start_dev \
+  APPSTRUCT_WEBHOOK_OPERATIONS_SECRET=operations-e2e-secret \
+  APPSTRUCT_WEBHOOK_HANGING_SECRET=hanging-e2e-secret
+m6_wait_for_dev
 
 api="http://127.0.0.1:$api_port"
 secondary_api="http://127.0.0.1:$secondary_api_port"
@@ -289,7 +252,7 @@ curl --fail --silent --show-error -b "$jar" -H "X-CSRF-Token: $csrf" -X POST \
   "$api/api/admin/webhooks/$succeeded_delivery/replay" >"$temporary_root/replayed-webhook.json"
 jq -e '.id != $id and .status == "pending" and .attempts == 0' \
   --arg id "$succeeded_delivery" "$temporary_root/replayed-webhook.json" >/dev/null
-pnpm --dir "$project/generated/web" exec tsc --noEmit
+m6_typecheck_web
 
 perl -0pi -e 's/\n    schedules:\n      cleanup:\n        cron: "\*\/15 \* \* \* \*"\n        queue: default\n        kind: maintenance\.cleanup\n        payload: '\''\{"scope":"expired"\}'\''\n/\n/' "$project/appstruct.yaml"
 for ((attempt = 0; attempt < 180; attempt += 1)); do
@@ -303,17 +266,7 @@ for ((attempt = 0; attempt < 180; attempt += 1)); do
   sleep 1
 done
 [[ "$schedule_enabled" == "f" ]]
-for ((attempt = 0; attempt < 180; attempt += 1)); do
-  if curl --fail --silent --max-time 2 "$api/health/ready" >/dev/null 2>&1; then
-    break
-  fi
-  if ! kill -0 "$dev_pid" 2>/dev/null; then
-    tail -n 260 "$log" >&2
-    exit 1
-  fi
-  sleep 1
-done
-curl --fail --silent --max-time 2 "$api/health/ready" >/dev/null
+m6_wait_for_dev
 
 kill -INT -- "-$dev_pid"
 wait "$dev_pid"

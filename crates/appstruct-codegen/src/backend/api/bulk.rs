@@ -6,6 +6,21 @@ use quote::quote;
 
 mod csv;
 
+pub(super) struct SourceContext<'context> {
+    pub module: &'context Ident,
+    pub parse_id: &'context TokenStream,
+    pub primary: &'context Ident,
+    pub hooks: &'context Ident,
+    pub policy: &'context Ident,
+    pub list_scope: &'context TokenStream,
+    pub create_allowed: &'context TokenStream,
+    pub delete_allowed: &'context TokenStream,
+    pub update_allowed: &'context TokenStream,
+    pub create_values: &'context [TokenStream],
+    pub active_default: Option<&'context TokenStream>,
+    pub updates: &'context [TokenStream],
+}
+
 pub(super) struct BulkContext<'context> {
     pub module: &'context Ident,
     pub primary: &'context Ident,
@@ -27,22 +42,24 @@ pub(super) struct BulkContext<'context> {
     pub trash_scope: &'context TokenStream,
 }
 
-#[allow(clippy::too_many_arguments, clippy::unnecessary_wraps)]
 pub(super) fn source(
     entity: &EntityIr,
-    module: &Ident,
-    parse_id: &TokenStream,
-    primary: &Ident,
-    hooks: &Ident,
-    policy: &Ident,
-    list_scope: &TokenStream,
-    create_allowed: &TokenStream,
-    delete_allowed: &TokenStream,
-    update_allowed: &TokenStream,
-    create_values: &[TokenStream],
-    active_default: Option<&TokenStream>,
-    updates: &[TokenStream],
+    source: &SourceContext<'_>,
 ) -> Result<TokenStream, CodegenError> {
+    let SourceContext {
+        module,
+        parse_id,
+        primary,
+        hooks,
+        policy,
+        list_scope,
+        create_allowed,
+        delete_allowed,
+        update_allowed,
+        create_values,
+        active_default,
+        updates,
+    } = source;
     let trash_scope = access::trash_scope(entity, module, &entity.access.list)?;
     let primary_column = super::super::query::helpers::column_ident(
         entity
@@ -63,7 +80,7 @@ pub(super) fn source(
         update_allowed,
         create_allowed,
         create_values,
-        active_default,
+        active_default: *active_default,
         updates,
         entity_id: &entity.id.0,
         audit_enabled: entity.audit_enabled,
@@ -73,23 +90,15 @@ pub(super) fn source(
     };
     let update = bulk_update(&context);
     let delete = bulk_delete(&context);
-    let csv_helpers = csv::helpers();
     let export = csv::export(entity, module, policy, list_scope);
     let import = csv::import(entity, &context);
     let restore = context.soft_delete.then(|| restore_handler(&context));
     let trash = context.soft_delete.then(|| trash_handler(&context));
     Ok(quote! {
-        #[derive(Clone, Debug, Deserialize)]
-        struct BulkUpdateInput { ids: Vec<String>, patch: UpdateInput, expected_revisions: BTreeMap<String, i64> }
-
-        #[derive(Debug, Deserialize)]
-        struct BulkDeleteInput { ids: Vec<String>, expected_revisions: BTreeMap<String, i64> }
-
-        #[derive(Debug, Serialize)]
-        struct BulkFailure { id: String, code: String, message: String }
-
-        #[derive(Debug, Serialize)]
-        struct BulkResult { succeeded: Vec<String>, failed: Vec<BulkFailure> }
+        use appstruct_runtime::{
+            BulkDeleteInput, BulkResult, BulkUpdateInput, bulk_failure, csv_escape,
+            csv_json_value, parse_csv_rows,
+        };
 
         #update
         #delete
@@ -97,12 +106,6 @@ pub(super) fn source(
         #import
         #restore
         #trash
-        #csv_helpers
-
-        fn bulk_failure(id: &str, code: &str, message: impl Into<String>) -> BulkFailure {
-            BulkFailure { id: id.to_owned(), code: code.to_owned(), message: message.into() }
-        }
-
     })
 }
 
@@ -240,7 +243,7 @@ fn bulk_update(context: &BulkContext<'_>) -> TokenStream {
     quote! {
         async fn bulk_update(
             State(state): State<AppState>, headers: HeaderMap,
-            Json(input): Json<BulkUpdateInput>,
+            Json(input): Json<BulkUpdateInput<UpdateInput>>,
         ) -> Result<Json<BulkResult>, ApiError> {
             state.auth.verify_csrf(&state.database, &headers).await?;
             let context = state.context(&headers).await?;

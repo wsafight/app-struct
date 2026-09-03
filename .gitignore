@@ -3,6 +3,7 @@
 /references/*/
 
 # Local build output and compiler caches.
+.DS_Store
 /target/
 **/.appstruct/cache/
 **/.appstruct/generation.lock

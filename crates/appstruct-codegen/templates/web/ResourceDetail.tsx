@@ -28,10 +28,15 @@ export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
           <Link className="back-link" to={`/${resource.slug}`}>
             <ArrowLeft size={16} /> {resource.label}
           </Link>
-          <h1>{record ? formatValue(record[resource.primaryKey]) : "Loading..."}</h1>
+          <h1>
+            {record ? formatValue(record[resource.primaryKey]) : "Loading..."}
+          </h1>
         </div>
         {id && controller.canUpdate && (
-          <Link className="primary-button" to={`/${resource.slug}/${encodeURIComponent(id)}/edit`}>
+          <Link
+            className="primary-button"
+            to={`/${resource.slug}/${encodeURIComponent(id)}/edit`}
+          >
             <Edit3 size={16} /> Edit
           </Link>
         )}
@@ -44,7 +49,9 @@ export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
       {record && (
         <dl className="detail-grid">
           {resource.fields
-            .filter((field) => canAccessRule(field.readAccess ?? { mode: "public" }, actor))
+            .filter((field) =>
+              canAccessRule(field.readAccess ?? { mode: "public" }, actor),
+            )
             .map((field) => (
               <div key={field.name}>
                 <dt>{field.label}</dt>

@@ -1,6 +1,22 @@
-import type { AggregateQuery, AggregateResponse, ApiError, BulkDeleteRequest, BulkResult, BulkUpdateRequest, CursorListQuery, CursorListResponse, ListQuery, ListResponse } from "./generated/client";
+import type {
+  AggregateQuery,
+  AggregateResponse,
+  ApiError,
+  BulkDeleteRequest,
+  BulkResult,
+  BulkUpdateRequest,
+  CursorListQuery,
+  CursorListResponse,
+  ListQuery,
+  ListResponse,
+} from "./generated/client";
 import type { AppStructRegistry } from "./generated/registry";
-import { createContext, createElement, type ReactNode, useContext } from "react";
+import {
+  createContext,
+  createElement,
+  type ReactNode,
+  useContext,
+} from "react";
 
 export type ResourceRecord = Record<string, unknown>;
 export type ResourceInput = Record<string, unknown>;
@@ -13,7 +29,8 @@ export type AccessRule =
   | { mode: "any"; rules: AccessRule[] }
   | { mode: "all"; rules: AccessRule[] };
 
-export type ResourceOperation = "list" | "read" | "create" | "update" | "delete";
+export type ResourceOperation =
+  "list" | "read" | "create" | "update" | "delete";
 
 export interface ResourceAccess {
   list: AccessRule;
@@ -30,20 +47,36 @@ export interface AccessActor {
 
 const ResourceActorContext = createContext<AccessActor | null>(null);
 
-export function ResourceActorProvider({ user, children }: { user: AccessActor | null; children: ReactNode }) {
-  return createElement(ResourceActorContext.Provider, { value: user }, children);
+export function ResourceActorProvider({
+  user,
+  children,
+}: {
+  user: AccessActor | null;
+  children: ReactNode;
+}) {
+  return createElement(
+    ResourceActorContext.Provider,
+    { value: user },
+    children,
+  );
 }
 
 export function useResourceActor(): AccessActor | null {
   return useContext(ResourceActorContext);
 }
 
-export function canAccessRule(rule: AccessRule, actor: AccessActor | null, record?: ResourceRecord): boolean {
+export function canAccessRule(
+  rule: AccessRule,
+  actor: AccessActor | null,
+  record?: ResourceRecord,
+): boolean {
   if (rule.mode === "public") return true;
   if (rule.mode === "authenticated") return actor !== null;
   if (rule.mode === "role") return actor?.roles.includes(rule.role) ?? false;
-  if (rule.mode === "any") return rule.rules.some((item) => canAccessRule(item, actor, record));
-  if (rule.mode === "all") return rule.rules.every((item) => canAccessRule(item, actor, record));
+  if (rule.mode === "any")
+    return rule.rules.some((item) => canAccessRule(item, actor, record));
+  if (rule.mode === "all")
+    return rule.rules.every((item) => canAccessRule(item, actor, record));
   if (!actor) return false;
   if (!record) return true;
   const logicalField = rule.field.split(".").at(-1) ?? rule.field;
@@ -51,11 +84,20 @@ export function canAccessRule(rule: AccessRule, actor: AccessActor | null, recor
   return String(record[field] ?? "") === actor.id;
 }
 
-export function canAccessResource(resource: ResourceDefinition, operation: ResourceOperation, actor: AccessActor | null, record?: ResourceRecord): boolean {
+export function canAccessResource(
+  resource: ResourceDefinition,
+  operation: ResourceOperation,
+  actor: AccessActor | null,
+  record?: ResourceRecord,
+): boolean {
   return canAccessRule(resource.access[operation], actor, record);
 }
 
-export function useCanAccess(resource: ResourceDefinition, operation: ResourceOperation, record?: ResourceRecord): boolean {
+export function useCanAccess(
+  resource: ResourceDefinition,
+  operation: ResourceOperation,
+  record?: ResourceRecord,
+): boolean {
   return canAccessResource(resource, operation, useResourceActor(), record);
 }
 
@@ -63,15 +105,28 @@ export function useCanAccessRule(rule: AccessRule): boolean {
   return canAccessRule(rule, useResourceActor());
 }
 
-export function useVisibleResources(resources: ResourceDefinition[]): ResourceDefinition[] {
+export function useVisibleResources(
+  resources: ResourceDefinition[],
+): ResourceDefinition[] {
   const actor = useResourceActor();
-  return resources.filter((resource) => canAccessResource(resource, "list", actor));
+  return resources.filter((resource) =>
+    canAccessResource(resource, "list", actor),
+  );
 }
 
 export interface ResourceApi {
-  list(query?: ListQuery, options?: { signal?: AbortSignal }): Promise<ListResponse<ResourceRecord>>;
-  listCursor(query?: CursorListQuery, options?: { signal?: AbortSignal }): Promise<CursorListResponse<ResourceRecord>>;
-  aggregate(query?: AggregateQuery, options?: { signal?: AbortSignal }): Promise<AggregateResponse>;
+  list(
+    query?: ListQuery,
+    options?: { signal?: AbortSignal },
+  ): Promise<ListResponse<ResourceRecord>>;
+  listCursor(
+    query?: CursorListQuery,
+    options?: { signal?: AbortSignal },
+  ): Promise<CursorListResponse<ResourceRecord>>;
+  aggregate(
+    query?: AggregateQuery,
+    options?: { signal?: AbortSignal },
+  ): Promise<AggregateResponse>;
   get(id: string, options?: { signal?: AbortSignal }): Promise<ResourceRecord>;
   create(input: ResourceInput): Promise<ResourceRecord>;
   update(id: string, input: ResourceInput): Promise<ResourceRecord>;
@@ -81,7 +136,10 @@ export interface ResourceApi {
   exportCsv(): Promise<string>;
   importCsv(csv: string): Promise<BulkResult>;
   restore?(input: BulkDeleteRequest): Promise<BulkResult>;
-  trash?(query?: Pick<ListQuery, "page" | "page_size">, options?: { signal?: AbortSignal }): Promise<ListResponse<ResourceRecord>>;
+  trash?(
+    query?: Pick<ListQuery, "page" | "page_size">,
+    options?: { signal?: AbortSignal },
+  ): Promise<ListResponse<ResourceRecord>>;
 }
 
 export type FieldKind =
@@ -132,9 +190,13 @@ export interface ResourceDefinition {
 
 export function fieldErrors(error: unknown): Record<string, string> {
   const candidate = error as ApiError | undefined;
-  return Object.fromEntries(candidate?.fields?.map((item) => [item.field, item.message]) ?? []);
+  return Object.fromEntries(
+    candidate?.fields?.map((item) => [item.field, item.message]) ?? [],
+  );
 }
 
 export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "The request could not be completed";
+  return error instanceof Error
+    ? error.message
+    : "The request could not be completed";
 }

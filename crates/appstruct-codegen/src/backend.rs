@@ -112,7 +112,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     Ok(artifacts)
 }
 
-fn embedded_runtime_artifacts() -> [Artifact; 3] {
+fn embedded_runtime_artifacts() -> [Artifact; 4] {
     [
         Artifact::text(
             "backend/runtime/src/lib.rs",
@@ -125,6 +125,15 @@ fn embedded_runtime_artifacts() -> [Artifact; 3] {
                 "{}{}",
                 generated_header("//"),
                 appstruct_runtime::__source::LIFECYCLE
+            ),
+            ArtifactKind::RustSource,
+        ),
+        Artifact::text(
+            "backend/runtime/src/resource.rs",
+            format!(
+                "{}{}",
+                generated_header("//"),
+                appstruct_runtime::__source::RESOURCE
             ),
             ArtifactKind::RustSource,
         ),
@@ -251,10 +260,13 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub use error::{ApiError, FieldViolation};
         pub use appstruct_runtime::{
             Actor, BackgroundTaskExit, BackgroundTaskExitKind, BackgroundTaskObserver,
-            ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase, ModulePlan, ModuleRuntime,
-            ModuleStarter, RUNTIME_API_VERSION, ServiceHandle, ServiceHandles, ShutdownError,
-            ShutdownFailure, ShutdownFailureKind, ShutdownReport, StartupError,
-            SupervisedTaskHandle, TenantId,
+            BulkDeleteInput, BulkFailure, BulkResult, BulkUpdateInput, CsvError, ListMeta,
+            ListQuery, ListResponse, ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase,
+            ModulePlan, ModuleRuntime, ModuleStarter, RUNTIME_API_VERSION, ServiceHandle,
+            ServiceHandles, ShutdownError, ShutdownFailure, ShutdownFailureKind, ShutdownReport,
+            StartupError, SupervisedTaskHandle, TenantId, bulk_failure, csv_escape,
+            csv_json_value, decode_cursor, encode_cursor, parse_csv_rows, parse_revision_etag,
+            revision_etag,
         };
         pub const GENERATED_RUNTIME_API_VERSION: u32 = #runtime_api_version;
         const _: [(); GENERATED_RUNTIME_API_VERSION as usize] =
@@ -332,13 +344,11 @@ pub(super) fn parse_ident(value: &str) -> Result<Ident, CodegenError> {
 }
 
 pub(super) fn render(tokens: TokenStream) -> Result<String, CodegenError> {
-    let syntax = syn::parse2(tokens)
-        .map_err(|error| CodegenError::new(format!("generated Rust did not parse: {error}")))?;
-    Ok(format!(
-        "{}{}",
-        generated_header("//"),
-        prettyplease::unparse(&syntax)
-    ))
+    if tokens.is_empty() {
+        return Err(CodegenError::new("generated Rust source was empty"));
+    }
+    let source = tokens.into_iter().collect::<TokenStream>();
+    Ok(format!("{}{}", generated_header("//"), source))
 }
 
 fn rust_template(source: &str) -> Result<String, CodegenError> {

@@ -45,20 +45,32 @@ describe("validateResourceSearch", () => {
 
   it("rejects invalid pagination bounds", () => {
     expect(validateResourceSearch({ page: "0", page_size: "101" })).toEqual({});
-    expect(validateResourceSearch({ page: "1.5", page_size: Number.NaN })).toEqual({});
+    expect(
+      validateResourceSearch({ page: "1.5", page_size: Number.NaN }),
+    ).toEqual({});
   });
 });
 
 describe("shouldRetryQuery", () => {
   it("retries transient HTTP and network failures", () => {
-    expect(shouldRetryQuery(0, new ApiError(429, "RATE_LIMITED", "slow down"))).toBe(true);
-    expect(shouldRetryQuery(1, new ApiError(503, "UNAVAILABLE", "try again"))).toBe(true);
-    expect(shouldRetryQuery(0, new TypeError("network unavailable"))).toBe(true);
+    expect(
+      shouldRetryQuery(0, new ApiError(429, "RATE_LIMITED", "slow down")),
+    ).toBe(true);
+    expect(
+      shouldRetryQuery(1, new ApiError(503, "UNAVAILABLE", "try again")),
+    ).toBe(true);
+    expect(shouldRetryQuery(0, new TypeError("network unavailable"))).toBe(
+      true,
+    );
   });
 
   it("does not retry permanent, exhausted, or programming failures", () => {
-    expect(shouldRetryQuery(0, new ApiError(400, "BAD_REQUEST", "invalid"))).toBe(false);
-    expect(shouldRetryQuery(2, new ApiError(503, "UNAVAILABLE", "try again"))).toBe(false);
+    expect(
+      shouldRetryQuery(0, new ApiError(400, "BAD_REQUEST", "invalid")),
+    ).toBe(false);
+    expect(
+      shouldRetryQuery(2, new ApiError(503, "UNAVAILABLE", "try again")),
+    ).toBe(false);
     expect(shouldRetryQuery(0, new Error("unexpected"))).toBe(false);
   });
 });

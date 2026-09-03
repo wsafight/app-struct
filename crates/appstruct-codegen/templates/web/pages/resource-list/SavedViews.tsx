@@ -8,7 +8,15 @@ interface SavedView {
   query: string;
 }
 
-export function SavedViews({ resourceId, actorId, onError }: { resourceId: string; actorId?: string; onError: (message: string) => void }) {
+export function SavedViews({
+  resourceId,
+  actorId,
+  onError,
+}: {
+  resourceId: string;
+  actorId?: string;
+  onError: (message: string) => void;
+}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [viewName, setViewName] = useState("");
@@ -16,7 +24,9 @@ export function SavedViews({ resourceId, actorId, onError }: { resourceId: strin
 
   useEffect(() => {
     try {
-      setSavedViews(JSON.parse(localStorage.getItem(storageKey) ?? "[]") as SavedView[]);
+      setSavedViews(
+        JSON.parse(localStorage.getItem(storageKey) ?? "[]") as SavedView[],
+      );
     } catch {
       setSavedViews([]);
     }
@@ -53,20 +63,59 @@ export function SavedViews({ resourceId, actorId, onError }: { resourceId: strin
     }
   }
 
-  return <div className="view-toolbar">
-    <Bookmark size={16} />
-    <select aria-label="Saved views" value="" onChange={(event) => {
-      const view = savedViews.find((item) => item.id === event.target.value);
-      if (view) setSearchParams(new URLSearchParams(view.query));
-    }}>
-      <option value="">Saved views</option>
-      {savedViews.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}
-    </select>
-    <input aria-label="View name" placeholder="Name this view" value={viewName} onChange={(event) => setViewName(event.target.value)} />
-    <button className="secondary-button" onClick={saveView} disabled={!viewName.trim()}>Save</button>
-    <button className="icon-button" onClick={() => void copyViewLink()} title="Copy view link" aria-label="Copy view link"><Copy size={16} /></button>
-    {savedViews.length > 0 && <button className="icon-button danger" onClick={() => persist(savedViews.slice(0, -1))} title="Delete last saved view" aria-label="Delete last saved view"><Trash2 size={16} /></button>}
-  </div>;
+  return (
+    <div className="view-toolbar">
+      <Bookmark size={16} />
+      <select
+        aria-label="Saved views"
+        value=""
+        onChange={(event) => {
+          const view = savedViews.find(
+            (item) => item.id === event.target.value,
+          );
+          if (view) setSearchParams(new URLSearchParams(view.query));
+        }}
+      >
+        <option value="">Saved views</option>
+        {savedViews.map((view) => (
+          <option key={view.id} value={view.id}>
+            {view.name}
+          </option>
+        ))}
+      </select>
+      <input
+        aria-label="View name"
+        placeholder="Name this view"
+        value={viewName}
+        onChange={(event) => setViewName(event.target.value)}
+      />
+      <button
+        className="secondary-button"
+        onClick={saveView}
+        disabled={!viewName.trim()}
+      >
+        Save
+      </button>
+      <button
+        className="icon-button"
+        onClick={() => void copyViewLink()}
+        title="Copy view link"
+        aria-label="Copy view link"
+      >
+        <Copy size={16} />
+      </button>
+      {savedViews.length > 0 && (
+        <button
+          className="icon-button danger"
+          onClick={() => persist(savedViews.slice(0, -1))}
+          title="Delete last saved view"
+          aria-label="Delete last saved view"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
+    </div>
+  );
 }
 
 function tenantStorageScope(): string {

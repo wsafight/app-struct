@@ -54,18 +54,20 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
     let delete_allowed = super::access::row_allowed(entity, &entity.access.delete)?;
     let bulk = bulk::source(
         entity,
-        &module,
-        &parse_id,
-        &primary,
-        &hooks,
-        &policy,
-        &list_scope,
-        &create_allowed,
-        &delete_allowed,
-        &update_allowed,
-        &create_values,
-        active_default.as_ref(),
-        &updates,
+        &bulk::SourceContext {
+            module: &module,
+            parse_id: &parse_id,
+            primary: &primary,
+            hooks: &hooks,
+            policy: &policy,
+            list_scope: &list_scope,
+            create_allowed: &create_allowed,
+            delete_allowed: &delete_allowed,
+            update_allowed: &update_allowed,
+            create_values: &create_values,
+            active_default: active_default.as_ref(),
+            updates: &updates,
+        },
     )?;
     let restore_route = entity
         .views

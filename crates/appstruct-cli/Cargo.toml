@@ -26,6 +26,7 @@ clap.workspace = true
 base64.workspace = true
 ctrlc.workspace = true
 dotenvy.workspace = true
+notify.workspace = true
 reqwest.workspace = true
 postgres.workspace = true
 serde.workspace = true
