@@ -1,6 +1,8 @@
 //! Stable contracts shared by generated `AppStruct` backends.
 
 mod lifecycle;
+mod origin;
+mod query;
 mod resource;
 mod supervisor;
 
@@ -15,6 +17,8 @@ use std::time::Duration;
 pub mod __source {
     pub const LIB: &str = include_str!("lib.rs");
     pub const LIFECYCLE: &str = include_str!("lifecycle.rs");
+    pub const ORIGIN: &str = include_str!("origin.rs");
+    pub const QUERY: &str = include_str!("query.rs");
     pub const RESOURCE: &str = include_str!("resource.rs");
     pub const SUPERVISOR: &str = include_str!("supervisor.rs");
 }
@@ -23,6 +27,8 @@ pub use lifecycle::{
     ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase, ModulePlan, ModuleRuntime,
     ModuleStarter,
 };
+pub use origin::validate_browser_origin;
+pub use query::{MAX_LIST_PAGE, MAX_LIST_PAGE_SIZE, like_contains_pattern, list_page_is_valid};
 pub use resource::{
     BulkDeleteInput, BulkFailure, BulkResult, BulkUpdateInput, CSV_EXPORT_PAGE_SIZE, CsvError,
     ListMeta, ListQuery, ListResponse, MAX_BULK_ITEMS, MAX_CSV_EXPORT_ROWS, MAX_CSV_IMPORT_ROWS,

@@ -145,6 +145,11 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(form.contains("useForm"));
     assert!(form.contains("buildValidationSchema"));
     assert!(list.contains("useResourceListController"));
+    let html = artifact_text(&artifacts, "web/index.html");
+    let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
+    assert!(html.contains("<title>Project Manager</title>"));
+    assert!(layout.contains("<span>Project Manager</span>"));
+    assert!(!html.contains("__APP_TITLE__"));
 }
 
 #[test]
@@ -227,7 +232,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 74);
+    assert_eq!(artifacts.len(), 76);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -244,7 +249,26 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("Argon2"));
     assert!(artifact_text(&artifacts, "backend/src/auth/recovery.rs").contains("verify_email"));
     assert!(artifact_text(&artifacts, "backend/src/auth/admin.rs").contains("admin_overview"));
-    assert!(artifact_text(&artifacts, "backend/src/auth/session.rs").contains("Bearer "));
+    let session = artifact_text(&artifacts, "backend/src/auth/session.rs");
+    assert!(session.contains("Bearer "));
+    assert!(session.contains("APPSTRUCT_ALLOWED_ORIGIN"));
+    assert!(session.contains("is required when APPSTRUCT_ENV=production"));
+    assert!(session.contains("validate_browser_origin"));
+    assert!(session.contains("record_login_failure"));
+    assert!(session.contains("clear_login_attempts"));
+    assert!(session.contains(r#"DELETE FROM "_appstruct_auth_login_attempts""#));
+    let handlers = artifact_text(&artifacts, "backend/src/auth/handlers.rs");
+    assert!(handlers.contains("record_login_failure"));
+    assert!(handlers.contains("clear_login_attempts"));
+    let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
+    assert!(layout.contains("sidebar-account"));
+    assert_eq!(layout.matches("aria-label=\"Sign out\"").count(), 2);
+    assert!(layout.contains("<span>Project Hub</span>"));
+    assert!(artifact_text(&artifacts, "web/src/styles.css").contains(".sidebar-account"));
+    assert!(
+        artifact_text(&artifacts, "web/src/auth/AuthPages.tsx")
+            .contains("auth-brand\">Project Hub")
+    );
     let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
     assert!(resources.contains(r#""mode":"role","role":"admin""#));
     assert!(resources.contains("export const auditAccess"));
@@ -423,7 +447,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 64);
+    assert_eq!(artifacts.len(), 66);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")
@@ -439,7 +463,23 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
         artifact_text(artifacts, "backend/runtime/src/resource.rs")
             .contains("pub struct ListQuery")
     );
+    assert!(
+        artifact_text(artifacts, "backend/runtime/src/query.rs").contains("like_contains_pattern")
+    );
+    assert!(
+        artifact_text(artifacts, "backend/runtime/src/origin.rs")
+            .contains("validate_browser_origin")
+    );
     let backend = artifact_text(artifacts, "backend/src/lib.rs");
+    assert!(backend.contains("pub async fn connect_database"));
+    assert!(backend.contains("ConnectOptions"));
+    assert!(backend.contains("APPSTRUCT_DB_MAX_CONNECTIONS"));
+    assert!(artifact_text(artifacts, "backend/Cargo.toml").contains("tinyvec = \"=1.12.0\""));
+    let auth = artifact_text(artifacts, "backend/src/auth.rs");
+    assert!(auth.contains("CorsLayer::permissive()"));
+    assert!(auth.contains("APPSTRUCT_ENV"));
+    let main = artifact_text(artifacts, "backend/src/main.rs");
+    assert!(main.contains("connect_database(database_url)"));
     assert!(backend.contains("pub const GENERATED_RUNTIME_API_VERSION: u32 = 4"));
     assert!(backend.contains("startup_plan().start(&mut context).await?"));
     assert!(backend.contains("state.health.is_ready() && state.database.ping().await.is_ok()"));

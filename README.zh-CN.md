@@ -224,4 +224,4 @@ AppStruct 仍是技术预览。当前发布流程需要维护者手动配置 Git
 
 ## 许可证
 
-Workspace 中的 crate 使用 MIT OR Apache-2.0 双许可证。
+Workspace 中的 crate 使用 MIT OR Apache-2.0 双许可证。详见 `LICENSE-MIT` 与 `LICENSE-APACHE`。

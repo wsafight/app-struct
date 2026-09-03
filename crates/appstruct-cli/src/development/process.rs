@@ -2,6 +2,8 @@ use crate::environment::ProjectEnvironment;
 use std::io::{self, BufRead, BufReader, Read};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::thread;
@@ -297,7 +299,17 @@ fn terminate(child: &mut Child) {
             .status();
         let _ = child.wait();
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        let pid = child.id().to_string();
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid, "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let _ = child.wait();
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = child.kill();
         let _ = child.wait();
@@ -319,7 +331,13 @@ fn isolate_process_group(command: &mut Command) {
     command.process_group(0);
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn isolate_process_group(command: &mut Command) {
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    command.creation_flags(CREATE_NEW_PROCESS_GROUP);
+}
+
+#[cfg(not(any(unix, windows)))]
 fn isolate_process_group(_command: &mut Command) {}
 
 #[cfg(test)]

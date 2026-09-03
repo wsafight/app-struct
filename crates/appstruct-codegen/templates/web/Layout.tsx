@@ -7,7 +7,7 @@ export function Layout({ resources, pages }: { resources: ResourceDefinition[]; 
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><Boxes size={20} aria-hidden /> <span>AppStruct</span></div>
+        <div className="brand"><Boxes size={20} aria-hidden /> <span>__APP_TITLE__</span></div>
         <nav aria-label="Resources">
           {visibleResources.map((resource) => (
             <NavLink key={resource.name} to={`/${resource.slug}`}>

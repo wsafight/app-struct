@@ -953,7 +953,7 @@ function AuthFrame({
   return (
     <main className="auth-page">
       <section className="auth-panel">
-        <div className="auth-brand">AppStruct</div>
+        <div className="auth-brand">__APP_TITLE__</div>
         <h1>{title}</h1>
         {children}
       </section>

@@ -119,11 +119,15 @@ pub(super) fn search_rule(
     let names = searchable.iter().map(|(_, name)| name);
     Ok(quote! {
         if let Some(term) = query.q.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+            use sea_orm::sea_query::LikeExpr;
+            let pattern = appstruct_runtime::like_contains_pattern(term);
             let mut condition = Condition::any();
             let mut searchable_field_allowed = false;
             #(if field_read_allowed(&context, #names) {
                 searchable_field_allowed = true;
-                condition = condition.add(#module::Column::#columns.contains(term));
+                condition = condition.add(
+                    #module::Column::#columns.like(LikeExpr::new(pattern.clone()).escape('\\'))
+                );
             })*
             if !searchable_field_allowed {
                 return Err(access_denied(&context));

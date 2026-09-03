@@ -252,4 +252,4 @@ already excludes these paths; verify tracked, untracked, and ignored state befor
 
 ## License
 
-Workspace crates are licensed under MIT OR Apache-2.0.
+Workspace crates are licensed under MIT OR Apache-2.0. See `LICENSE-MIT` and `LICENSE-APACHE`.

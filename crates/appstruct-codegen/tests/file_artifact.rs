@@ -46,6 +46,13 @@ fn assert_provider(
     assert!(file.contains("file key must be a safe relative path"));
     assert!(file.contains("stored object checksum does not match metadata"));
     assert!(file.contains("tenant_id IS NOT DISTINCT FROM"));
+    let delete = &file[file.find("pub async fn delete").expect("delete handler")..];
+    let metadata = delete.find("DELETE FROM").expect("metadata delete");
+    let storage = delete.find("self.provider.delete").expect("storage delete");
+    assert!(
+        metadata < storage,
+        "file delete must drop metadata before storage"
+    );
     let extensions = artifact_text(&artifacts, "backend/src/extensions.rs");
     assert!(extensions.contains("pub async fn put_file"));
     assert!(extensions.contains("pub async fn get_file"));

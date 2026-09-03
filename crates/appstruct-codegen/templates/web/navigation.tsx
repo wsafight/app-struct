@@ -154,7 +154,7 @@ export function validateResourceSearch(
   search: Record<string, unknown>,
 ): ResourceSearch {
   const result: ResourceSearch = {};
-  const page = searchInteger(search.page, 1);
+  const page = searchInteger(search.page, 1, 10_000);
   const pageSize = searchInteger(search.page_size, 1, 100);
   if (page !== undefined && page !== 1) result.page = page;
   if (pageSize !== undefined && pageSize !== 25) result.page_size = pageSize;

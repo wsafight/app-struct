@@ -1,5 +1,4 @@
-use appstruct_generated_backend::Application;
-use sea_orm::Database;
+use appstruct_generated_backend::{Application, connect_database};
 use std::{env, net::SocketAddr};
 use tokio::net::TcpListener;
 
@@ -15,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = env::var("DATABASE_URL")?;
     let bind = env::var("APPSTRUCT_BIND").unwrap_or_else(|_| "127.0.0.1:3000".to_owned());
     let address: SocketAddr = bind.parse()?;
-    let database = Database::connect(database_url).await?;
+    let database = connect_database(database_url).await?;
     let listener = TcpListener::bind(address).await?;
     let application =
         Application::from_env(database, appstruct_app_backend::extensions()).await?;

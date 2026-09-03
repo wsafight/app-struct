@@ -135,7 +135,11 @@ async fn login(
     let valid = PasswordHash::new(&stored)
         .ok()
         .is_some_and(|hash| Argon2::default().verify_password(input.password.as_bytes(), &hash).is_ok());
-    let Some(row) = row.filter(|_| valid) else { return Err(ApiError::Unauthorized) };
+    let Some(row) = row.filter(|_| valid) else {
+        state.auth.record_login_failure(&state.database, &email).await?;
+        return Err(ApiError::Unauthorized);
+    };
+    state.auth.clear_login_attempts(&state.database, &email).await?;
     let user_id = row.try_get("", "user_id")?;
     let email_verified = row
         .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "email_verified_at")

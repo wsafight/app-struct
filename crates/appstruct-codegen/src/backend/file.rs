@@ -150,12 +150,12 @@ fn state_source(
             ) -> Result<(), FileError> {
                 validate_key(object_key)?;
                 load_metadata(&self.database, object_key, tenant_id).await?;
-                self.provider.delete(object_key).await?;
                 self.database.execute_raw(Statement::from_sql_and_values(
                     DbBackend::Postgres,
                     "DELETE FROM \"_appstruct_files\" WHERE object_key = $1 AND tenant_id IS NOT DISTINCT FROM $2",
                     [object_key.to_owned().into(), tenant_id.into()],
                 )).await?;
+                self.provider.delete(object_key).await?;
                 Ok(())
             }
         }

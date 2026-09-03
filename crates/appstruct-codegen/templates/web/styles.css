@@ -29,6 +29,9 @@ a {
   overflow-x: hidden;
 }
 .sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: #172126;
   color: #dce5e8;
   border-right: 1px solid #2e393e;
@@ -183,6 +186,26 @@ a {
   display: grid;
   gap: 3px;
   margin-top: 18px;
+  flex: 1 1 auto;
+}
+.sidebar-account {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 6px 2px;
+  border-top: 1px solid #2e393e;
+}
+.sidebar-account .account > span:first-child {
+  color: white;
+}
+.sidebar-account .role-label {
+  color: #b9c6ca;
+}
+.sidebar-account .icon-button {
+  color: #dce5e8;
+  flex: 0 0 auto;
 }
 .sidebar nav a {
   display: flex;
@@ -842,6 +865,9 @@ tr:last-child td {
   }
   .topbar {
     display: none;
+  }
+  .sidebar-account {
+    display: flex;
   }
   .page {
     padding: 18px 14px;

@@ -320,7 +320,7 @@ export function InvitationAcceptPage() {
   return (
     <main className="auth-page">
       <div className="auth-panel">
-        <div className="auth-brand">AppStruct</div>
+        <div className="auth-brand">__APP_TITLE__</div>
         <h1>
           {status === "loading"
             ? "Accepting invitation"
@@ -363,7 +363,7 @@ function TenantOnboarding() {
   return (
     <main className="auth-page">
       <div className="auth-panel">
-        <div className="auth-brand">AppStruct</div>
+        <div className="auth-brand">__APP_TITLE__</div>
         <h1>Create organization</h1>
         {error && (
           <div className="alert" role="alert">

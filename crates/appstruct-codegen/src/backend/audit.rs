@@ -26,6 +26,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     };
     render(quote! {
         use crate::{ApiError, AppState, RequestContext};
+        use appstruct_runtime::{MAX_LIST_PAGE, list_page_is_valid};
         use axum::{Json, Router, extract::{Query, State}, http::HeaderMap, routing::get};
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
         use serde::{Deserialize, Serialize};
@@ -94,9 +95,9 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             if !(#allowed) { return Err(ApiError::Forbidden); }
             let page = query.page.unwrap_or(1);
             let page_size = query.page_size.unwrap_or(50);
-            if page == 0 || !(1..=100).contains(&page_size) {
+            if !list_page_is_valid(page, page_size) {
                 return Err(ApiError::InvalidQuery(
-                    "`page` must be at least 1 and `page_size` must be between 1 and 100".to_owned()
+                    format!("`page` must be between 1 and {MAX_LIST_PAGE} and `page_size` must be between 1 and 100")
                 ));
             }
             let offset = (page - 1).checked_mul(page_size)

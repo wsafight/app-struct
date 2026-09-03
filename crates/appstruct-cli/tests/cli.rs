@@ -239,7 +239,7 @@ fn generation_manifest_blocks_modified_and_unknown_files() {
     let manifest_path = project.join("generated/.appstruct-manifest.json");
     let manifest: Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     assert_eq!(manifest["manifest_version"], 1);
-    assert_eq!(manifest["artifacts"].as_array().unwrap().len(), 64);
+    assert_eq!(manifest["artifacts"].as_array().unwrap().len(), 66);
 
     let cargo_locks = [
         project.join("generated/backend/Cargo.lock"),

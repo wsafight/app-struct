@@ -29,6 +29,7 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
 }
 
 fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
+    let title = app_display_name(&ir.app.name);
     let main = if requires_registry(ir) {
         include_str!("../templates/web/main_with_registry.tsx")
     } else {
@@ -37,7 +38,7 @@ fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
     vec![
         (
             "web/index.html",
-            include_str!("../templates/web/index.html").to_owned(),
+            with_app_title(include_str!("../templates/web/index.html"), &title),
         ),
         (
             "web/.gitignore",
@@ -140,6 +141,7 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
 }
 
 fn extend_module_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
+    let title = app_display_name(&ir.app.name);
     if ir.auth.enabled {
         artifacts.extend([
             Artifact::text(
@@ -149,7 +151,7 @@ fn extend_module_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
             ),
             Artifact::text(
                 "web/src/auth/AuthPages.tsx",
-                include_str!("../templates/web/auth/AuthPages.tsx"),
+                with_app_title(include_str!("../templates/web/auth/AuthPages.tsx"), &title),
                 ArtifactKind::Web,
             ),
         ]);
@@ -157,7 +159,7 @@ fn extend_module_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
     if ir.tenant.enabled {
         artifacts.push(Artifact::text(
             "web/src/tenant/Tenant.tsx",
-            include_str!("../templates/web/tenant/Tenant.tsx"),
+            with_app_title(include_str!("../templates/web/tenant/Tenant.tsx"), &title),
             ArtifactKind::Web,
         ));
     }
@@ -274,4 +276,40 @@ fn registry_source(ir: &AppIr) -> String {
         "{}{component_import}import type {{ ResourceDefinition }} from \"../resource\";\n\nexport interface FieldComponentProps {{\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport interface PageComponentProps {{\n  resources: readonly ResourceDefinition[];\n}}\n\nexport interface AppStructRegistry {{\n  fields: {field_registry};\n  pages: {page_registry};\n}}\n\nexport interface CustomPageDefinition {{\n  name: string;\n  label: string;\n  path: string;\n  component: keyof AppStructRegistry[\"pages\"];\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages: readonly CustomPageDefinition[] = [\n{pages}\n];\n",
         generated_header("//"),
     )
+}
+
+pub(super) fn app_display_name(name: &str) -> String {
+    name.split('-')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut characters = part.chars();
+            characters.next().map_or_else(String::new, |first| {
+                format!("{}{}", first.to_uppercase(), characters.as_str())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn with_app_title(source: &str, title: &str) -> String {
+    source.replace("__APP_TITLE__", title)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{app_display_name, with_app_title};
+
+    #[test]
+    fn app_display_name_title_cases_hyphenated_package_names() {
+        assert_eq!(app_display_name("notes"), "Notes");
+        assert_eq!(app_display_name("project-manager"), "Project Manager");
+    }
+
+    #[test]
+    fn with_app_title_replaces_the_placeholder() {
+        assert_eq!(
+            with_app_title("<title>__APP_TITLE__</title>", "Notes"),
+            "<title>Notes</title>"
+        );
+    }
 }

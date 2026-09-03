@@ -59,10 +59,16 @@ impl AuthState {
         }
         Ok(Self {
             config: Arc::new(AuthConfig {
-                allowed_origin: env::var("APPSTRUCT_ALLOWED_ORIGIN")
-                    .unwrap_or_else(|_| "http://127.0.0.1:5173".to_owned()),
-                frontend_url: env::var("APPSTRUCT_FRONTEND_URL")
-                    .unwrap_or_else(|_| "http://127.0.0.1:5173".to_owned()),
+                allowed_origin: load_public_origin(
+                    "APPSTRUCT_ALLOWED_ORIGIN",
+                    production,
+                    "http://127.0.0.1:5173",
+                )?,
+                frontend_url: load_public_origin(
+                    "APPSTRUCT_FRONTEND_URL",
+                    production,
+                    "http://127.0.0.1:5173",
+                )?,
                 secure_cookie,
                 session_ttl_hours,
             }),
@@ -230,8 +236,33 @@ impl AuthState {
         database: &C,
         key: &str,
     ) -> Result<(), ApiError> {
-        let row = database
+        cleanup_login_attempts(database).await?;
+        let Some(row) = database
             .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                r#"SELECT attempts FROM "_appstruct_auth_login_attempts"
+                   WHERE "key" = $1
+                     AND window_started_at > CURRENT_TIMESTAMP - INTERVAL '1 minute'"#,
+                [key.to_owned().into()],
+            ))
+            .await?
+        else {
+            return Ok(());
+        };
+        let attempts: i32 = row.try_get("", "attempts")?;
+        if attempts >= 10 {
+            return Err(ApiError::TooManyRequests);
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn record_login_failure<C: ConnectionTrait>(
+        &self,
+        database: &C,
+        key: &str,
+    ) -> Result<(), ApiError> {
+        database
+            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"INSERT INTO "_appstruct_auth_login_attempts" ("key", window_started_at, attempts)
                    VALUES ($1, CURRENT_TIMESTAMP, 1)
@@ -245,16 +276,25 @@ impl AuthState {
                        WHEN "_appstruct_auth_login_attempts".window_started_at <= CURRENT_TIMESTAMP - INTERVAL '1 minute'
                        THEN CURRENT_TIMESTAMP
                        ELSE "_appstruct_auth_login_attempts".window_started_at
-                     END
-                   RETURNING attempts"#,
+                     END"#,
                 [key.to_owned().into()],
             ))
-            .await?
-            .ok_or(ApiError::Internal)?;
-        let attempts: i32 = row.try_get("", "attempts")?;
-        if attempts > 10 {
-            return Err(ApiError::TooManyRequests);
-        }
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn clear_login_attempts<C: ConnectionTrait>(
+        &self,
+        database: &C,
+        key: &str,
+    ) -> Result<(), ApiError> {
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                r#"DELETE FROM "_appstruct_auth_login_attempts" WHERE "key" = $1"#,
+                [key.to_owned().into()],
+            ))
+            .await?;
         Ok(())
     }
 
@@ -348,4 +388,23 @@ pub(crate) fn random_token() -> String {
 
 fn quote_ident(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
+}
+
+fn load_public_origin(name: &str, production: bool, fallback: &str) -> Result<String, String> {
+    match env::var(name) {
+        Ok(value) => appstruct_runtime::validate_browser_origin(name, &value),
+        Err(_) if production => Err(format!("{name} is required when APPSTRUCT_ENV=production")),
+        Err(_) => Ok(fallback.to_owned()),
+    }
+}
+
+async fn cleanup_login_attempts<C: ConnectionTrait>(database: &C) -> Result<(), ApiError> {
+    database
+        .execute_raw(Statement::from_string(
+            DbBackend::Postgres,
+            r#"DELETE FROM "_appstruct_auth_login_attempts"
+               WHERE window_started_at <= CURRENT_TIMESTAMP - INTERVAL '1 minute'"#,
+        ))
+        .await?;
+    Ok(())
 }

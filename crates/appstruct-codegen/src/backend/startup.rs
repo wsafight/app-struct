@@ -10,6 +10,7 @@ pub(super) fn source(ir: &AppIr) -> Result<TokenStream, CodegenError> {
     let file = disabled_default(ir.file.enabled, &quote! { FileState::default() });
     let module_plan = module_plan(ir)?;
     let observer = observer_source();
+    let connect = connect_database_source();
     Ok(quote! {
         struct StartupContext {
             database: DatabaseConnection,
@@ -97,7 +98,56 @@ pub(super) fn source(ir: &AppIr) -> Result<TokenStream, CodegenError> {
         }
 
         #module_plan
+        #connect
     })
+}
+
+fn connect_database_source() -> TokenStream {
+    quote! {
+        pub async fn connect_database(
+            database_url: impl Into<String>,
+        ) -> Result<DatabaseConnection, sea_orm::DbErr> {
+            let mut options = sea_orm::ConnectOptions::new(database_url.into());
+            let max_connections = env_positive_u32("APPSTRUCT_DB_MAX_CONNECTIONS", 20);
+            let min_connections =
+                env_positive_u32("APPSTRUCT_DB_MIN_CONNECTIONS", 1).min(max_connections);
+            options.max_connections(max_connections);
+            options.min_connections(min_connections);
+            options.connect_timeout(Duration::from_secs(env_positive_u64(
+                "APPSTRUCT_DB_CONNECT_TIMEOUT_SECS",
+                8,
+            )));
+            options.acquire_timeout(Duration::from_secs(env_positive_u64(
+                "APPSTRUCT_DB_ACQUIRE_TIMEOUT_SECS",
+                8,
+            )));
+            options.idle_timeout(Duration::from_secs(env_positive_u64(
+                "APPSTRUCT_DB_IDLE_TIMEOUT_SECS",
+                300,
+            )));
+            options.max_lifetime(Duration::from_secs(env_positive_u64(
+                "APPSTRUCT_DB_MAX_LIFETIME_SECS",
+                1800,
+            )));
+            sea_orm::Database::connect(options).await
+        }
+
+        fn env_positive_u32(name: &str, default: u32) -> u32 {
+            std::env::var(name)
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(default)
+        }
+
+        fn env_positive_u64(name: &str, default: u64) -> u64 {
+            std::env::var(name)
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(default)
+        }
+    }
 }
 
 fn observer_source() -> TokenStream {

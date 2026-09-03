@@ -19,8 +19,10 @@ GET /api/tasks/?page=2&page_size=25&sort=-created_at&filter[status]=todo
 }
 ```
 
-`page` starts at 1. `page_size` defaults to 25 and must be between 1 and 100. Declared sorts are
-applied in order and the primary key is appended when needed to keep the ordering deterministic.
+`page` starts at 1 and must be between 1 and 10,000. `page_size` defaults to 25 and must be between
+1 and 100. Search terms are matched as literal substrings; `%`, `_`, and `\` are escaped before the
+SQL `LIKE` pattern is applied. Declared sorts are applied in order and the primary key is appended
+when needed to keep the ordering deterministic.
 
 ## Cursor pagination
 

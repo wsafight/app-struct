@@ -56,6 +56,10 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
 
     let project_api = artifact_text(artifacts, "backend/src/api/project.rs");
     assert!(project_api.contains("cursor pagination cannot be combined"));
+    assert!(project_api.contains("like_contains_pattern"));
+    assert!(project_api.contains("LikeExpr::new(pattern.clone())"));
+    assert!(project_api.contains("list_page_is_valid"));
+    assert!(project_api.contains("MAX_LIST_PAGE"));
     let resource_runtime = artifact_text(artifacts, "backend/runtime/src/resource.rs");
     assert!(resource_runtime.contains("URL_SAFE_NO_PAD"));
     assert!(project_api.contains("decode_cursor(cursor)"));

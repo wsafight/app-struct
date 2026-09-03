@@ -98,8 +98,9 @@ pub(super) fn source(ir: &AppIr) -> String {
 }
 
 pub(super) fn layout_source(ir: &AppIr) -> String {
+    let title = super::app_display_name(&ir.app.name);
     if !ir.auth.enabled {
-        return include_str!("../../templates/web/Layout.tsx").to_owned();
+        return include_str!("../../templates/web/Layout.tsx").replace("__APP_TITLE__", &title);
     }
     let audit = ir.audit.enabled;
     let tenant = ir.tenant.enabled;
@@ -153,4 +154,5 @@ pub(super) fn layout_source(ir: &AppIr) -> String {
                 ""
             },
         )
+        .replace("__APP_TITLE__", &title)
 }

@@ -26,9 +26,14 @@ pub(super) fn list_support(
     let filter_validation = filter_validation(&filter_keys);
     let search = search_rule(entity, module)?;
     let sorts = sort_rules(entity, module)?;
+    let searchable = entity
+        .fields
+        .iter()
+        .any(|field| field.capabilities.searchable);
     let column_trait = (!filters.is_empty()
         || !relation_filters.is_empty()
         || !sorts.is_empty()
+        || searchable
         || entity.views.soft_delete)
         .then(|| quote! { ColumnTrait as _, });
     let primary_field = primary_key(entity)?;
@@ -51,7 +56,10 @@ pub(super) fn list_support(
         sorts: &sorts,
     });
     Ok(quote! {
-        use appstruct_runtime::{ListMeta, ListQuery, ListResponse, decode_cursor, encode_cursor};
+        use appstruct_runtime::{
+            ListMeta, ListQuery, ListResponse, MAX_LIST_PAGE, decode_cursor, encode_cursor,
+            list_page_is_valid,
+        };
         use sea_orm::{#column_trait #query_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
         #handler
     })
@@ -142,9 +150,9 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
             }
             let page = query.page.unwrap_or(1);
             let page_size = query.page_size.unwrap_or(25);
-            if page == 0 || !(1..=100).contains(&page_size) {
+            if !list_page_is_valid(page, page_size) {
                 return Err(ApiError::InvalidQuery(
-                    "`page` must be at least 1 and `page_size` must be between 1 and 100".to_owned()
+                    format!("`page` must be between 1 and {MAX_LIST_PAGE} and `page_size` must be between 1 and 100")
                 ));
             }
             let mut primary_sorted = false;

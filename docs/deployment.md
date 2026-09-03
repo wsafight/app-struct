@@ -53,11 +53,17 @@ The backend reads configuration from its process environment:
 | Variable | Requirement | Meaning |
 | --- | --- | --- |
 | `DATABASE_URL` | required | PostgreSQL connection URL |
+| `APPSTRUCT_DB_MAX_CONNECTIONS` | optional | pool size, default 20 |
+| `APPSTRUCT_DB_MIN_CONNECTIONS` | optional | pool floor, default 1 |
+| `APPSTRUCT_DB_CONNECT_TIMEOUT_SECS` | optional | connect timeout, default 8 |
+| `APPSTRUCT_DB_ACQUIRE_TIMEOUT_SECS` | optional | pool acquire timeout, default 8 |
+| `APPSTRUCT_DB_IDLE_TIMEOUT_SECS` | optional | idle connection timeout, default 300 |
+| `APPSTRUCT_DB_MAX_LIFETIME_SECS` | optional | connection max lifetime, default 1800 |
 | `APPSTRUCT_BIND` | optional | listen address, default `127.0.0.1:3000` |
 | `RUST_LOG` | optional | tracing filter |
 | `APPSTRUCT_ENV` | set to `production` for Auth applications | enables production Auth defaults |
-| `APPSTRUCT_ALLOWED_ORIGIN` | required for browser Auth deployments | exact allowed browser origin |
-| `APPSTRUCT_FRONTEND_URL` | required for password-reset links | public Web origin |
+| `APPSTRUCT_ALLOWED_ORIGIN` | required when `APPSTRUCT_ENV=production` for Auth; optional CORS allowlist otherwise | exact allowed browser origin |
+| `APPSTRUCT_FRONTEND_URL` | required when `APPSTRUCT_ENV=production` | public Web origin |
 | `APPSTRUCT_COOKIE_SECURE` | normally `true` in production | Secure attribute for Auth cookies |
 | `APPSTRUCT_SESSION_TTL_HOURS` | optional | positive session lifetime, default 720 |
 | `APPSTRUCT_AUTH_MAIL_MODE` | `smtp` when production password reset is enabled | Auth mail adapter |

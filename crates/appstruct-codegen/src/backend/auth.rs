@@ -124,7 +124,13 @@ fn disabled_source() -> Result<String, CodegenError> {
                 _database: &DatabaseConnection,
                 _headers: &HeaderMap,
             ) -> Result<(), ApiError> { Ok(()) }
-            pub fn cors_layer(&self) -> CorsLayer { CorsLayer::permissive() }
+            pub fn cors_layer(&self) -> CorsLayer {
+                if std::env::var("APPSTRUCT_ENV").as_deref() == Ok("production") {
+                    CorsLayer::new()
+                } else {
+                    CorsLayer::permissive()
+                }
+            }
         }
 
         pub fn router() -> Router<AppState> { Router::new() }

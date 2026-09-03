@@ -21,7 +21,7 @@ describe("validateResourceSearch", () => {
   it("normalizes supported resource search parameters", () => {
     expect(
       validateResourceSearch({
-        page: "3",
+        page: "10000",
         page_size: "50",
         sort: "-created_at",
         q: "quarterly report",
@@ -30,7 +30,7 @@ describe("validateResourceSearch", () => {
         "filter[created_at][gte]": "2026-01-01",
       }),
     ).toEqual({
-      page: 3,
+      page: 10000,
       page_size: 50,
       sort: "-created_at",
       q: "quarterly report",
@@ -59,6 +59,9 @@ describe("validateResourceSearch", () => {
 
   it("rejects invalid pagination bounds", () => {
     expect(validateResourceSearch({ page: "0", page_size: "101" })).toEqual({});
+    expect(validateResourceSearch({ page: "10001", page_size: "25" })).toEqual(
+      {},
+    );
     expect(
       validateResourceSearch({ page: "1.5", page_size: Number.NaN }),
     ).toEqual({});

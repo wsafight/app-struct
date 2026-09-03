@@ -48,12 +48,7 @@ export function ResourceList({
   const [actionError, setActionError] = useState("");
   const queryString = searchParams.toString();
   const trashMode = resource.softDelete && searchParams.get("trash") === "1";
-  const page = boundedInteger(
-    searchParams.get("page"),
-    1,
-    Number.MAX_SAFE_INTEGER,
-    1,
-  );
+  const page = boundedInteger(searchParams.get("page"), 1, 10_000, 1);
   const pageSize = boundedInteger(searchParams.get("page_size"), 1, 100, 25);
   const sort = searchParams.get("sort") ?? "";
   const visibleFields = useMemo(
