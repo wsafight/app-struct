@@ -37,6 +37,12 @@ jobs:
         run: cargo test --workspace --locked
       - run: scripts/verify-packages.sh
       - run: scripts/run-template-build.sh
+      - name: Remove cargo package verification artifacts
+        if: always()
+        run: |
+          if [[ -d target/package ]]; then
+            rm -r target/package
+          fi
 
   postgres-e2e:
     runs-on: ubuntu-24.04

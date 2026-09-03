@@ -76,13 +76,18 @@ fn compare_indexes(
             table: index.table.clone(),
             columns: index.columns.clone(),
             unique: index.unique,
-            predicate: index
-                .predicate
-                .as_ref()
-                .map(|value| value.trim().to_owned()),
+            predicate: normalize::index_predicate(index.predicate.as_deref()),
         })
         .collect::<BTreeSet<_>>();
-    for index in expected.difference(actual) {
+    let actual = actual
+        .iter()
+        .cloned()
+        .map(|mut index| {
+            index.predicate = normalize::index_predicate(index.predicate.as_deref());
+            index
+        })
+        .collect::<BTreeSet<_>>();
+    for index in expected.difference(&actual) {
         issues.push(format!(
             "missing {}index on `{}` ({}){}",
             if index.unique { "unique " } else { "" },
@@ -343,4 +348,48 @@ fn catalog_string(row: &postgres::Row, name: &str) -> Result<String, MigrationEr
 
 fn database_error(context: &str, error: &postgres::Error) -> MigrationError {
     MigrationError::Database(format!("{context}: {}", super::database_message(error)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::IndexSchema;
+    use appstruct_ir::DatabaseProvider;
+
+    #[test]
+    fn postgres_partial_index_syntax_does_not_report_drift() {
+        let expected = DatabaseSchema {
+            schema_version: crate::SCHEMA_VERSION,
+            provider: DatabaseProvider::Postgres,
+            tables: Vec::new(),
+            unique_constraints: Vec::new(),
+            indexes: vec![IndexSchema {
+                id: "appstruct::jobs::jobs_queued".to_owned(),
+                table: "_appstruct_jobs".to_owned(),
+                columns: vec!["run_at".to_owned(), "id".to_owned()],
+                unique: false,
+                predicate: Some("status = 'queued'".to_owned()),
+            }],
+            seeds: Vec::new(),
+            foreign_keys: Vec::new(),
+        };
+        let actual = BTreeSet::from([IndexShape {
+            table: "_appstruct_jobs".to_owned(),
+            columns: vec!["run_at".to_owned(), "id".to_owned()],
+            unique: false,
+            predicate: Some("(status = 'queued'::text)".to_owned()),
+        }]);
+        let mut issues = Vec::new();
+        compare_indexes(&expected, &actual, &mut issues);
+        assert!(issues.is_empty());
+
+        let different = BTreeSet::from([IndexShape {
+            table: "_appstruct_jobs".to_owned(),
+            columns: vec!["run_at".to_owned(), "id".to_owned()],
+            unique: false,
+            predicate: Some("(status = 'running'::text)".to_owned()),
+        }]);
+        compare_indexes(&expected, &different, &mut issues);
+        assert_eq!(issues.len(), 2);
+    }
 }
