@@ -201,6 +201,35 @@ mod tests {
             from_compatible_json(&future),
             Err(IrCompatibilityError::UnsupportedVersion { found: 999 })
         ));
+        assert!(matches!(
+            from_compatible_json("{"),
+            Err(IrCompatibilityError::InvalidJson(_))
+        ));
+        assert!(matches!(
+            from_compatible_json("{}"),
+            Err(IrCompatibilityError::MissingVersion)
+        ));
+        assert!(
+            from_compatible_json("{")
+                .unwrap_err()
+                .to_string()
+                .contains("invalid IR JSON")
+        );
+        assert!(
+            IrCompatibilityError::MissingVersion
+                .to_string()
+                .contains("ir_version")
+        );
+        assert!(
+            IrCompatibilityError::UnsupportedVersion { found: 3 }
+                .to_string()
+                .contains("unsupported IR version")
+        );
+        assert!(
+            IrCompatibilityError::LegacyModuleGraph
+                .to_string()
+                .contains("recompile")
+        );
     }
 
     #[test]

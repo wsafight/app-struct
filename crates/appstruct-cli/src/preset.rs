@@ -86,3 +86,34 @@ pub(crate) fn run(project: &Path, command: &PresetCommand) -> ExitCode {
     }
     ExitCode::SUCCESS
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn show_rejects_projects_without_a_preset_and_missing_projects() {
+        assert_ne!(
+            run(
+                Path::new("/missing-appstruct-project"),
+                &PresetCommand::Show { expanded: false },
+            ),
+            ExitCode::SUCCESS
+        );
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+        assert_ne!(
+            run(&fixture, &PresetCommand::Show { expanded: false }),
+            ExitCode::SUCCESS
+        );
+        let saas =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-preset-project");
+        if saas.exists() {
+            crate::report::set_output_format(crate::report::OutputFormat::Text);
+            let _ = run(&saas, &PresetCommand::Show { expanded: false });
+            crate::report::set_output_format(crate::report::OutputFormat::Json);
+            let _ = run(&saas, &PresetCommand::Show { expanded: true });
+            crate::report::set_output_format(crate::report::OutputFormat::Text);
+        }
+    }
+}

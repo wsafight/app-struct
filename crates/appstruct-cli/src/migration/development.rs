@@ -151,5 +151,50 @@ mod tests {
             false,
         )
         .unwrap();
+        prepare_development(
+            Path::new("/missing/project"),
+            "not-a-database-url",
+            DatabaseMigrationPolicy::Unmanaged,
+            true,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn never_auto_and_prompt_fail_on_invalid_projects() {
+        let url = "postgresql://127.0.0.1:1/appstruct?sslmode=disable";
+        assert!(
+            prepare_development(
+                Path::new("/missing/project"),
+                url,
+                DatabaseMigrationPolicy::Never,
+                false,
+            )
+            .is_err()
+        );
+        assert!(
+            prepare_development(
+                Path::new("/missing/project"),
+                url,
+                DatabaseMigrationPolicy::Auto,
+                false,
+            )
+            .is_err()
+        );
+        assert!(
+            prepare_development(
+                Path::new("/missing/project"),
+                url,
+                DatabaseMigrationPolicy::Prompt,
+                false,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn confirm_requires_an_interactive_terminal() {
+        let error = confirm().unwrap_err();
+        assert!(error.to_string().contains("interactive terminal"));
     }
 }

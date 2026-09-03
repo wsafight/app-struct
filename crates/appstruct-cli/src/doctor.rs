@@ -171,3 +171,76 @@ fn render_text(report: &DoctorReport) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn file_check_reports_missing_and_present_files() {
+        let temporary = tempfile::tempdir().unwrap();
+        let missing = file_check(temporary.path().join("compose.yaml"), "compose.yaml");
+        assert!(!missing.ok);
+        assert_eq!(missing.detail, "missing");
+        fs::write(temporary.path().join("compose.yaml"), "services: {}\n").unwrap();
+        let present = file_check(temporary.path().join("compose.yaml"), "compose.yaml");
+        assert!(present.ok);
+        assert_eq!(present.detail, "present");
+    }
+
+    #[test]
+    fn tool_check_covers_success_and_missing_binaries() {
+        let rustc = tool("rustc", &["--version"], Some("1.98."));
+        assert_eq!(rustc.name, "rustc");
+        let clippy = tool("cargo", &["clippy", "--version"], None);
+        assert_eq!(clippy.name, "clippy");
+        let missing = tool("appstruct-missing-binary-for-tests", &["--version"], None);
+        assert!(!missing.ok);
+        assert!(missing.help.is_some());
+        let failed = tool("false", &[], None);
+        assert!(!failed.ok);
+    }
+
+    #[test]
+    fn managed_checks_include_compose_and_docker() {
+        let project = tempfile::tempdir().unwrap();
+        let checks = managed_checks(project.path());
+        assert_eq!(checks[0].name, "compose.yaml");
+        assert!(!checks[0].ok);
+    }
+
+    #[test]
+    fn external_checks_require_database_url() {
+        let project = tempfile::tempdir().unwrap();
+        let environment = ProjectEnvironment::default();
+        let checks = external_checks(project.path(), &environment);
+        assert_eq!(checks[0].name, "PostgreSQL");
+        assert!(!checks[0].ok);
+        assert!(checks[0].detail.contains("DATABASE_URL"));
+    }
+
+    #[test]
+    fn run_reports_invalid_projects_and_managed_fixture_status() {
+        assert_ne!(
+            run(Path::new("/missing-appstruct-project"), true),
+            ExitCode::SUCCESS
+        );
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+        let _ = run(&fixture, true);
+        let _ = run(&fixture, false);
+    }
+
+    #[test]
+    fn render_text_prints_help_for_failed_checks() {
+        render_text(&DoctorReport {
+            healthy: false,
+            checks: vec![DoctorCheck {
+                name: "pnpm".to_owned(),
+                ok: false,
+                detail: "missing".to_owned(),
+                help: Some("install pnpm".to_owned()),
+            }],
+        });
+    }
+}

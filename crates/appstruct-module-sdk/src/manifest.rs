@@ -215,5 +215,55 @@ mod tests {
             module_namespace("local/example-one").unwrap(),
             module_namespace("local-example/one").unwrap()
         );
+        assert!(module_namespace("Bad/Name").is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_versions_capabilities_and_duplicate_artifact_paths() {
+        use super::validate_relative_path;
+
+        let mut invalid_version = ModuleManifest::new(
+            "local/example",
+            "1 2",
+            std::iter::empty::<&str>(),
+            std::iter::empty::<&str>(),
+        );
+        assert!(matches!(
+            crate::resolve_modules([invalid_version.clone()]),
+            Err(ModuleGraphError::InvalidManifest { .. })
+        ));
+        invalid_version.version = "1".to_owned();
+        invalid_version.provides = vec!["Not.Valid".to_owned()];
+        assert!(matches!(
+            crate::resolve_modules([invalid_version]),
+            Err(ModuleGraphError::InvalidManifest { .. })
+        ));
+
+        let mut duplicate = ModuleManifest::new(
+            "local/example",
+            "1",
+            std::iter::empty::<&str>(),
+            std::iter::empty::<&str>(),
+        );
+        duplicate.artifacts = vec![
+            ModuleArtifact {
+                path: "docs/a.md".to_owned(),
+                source: "assets/a.md".to_owned(),
+            },
+            ModuleArtifact {
+                path: "docs/a.md".to_owned(),
+                source: "assets/b.md".to_owned(),
+            },
+        ];
+        assert!(matches!(
+            crate::resolve_modules([duplicate]),
+            Err(ModuleGraphError::InvalidManifest { .. })
+        ));
+
+        assert!(validate_relative_path("").is_err());
+        assert!(validate_relative_path("/abs").is_err());
+        assert!(validate_relative_path("win\\path").is_err());
+        assert!(validate_relative_path("docs/../secret").is_err());
+        assert!(validate_relative_path("docs/README.md").is_ok());
     }
 }

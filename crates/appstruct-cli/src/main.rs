@@ -242,3 +242,96 @@ fn render_json_report(valid: bool, entity_count: usize, diagnostics: &[Diagnosti
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixture() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project")
+    }
+
+    #[test]
+    fn schema_and_check_commands_succeed_for_the_m0_fixture() {
+        assert_eq!(
+            run(Cli {
+                project: None,
+                format: report::OutputFormat::Text,
+                command: Command::Schema,
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            run(Cli {
+                project: Some(fixture()),
+                format: report::OutputFormat::Json,
+                command: Command::Check {
+                    deny_warnings: false,
+                },
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            run(Cli {
+                project: Some(fixture()),
+                format: report::OutputFormat::Text,
+                command: Command::Check {
+                    deny_warnings: false,
+                },
+            }),
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[test]
+    fn missing_projects_fail_for_json_and_text_check() {
+        let missing = PathBuf::from("/missing-appstruct-project");
+        assert_ne!(
+            run(Cli {
+                project: Some(missing.clone()),
+                format: report::OutputFormat::Json,
+                command: Command::Check {
+                    deny_warnings: false,
+                },
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_ne!(
+            run(Cli {
+                project: Some(missing),
+                format: report::OutputFormat::Text,
+                command: Command::Doctor {},
+            }),
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[test]
+    fn migrate_plan_and_preset_show_cover_command_dispatch() {
+        assert_eq!(
+            run(Cli {
+                project: Some(fixture()),
+                format: report::OutputFormat::Text,
+                command: Command::Migrate {
+                    command: migration::MigrateCommand::Plan,
+                },
+            }),
+            ExitCode::SUCCESS
+        );
+        let _ = run(Cli {
+            project: Some(fixture()),
+            format: report::OutputFormat::Json,
+            command: Command::Preset {
+                command: preset::PresetCommand::Show { expanded: false },
+            },
+        });
+        let _ = run(Cli {
+            project: Some(fixture()),
+            format: report::OutputFormat::Text,
+            command: Command::Module {
+                command: module_registry::ModuleCommand::List,
+            },
+        });
+    }
+}

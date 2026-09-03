@@ -152,5 +152,50 @@ mod tests {
             first.cache_fingerprint(CacheEnvironment::Rust),
             changed_build.cache_fingerprint(CacheEnvironment::Rust)
         );
+
+        let node = ProjectEnvironment {
+            file_values: BTreeMap::from([("NODE_ENV".to_owned(), "test".to_owned())]),
+        };
+        assert!(
+            node.cache_fingerprint(CacheEnvironment::Node)
+                .starts_with("sha256:")
+        );
+    }
+
+    #[test]
+    fn load_rejects_invalid_dotenv_files() {
+        let temporary = tempfile::tempdir().unwrap();
+        fs::write(temporary.path().join(".env"), "UNQUOTED SPACE VALUE\n").unwrap();
+        assert!(ProjectEnvironment::load(temporary.path()).is_err());
+    }
+
+    #[test]
+    fn get_ignores_blank_values_and_apply_sets_file_only_variables() {
+        let environment = ProjectEnvironment {
+            file_values: BTreeMap::from([
+                ("APPSTRUCT_EMPTY".to_owned(), "  ".to_owned()),
+                ("APPSTRUCT_FILE_ONLY".to_owned(), "from-file".to_owned()),
+            ]),
+        };
+        assert!(environment.get("APPSTRUCT_EMPTY").is_none());
+        assert_eq!(
+            environment.get("APPSTRUCT_FILE_ONLY").as_deref(),
+            Some("from-file")
+        );
+        let mut command = Command::new("true");
+        environment.apply(&mut command);
+    }
+
+    #[test]
+    fn relevant_names_match_rust_and_node_scopes() {
+        assert!(relevant(CacheEnvironment::Rust, "PATH"));
+        assert!(relevant(CacheEnvironment::Rust, "CARGO_HOME"));
+        assert!(relevant(CacheEnvironment::Rust, "RUSTFLAGS"));
+        assert!(relevant(CacheEnvironment::Rust, "CC"));
+        assert!(!relevant(CacheEnvironment::Rust, "DATABASE_URL"));
+        assert!(relevant(CacheEnvironment::Node, "PNPM_HOME"));
+        assert!(relevant(CacheEnvironment::Node, "NPM_CONFIG_REGISTRY"));
+        assert!(relevant(CacheEnvironment::Node, "NODE_ENV"));
+        assert!(!relevant(CacheEnvironment::Node, "DATABASE_URL"));
     }
 }

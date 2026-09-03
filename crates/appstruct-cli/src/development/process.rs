@@ -321,3 +321,6 @@ fn isolate_process_group(command: &mut Command) {
 
 #[cfg(not(unix))]
 fn isolate_process_group(_command: &mut Command) {}
+
+#[cfg(test)]
+mod tests;

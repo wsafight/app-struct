@@ -230,4 +230,22 @@ mod tests {
         assert!(!bulk_request_size_is_valid(MAX_BULK_ITEMS + 1, 1));
         assert!(!bulk_request_size_is_valid(1, MAX_BULK_ITEMS + 1));
     }
+
+    #[test]
+    fn csv_helpers_cover_escaping_json_coercion_and_errors() {
+        assert_eq!(csv_escape("plain"), "plain");
+        assert_eq!(csv_escape("a,b"), "\"a,b\"");
+        assert_eq!(csv_escape("say \"hi\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(csv_json_value("", "string"), serde_json::Value::Null);
+        assert_eq!(csv_json_value("true", "boolean"), serde_json::json!(true));
+        assert_eq!(csv_json_value("nope", "boolean"), serde_json::json!("nope"));
+        assert_eq!(csv_json_value("12", "integer"), serde_json::json!(12));
+        assert_eq!(csv_json_value("12", "bigint"), serde_json::json!(12));
+        assert_eq!(csv_json_value("x", "text"), serde_json::json!("x"));
+        assert_eq!(CsvError.to_string(), "CSV contains an unterminated quote");
+        let rows = parse_csv_rows("one,two\r\n").unwrap();
+        assert_eq!(rows[0], ["one", "two"]);
+        assert_eq!(decode_cursor(""), None);
+        assert_eq!(bulk_failure("1", "AS1", "nope").code, "AS1");
+    }
 }

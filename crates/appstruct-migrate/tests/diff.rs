@@ -236,3 +236,146 @@ fn seed_rows_are_diffed_and_rendered_idempotently() {
     let sql = migration_sql(&plan).unwrap();
     assert!(sql.contains("INSERT INTO \"projects\" (\"id\", \"priority\") VALUES ('00000000-0000-0000-0000-000000000001', 3) ON CONFLICT DO NOTHING;"));
 }
+
+#[test]
+fn index_and_seed_replacements_are_diffed() {
+    let after = fixture_schema();
+    let mut before = after.clone();
+    before.indexes.push(IndexSchema {
+        id: "app::Project::legacy".to_owned(),
+        table: "projects".to_owned(),
+        columns: vec!["name".to_owned()],
+        unique: false,
+        predicate: None,
+    });
+    let mut changed = before.clone();
+    changed.indexes.last_mut().unwrap().unique = true;
+    let plan = diff(&before, &changed);
+    assert!(
+        plan.changes
+            .iter()
+            .any(|change| matches!(change.change, SchemaChange::RemoveIndex { .. }))
+    );
+    assert!(
+        plan.changes
+            .iter()
+            .any(|change| matches!(change.change, SchemaChange::AddIndex { .. }))
+    );
+
+    let removed = diff(&before, &after);
+    assert!(
+        removed
+            .changes
+            .iter()
+            .any(|change| matches!(change.change, SchemaChange::RemoveIndex { .. }))
+    );
+
+    let mut with_seed = after.clone();
+    with_seed.seeds.push(SeedSchema {
+        id: "app::Project::demo".to_owned(),
+        table: "projects".to_owned(),
+        values: vec![SeedValueSchema {
+            column: "id".to_owned(),
+            value: "1".to_owned(),
+            data_type: DatabaseType::Uuid,
+        }],
+    });
+    let mut replaced = with_seed.clone();
+    replaced.seeds[0].values[0].value = "2".to_owned();
+    let seed_plan = diff(&with_seed, &replaced);
+    assert!(
+        seed_plan
+            .changes
+            .iter()
+            .any(|change| matches!(change.change, SchemaChange::RemoveSeed { .. }))
+    );
+    let dropped = diff(&with_seed, &after);
+    assert!(
+        dropped
+            .changes
+            .iter()
+            .any(|change| matches!(change.change, SchemaChange::RemoveSeed { .. }))
+    );
+}
+
+#[test]
+fn unique_column_addition_requires_manual_review() {
+    let before = fixture_schema();
+    let mut after = before.clone();
+    after.tables[0].columns.push(ColumnSchema {
+        id: "app::Project.slug".to_owned(),
+        name: "slug".to_owned(),
+        data_type: DatabaseType::Text,
+        nullable: true,
+        primary_key: false,
+        unique: true,
+        default: None,
+        generated: None,
+    });
+    let plan = diff(&before, &after);
+    assert_eq!(plan.changes.len(), 1);
+    assert!(plan.is_blocked());
+    assert_eq!(plan.changes[0].risk.execution, ExecutionRisk::ManualReview);
+}
+
+#[test]
+fn unique_constraint_and_foreign_key_replacements_are_diffed() {
+    let after = fixture_schema();
+    let mut before = after.clone();
+    if let Some(constraint) = before.unique_constraints.first_mut() {
+        constraint.columns.reverse();
+    } else {
+        before
+            .unique_constraints
+            .push(appstruct_migrate::UniqueConstraintSchema {
+                id: "projects.tenant_key".to_owned(),
+                table: "projects".to_owned(),
+                columns: vec!["id".to_owned()],
+            });
+    }
+    let plan = diff(&before, &after);
+    assert!(plan.changes.iter().any(|change| matches!(
+        change.change,
+        SchemaChange::RemoveUniqueConstraint { .. } | SchemaChange::AddUniqueConstraint { .. }
+    )));
+
+    let mut without_fk = after.clone();
+    let removed = without_fk.foreign_keys.pop().unwrap();
+    let dropped = diff(&after, &without_fk);
+    assert!(
+        dropped
+            .changes
+            .iter()
+            .any(|change| matches!(change.change, SchemaChange::RemoveForeignKey { .. }))
+    );
+    let mut replaced = after.clone();
+    replaced.foreign_keys.last_mut().unwrap().unique = !removed.unique;
+    let replaced_plan = diff(&after, &replaced);
+    assert!(
+        replaced_plan
+            .changes
+            .iter()
+            .any(|change| matches!(change.change, SchemaChange::RemoveForeignKey { .. }))
+    );
+}
+
+#[test]
+fn generated_value_changes_require_input() {
+    let before = fixture_schema();
+    let mut after = before.clone();
+    let created = after.tables[0]
+        .columns
+        .iter_mut()
+        .find(|column| column.generated.is_some() || column.name.contains("created"))
+        .unwrap();
+    created.generated = match created.generated {
+        Some(_) => None,
+        None => Some(appstruct_ir::GeneratedValueIr::Now),
+    };
+    let plan = diff(&before, &after);
+    assert!(plan.is_blocked());
+    assert!(matches!(
+        plan.changes[0].change,
+        SchemaChange::AlterColumn { .. }
+    ));
+}

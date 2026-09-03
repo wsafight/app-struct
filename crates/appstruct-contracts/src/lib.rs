@@ -105,6 +105,12 @@ mod tests {
                     "{name} too old"
                 );
             }
+            assert!(range.supports(range.current));
+            assert!(!range.supports(range.current.saturating_add(1)));
         }
+        let exact = super::VersionRange::exact(4);
+        assert_eq!(exact.minimum, 4);
+        assert_eq!(exact.current, 4);
+        assert_eq!(super::__source::LIB.len(), include_str!("lib.rs").len());
     }
 }

@@ -157,7 +157,7 @@ fn remove_postgres_text_casts(value: &str) -> String {
             .is_some_and(|candidate| candidate.eq_ignore_ascii_case(TEXT_CAST))
             && bytes
                 .get(cast_end)
-                .is_none_or(|next| !next.is_ascii_alphanumeric() && *next != b'_')
+                .is_none_or(|next| !next.is_ascii_alphanumeric() && !matches!(*next, b'_' | b'['))
         {
             output.push_str(&value[copied_from..index]);
             copied_from = cast_end;
@@ -182,23 +182,69 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_postgres_partial_index_predicates() {
-        assert_eq!(
-            index_predicate(Some("status = 'running'")),
-            index_predicate(Some("(status = 'running'::text)"))
-        );
-        assert_eq!(
-            index_predicate(Some("deleted_at IS NULL")),
-            index_predicate(Some("((deleted_at IS NULL))"))
-        );
-        assert_eq!(
-            index_predicate(Some("(status = 'it''s (ready)'::TEXT)")),
-            Some("status = 'it''s (ready)'".to_owned())
-        );
-        assert_eq!(
-            index_predicate(Some("(first) OR (second)")),
-            Some("(first) OR (second)".to_owned())
-        );
+    fn normalizes_postgres_partial_index_predicate_formatting() {
+        for (input, expected) in [
+            (" status = 'running' ", "status = 'running'"),
+            ("(status = 'running'::text)", "status = 'running'"),
+            ("(((status = 'running'::TEXT)))", "status = 'running'"),
+            ("(status::text = 'running'::text)", "status = 'running'"),
+            ("((deleted_at IS NULL))", "deleted_at IS NULL"),
+            (
+                "(status = 'it''s (ready)'::TEXT)",
+                "status = 'it''s (ready)'",
+            ),
+            ("(state = 'ready'::text)", "state = 'ready'"),
+        ] {
+            assert_eq!(
+                index_predicate(Some(input)).as_deref(),
+                Some(expected),
+                "predicate: {input}"
+            );
+        }
+        assert_eq!(index_predicate(None), None);
+    }
+
+    #[test]
+    fn predicate_normalization_preserves_sql_semantics() {
+        for (input, expected) in [
+            ("(first) OR (second)", "(first) OR (second)"),
+            (
+                "(\"status::text\" = 'queued::text')",
+                "\"status::text\" = 'queued::text'",
+            ),
+            ("(payload = '1'::jsonb)", "payload = '1'::jsonb"),
+            ("(kind = 'x'::textual)", "kind = 'x'::textual"),
+            ("(tags = '{}'::text[])", "tags = '{}'::text[]"),
+            ("((status = 'queued')", "((status = 'queued')"),
+        ] {
+            assert_eq!(
+                index_predicate(Some(input)).as_deref(),
+                Some(expected),
+                "predicate: {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn predicate_normalization_handles_quoted_and_nested_content() {
+        for (input, expected) in [
+            ("(lower(status) = 'ready'::text)", "lower(status) = 'ready'"),
+            (
+                "(\"schema\".\"status\" = 'queued'::text)",
+                "\"schema\".\"status\" = 'queued'",
+            ),
+            (
+                r"(status = E'it\'s (ready)'::text)",
+                r"status = E'it\'s (ready)'",
+            ),
+            ("(状态 = '就绪'::text)", "状态 = '就绪'"),
+        ] {
+            assert_eq!(
+                index_predicate(Some(input)).as_deref(),
+                Some(expected),
+                "predicate: {input}"
+            );
+        }
     }
 
     #[test]
@@ -209,6 +255,61 @@ mod tests {
         assert_eq!(
             values,
             BTreeSet::from(["active".to_owned(), "draft".to_owned(), "it's".to_owned()])
+        );
+    }
+
+    #[test]
+    fn maps_expected_column_types_and_generated_defaults() {
+        assert_eq!(expected_type(&DatabaseType::Uuid), "uuid");
+        assert_eq!(expected_type(&DatabaseType::Text), "text");
+        assert_eq!(
+            expected_type(&DatabaseType::Enum {
+                values: vec!["a".to_owned()]
+            }),
+            "text"
+        );
+        assert_eq!(expected_type(&DatabaseType::Integer), "integer");
+        assert_eq!(expected_type(&DatabaseType::Bigint), "bigint");
+        assert_eq!(expected_type(&DatabaseType::Decimal), "numeric");
+        assert_eq!(expected_type(&DatabaseType::Boolean), "boolean");
+        assert_eq!(expected_type(&DatabaseType::Date), "date");
+        assert_eq!(
+            expected_type(&DatabaseType::Datetime),
+            "timestamp with time zone"
+        );
+        assert_eq!(expected_type(&DatabaseType::Json), "jsonb");
+
+        let now = ColumnSchema {
+            id: "created".to_owned(),
+            name: "created".to_owned(),
+            data_type: DatabaseType::Datetime,
+            nullable: false,
+            primary_key: false,
+            unique: false,
+            default: None,
+            generated: Some(GeneratedValueIr::Now),
+        };
+        assert_eq!(expected_default(&now).as_deref(), Some("current_timestamp"));
+        let mut revision = now.clone();
+        revision.generated = Some(GeneratedValueIr::Revision);
+        assert_eq!(expected_default(&revision).as_deref(), Some("1"));
+        for generated in [
+            GeneratedValueIr::UuidV7,
+            GeneratedValueIr::AutoIncrement,
+            GeneratedValueIr::Tenant,
+        ] {
+            let mut column = now.clone();
+            column.generated = Some(generated);
+            assert_eq!(expected_default(&column), None);
+        }
+        let mut literal = now;
+        literal.generated = None;
+        literal.default = Some("'draft'".to_owned());
+        assert_eq!(expected_default(&literal).as_deref(), Some("draft"));
+        assert_eq!(default(None), None);
+        assert_eq!(
+            default(Some("CURRENT_TIMESTAMP")),
+            Some("current_timestamp".to_owned())
         );
     }
 }

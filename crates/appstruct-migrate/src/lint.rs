@@ -98,3 +98,137 @@ fn change_label(change: &SchemaChange) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        ChangeRisk, ColumnSchema, DatabaseType, ExecutionRisk, ForeignKeySchema, IndexSchema,
+        PlannedChange, SchemaRisk, SeedSchema, TableSchema, UniqueConstraintSchema,
+    };
+    use appstruct_ir::OnDeleteIr;
+
+    fn table() -> TableSchema {
+        TableSchema {
+            id: "notes".to_owned(),
+            name: "notes".to_owned(),
+            columns: Vec::new(),
+        }
+    }
+
+    fn column() -> ColumnSchema {
+        ColumnSchema {
+            id: "notes.id".to_owned(),
+            name: "id".to_owned(),
+            data_type: DatabaseType::Uuid,
+            nullable: false,
+            primary_key: true,
+            unique: false,
+            default: None,
+            generated: None,
+        }
+    }
+
+    #[test]
+    fn labels_and_risk_classes_cover_every_change_kind() {
+        let table = table();
+        let column = column();
+        let constraint = UniqueConstraintSchema {
+            id: "notes.email".to_owned(),
+            table: "notes".to_owned(),
+            columns: vec!["email".to_owned()],
+        };
+        let index = IndexSchema {
+            id: "notes.email".to_owned(),
+            table: "notes".to_owned(),
+            columns: vec!["email".to_owned()],
+            unique: false,
+            predicate: None,
+        };
+        let seed = SeedSchema {
+            id: "notes.demo".to_owned(),
+            table: "notes".to_owned(),
+            values: Vec::new(),
+        };
+        let foreign_key = ForeignKeySchema {
+            id: "notes.author".to_owned(),
+            source_table: "notes".to_owned(),
+            source_columns: vec!["author_id".to_owned()],
+            target_table: "users".to_owned(),
+            target_columns: vec!["id".to_owned()],
+            unique: false,
+            on_delete: OnDeleteIr::Restrict,
+        };
+        let changes = [
+            SchemaChange::AddTable {
+                table: table.clone(),
+            },
+            SchemaChange::RemoveTable {
+                table: table.clone(),
+            },
+            SchemaChange::RenameTable {
+                before: table.clone(),
+                after: table,
+            },
+            SchemaChange::AddColumn {
+                table: "notes".to_owned(),
+                column: column.clone(),
+            },
+            SchemaChange::RemoveColumn {
+                table: "notes".to_owned(),
+                column: column.clone(),
+            },
+            SchemaChange::AlterColumn {
+                table: "notes".to_owned(),
+                before: column.clone(),
+                after: column,
+            },
+            SchemaChange::AddUniqueConstraint {
+                constraint: constraint.clone(),
+            },
+            SchemaChange::RemoveUniqueConstraint { constraint },
+            SchemaChange::AddIndex {
+                index: index.clone(),
+            },
+            SchemaChange::RemoveIndex { index },
+            SchemaChange::AddSeed { seed: seed.clone() },
+            SchemaChange::RemoveSeed { seed },
+            SchemaChange::AddForeignKey {
+                foreign_key: foreign_key.clone(),
+            },
+            SchemaChange::RemoveForeignKey { foreign_key },
+        ];
+        let plan = MigrationPlan {
+            changes: changes
+                .into_iter()
+                .enumerate()
+                .map(|(index, change)| PlannedChange {
+                    change,
+                    risk: ChangeRisk {
+                        schema: if index == 0 {
+                            SchemaRisk::Destructive
+                        } else if index == 1 {
+                            SchemaRisk::RequiresInput
+                        } else {
+                            SchemaRisk::NonDestructive
+                        },
+                        execution: if index == 1 {
+                            ExecutionRisk::ManualReview
+                        } else if index == 2 {
+                            ExecutionRisk::MayLock
+                        } else {
+                            ExecutionRisk::Online
+                        },
+                    },
+                })
+                .collect(),
+        };
+        let issues = lint_plan(&plan);
+        assert!(issues.iter().any(|issue| issue.code == "AS4201"));
+        assert!(issues.iter().any(|issue| issue.code == "AS4202"));
+        assert!(issues.iter().any(|issue| issue.code == "AS4203"));
+        for change in &plan.changes {
+            assert!(!change_label(&change.change).is_empty());
+        }
+    }
+}

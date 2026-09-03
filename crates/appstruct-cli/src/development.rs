@@ -372,13 +372,4 @@ fn status(mut command: Command, context: &str) -> io::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_invalid_ports_before_project_access() {
-        let missing = Path::new("/path/that/does/not/exist");
-        assert_eq!(run(missing, 0, 5173), ExitCode::from(2));
-        assert_eq!(run(missing, 3000, 3000), ExitCode::from(2));
-    }
-}
+mod tests;

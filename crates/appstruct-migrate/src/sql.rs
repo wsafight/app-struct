@@ -289,12 +289,4 @@ fn quote_literal(value: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn quotes_sql_values() {
-        assert_eq!(quote_ident("project\"name"), "\"project\"\"name\"");
-        assert_eq!(quote_literal("it's"), "'it''s'");
-    }
-}
+mod tests;

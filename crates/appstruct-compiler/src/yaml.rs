@@ -305,4 +305,44 @@ mod tests {
         let diagnostic = parse("appstruct.yaml", "one: &value 1\ntwo: *value\n").unwrap_err();
         assert_eq!(diagnostic.code, "AS1003");
     }
+
+    #[test]
+    fn rejects_invalid_yaml_and_multiple_documents() {
+        let invalid = parse("appstruct.yaml", "foo: [\n").unwrap_err();
+        assert_eq!(invalid.code, "AS1001");
+        let multiple = parse("appstruct.yaml", "name: one\n---\nname: two\n").unwrap_err();
+        assert_eq!(multiple.code, "AS1002");
+    }
+
+    #[test]
+    fn rejects_anchors_and_merge_keys() {
+        let anchor = parse("appstruct.yaml", "one: &label first\n").unwrap_err();
+        assert_eq!(anchor.code, "AS1003");
+        let merge = parse("appstruct.yaml", "<<: {name: demo}\n").unwrap_err();
+        assert_eq!(merge.code, "AS1003");
+    }
+
+    #[test]
+    fn parses_sequences_and_rejects_non_scalar_keys() {
+        let root = parse("appstruct.yaml", "items:\n  - first\n  - second\n").unwrap();
+        let items = root.mapping().unwrap()["items"].value.sequence().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].scalar().unwrap().0, "first");
+        let nested = parse("appstruct.yaml", "? [not, a, scalar]\n: value\n").unwrap_err();
+        assert_eq!(nested.code, "AS1004");
+    }
+
+    #[test]
+    fn node_accessors_return_none_for_other_kinds() {
+        let scalar = parse("appstruct.yaml", "plain\n").unwrap();
+        assert!(scalar.mapping().is_none());
+        assert!(scalar.sequence().is_none());
+        assert_eq!(scalar.scalar().unwrap(), ("plain", true));
+        let sequence = parse("appstruct.yaml", "- one\n").unwrap();
+        assert!(sequence.mapping().is_none());
+        assert!(sequence.scalar().is_none());
+        let mapping = parse("appstruct.yaml", "name: demo\n").unwrap();
+        assert!(mapping.sequence().is_none());
+        assert!(mapping.scalar().is_none());
+    }
 }

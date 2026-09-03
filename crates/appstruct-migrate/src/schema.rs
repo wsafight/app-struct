@@ -381,3 +381,6 @@ pub fn from_json(source: &str) -> Result<DatabaseSchema, serde_json::Error> {
         ))),
     }
 }
+
+#[cfg(test)]
+mod tests;

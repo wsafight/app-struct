@@ -69,6 +69,41 @@ fn isolates_local_artifacts_and_generates_a_noop_runtime_starter() {
     assert!(error.to_string().contains("does not match its SHA-256"));
 }
 
+#[test]
+fn rejects_official_provenance_invalid_digests_and_byte_length() {
+    use sha2::{Digest, Sha256};
+
+    let mut ir: appstruct_ir::AppIr =
+        serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();
+    ir.modules[0].origin = appstruct_ir::ModuleOrigin::Official;
+    ir.modules[0].manifest_path = Some("modules/example/module.toml".to_owned());
+    assert!(
+        plan(&ir)
+            .unwrap_err()
+            .to_string()
+            .contains("official module")
+    );
+    ir.modules[0].origin = appstruct_ir::ModuleOrigin::Local;
+    ir.modules[0].name = "local/example".to_owned();
+    ir.modules[0].manifest_path = Some("modules/example/module.toml".to_owned());
+    ir.modules[0].content_sha256 = Some(format!("sha256:{:x}", Sha256::digest(b"manifest")));
+    ir.modules[0].artifacts = vec![appstruct_ir::ModuleArtifactIr {
+        path: "docs/README.md".to_owned(),
+        source: Some("modules/example/assets/README.md".to_owned()),
+        sha256: "sha256:deadbeef".to_owned(),
+        byte_len: 2,
+        content: "ok".to_owned(),
+    }];
+    let digest_error = plan(&ir).unwrap_err().to_string();
+    assert!(
+        digest_error.contains("SHA-256") || digest_error.contains("sha256"),
+        "{digest_error}"
+    );
+    ir.modules[0].artifacts[0].sha256 = format!("sha256:{:x}", Sha256::digest(b"ok"));
+    ir.modules[0].artifacts[0].byte_len = 99;
+    assert!(plan(&ir).unwrap_err().to_string().contains("byte length"));
+}
+
 fn copy_fixture(source: &Path, destination: &Path) {
     fs::create_dir_all(destination.join("spec")).unwrap();
     for relative in ["appstruct.yaml", "spec/identity.yaml", "spec/project.yaml"] {

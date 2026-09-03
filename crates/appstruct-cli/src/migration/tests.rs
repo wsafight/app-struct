@@ -80,3 +80,157 @@ fn injected_migration_failures_recover_snapshot_and_plan_together() {
         );
     }
 }
+
+#[test]
+fn plan_and_lint_cover_empty_and_fixture_projects() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+    assert_eq!(run(&fixture, MigrateCommand::Plan), ExitCode::SUCCESS);
+    assert_eq!(
+        run(
+            &fixture,
+            MigrateCommand::Lint {
+                deny_warnings: false
+            }
+        ),
+        ExitCode::SUCCESS
+    );
+    crate::report::set_output_format(crate::report::OutputFormat::Json);
+    assert_eq!(run(&fixture, MigrateCommand::Plan), ExitCode::SUCCESS);
+    assert_eq!(
+        run(
+            &fixture,
+            MigrateCommand::Lint {
+                deny_warnings: true
+            }
+        ),
+        ExitCode::SUCCESS
+    );
+    crate::report::set_output_format(crate::report::OutputFormat::Text);
+}
+
+#[test]
+fn apply_and_status_require_database_url() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+    assert_ne!(
+        run_with_database(&fixture, MigrateCommand::Apply, Some("")),
+        ExitCode::SUCCESS
+    );
+    assert_ne!(
+        run_with_database(&fixture, MigrateCommand::Status, Some("")),
+        ExitCode::SUCCESS
+    );
+}
+
+#[test]
+fn change_labels_cover_every_schema_change_kind() {
+    use appstruct_migrate::{
+        ColumnSchema, ForeignKeySchema, IndexSchema, SeedSchema, TableSchema,
+        UniqueConstraintSchema,
+    };
+    let table = TableSchema {
+        id: "notes".to_owned(),
+        name: "notes".to_owned(),
+        columns: Vec::new(),
+    };
+    let column = ColumnSchema {
+        id: "notes.id".to_owned(),
+        name: "id".to_owned(),
+        data_type: appstruct_migrate::DatabaseType::Uuid,
+        nullable: false,
+        primary_key: true,
+        unique: false,
+        default: None,
+        generated: None,
+    };
+    let constraint = UniqueConstraintSchema {
+        id: "notes.email".to_owned(),
+        table: "notes".to_owned(),
+        columns: vec!["email".to_owned()],
+    };
+    let index = IndexSchema {
+        id: "notes.email".to_owned(),
+        table: "notes".to_owned(),
+        columns: vec!["email".to_owned()],
+        unique: false,
+        predicate: None,
+    };
+    let seed = SeedSchema {
+        id: "notes.demo".to_owned(),
+        table: "notes".to_owned(),
+        values: Vec::new(),
+    };
+    let foreign_key = ForeignKeySchema {
+        id: "notes.author".to_owned(),
+        source_table: "notes".to_owned(),
+        source_columns: vec!["author_id".to_owned()],
+        target_table: "users".to_owned(),
+        target_columns: vec!["id".to_owned()],
+        unique: false,
+        on_delete: appstruct_ir::OnDeleteIr::Restrict,
+    };
+    for change in [
+        SchemaChange::AddTable {
+            table: table.clone(),
+        },
+        SchemaChange::RemoveTable {
+            table: table.clone(),
+        },
+        SchemaChange::RenameTable {
+            before: table.clone(),
+            after: table,
+        },
+        SchemaChange::AddColumn {
+            table: "notes".to_owned(),
+            column: column.clone(),
+        },
+        SchemaChange::RemoveColumn {
+            table: "notes".to_owned(),
+            column: column.clone(),
+        },
+        SchemaChange::AlterColumn {
+            table: "notes".to_owned(),
+            before: column.clone(),
+            after: column,
+        },
+        SchemaChange::AddUniqueConstraint {
+            constraint: constraint.clone(),
+        },
+        SchemaChange::RemoveUniqueConstraint { constraint },
+        SchemaChange::AddIndex {
+            index: index.clone(),
+        },
+        SchemaChange::RemoveIndex { index },
+        SchemaChange::AddSeed { seed: seed.clone() },
+        SchemaChange::RemoveSeed { seed },
+        SchemaChange::AddForeignKey {
+            foreign_key: foreign_key.clone(),
+        },
+        SchemaChange::RemoveForeignKey { foreign_key },
+    ] {
+        assert!(!change_label(&change).is_empty());
+    }
+}
+
+#[test]
+fn invalid_projects_and_dev_without_accept_are_rejected() {
+    assert_ne!(
+        run(
+            Path::new("/missing-appstruct-project"),
+            MigrateCommand::Plan
+        ),
+        ExitCode::SUCCESS
+    );
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+    let _ = run(&fixture, MigrateCommand::Dev { accept: false });
+    crate::report::set_output_format(crate::report::OutputFormat::Json);
+    render_dev_success(None, true, false);
+    render_dev_success(Some(Path::new("migrations/0001.sql")), false, true);
+    render_plan(&appstruct_migrate::MigrationPlan {
+        changes: Vec::new(),
+    });
+    crate::report::set_output_format(crate::report::OutputFormat::Text);
+    render_plan(&appstruct_migrate::MigrationPlan {
+        changes: Vec::new(),
+    });
+    assert!(read_snapshot(Path::new("/missing")).unwrap().is_none());
+}

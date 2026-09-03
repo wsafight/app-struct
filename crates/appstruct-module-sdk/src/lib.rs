@@ -278,4 +278,55 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn graph_errors_display_stable_messages() {
+        assert!(
+            ModuleGraphError::InvalidManifest {
+                module: "auth".to_owned(),
+                message: "bad".to_owned(),
+            }
+            .to_string()
+            .contains("invalid manifest")
+        );
+        assert!(
+            ModuleGraphError::DuplicateModule {
+                module: "auth".to_owned(),
+            }
+            .to_string()
+            .contains("more than once")
+        );
+        assert!(
+            ModuleGraphError::DuplicateProvider {
+                capability: "storage".to_owned(),
+                first: "a".to_owned(),
+                second: "b".to_owned(),
+            }
+            .to_string()
+            .contains("multiple providers")
+        );
+        assert!(
+            ModuleGraphError::MissingCapability {
+                module: "tenant".to_owned(),
+                capability: "auth.identity".to_owned(),
+            }
+            .to_string()
+            .contains("missing capability")
+        );
+        assert!(
+            ModuleGraphError::DependencyCycle {
+                modules: vec!["a".to_owned(), "b".to_owned()],
+            }
+            .to_string()
+            .contains("cycle")
+        );
+    }
+
+    #[test]
+    fn self_provided_capabilities_do_not_create_dependencies() {
+        let resolved =
+            resolve_modules([manifest("auth", &["auth.identity"], &["auth.identity"])]).unwrap();
+        assert_eq!(resolved[0].manifest.name, "auth");
+        assert_eq!(resolved[0].startup_order, 0);
+    }
 }

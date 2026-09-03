@@ -207,3 +207,73 @@ fn write_artifacts(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod run_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn run_reports_invalid_projects() {
+        assert_ne!(
+            run(Path::new("/missing-appstruct-project"), false),
+            ExitCode::SUCCESS
+        );
+        assert_ne!(
+            run_quiet(Path::new("/missing-appstruct-project"), true),
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[test]
+    fn render_success_covers_check_write_and_cache_text() {
+        crate::report::set_output_format(crate::report::OutputFormat::Text);
+        render_success(true, "demo", 3, 0, true);
+        render_success(false, "demo", 3, 1, false);
+        crate::report::set_output_format(crate::report::OutputFormat::Json);
+        render_success(true, "demo", 3, 0, false);
+        crate::report::set_output_format(crate::report::OutputFormat::Text);
+    }
+
+    #[test]
+    fn check_artifacts_reports_stale_files() {
+        let temporary = tempfile::tempdir().unwrap();
+        let artifacts = [Artifact {
+            relative_path: std::path::PathBuf::from("backend/lib.rs"),
+            content: b"fn main() {}".to_vec(),
+            executable: false,
+            kind: appstruct_codegen::ArtifactKind::RustSource,
+        }];
+        assert_ne!(
+            check_artifacts(temporary.path(), &artifacts, "demo", true),
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[test]
+    fn write_artifacts_is_a_noop_when_files_already_match() {
+        let temporary = tempfile::tempdir().unwrap();
+        let artifacts = [Artifact {
+            relative_path: std::path::PathBuf::from("lib.rs"),
+            content: b"fn main() {}\n".to_vec(),
+            executable: false,
+            kind: appstruct_codegen::ArtifactKind::RustSource,
+        }];
+        let expected = ownership::expected_files(&artifacts).unwrap();
+        for (path, content) in &expected {
+            let destination = temporary.path().join("generated").join(path);
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            fs::write(destination, content).unwrap();
+        }
+        let transaction = GenerationTransaction::acquire(temporary.path()).unwrap();
+        assert_eq!(
+            write_artifacts(
+                &transaction,
+                &temporary.path().join("generated"),
+                &artifacts
+            )
+            .unwrap(),
+            0
+        );
+    }
+}

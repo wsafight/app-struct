@@ -278,10 +278,14 @@ fn check_status(status: std::process::ExitStatus, program: &str) -> io::Result<(
 
 #[cfg(test)]
 mod tests {
-    use super::{backend_binary_name, backend_manifest, run_parallel};
+    use super::{
+        backend_binary_name, backend_manifest, check_status, isolate_stdout_for_json, run,
+        run_parallel,
+    };
     use std::fs;
     use std::io;
     use std::path::Path;
+    use std::process::ExitCode;
     use std::sync::mpsc;
     use std::time::Duration;
 
@@ -350,5 +354,37 @@ mod tests {
         )
         .unwrap();
         assert!(backend_manifest(project.path()).is_err());
+    }
+
+    #[test]
+    fn run_fails_when_the_project_layout_cannot_be_resolved() {
+        let project = tempfile::tempdir().unwrap();
+        assert_ne!(run(project.path()), ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn check_status_and_parallel_workers_report_failures() {
+        assert!(check_status(std::process::Command::new("true").status().unwrap(), "true").is_ok());
+        let error = check_status(
+            std::process::Command::new("false").status().unwrap(),
+            "cargo",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("cargo"));
+
+        let error = run_parallel(|| panic!("backend boom"), || Ok(())).unwrap_err();
+        assert!(error.to_string().contains("backend build worker panicked"));
+        let error = run_parallel(|| Ok(()), || panic!("web boom")).unwrap_err();
+        assert!(error.to_string().contains("web build worker panicked"));
+        run_parallel(|| Ok(()), || Ok(())).unwrap();
+    }
+
+    #[test]
+    fn isolate_stdout_for_json_nulls_the_pipe() {
+        crate::report::set_output_format(crate::report::OutputFormat::Json);
+        let mut command = std::process::Command::new("true");
+        isolate_stdout_for_json(&mut command);
+        crate::report::set_output_format(crate::report::OutputFormat::Text);
+        isolate_stdout_for_json(&mut command);
     }
 }

@@ -113,3 +113,71 @@ fn rejects_a_tampered_registry_signature() {
     .unwrap_err();
     assert!(error.contains("signature verification failed"));
 }
+
+#[test]
+fn parse_reference_and_registry_urls_validate_shape() {
+    assert_eq!(
+        super::parse_reference("vendor/analytics@1.2.3").unwrap(),
+        ("vendor/analytics", "1.2.3")
+    );
+    assert!(super::parse_reference("vendor/analytics").is_err());
+    assert!(super::parse_reference("@1.2.3").is_err());
+    assert!(super::validate_registry_url("https://registry.example.com").is_ok());
+    assert!(super::validate_registry_url("http://127.0.0.1:8080").is_ok());
+    assert!(super::validate_registry_url("http://example.com").is_err());
+}
+
+#[test]
+fn list_and_run_cover_empty_locks_and_invalid_commands() {
+    let project = tempfile::tempdir().unwrap();
+    super::list(project.path()).unwrap();
+    assert_eq!(
+        super::run(project.path(), &super::ModuleCommand::List),
+        std::process::ExitCode::SUCCESS
+    );
+    assert_ne!(
+        super::run(
+            project.path(),
+            &super::ModuleCommand::Install {
+                module: "bad".to_owned(),
+                registry: "http://example.com".to_owned(),
+                public_key: None,
+            },
+        ),
+        std::process::ExitCode::SUCCESS
+    );
+    fs::write(
+        project.path().join("appstruct.modules.lock"),
+        "lock_version = 9\n",
+    )
+    .unwrap();
+    assert!(super::list(project.path()).is_err());
+}
+
+#[test]
+fn update_and_uninstall_require_an_installed_module() {
+    let project = tempfile::tempdir().unwrap();
+    assert!(
+        lifecycle::update(project.path(), "vendor/analytics@1.0.0", None, None)
+            .unwrap_err()
+            .contains("not installed")
+    );
+    assert!(
+        lifecycle::uninstall(project.path(), "vendor/analytics")
+            .unwrap_err()
+            .contains("not installed")
+    );
+    assert_ne!(
+        super::run(
+            project.path(),
+            &super::ModuleCommand::Uninstall {
+                module: "vendor/analytics".to_owned(),
+            },
+        ),
+        std::process::ExitCode::SUCCESS
+    );
+    let _ = super::run(
+        project.path(),
+        &super::ModuleCommand::Verify { module: None },
+    );
+}

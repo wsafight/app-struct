@@ -269,5 +269,100 @@ mod tests {
             Some("admin@example.com")
         );
         assert!(normalize_email("invalid@example").is_none());
+        assert!(normalize_email("no-at-sign").is_none());
+        assert!(normalize_email(&format!("{}@example.com", "a".repeat(320))).is_none());
+    }
+
+    #[test]
+    fn quote_ident_escapes_embedded_quotes() {
+        assert_eq!(quote_ident(r#"user"name"#), r#""user""name""#);
+    }
+
+    #[test]
+    fn bootstrap_user_requires_enabled_auth_and_admin_role() {
+        let ir: AppIr =
+            serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();
+        assert!(bootstrap_user(&ir).is_some());
+        let mut disabled = ir.clone();
+        disabled.auth.enabled = false;
+        assert!(bootstrap_user(&disabled).is_none());
+        let mut no_admin = ir;
+        no_admin.auth.roles.retain(|role| role != "admin");
+        assert!(bootstrap_user(&no_admin).is_none());
+    }
+
+    #[test]
+    fn user_columns_require_primary_key_and_email() {
+        let ir: AppIr =
+            serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();
+        let user = bootstrap_user(&ir).unwrap();
+        let (id, email) = user_columns(user).unwrap();
+        assert!(!id.is_empty());
+        assert_eq!(email, "email");
+
+        let mut missing_email = user.clone();
+        missing_email
+            .fields
+            .retain(|field| field.rust_name != "email");
+        assert!(user_columns(&missing_email).unwrap_err().contains("email"));
+
+        let mut missing_key = user.clone();
+        for field in &mut missing_key.fields {
+            field.primary_key = false;
+        }
+        assert!(
+            user_columns(&missing_key)
+                .unwrap_err()
+                .contains("primary key")
+        );
+    }
+
+    #[test]
+    fn bootstrap_admin_rejects_invalid_projects_and_emails() {
+        assert_ne!(
+            run(
+                Path::new("/missing-appstruct-project"),
+                &AuthCommand::BootstrapAdmin {
+                    email: "admin@example.com".to_owned(),
+                },
+            ),
+            ExitCode::SUCCESS
+        );
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+        assert_ne!(
+            run(
+                &fixture,
+                &AuthCommand::BootstrapAdmin {
+                    email: "invalid".to_owned(),
+                },
+            ),
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[test]
+    fn render_success_covers_text_and_json_status_paths() {
+        crate::report::set_output_format(crate::report::OutputFormat::Text);
+        render_success("admin@example.com", "promoted");
+        render_success("admin@example.com", "already_admin");
+        crate::report::set_output_format(crate::report::OutputFormat::Json);
+        render_success("admin@example.com", "promoted");
+        crate::report::set_output_format(crate::report::OutputFormat::Text);
+    }
+
+    #[test]
+    fn promote_reports_database_connection_failures() {
+        let ir: AppIr =
+            serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();
+        let user = bootstrap_user(&ir).unwrap();
+        let Err(error) = promote(
+            "postgresql://appstruct:secret@127.0.0.1:1/appstruct?sslmode=disable",
+            &ir,
+            user,
+            "admin@example.com",
+        ) else {
+            panic!("expected a database connection failure");
+        };
+        assert!(error.contains("cannot connect") || error.contains("PostgreSQL"));
     }
 }

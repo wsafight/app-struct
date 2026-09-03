@@ -138,3 +138,101 @@ fn render_error(error: &MigrationError) -> ExitCode {
         exit,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use appstruct_migrate::{ApplyReport, DriftStatus, MigrationStatus};
+
+    #[test]
+    fn empty_configured_urls_are_treated_as_missing() {
+        assert!(database_url(Some("")).is_none());
+        assert!(database_url(Some("   ")).is_none());
+        assert_eq!(
+            database_url(Some("postgresql://localhost/appstruct")).as_deref(),
+            Some("postgresql://localhost/appstruct")
+        );
+    }
+
+    #[test]
+    fn render_helpers_cover_clean_deferred_and_detected_drift() {
+        crate::report::set_output_format(crate::report::OutputFormat::Text);
+        assert_eq!(
+            render_status(&MigrationStatus {
+                applied: 1,
+                pending: 0,
+                drift: DriftStatus::Clean,
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            render_status(&MigrationStatus {
+                applied: 1,
+                pending: 2,
+                drift: DriftStatus::Deferred,
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_ne!(
+            render_status(&MigrationStatus {
+                applied: 1,
+                pending: 0,
+                drift: DriftStatus::Detected(vec!["missing table".to_owned()]),
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            render_apply(&ApplyReport {
+                applied_now: 1,
+                total_applied: 2,
+                drift: DriftStatus::Clean,
+            }),
+            ExitCode::SUCCESS
+        );
+        crate::report::set_output_format(crate::report::OutputFormat::Json);
+        assert_eq!(
+            render_status(&MigrationStatus {
+                applied: 0,
+                pending: 1,
+                drift: DriftStatus::Deferred,
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            render_apply(&ApplyReport {
+                applied_now: 0,
+                total_applied: 1,
+                drift: DriftStatus::Clean,
+            }),
+            ExitCode::SUCCESS
+        );
+        crate::report::set_output_format(crate::report::OutputFormat::Text);
+        assert_ne!(
+            render_error(&MigrationError::Project("bad project".to_owned())),
+            ExitCode::SUCCESS
+        );
+        assert_ne!(
+            render_error(&MigrationError::Database("bad db".to_owned())),
+            ExitCode::SUCCESS
+        );
+        assert_ne!(
+            render_error(&MigrationError::Integrity("bad history".to_owned())),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(drift_name(&DriftStatus::Clean), "clean");
+        assert_eq!(drift_name(&DriftStatus::Deferred), "deferred");
+        assert_eq!(drift_name(&DriftStatus::Detected(Vec::new())), "detected");
+    }
+
+    #[test]
+    fn apply_if_configured_skips_blank_urls_and_connects_with_explicit_ones() {
+        let project = tempfile::tempdir().unwrap();
+        assert!(apply_if_configured(project.path(), Some("")).is_none());
+        let code = apply_if_configured(
+            project.path(),
+            Some("postgresql://appstruct:secret@127.0.0.1:1/appstruct?sslmode=disable"),
+        );
+        assert!(code.is_some());
+        assert_ne!(code.unwrap(), ExitCode::SUCCESS);
+    }
+}

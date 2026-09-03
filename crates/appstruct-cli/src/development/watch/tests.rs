@@ -56,6 +56,51 @@ fn paths_map_to_the_narrowest_reload_scope() {
             ..ProjectChanges::default()
         }
     );
+    assert_eq!(
+        classify_path(project, Path::new("/project/modules/example/module.toml")),
+        ProjectChanges {
+            specification: true,
+            backend: true,
+            web: true,
+        }
+    );
+    assert_eq!(
+        classify_path(project, Path::new("/project/.env")),
+        ProjectChanges {
+            specification: true,
+            backend: true,
+            web: true,
+        }
+    );
+    assert_eq!(
+        classify_path(project, Path::new("/project/rust-toolchain.toml")),
+        ProjectChanges {
+            backend: true,
+            ..ProjectChanges::default()
+        }
+    );
+    assert_eq!(
+        classify_path(project, Path::new("/project/.cargo/config.toml")),
+        ProjectChanges {
+            backend: true,
+            ..ProjectChanges::default()
+        }
+    );
+    assert_eq!(
+        classify_path(project, Path::new("/outside.yaml")),
+        ProjectChanges::default()
+    );
+    let mut merged = ProjectChanges::default();
+    merged.merge(ProjectChanges {
+        web: true,
+        ..ProjectChanges::default()
+    });
+    merged.merge(ProjectChanges {
+        backend: true,
+        ..ProjectChanges::default()
+    });
+    assert!(!merged.is_empty());
+    assert!(merged.backend && merged.web);
 }
 
 #[test]

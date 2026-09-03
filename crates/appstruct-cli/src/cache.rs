@@ -104,3 +104,45 @@ pub(crate) fn command_identity(command: &mut Command, name: &str) -> io::Result<
         Ok(identity)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn store_and_load_round_trip_and_reject_mismatched_keys() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("cache/state.json");
+        let key = CacheKey::new("generate", "abc".to_owned())
+            .with_tool("rustc", "1.98".to_owned())
+            .with_environment("env".to_owned());
+        store(&path, key.clone(), "value").unwrap();
+        assert_eq!(
+            load::<String>(&path, &key).unwrap().as_deref(),
+            Some("value")
+        );
+        let other = CacheKey::new("generate", "other".to_owned());
+        assert_eq!(load::<String>(&path, &other).unwrap(), None);
+        assert_eq!(
+            load::<String>(&temporary.path().join("missing.json"), &key).unwrap(),
+            None
+        );
+        fs::write(&path, "{not-json").unwrap();
+        assert_eq!(load::<String>(&path, &key).unwrap(), None);
+    }
+
+    #[test]
+    fn command_identity_reads_successful_output_and_rejects_failures() {
+        let identity = command_identity(&mut Command::new("true"), "true");
+        let _ = identity;
+        assert!(command_identity(&mut Command::new("false"), "false").is_err());
+        let mut echo = Command::new("echo");
+        echo.arg("rustc 1.98.0");
+        assert!(
+            command_identity(&mut echo, "echo")
+                .unwrap()
+                .contains("1.98")
+        );
+    }
+}

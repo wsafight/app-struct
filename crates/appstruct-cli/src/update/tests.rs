@@ -1,3 +1,4 @@
+use super::run as run_update;
 use super::transaction::UpdateTransaction;
 use super::workspace::CandidateWorkspace;
 use crate::generation::{ownership, transaction::GenerationTransaction};
@@ -211,4 +212,10 @@ fn assert_clean(project: &Path) {
     ] {
         assert!(!project.join(relative).exists(), "left {relative}");
     }
+}
+
+#[test]
+fn run_fails_for_projects_that_cannot_compile() {
+    let project = tempfile::tempdir().unwrap();
+    assert_ne!(run_update(project.path()), std::process::ExitCode::SUCCESS);
 }

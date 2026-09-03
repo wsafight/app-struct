@@ -213,3 +213,77 @@ pub(crate) fn render_text_diagnostic(diagnostic: &Diagnostic) {
         eprintln!("  help: {help}");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use appstruct_ir::SourceSpan;
+
+    fn diagnostic(help: bool) -> Diagnostic {
+        Diagnostic {
+            code: "AS1001".to_owned(),
+            severity: Severity::Error,
+            message: "invalid".to_owned(),
+            primary: Box::new(appstruct_ir::Label {
+                span: SourceSpan {
+                    file: "appstruct.yaml".to_owned(),
+                    start: 0,
+                    end: 1,
+                    line: 1,
+                    column: 1,
+                    end_line: 1,
+                    end_column: 2,
+                },
+                message: "here".to_owned(),
+            }),
+            secondary: vec![appstruct_ir::Label {
+                span: SourceSpan {
+                    file: "appstruct.yaml".to_owned(),
+                    start: 0,
+                    end: 1,
+                    line: 1,
+                    column: 1,
+                    end_line: 1,
+                    end_column: 2,
+                },
+                message: "also".to_owned(),
+            }],
+            help: help.then(|| "fix it".to_owned()),
+        }
+    }
+
+    #[test]
+    fn exit_class_codes_are_stable() {
+        assert_eq!(ExitClass::Validation.code(), 1);
+        assert_eq!(ExitClass::Usage.code(), 2);
+        assert_eq!(ExitClass::Environment.code(), 3);
+        assert_eq!(ExitClass::Database.code(), 4);
+    }
+
+    #[test]
+    fn fail_and_warning_cover_text_and_json_output() {
+        set_output_format(OutputFormat::Text);
+        assert!(!is_json());
+        let _ = fail(
+            "AS0001",
+            ErrorCategory::Validation,
+            "boom",
+            ExitClass::Validation,
+        );
+        warning("AS0002", ErrorCategory::Generation, "careful");
+        render_text_diagnostic(&diagnostic(true));
+        set_output_format(OutputFormat::Json);
+        assert!(is_json());
+        let _ = fail(
+            "AS0001",
+            ErrorCategory::Validation,
+            "boom",
+            ExitClass::Usage,
+        );
+        warning("AS0002", ErrorCategory::Generation, "careful");
+        let _ = fail_diagnostics(ErrorCategory::Validation, vec![diagnostic(false)]);
+        let _ = fail_diagnostics(ErrorCategory::Validation, Vec::new());
+        success(&serde_json::json!({"ok": true}));
+        set_output_format(OutputFormat::Text);
+    }
+}
