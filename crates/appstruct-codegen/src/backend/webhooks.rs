@@ -123,6 +123,12 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                 }
                 Ok(true)
             }
+            fn replica(&self) -> Self {
+                Self {
+                    database: self.database.clone(), client: self.client.clone(),
+                    worker_id: uuid::Uuid::now_v7().to_string(),
+                }
+            }
             async fn deliver(&self, delivery: &Delivery) -> Result<i32, WebhookError> {
                 let endpoint = endpoint_config(&delivery.endpoint).ok_or_else(|| {
                     WebhookError::Configuration(format!("unknown endpoint `{}`", delivery.endpoint))
@@ -160,19 +166,33 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                 }
             }
             pub(crate) fn spawn(self) -> WebhookWorkerHandle {
+                let concurrency = worker_concurrency("APPSTRUCT_WEBHOOK_CONCURRENCY");
+                let mut workers = Vec::with_capacity(concurrency);
+                for _ in 1..concurrency { workers.push(self.replica()); }
+                workers.push(self);
                 let task = appstruct_runtime::SupervisedTaskHandle::spawn(
-                    "appstruct/webhooks", WebhookWorkerObserver, move |mut receiver| async move {
-                        loop {
-                            if *receiver.borrow() { break; }
-                            match self.run_once().await {
-                                Ok(true) => continue,
-                                Ok(false) => {}
-                                Err(error) => tracing::error!(%error, "webhook worker iteration failed"),
-                            }
-                            tokio::select! {
-                                () = tokio::time::sleep(Duration::from_millis(#poll_interval)) => {}
-                                result = receiver.changed() => if result.is_err() { break; }
-                            }
+                    "appstruct/webhooks", WebhookWorkerObserver, move |receiver| async move {
+                        let mut tasks = tokio::task::JoinSet::new();
+                        for worker in workers {
+                            let mut lane_receiver = receiver.clone();
+                            tasks.spawn(async move {
+                                loop {
+                                    if *lane_receiver.borrow() { break; }
+                                    match worker.run_once().await {
+                                        Ok(true) => continue,
+                                        Ok(false) => {}
+                                        Err(error) => tracing::error!(%error, "webhook worker iteration failed"),
+                                    }
+                                    tokio::select! {
+                                        () = tokio::time::sleep(Duration::from_millis(#poll_interval)) => {}
+                                        result = lane_receiver.changed() => if result.is_err() { break; }
+                                    }
+                                }
+                            });
+                        }
+                        drop(receiver);
+                        while let Some(result) = tasks.join_next().await {
+                            result.map_err(appstruct_runtime::ShutdownError::new)?;
                         }
                         Ok(())
                     },
@@ -181,6 +201,10 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             }
         }
 
+        fn worker_concurrency(name: &str) -> usize {
+            env::var(name).ok().and_then(|value| value.parse().ok())
+                .filter(|value| (1..=64).contains(value)).unwrap_or(4)
+        }
         struct WebhookWorkerObserver;
         impl appstruct_runtime::BackgroundTaskObserver for WebhookWorkerObserver {
             fn exited(&self, exit: &appstruct_runtime::BackgroundTaskExit) {

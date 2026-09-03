@@ -1,10 +1,10 @@
-use crate::cache::{CacheKey, command_identity};
+use crate::cache::CacheKey;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::UNIX_EPOCH;
 
 const STATE_PATH: &str = ".appstruct/cache/generation-state.json";
 const MANIFEST_PATH: &str = ".appstruct-manifest.json";
@@ -14,6 +14,7 @@ struct GenerationState {
     manifest_sha256: String,
     app_name: String,
     artifact_count: usize,
+    artifacts: Vec<super::ownership::OwnedFileSnapshot>,
 }
 
 pub(super) struct CacheHit {
@@ -30,9 +31,11 @@ pub(super) fn load_hit(project: &Path, generated: &Path) -> io::Result<Option<Ca
     if !generated.is_dir() {
         return Ok(None);
     }
-    super::ownership::validate_owned_tree(generated)?;
     let manifest = generated.join(MANIFEST_PATH);
     if state.manifest_sha256 != file_fingerprint(&manifest)? {
+        return Ok(None);
+    }
+    if !super::ownership::validate_owned_tree_cached(generated, &state.artifacts)? {
         return Ok(None);
     }
     Ok(Some(CacheHit {
@@ -51,15 +54,14 @@ pub(super) fn record(
         manifest_sha256: file_fingerprint(&generated.join(MANIFEST_PATH))?,
         app_name: app_name.to_owned(),
         artifact_count,
+        artifacts: super::ownership::snapshot_owned_tree(generated)?,
     };
     crate::cache::store(&project.join(STATE_PATH), generation_key(project)?, state)
 }
 
 fn generation_key(project: &Path) -> io::Result<CacheKey> {
-    let pnpm = command_identity(Command::new("pnpm").arg("--version"), "pnpm")?;
     Ok(CacheKey::new("generation", input_fingerprint(project)?)
-        .with_tool("appstruct", executable_fingerprint()?)
-        .with_tool("pnpm", pnpm))
+        .with_tool("appstruct", executable_identity()?))
 }
 
 fn input_fingerprint(project: &Path) -> io::Result<String> {
@@ -105,8 +107,18 @@ fn collect_directory(directory: &Path, paths: &mut Vec<PathBuf>) -> io::Result<(
     Ok(())
 }
 
-fn executable_fingerprint() -> io::Result<String> {
-    file_fingerprint(&std::env::current_exe()?)
+fn executable_identity() -> io::Result<String> {
+    let metadata = fs::metadata(std::env::current_exe()?)?;
+    let modified = metadata
+        .modified()?
+        .duration_since(UNIX_EPOCH)
+        .map_err(io::Error::other)?
+        .as_nanos();
+    Ok(format!(
+        "{}:{}:{modified}",
+        env!("CARGO_PKG_VERSION"),
+        metadata.len()
+    ))
 }
 
 fn file_fingerprint(path: &Path) -> io::Result<String> {

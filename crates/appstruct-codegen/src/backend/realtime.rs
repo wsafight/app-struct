@@ -183,6 +183,16 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             state.context(&headers).await
         }
 
+        async fn scoped_mutation_context<'state>(
+            state: &'state AppState, mut headers: HeaderMap, tenant_id: Option<uuid::Uuid>,
+        ) -> Result<crate::RequestContext<'state>, ApiError> {
+            if let Some(tenant_id) = tenant_id {
+                let value = tenant_id.to_string().parse().map_err(|_| ApiError::InvalidTenant)?;
+                headers.insert("x-appstruct-tenant", value);
+            }
+            state.mutation_context(&headers).await
+        }
+
         fn validate_scope(query: &RealtimeQuery) -> Result<(), ApiError> {
             if query.resource.as_ref().is_none_or(|value| value.is_empty() || value.len() > 120)
                 || query.record_id.as_ref().is_some_and(|value| value.is_empty() || value.len() > 200)

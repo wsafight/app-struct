@@ -9,6 +9,7 @@ mod auth;
 mod file;
 mod jobs;
 mod mail;
+mod module_indexes;
 mod realtime;
 mod tenant;
 mod webhooks;
@@ -143,7 +144,8 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         .filter(|entity| entity.tenant_scoped)
         .map(tenant_unique_constraint)
         .collect::<Vec<_>>();
-    let indexes = entity_indexes(ir);
+    let mut indexes = entity_indexes(ir);
+    indexes.extend(module_indexes::indexes(ir));
     let seeds = entity_seeds(ir);
     let mut foreign_keys = ir
         .relations

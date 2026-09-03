@@ -17,6 +17,7 @@ m6_init() {
   m6_suite="$suite"
   m6_tmp_base="${TMPDIR:-/tmp}"
   m6_tmp_base="${m6_tmp_base%/}"
+  m6_backend_target="$workspace/target/m6-e2e-$suite"
   temporary_root="$(mktemp -d "$m6_tmp_base/appstruct-m6-$suite.XXXXXX")"
   project="$temporary_root/$project_name"
   log="$temporary_root/dev.log"
@@ -26,13 +27,46 @@ m6_init() {
   trap 'exit 143' TERM
 }
 
+m6_stop_process() {
+  local pid="$1" signal="${2:-INT}" target="${3:-$1}" attempts="${4:-100}"
+  local attempt
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
+  if ! kill -0 "$pid" 2>/dev/null; then
+    wait "$pid" 2>/dev/null || true
+    return 0
+  fi
+
+  kill "-$signal" -- "$target" 2>/dev/null || true
+  for ((attempt = 0; attempt < attempts; attempt += 1)); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      wait "$pid" 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.1
+  done
+
+  echo "process $pid did not stop after SIG$signal; escalating to SIGTERM" >&2
+  kill -TERM -- "$target" 2>/dev/null || true
+  for ((attempt = 0; attempt < 50; attempt += 1)); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      wait "$pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 0.1
+  done
+  kill -KILL -- "$target" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  return 124
+}
+
 m6_cleanup() {
   if declare -F m6_cleanup_pre >/dev/null; then
     m6_cleanup_pre
   fi
   if [[ -n "${dev_pid:-}" ]] && kill -0 "$dev_pid" 2>/dev/null; then
-    kill -INT -- "-$dev_pid" 2>/dev/null || true
-    wait "$dev_pid" 2>/dev/null || true
+    m6_stop_process "$dev_pid" INT "-$dev_pid" || true
   fi
   if declare -F m6_cleanup_extra >/dev/null; then
     m6_cleanup_extra
@@ -48,6 +82,8 @@ m6_prepare_fixture() {
   local fixture="$1"
   mkdir -p "$project"
   cp -R "$workspace/tests/fixtures/$fixture/." "$project/"
+  mkdir -p "$project/.appstruct/cache" "$m6_backend_target"
+  ln -s "$m6_backend_target" "$project/.appstruct/cache/backend-target"
   cd "$workspace"
   cargo build --locked -p appstruct-cli
 }

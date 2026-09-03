@@ -33,8 +33,7 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
                 headers: axum::http::HeaderMap,
                 axum::Json(input): axum::Json<#input>,
             ) -> Result<axum::Json<#output>, ApiError> {
-                state.auth.verify_csrf(&state.database, &headers).await?;
-                let context = state.context(&headers).await?;
+                let context = state.mutation_context(&headers).await?;
                 if !(#allowed) { return Err(access_denied(&context)); }
                 let output = #trait_name::execute(
                     state.extensions.handlers(), &context, input
@@ -61,8 +60,7 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
                     headers: axum::http::HeaderMap,
                     axum::Json(input): axum::Json<#input>,
                 ) -> Result<axum::Json<#output>, ApiError> {
-                    state.auth.verify_csrf(&state.database, &headers).await?;
-                    let context = state.context(&headers).await?;
+                    let context = state.mutation_context(&headers).await?;
                     if !(#allowed) { return Err(access_denied(&context)); }
                     let output = #trait_name::execute(
                         state.extensions.handlers(), &context, input

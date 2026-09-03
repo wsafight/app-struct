@@ -260,13 +260,14 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub use error::{ApiError, FieldViolation};
         pub use appstruct_runtime::{
             Actor, BackgroundTaskExit, BackgroundTaskExitKind, BackgroundTaskObserver,
-            BulkDeleteInput, BulkFailure, BulkResult, BulkUpdateInput, CsvError, ListMeta,
-            ListQuery, ListResponse, ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase,
+            BulkDeleteInput, BulkFailure, BulkResult, BulkUpdateInput, CSV_EXPORT_PAGE_SIZE,
+            CsvError, ListMeta, ListQuery, ListResponse, MAX_BULK_ITEMS, MAX_CSV_EXPORT_ROWS,
+            MAX_CSV_IMPORT_ROWS, ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase,
             ModulePlan, ModuleRuntime, ModuleStarter, RUNTIME_API_VERSION, ServiceHandle,
             ServiceHandles, ShutdownError, ShutdownFailure, ShutdownFailureKind, ShutdownReport,
-            StartupError, SupervisedTaskHandle, TenantId, bulk_failure, csv_escape,
-            csv_json_value, decode_cursor, encode_cursor, parse_csv_rows, parse_revision_etag,
-            revision_etag,
+            StartupError, SupervisedTaskHandle, TenantId, bulk_failure,
+            bulk_request_size_is_valid, csv_escape, csv_json_value, decode_cursor, encode_cursor,
+            parse_csv_rows, parse_revision_etag, revision_etag,
         };
         pub const GENERATED_RUNTIME_API_VERSION: u32 = #runtime_api_version;
         const _: [(); GENERATED_RUNTIME_API_VERSION as usize] =

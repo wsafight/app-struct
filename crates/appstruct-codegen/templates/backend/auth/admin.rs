@@ -112,8 +112,7 @@ async fn list_admin_users(
 async fn revoke_admin_user_sessions(
     State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>,
 ) -> Result<Json<AdminSessionRevocation>, ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
-    require_admin(&state, &headers).await?;
+    require_admin_mutation(&state, &headers).await?;
     let user_id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
     let user_exists = format!(
         "SELECT 1 FROM \"_appstruct_auth_accounts\" WHERE user_id = $1 AND EXISTS (SELECT 1 FROM {users} WHERE {users}.{id} = $1)",
@@ -160,8 +159,7 @@ async fn list_admin_jobs(
 async fn retry_admin_job(
     State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>,
 ) -> Result<Json<AdminJob>, ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
-    require_admin(&state, &headers).await?;
+    require_admin_mutation(&state, &headers).await?;
     ensure_jobs_enabled()?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
     let transaction = state.database.begin().await?;
@@ -181,8 +179,7 @@ async fn retry_admin_job(
 async fn replay_admin_job(
     State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<AdminJob>), ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
-    require_admin(&state, &headers).await?;
+    require_admin_mutation(&state, &headers).await?;
     ensure_jobs_enabled()?;
     let source_id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
     let transaction = state.database.begin().await?;
@@ -205,6 +202,12 @@ async fn replay_admin_job(
 
 async fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
     let actor = state.auth.actor(&state.database, headers).await?.ok_or(ApiError::Unauthorized)?;
+    if actor.has_role("admin") { Ok(()) } else { Err(ApiError::Forbidden) }
+}
+
+async fn require_admin_mutation(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+    let actor = state.auth.actor_for_mutation(&state.database, headers).await?
+        .ok_or(ApiError::Unauthorized)?;
     if actor.has_role("admin") { Ok(()) } else { Err(ApiError::Forbidden) }
 }
 

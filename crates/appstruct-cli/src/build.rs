@@ -142,6 +142,18 @@ fn build_steps(
             &[],
         )?;
     }
+    run_parallel(
+        || backend_steps(project, backend, target, environment),
+        || web_steps(web, environment),
+    )
+}
+
+fn backend_steps(
+    project: &Path,
+    backend: &Path,
+    target: &Path,
+    environment: &ProjectEnvironment,
+) -> io::Result<()> {
     run_cargo(
         environment,
         project,
@@ -165,7 +177,10 @@ fn build_steps(
         &["build", "--release", "--locked", "--manifest-path"],
         Some(backend),
         &[],
-    )?;
+    )
+}
+
+fn web_steps(web: &Path, environment: &ProjectEnvironment) -> io::Result<()> {
     run_command(
         environment,
         web,
@@ -183,6 +198,25 @@ fn build_steps(
         &[],
     )?;
     run_command(environment, web, "pnpm", &["run", "build"], None, &[])
+}
+
+fn run_parallel<Backend, Web>(backend: Backend, web: Web) -> io::Result<()>
+where
+    Backend: FnOnce() -> io::Result<()> + Send,
+    Web: FnOnce() -> io::Result<()> + Send,
+{
+    std::thread::scope(|scope| {
+        let backend = scope.spawn(backend);
+        let web = scope.spawn(web);
+        let backend = backend
+            .join()
+            .map_err(|_| io::Error::other("backend build worker panicked"))?;
+        let web = web
+            .join()
+            .map_err(|_| io::Error::other("web build worker panicked"))?;
+        backend?;
+        web
+    })
 }
 
 fn run_cargo(
@@ -244,9 +278,33 @@ fn check_status(status: std::process::ExitStatus, program: &str) -> io::Result<(
 
 #[cfg(test)]
 mod tests {
-    use super::{backend_binary_name, backend_manifest};
+    use super::{backend_binary_name, backend_manifest, run_parallel};
     use std::fs;
+    use std::io;
     use std::path::Path;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn backend_and_web_build_steps_run_in_parallel() {
+        let (backend_started, from_backend) = mpsc::channel();
+        let (web_started, from_web) = mpsc::channel();
+        run_parallel(
+            move || {
+                backend_started.send(()).map_err(io::Error::other)?;
+                from_web
+                    .recv_timeout(Duration::from_secs(1))
+                    .map_err(io::Error::other)
+            },
+            move || {
+                web_started.send(()).map_err(io::Error::other)?;
+                from_backend
+                    .recv_timeout(Duration::from_secs(1))
+                    .map_err(io::Error::other)
+            },
+        )
+        .unwrap();
+    }
 
     #[test]
     fn backend_target_is_selected_by_lock_protocol_not_directory_presence() {

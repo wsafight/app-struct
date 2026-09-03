@@ -79,11 +79,16 @@ fn assert_backend_contracts(artifacts: &[Artifact]) {
     assert!(jobs.contains("status = 'running' AND locked_until <= CURRENT_TIMESTAMP"));
     assert!(jobs.contains("pub struct JobWorkerHandle"));
     assert!(jobs.contains("SupervisedTaskHandle::spawn"));
+    assert!(jobs.contains("APPSTRUCT_JOB_CONCURRENCY"));
+    assert!(jobs.contains("tokio::task::JoinSet"));
     assert!(!jobs.contains("WorkerExitGuard"));
     assert!(jobs.contains("pub async fn shutdown"));
     assert!(jobs.contains("pub fn for_kind"));
     assert!(jobs.contains("pub struct MailJobPayload"));
     assert!(jobs.contains("impl JobHandler for MailJobHandler"));
+    assert!(webhooks.contains("APPSTRUCT_WEBHOOK_CONCURRENCY"));
+    assert!(webhooks.contains("tokio::task::JoinSet"));
+    assert!(webhooks.contains("client: self.client.clone()"));
     let session = artifact_text(artifacts, "backend/src/auth/session.rs");
     assert!(session.contains("value.starts_with(\"Bearer \")"));
 }

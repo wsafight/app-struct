@@ -66,10 +66,9 @@ fn acquire() -> TokenStream {
             State(state): State<AppState>, headers: HeaderMap, Query(query): Query<RealtimeQuery>,
             axum::Json(input): axum::Json<LockRequest>,
         ) -> Result<(axum::http::StatusCode, axum::Json<RealtimeLockLease>), ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
             let record_id = require_lock_scope(&query)?.to_owned();
             let ttl = lock_ttl(input.ttl_seconds)?;
-            let context = scoped_context(&state, headers, query.tenant_id).await?;
+            let context = scoped_mutation_context(&state, headers, query.tenant_id).await?;
             let actor = context.actor().ok_or(ApiError::Unauthorized)?;
             let resource = query.resource.as_deref().ok_or_else(|| {
                 ApiError::InvalidQuery("realtime resource is required".to_owned())
@@ -98,11 +97,10 @@ fn renewal() -> TokenStream {
             headers: HeaderMap, Query(query): Query<RealtimeQuery>,
             axum::Json(input): axum::Json<LockRequest>,
         ) -> Result<axum::Json<RealtimeLockLease>, ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
             let token = token.parse::<uuid::Uuid>().map_err(|_| ApiError::InvalidId)?;
             let record_id = require_lock_scope(&query)?.to_owned();
             let ttl = lock_ttl(input.ttl_seconds)?;
-            let context = scoped_context(&state, headers, query.tenant_id).await?;
+            let context = scoped_mutation_context(&state, headers, query.tenant_id).await?;
             let actor = context.actor().ok_or(ApiError::Unauthorized)?;
             let resource = query.resource.as_deref().ok_or_else(|| {
                 ApiError::InvalidQuery("realtime resource is required".to_owned())
@@ -124,10 +122,9 @@ fn renewal() -> TokenStream {
             State(state): State<AppState>, axum::extract::Path(token): axum::extract::Path<String>,
             headers: HeaderMap, Query(query): Query<RealtimeQuery>,
         ) -> Result<axum::http::StatusCode, ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
             let token = token.parse::<uuid::Uuid>().map_err(|_| ApiError::InvalidId)?;
             let record_id = require_lock_scope(&query)?.to_owned();
-            let context = scoped_context(&state, headers, query.tenant_id).await?;
+            let context = scoped_mutation_context(&state, headers, query.tenant_id).await?;
             let actor = context.actor().ok_or(ApiError::Unauthorized)?;
             let resource = query.resource.as_deref().ok_or_else(|| {
                 ApiError::InvalidQuery("realtime resource is required".to_owned())

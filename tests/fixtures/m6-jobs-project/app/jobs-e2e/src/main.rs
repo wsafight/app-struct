@@ -9,6 +9,10 @@ use std::{collections::BTreeMap, env, sync::Arc};
 
 struct TestHandler;
 
+struct ConcurrentHandler {
+    barrier: tokio::sync::Barrier,
+}
+
 #[async_trait]
 impl JobHandler for TestHandler {
     async fn handle(&self, job: &Job) -> Result<(), JobHandlerError> {
@@ -17,6 +21,20 @@ impl JobHandler for TestHandler {
             "fail" => Err(JobHandlerError("x".repeat(2_500))),
             kind => Err(JobHandlerError(format!("unsupported test job `{kind}`"))),
         }
+    }
+}
+
+#[async_trait]
+impl JobHandler for ConcurrentHandler {
+    async fn handle(&self, job: &Job) -> Result<(), JobHandlerError> {
+        if job.kind != "concurrent" {
+            return Err(JobHandlerError(format!(
+                "unsupported concurrent test job `{}`",
+                job.kind
+            )));
+        }
+        self.barrier.wait().await;
+        Ok(())
     }
 }
 
@@ -29,6 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     assert_transactional_enqueue(&database, &mail, tenant_id).await?;
     assert_success_and_deduplication(&database, &mail, tenant_id).await?;
+    assert_concurrent_worker_lanes(&database, &mail, tenant_id).await?;
     assert_retry_and_dead_state(&database, &mail, tenant_id).await?;
     assert_expired_lease_recovery(&database, &mail, tenant_id).await?;
     assert_mail_job(&database, &mail, tenant_id).await?;
@@ -37,6 +56,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handle = JobWorker::new(database.clone(), Arc::new(TestHandler)).spawn();
     handle.shutdown().await?;
     seed_admin_jobs(&database, &mail, tenant_id).await?;
+    Ok(())
+}
+
+async fn assert_concurrent_worker_lanes(
+    database: &DatabaseConnection,
+    mail: &MailState,
+    tenant_id: uuid::Uuid,
+) -> Result<(), Box<dyn std::error::Error>> {
+    clear(database).await?;
+    let context = RequestContext::connection(database, mail, None, Some(tenant_id));
+    let first = context
+        .enqueue_job("default", "concurrent", &(), None, None)
+        .await?;
+    let second = context
+        .enqueue_job("default", "concurrent", &(), None, None)
+        .await?;
+    let worker = JobWorker::for_kind(
+        database.clone(),
+        Arc::new(ConcurrentHandler {
+            barrier: tokio::sync::Barrier::new(2),
+        }),
+        "concurrent",
+    );
+    let handle = worker.spawn();
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            if job_state(database, first.id).await? == "succeeded|1"
+                && job_state(database, second.id).await? == "succeeded|1"
+            {
+                return Ok::<(), sea_orm::DbErr>(());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+    })
+    .await??;
+    handle.shutdown().await?;
     Ok(())
 }
 

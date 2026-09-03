@@ -24,9 +24,10 @@ pub use lifecycle::{
     ModuleStarter,
 };
 pub use resource::{
-    BulkDeleteInput, BulkFailure, BulkResult, BulkUpdateInput, CsvError, ListMeta, ListQuery,
-    ListResponse, bulk_failure, csv_escape, csv_json_value, decode_cursor, encode_cursor,
-    parse_csv_rows, parse_revision_etag, revision_etag,
+    BulkDeleteInput, BulkFailure, BulkResult, BulkUpdateInput, CSV_EXPORT_PAGE_SIZE, CsvError,
+    ListMeta, ListQuery, ListResponse, MAX_BULK_ITEMS, MAX_CSV_EXPORT_ROWS, MAX_CSV_IMPORT_ROWS,
+    bulk_failure, bulk_request_size_is_valid, csv_escape, csv_json_value, decode_cursor,
+    encode_cursor, parse_csv_rows, parse_revision_etag, revision_etag,
 };
 pub use supervisor::{
     BackgroundTaskExit, BackgroundTaskExitKind, BackgroundTaskObserver, SupervisedTaskHandle,

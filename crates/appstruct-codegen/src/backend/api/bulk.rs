@@ -90,14 +90,15 @@ pub(super) fn source(
     };
     let update = bulk_update(&context);
     let delete = bulk_delete(&context);
-    let export = csv::export(entity, module, policy, list_scope);
+    let export = csv::export(entity, &context);
     let import = csv::import(entity, &context);
     let restore = context.soft_delete.then(|| restore_handler(&context));
     let trash = context.soft_delete.then(|| trash_handler(&context));
     Ok(quote! {
         use appstruct_runtime::{
-            BulkDeleteInput, BulkResult, BulkUpdateInput, bulk_failure, csv_escape,
-            csv_json_value, parse_csv_rows,
+            BulkDeleteInput, BulkResult, BulkUpdateInput, CSV_EXPORT_PAGE_SIZE, MAX_BULK_ITEMS,
+            MAX_CSV_EXPORT_ROWS, MAX_CSV_IMPORT_ROWS, bulk_failure, bulk_request_size_is_valid,
+            csv_escape, csv_json_value, parse_csv_rows,
         };
 
         #update
@@ -182,8 +183,8 @@ fn restore_handler(context: &BulkContext<'_>) -> TokenStream {
             State(state): State<AppState>, headers: HeaderMap,
             Json(input): Json<BulkDeleteInput>,
         ) -> Result<Json<BulkResult>, ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
-            let context = state.context(&headers).await?;
+            let context = state.mutation_context(&headers).await?;
+            if !bulk_request_size_is_valid(input.ids.len(), input.expected_revisions.len()) { return Err(ApiError::InvalidQuery(format!("bulk requests must contain between 1 and {MAX_BULK_ITEMS} ids"))); }
             let actor = context.actor().cloned();
             let tenant = context.tenant();
             let transaction = state.database.begin().await?;
@@ -245,8 +246,8 @@ fn bulk_update(context: &BulkContext<'_>) -> TokenStream {
             State(state): State<AppState>, headers: HeaderMap,
             Json(input): Json<BulkUpdateInput<UpdateInput>>,
         ) -> Result<Json<BulkResult>, ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
-            let context = state.context(&headers).await?;
+            let context = state.mutation_context(&headers).await?;
+            if !bulk_request_size_is_valid(input.ids.len(), input.expected_revisions.len()) { return Err(ApiError::InvalidQuery(format!("bulk requests must contain between 1 and {MAX_BULK_ITEMS} ids"))); }
             authorize_update_fields(&context, &input.patch)?;
             validate_update(&input.patch)?;
             let actor = context.actor().cloned();
@@ -336,8 +337,8 @@ fn bulk_delete(context: &BulkContext<'_>) -> TokenStream {
             State(state): State<AppState>, headers: HeaderMap,
             Json(input): Json<BulkDeleteInput>,
         ) -> Result<Json<BulkResult>, ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
-            let context = state.context(&headers).await?;
+            let context = state.mutation_context(&headers).await?;
+            if !bulk_request_size_is_valid(input.ids.len(), input.expected_revisions.len()) { return Err(ApiError::InvalidQuery(format!("bulk requests must contain between 1 and {MAX_BULK_ITEMS} ids"))); }
             let actor = context.actor().cloned();
             let tenant = context.tenant();
             let transaction = state.database.begin().await?;

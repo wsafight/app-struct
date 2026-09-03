@@ -114,6 +114,11 @@ fn disabled_source() -> Result<String, CodegenError> {
                 _database: &DatabaseConnection,
                 _headers: &HeaderMap,
             ) -> Result<Option<Actor>, ApiError> { Ok(None) }
+            pub async fn actor_for_mutation(
+                &self,
+                _database: &DatabaseConnection,
+                _headers: &HeaderMap,
+            ) -> Result<Option<Actor>, ApiError> { Ok(None) }
             pub async fn verify_csrf(
                 &self,
                 _database: &DatabaseConnection,

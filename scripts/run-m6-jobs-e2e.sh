@@ -11,19 +11,16 @@ sse_pid=""
 
 m6_cleanup_pre() {
   if [[ -n "$sse_pid" ]] && kill -0 "$sse_pid" 2>/dev/null; then
-    kill "$sse_pid" 2>/dev/null || true
-    wait "$sse_pid" 2>/dev/null || true
+    m6_stop_process "$sse_pid" TERM "$sse_pid" || true
   fi
 }
 
 m6_cleanup_extra() {
   if [[ -n "$secondary_pid" ]] && kill -0 "$secondary_pid" 2>/dev/null; then
-    kill -INT "$secondary_pid" 2>/dev/null || true
-    wait "$secondary_pid" 2>/dev/null || true
+    m6_stop_process "$secondary_pid" || true
   fi
   if [[ -n "$receiver_pid" ]] && kill -0 "$receiver_pid" 2>/dev/null; then
-    kill -INT "$receiver_pid" 2>/dev/null || true
-    wait "$receiver_pid" 2>/dev/null || true
+    m6_stop_process "$receiver_pid" || true
   fi
 }
 
@@ -86,7 +83,8 @@ curl --fail --silent --show-error -c "$jar" -b "$jar" \
 tenant="$(jq -er '.id' "$temporary_root/tenant.json")"
 user="$(jq -er '.user.id' "$temporary_root/user.json")"
 
-DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" TENANT_ID="$tenant" \
+DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" TENANT_ID="$tenant" APPSTRUCT_JOB_CONCURRENCY=2 \
+  CARGO_TARGET_DIR="$m6_backend_target" \
   cargo run --quiet --manifest-path "$project/app/jobs-e2e/Cargo.toml"
 
 jq -s -e '
@@ -132,9 +130,9 @@ unauthorized_status="$(curl --silent --show-error -o "$temporary_root/realtime-u
   -w '%{http_code}' "$secondary_api/api/realtime/events?tenant_id=$tenant&resource=projects")"
 [[ "$unauthorized_status" == "401" ]]
 
-(curl --silent --show-error --no-buffer --max-time 12 -b "$jar" \
+curl --fail --silent --show-error --no-buffer -b "$jar" \
   "$secondary_api/api/realtime/events?tenant_id=$tenant&resource=projects" \
-  >"$temporary_root/realtime.events" || true) &
+  >"$temporary_root/realtime.events" 2>"$temporary_root/realtime-sse.log" &
 sse_pid=$!
 for ((attempt = 0; attempt < 100; attempt += 1)); do
   presence_count="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
@@ -201,6 +199,15 @@ sleep 6
 renewed_expiry="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
   "SELECT EXTRACT(EPOCH FROM expires_at)::bigint FROM \"_appstruct_realtime_presence\" WHERE tenant_id = '$tenant' AND resource = 'projects'")"
 (( renewed_expiry > presence_expiry ))
+m6_stop_process "$sse_pid" TERM "$sse_pid"
+sse_pid=""
+for ((attempt = 0; attempt < 100; attempt += 1)); do
+  presence_count="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
+    "SELECT COUNT(*) FROM \"_appstruct_realtime_presence\" WHERE tenant_id = '$tenant' AND resource = 'projects'")"
+  [[ "$presence_count" == "0" ]] && break
+  sleep 0.05
+done
+[[ "$presence_count" == "0" ]]
 curl --fail --silent --show-error -b "$jar" -H "Content-Type: application/json" \
   -H "X-CSRF-Token: $csrf" -X POST -d '{"ttl_seconds":5}' \
   "$secondary_api/api/realtime/locks?$lock_query" >"$temporary_root/lock-reacquired.json"
@@ -216,15 +223,6 @@ curl --fail --silent --show-error -b "$jar" -H "X-CSRF-Token: $csrf" \
 curl --fail --silent --show-error -b "$jar" \
   "$api/api/realtime/locks?$lock_query" >"$temporary_root/lock-released.json"
 jq -e '.data == null' "$temporary_root/lock-released.json" >/dev/null
-wait "$sse_pid" || true
-sse_pid=""
-for ((attempt = 0; attempt < 100; attempt += 1)); do
-  presence_count="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
-    "SELECT COUNT(*) FROM \"_appstruct_realtime_presence\" WHERE tenant_id = '$tenant' AND resource = 'projects'")"
-  [[ "$presence_count" == "0" ]] && break
-  sleep 0.05
-done
-[[ "$presence_count" == "0" ]]
 
 curl --fail --silent --show-error -c "$jar" -b "$jar" \
   "$api/api/admin/jobs" >"$temporary_root/jobs.json"
@@ -268,11 +266,9 @@ done
 [[ "$schedule_enabled" == "f" ]]
 m6_wait_for_dev
 
-kill -INT -- "-$dev_pid"
-wait "$dev_pid"
+m6_stop_process "$dev_pid" INT "-$dev_pid"
 dev_pid=""
-kill -INT "$secondary_pid"
-wait "$secondary_pid"
+m6_stop_process "$secondary_pid"
 secondary_pid=""
 grep -q "shutdown signal received" "$log"
 grep -q "module stopped" "$log"

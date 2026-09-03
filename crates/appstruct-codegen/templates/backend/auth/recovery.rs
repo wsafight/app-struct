@@ -29,8 +29,8 @@ struct VerifyEmailInput { token: String }
 async fn request_email_verification(
     State(state): State<AppState>, headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
-    let actor = state.auth.actor(&state.database, &headers).await?.ok_or(ApiError::Unauthorized)?;
+    let actor = state.auth.actor_for_mutation(&state.database, &headers).await?
+        .ok_or(ApiError::Unauthorized)?;
     if account_email_verified(&state, actor.id).await? {
         return Ok(StatusCode::NO_CONTENT);
     }

@@ -6,6 +6,11 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt;
 
+pub const MAX_BULK_ITEMS: usize = 100;
+pub const MAX_CSV_IMPORT_ROWS: usize = 10_000;
+pub const MAX_CSV_EXPORT_ROWS: u64 = 10_000;
+pub const CSV_EXPORT_PAGE_SIZE: u64 = 500;
+
 #[derive(Debug, Default, Deserialize)]
 pub struct ListQuery {
     pub page: Option<u64>,
@@ -72,6 +77,11 @@ pub fn bulk_failure(id: &str, code: &str, message: impl Into<String>) -> BulkFai
         code: code.to_owned(),
         message: message.into(),
     }
+}
+
+#[must_use]
+pub const fn bulk_request_size_is_valid(ids: usize, expected_revisions: usize) -> bool {
+    ids > 0 && ids <= MAX_BULK_ITEMS && expected_revisions <= MAX_BULK_ITEMS
 }
 
 #[must_use]
@@ -210,5 +220,14 @@ mod tests {
         let rows = parse_csv_rows("name,note\nAda,\"one, \"\"two\"\"\"\n").unwrap();
         assert_eq!(rows[1], ["Ada", "one, \"two\""]);
         assert!(parse_csv_rows("name\n\"unterminated").is_err());
+    }
+
+    #[test]
+    fn bulk_request_size_is_bounded() {
+        assert!(bulk_request_size_is_valid(1, 1));
+        assert!(bulk_request_size_is_valid(MAX_BULK_ITEMS, MAX_BULK_ITEMS));
+        assert!(!bulk_request_size_is_valid(0, 0));
+        assert!(!bulk_request_size_is_valid(MAX_BULK_ITEMS + 1, 1));
+        assert!(!bulk_request_size_is_valid(1, MAX_BULK_ITEMS + 1));
     }
 }

@@ -208,10 +208,9 @@ async fn create_api_token(
     headers: HeaderMap,
     Json(input): Json<CreateApiTokenInput>,
 ) -> Result<(StatusCode, Json<CreatedApiToken>), ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
     let actor = state
         .auth
-        .actor(&state.database, &headers)
+        .actor_for_mutation(&state.database, &headers)
         .await?
         .ok_or(ApiError::Unauthorized)?;
     let name = input.name.trim();
@@ -259,10 +258,9 @@ async fn revoke_api_token(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
     let actor = state
         .auth
-        .actor(&state.database, &headers)
+        .actor_for_mutation(&state.database, &headers)
         .await?
         .ok_or(ApiError::Unauthorized)?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;

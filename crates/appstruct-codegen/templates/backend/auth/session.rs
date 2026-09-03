@@ -80,20 +80,46 @@ impl AuthState {
         database: &DatabaseConnection,
         headers: &HeaderMap,
     ) -> Result<Option<Actor>, ApiError> {
-        let token = cookie_value(headers, SESSION_COOKIE);
+        if let Some(token) = cookie_value(headers, SESSION_COOKIE) {
+            return self.actor_from_session(database, &token, None).await;
+        }
         let bearer = headers
             .get(header::AUTHORIZATION)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.strip_prefix("Bearer "));
-        if token.is_none() {
-            if let Some(token) = bearer {
-                return self.actor_from_api_token(database, token).await;
-            }
-            return Ok(None);
+        if let Some(token) = bearer {
+            return self.actor_from_api_token(database, token).await;
         }
-        let token = token.expect("checked above");
+        Ok(None)
+    }
+
+    pub async fn actor_for_mutation(
+        &self,
+        database: &DatabaseConnection,
+        headers: &HeaderMap,
+    ) -> Result<Option<Actor>, ApiError> {
+        self.validate_origin(headers)?;
+        let Some(session) = cookie_value(headers, SESSION_COOKIE) else {
+            return self.actor(database, headers).await;
+        };
+        let csrf = headers
+            .get("x-csrf-token")
+            .and_then(|value| value.to_str().ok())
+            .ok_or(ApiError::InvalidCsrf)?;
+        self.actor_from_session(database, &session, Some(token_hash(csrf)))
+            .await?
+            .ok_or(ApiError::InvalidCsrf)
+            .map(Some)
+    }
+
+    async fn actor_from_session(
+        &self,
+        database: &DatabaseConnection,
+        token: &str,
+        csrf_hash: Option<String>,
+    ) -> Result<Option<Actor>, ApiError> {
         let sql = format!(
-            "SELECT a.user_id, u.{email} AS email, a.roles FROM \"_appstruct_auth_sessions\" s JOIN \"_appstruct_auth_accounts\" a ON a.user_id = s.user_id JOIN {users} u ON u.{id} = a.user_id WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP",
+            "SELECT a.user_id, u.{email} AS email, a.roles FROM \"_appstruct_auth_sessions\" s JOIN \"_appstruct_auth_accounts\" a ON a.user_id = s.user_id JOIN {users} u ON u.{id} = a.user_id WHERE s.token_hash = $1 AND ($2::text IS NULL OR s.csrf_hash = $2) AND s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP",
             email = quote_ident(config::USER_EMAIL_COLUMN),
             users = quote_ident(config::USER_TABLE),
             id = quote_ident(config::USER_ID_COLUMN),
@@ -102,7 +128,7 @@ impl AuthState {
             .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 sql,
-                [token_hash(&token).into()],
+                [token_hash(token).into(), csrf_hash.into()],
             ))
             .await?
         else {
@@ -123,28 +149,31 @@ impl AuthState {
         token: &str,
     ) -> Result<Option<Actor>, ApiError> {
         let sql = format!(
-            "SELECT a.user_id, u.{email} AS email, a.roles FROM \"_appstruct_auth_api_tokens\" t JOIN \"_appstruct_auth_accounts\" a ON a.user_id = t.user_id JOIN {users} u ON u.{id} = a.user_id WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > CURRENT_TIMESTAMP)",
+            "SELECT a.user_id, u.{email} AS email, a.roles, (t.last_used_at IS NULL OR t.last_used_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes') AS should_touch FROM \"_appstruct_auth_api_tokens\" t JOIN \"_appstruct_auth_accounts\" a ON a.user_id = t.user_id JOIN {users} u ON u.{id} = a.user_id WHERE t.token_hash = $1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > CURRENT_TIMESTAMP)",
             email = quote_ident(config::USER_EMAIL_COLUMN),
             users = quote_ident(config::USER_TABLE),
             id = quote_ident(config::USER_ID_COLUMN),
         );
+        let hash = token_hash(token);
         let Some(row) = database
             .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 sql,
-                [token_hash(token).into()],
+                [hash.clone().into()],
             ))
             .await?
         else {
             return Ok(None);
         };
-        database
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_auth_api_tokens\" SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = $1",
-                [token_hash(token).into()],
-            ))
-            .await?;
+        if row.try_get::<bool>("", "should_touch")? {
+            database
+                .execute_raw(Statement::from_sql_and_values(
+                    DbBackend::Postgres,
+                    "UPDATE \"_appstruct_auth_api_tokens\" SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = $1 AND (last_used_at IS NULL OR last_used_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes')",
+                    [hash.into()],
+                ))
+                .await?;
+        }
         let roles: serde_json::Value = row.try_get("", "roles")?;
         Ok(Some(Actor {
             id: row.try_get("", "user_id")?,

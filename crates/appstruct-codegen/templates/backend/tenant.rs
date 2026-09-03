@@ -124,10 +124,9 @@ async fn create_organization(
     headers: HeaderMap,
     Json(input): Json<CreateOrganization>,
 ) -> Result<(StatusCode, Json<Organization>), ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
     let actor = state
         .auth
-        .actor(&state.database, &headers)
+        .actor_for_mutation(&state.database, &headers)
         .await?
         .ok_or(ApiError::Unauthorized)?;
     let name = input.name.trim();
@@ -185,8 +184,7 @@ async fn create_invitation(
     headers: HeaderMap,
     Json(input): Json<CreateInvitation>,
 ) -> Result<(StatusCode, Json<Invitation>), ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
-    let (actor, tenant) = current_owner(&state, &headers).await?;
+    let (actor, tenant) = current_owner_for_mutation(&state, &headers).await?;
     let email = normalize_email(&input.email)?;
     if input.role != "member" {
         return Err(ApiError::Validation(vec![FieldViolation {
@@ -227,8 +225,7 @@ async fn revoke_invitation(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
-    let (_actor, tenant) = current_owner(&state, &headers).await?;
+    let (_actor, tenant) = current_owner_for_mutation(&state, &headers).await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
     state.database.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
@@ -243,8 +240,8 @@ async fn accept_invitation(
     headers: HeaderMap,
     Path(token): Path<String>,
 ) -> Result<Json<Organization>, ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
-    let actor = state.auth.actor(&state.database, &headers).await?.ok_or(ApiError::Unauthorized)?;
+    let actor = state.auth.actor_for_mutation(&state.database, &headers).await?
+        .ok_or(ApiError::Unauthorized)?;
     let transaction = state.database.begin().await?;
     let row = transaction.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
@@ -286,6 +283,21 @@ async fn current_owner(
     headers: &HeaderMap,
 ) -> Result<(Actor, TenantId), ApiError> {
     let context = state.context(headers).await?;
+    require_owner(state, &context).await
+}
+
+async fn current_owner_for_mutation(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(Actor, TenantId), ApiError> {
+    let context = state.mutation_context(headers).await?;
+    require_owner(state, &context).await
+}
+
+async fn require_owner(
+    state: &AppState,
+    context: &crate::RequestContext<'_>,
+) -> Result<(Actor, TenantId), ApiError> {
     let actor = context.actor().cloned().ok_or(ApiError::Unauthorized)?;
     let tenant = context.require_tenant()?;
     let member = state.database.query_one_raw(Statement::from_sql_and_values(

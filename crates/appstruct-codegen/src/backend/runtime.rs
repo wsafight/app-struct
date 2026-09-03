@@ -58,6 +58,15 @@ fn contract_source() -> TokenStream {
                     &self.database, &self.mail, &self.file, &self.realtime, actor, tenant,
                 ))
             }
+            pub async fn mutation_context(
+                &self, headers: &HeaderMap,
+            ) -> Result<RequestContext<'_>, ApiError> {
+                let actor = self.auth.actor_for_mutation(&self.database, headers).await?;
+                let tenant = tenant::resolve(&self.database, headers, actor.as_ref()).await?;
+                Ok(RequestContext::connection_with_services(
+                    &self.database, &self.mail, &self.file, &self.realtime, actor, tenant,
+                ))
+            }
         }
 
         const HEALTH_STARTING: u8 = 0;

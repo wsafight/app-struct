@@ -1,5 +1,6 @@
 use appstruct_codegen::plan;
 use appstruct_compiler::compile_project;
+use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
@@ -15,13 +16,24 @@ fn generation_plan_is_byte_deterministic() {
 
 #[test]
 fn compiler_and_generator_meet_mvp_performance_budgets() {
+    let budget_multiplier = performance_budget_multiplier();
     let ten = synthetic_project(10);
     let started = Instant::now();
     let ten_ir = compile_project(ten.path()).unwrap();
-    assert_within("10 entity IR compilation", started.elapsed(), 500);
+    assert_within(
+        "10 entity IR compilation",
+        started.elapsed(),
+        500,
+        budget_multiplier,
+    );
     let ten_artifacts = plan(&ten_ir).unwrap();
     assert!(!ten_artifacts.is_empty());
-    assert_within("10 entity compile and generation", started.elapsed(), 1_000);
+    assert_within(
+        "10 entity compile and generation",
+        started.elapsed(),
+        1_000,
+        budget_multiplier,
+    );
 
     let hundred = synthetic_project(100);
     let started = Instant::now();
@@ -32,7 +44,16 @@ fn compiler_and_generator_meet_mvp_performance_budgets() {
         "100 entity compile and generation",
         started.elapsed(),
         10_000,
+        budget_multiplier,
     );
+}
+
+fn performance_budget_multiplier() -> u128 {
+    env::var("APPSTRUCT_PERF_BUDGET_MULTIPLIER")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|multiplier| (1..=10).contains(multiplier))
+        .unwrap_or(1)
 }
 
 fn synthetic_project(entity_count: usize) -> tempfile::TempDir {
@@ -55,9 +76,15 @@ fn synthetic_project(entity_count: usize) -> tempfile::TempDir {
     root
 }
 
-fn assert_within(operation: &str, elapsed: Duration, budget_ms: u128) {
+fn assert_within(
+    operation: &str,
+    elapsed: Duration,
+    base_budget_ms: u128,
+    budget_multiplier: u128,
+) {
+    let budget_ms = base_budget_ms.saturating_mul(budget_multiplier);
     eprintln!(
-        "{operation}: {} ms (budget < {budget_ms} ms)",
+        "{operation}: {} ms (budget < {budget_ms} ms; base {base_budget_ms} ms x{budget_multiplier})",
         elapsed.as_millis()
     );
     assert!(

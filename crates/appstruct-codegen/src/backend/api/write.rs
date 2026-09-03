@@ -123,8 +123,7 @@ fn create_handler(
             headers: HeaderMap,
             Json(mut input): Json<CreateInput>,
         ) -> Result<(StatusCode, [(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
-            let context = state.context(&headers).await?;
+            let context = state.mutation_context(&headers).await?;
             let actor = context.actor().cloned();
             let tenant = context.tenant();
             authorize_create_fields(&context, &input)?;
@@ -180,9 +179,8 @@ fn update_handler(
             headers: HeaderMap,
             Json(mut input): Json<UpdateInput>,
         ) -> Result<([(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
             let expected = expected_revision(&headers)?;
-            let context = state.context(&headers).await?;
+            let context = state.mutation_context(&headers).await?;
             let actor = context.actor().cloned();
             let tenant = context.tenant();
             authorize_update_fields(&context, &input)?;
@@ -267,9 +265,8 @@ fn delete_handler(
             Path(id): Path<String>,
             headers: HeaderMap,
         ) -> Result<StatusCode, ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
             let expected = expected_revision(&headers)?;
-            let context = state.context(&headers).await?;
+            let context = state.mutation_context(&headers).await?;
             let actor = context.actor().cloned();
             let tenant = context.tenant();
             let id = #parse_id;

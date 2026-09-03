@@ -1,14 +1,16 @@
 use super::BulkContext;
 use appstruct_ir::{EntityIr, FieldTypeIr};
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::TokenStream;
 use quote::quote;
 
-pub(super) fn export(
-    entity: &EntityIr,
-    module: &Ident,
-    policy: &Ident,
-    list_scope: &TokenStream,
-) -> TokenStream {
+pub(super) fn export(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStream {
+    let BulkContext {
+        module,
+        policy,
+        list_scope,
+        primary_column,
+        ..
+    } = context;
     let headers = entity
         .fields
         .iter()
@@ -26,13 +28,24 @@ pub(super) fn export(
                 return Err(access_denied(&context));
             }
             let mut select = #module::Entity::find(); #list_scope
-            let models = select.all(&state.database).await?;
-            let mut csv = String::new(); csv.push_str(&[#(csv_escape(#headers)),*].join(",")); csv.push('\n');
-            for model in models {
-                let value = serde_json::to_value(model).map_err(|_| ApiError::Internal)?;
-                let object = value.as_object().ok_or(ApiError::Internal)?;
-                let row = [#(object.get(#fields).map(std::string::ToString::to_string).unwrap_or_default()),*];
-                csv.push_str(&row.iter().map(|value| csv_escape(value.trim_matches('"'))).collect::<Vec<_>>().join(",")); csv.push('\n');
+            select = select.order_by_asc(#module::Column::#primary_column);
+            let total = select.clone().count(&state.database).await?;
+            if total > MAX_CSV_EXPORT_ROWS {
+                return Err(ApiError::InvalidQuery(format!(
+                    "CSV export is limited to {MAX_CSV_EXPORT_ROWS} rows"
+                )));
+            }
+            let mut csv = String::with_capacity(8_192); csv.push_str(&[#(csv_escape(#headers)),*].join(",")); csv.push('\n');
+            let mut offset = 0;
+            while offset < total {
+                let models = select.clone().offset(offset).limit(CSV_EXPORT_PAGE_SIZE).all(&state.database).await?;
+                for model in models {
+                    let value = serde_json::to_value(model).map_err(|_| ApiError::Internal)?;
+                    let object = value.as_object().ok_or(ApiError::Internal)?;
+                    let row = [#(object.get(#fields).map(std::string::ToString::to_string).unwrap_or_default()),*];
+                    csv.push_str(&row.iter().map(|value| csv_escape(value.trim_matches('"'))).collect::<Vec<_>>().join(",")); csv.push('\n');
+                }
+                offset += CSV_EXPORT_PAGE_SIZE;
             }
             let _ = context;
             Ok(([(header::CONTENT_TYPE, "text/csv; charset=utf-8".to_owned())], csv))
@@ -71,11 +84,13 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
     let audit = super::audit_event(*audit_enabled, entity_id, primary, "create");
     quote! {
         async fn import_csv(State(state): State<AppState>, headers: HeaderMap, body: String) -> Result<Json<BulkResult>, ApiError> {
-            state.auth.verify_csrf(&state.database, &headers).await?;
-            let context = state.context(&headers).await?;
+            let context = state.mutation_context(&headers).await?;
             let rows = parse_csv_rows(&body)
                 .map_err(|error| ApiError::InvalidQuery(error.to_string()))?;
             let Some(header_row) = rows.first() else { return Ok(Json(BulkResult { succeeded: Vec::new(), failed: Vec::new() })); };
+            if rows.len() - 1 > MAX_CSV_IMPORT_ROWS {
+                return Err(ApiError::InvalidQuery(format!("CSV import is limited to {MAX_CSV_IMPORT_ROWS} rows")));
+            }
             let expected = [#(#field_names),*];
             if header_row.iter().map(String::as_str).any(|name| !expected.contains(&name)) { return Err(ApiError::InvalidQuery("CSV contains an unknown column".to_owned())); }
             let actor = context.actor().cloned(); let tenant = context.tenant(); let transaction = state.database.begin().await?;

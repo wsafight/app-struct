@@ -35,7 +35,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement, TransactionTrait};
         use serde::Serialize;
         use std::{
-            fmt,
+            env, fmt,
             sync::Arc,
             time::Duration,
         };
@@ -194,6 +194,12 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
                 }
                 Ok(true)
             }
+            fn replica(&self) -> Self {
+                Self {
+                    database: self.database.clone(), handler: Arc::clone(&self.handler),
+                    worker_id: uuid::Uuid::now_v7().to_string(), kind: self.kind.clone(),
+                }
+            }
             pub fn spawn(self) -> JobWorkerHandle {
                 self.spawn_inner(None)
             }
@@ -205,26 +211,42 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
             fn spawn_inner(
                 self, health: Option<crate::ApplicationHealth>,
             ) -> JobWorkerHandle {
+                let concurrency = worker_concurrency("APPSTRUCT_JOB_CONCURRENCY");
+                let mut workers = Vec::with_capacity(concurrency);
+                for _ in 1..concurrency { workers.push(self.replica()); }
+                workers.push(self);
                 let observer = JobWorkerObserver { health };
                 let task = appstruct_runtime::SupervisedTaskHandle::spawn(
-                    "appstruct/jobs", observer, move |mut receiver| async move {
-                    if let Err(error) = ensure_schedules(&self.database).await {
+                    "appstruct/jobs", observer, move |receiver| async move {
+                    if let Err(error) = ensure_schedules(&workers[0].database).await {
                         tracing::error!(%error, "job schedule registration failed");
                     }
-                    loop {
-                        if *receiver.borrow() { break; }
-                        if let Err(error) = schedule_due(&self.database).await {
-                            tracing::error!(%error, "job schedule iteration failed");
-                        }
-                        match self.run_once().await {
-                            Ok(true) => continue,
-                            Ok(false) => {}
-                            Err(error) => tracing::error!(%error, "job worker iteration failed"),
-                        }
-                        tokio::select! {
-                            () = tokio::time::sleep(Duration::from_millis(#poll_interval_ms)) => {}
-                            result = receiver.changed() => if result.is_err() { break; }
-                        }
+                    let mut tasks = tokio::task::JoinSet::new();
+                    for (index, worker) in workers.into_iter().enumerate() {
+                        let mut lane_receiver = receiver.clone();
+                        tasks.spawn(async move {
+                            loop {
+                                if *lane_receiver.borrow() { break; }
+                                if index == 0 {
+                                    if let Err(error) = schedule_due(&worker.database).await {
+                                        tracing::error!(%error, "job schedule iteration failed");
+                                    }
+                                }
+                                match worker.run_once().await {
+                                    Ok(true) => continue,
+                                    Ok(false) => {}
+                                    Err(error) => tracing::error!(%error, "job worker iteration failed"),
+                                }
+                                tokio::select! {
+                                    () = tokio::time::sleep(Duration::from_millis(#poll_interval_ms)) => {}
+                                    result = lane_receiver.changed() => if result.is_err() { break; }
+                                }
+                            }
+                        });
+                    }
+                    drop(receiver);
+                    while let Some(result) = tasks.join_next().await {
+                        result.map_err(appstruct_runtime::ShutdownError::new)?;
                     }
                     Ok(())
                 });
@@ -237,6 +259,10 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
 
 fn worker_lifecycle_source() -> proc_macro2::TokenStream {
     quote! {
+        fn worker_concurrency(name: &str) -> usize {
+            env::var(name).ok().and_then(|value| value.parse().ok())
+                .filter(|value| (1..=64).contains(value)).unwrap_or(4)
+        }
         struct JobWorkerObserver {
             health: Option<crate::ApplicationHealth>,
         }

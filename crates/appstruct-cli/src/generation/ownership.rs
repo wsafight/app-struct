@@ -25,6 +25,14 @@ struct ManifestEntry {
     sha256: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(super) struct OwnedFileSnapshot {
+    path: String,
+    sha256: String,
+    len: u64,
+    modified_nanos: Option<u128>,
+}
+
 pub(crate) fn expected_files(artifacts: &[Artifact]) -> io::Result<BTreeMap<PathBuf, Vec<u8>>> {
     let mut files = BTreeMap::new();
     let mut entries = Vec::with_capacity(artifacts.len());
@@ -81,6 +89,75 @@ pub(crate) fn validate_owned_tree(root: &Path) -> io::Result<()> {
     validate_generated_files(root, Some(&owned), None)
 }
 
+pub(super) fn snapshot_owned_tree(root: &Path) -> io::Result<Vec<OwnedFileSnapshot>> {
+    let manifest = required_manifest(root)?;
+    let owned = owned_paths(&manifest)?;
+    validate_generated_files(root, Some(&owned), None)?;
+    manifest
+        .artifacts
+        .into_iter()
+        .map(|entry| {
+            let metadata = owned_metadata(root, &entry.path)?;
+            Ok(OwnedFileSnapshot {
+                path: entry.path,
+                sha256: entry.sha256,
+                len: metadata.len(),
+                modified_nanos: modified_nanos(&metadata),
+            })
+        })
+        .collect()
+}
+
+pub(super) fn validate_owned_tree_cached(
+    root: &Path,
+    snapshots: &[OwnedFileSnapshot],
+) -> io::Result<bool> {
+    if !root.is_dir() {
+        return Err(invalid(format!(
+            "generated transaction tree `{}` is not a directory",
+            root.display()
+        )));
+    }
+    let manifest = required_manifest(root)?;
+    let owned = owned_paths(&manifest)?;
+    validate_generated_files(root, Some(&owned), None)?;
+    let cached = snapshots
+        .iter()
+        .map(|snapshot| (PathBuf::from(&snapshot.path), snapshot))
+        .collect::<BTreeMap<_, _>>();
+    if cached.len() != snapshots.len() || cached.len() != manifest.artifacts.len() {
+        return Ok(false);
+    }
+    for entry in &manifest.artifacts {
+        let path = PathBuf::from(&entry.path);
+        let Some(snapshot) = cached.get(&path) else {
+            return Ok(false);
+        };
+        if snapshot.sha256 != entry.sha256 {
+            return Ok(false);
+        }
+        let metadata = owned_metadata(root, &entry.path)?;
+        let unchanged = snapshot.len == metadata.len()
+            && snapshot.modified_nanos.is_some()
+            && snapshot.modified_nanos == modified_nanos(&metadata);
+        if !unchanged {
+            let content = fs::read(root.join(&path)).map_err(|error| {
+                invalid(format!(
+                    "owned artifact `{}` cannot be read: {error}",
+                    entry.path
+                ))
+            })?;
+            if content_hash(&content) != entry.sha256 {
+                return Err(invalid(format!(
+                    "owned artifact `{}` was modified outside AppStruct",
+                    entry.path
+                )));
+            }
+        }
+    }
+    Ok(true)
+}
+
 pub(crate) fn copy_owned_tree(source: &Path, destination: &Path) -> io::Result<()> {
     validate_owned_tree(source)?;
     let owned = load_owned(source)?.expect("validated tree has a manifest");
@@ -113,30 +190,12 @@ fn copy_file(source: &Path, destination: &Path, relative: &Path) -> io::Result<(
 }
 
 fn load_owned(root: &Path) -> io::Result<Option<BTreeSet<PathBuf>>> {
-    let manifest_path = root.join(MANIFEST_NAME);
-    if !manifest_path.is_file() {
+    let Some(manifest) = load_manifest(root)? else {
         return Ok(None);
-    }
-    let source = fs::read(&manifest_path)?;
-    let manifest: OwnershipManifest = serde_json::from_slice(&source)
-        .map_err(|error| invalid(format!("invalid ownership manifest: {error}")))?;
-    if manifest.manifest_version != MANIFEST_VERSION {
-        return Err(invalid(format!(
-            "unsupported ownership manifest version {}",
-            manifest.manifest_version
-        )));
-    }
-    let mut owned = BTreeSet::new();
-    for entry in manifest.artifacts {
-        let path = PathBuf::from(&entry.path);
-        validate_relative_path(&path)?;
-        if !owned.insert(path.clone()) {
-            return Err(invalid(format!(
-                "ownership manifest contains duplicate `{}`",
-                entry.path
-            )));
-        }
-        let content = fs::read(root.join(&path)).map_err(|error| {
+    };
+    let owned = owned_paths(&manifest)?;
+    for entry in &manifest.artifacts {
+        let content = fs::read(root.join(&entry.path)).map_err(|error| {
             invalid(format!(
                 "owned artifact `{}` cannot be read: {error}",
                 entry.path
@@ -150,6 +209,64 @@ fn load_owned(root: &Path) -> io::Result<Option<BTreeSet<PathBuf>>> {
         }
     }
     Ok(Some(owned))
+}
+
+fn required_manifest(root: &Path) -> io::Result<OwnershipManifest> {
+    load_manifest(root)?.ok_or_else(|| {
+        invalid(format!(
+            "generated transaction tree `{}` has no ownership manifest",
+            root.display()
+        ))
+    })
+}
+
+fn load_manifest(root: &Path) -> io::Result<Option<OwnershipManifest>> {
+    let manifest_path = root.join(MANIFEST_NAME);
+    if !manifest_path.is_file() {
+        return Ok(None);
+    }
+    let source = fs::read(&manifest_path)?;
+    let manifest: OwnershipManifest = serde_json::from_slice(&source)
+        .map_err(|error| invalid(format!("invalid ownership manifest: {error}")))?;
+    if manifest.manifest_version != MANIFEST_VERSION {
+        return Err(invalid(format!(
+            "unsupported ownership manifest version {}",
+            manifest.manifest_version
+        )));
+    }
+    Ok(Some(manifest))
+}
+
+fn owned_paths(manifest: &OwnershipManifest) -> io::Result<BTreeSet<PathBuf>> {
+    let mut owned = BTreeSet::new();
+    for entry in &manifest.artifacts {
+        let path = PathBuf::from(&entry.path);
+        validate_relative_path(&path)?;
+        if !owned.insert(path.clone()) {
+            return Err(invalid(format!(
+                "ownership manifest contains duplicate `{}`",
+                entry.path
+            )));
+        }
+    }
+    Ok(owned)
+}
+
+fn owned_metadata(root: &Path, relative: &str) -> io::Result<fs::Metadata> {
+    fs::metadata(root.join(relative)).map_err(|error| {
+        invalid(format!(
+            "owned artifact `{relative}` cannot be read: {error}"
+        ))
+    })
+}
+
+fn modified_nanos(metadata: &fs::Metadata) -> Option<u128> {
+    metadata
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_nanos())
 }
 
 fn validate_generated_files(

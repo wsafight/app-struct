@@ -67,8 +67,7 @@ async fn list_deliveries(
 async fn retry_delivery(
     State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>,
 ) -> Result<Json<AdminWebhookDelivery>, ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
-    require_admin(&state, &headers).await?;
+    require_admin_mutation(&state, &headers).await?;
     ensure_enabled()?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
     let transaction = state.database.begin().await?;
@@ -88,8 +87,7 @@ async fn retry_delivery(
 async fn replay_delivery(
     State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<AdminWebhookDelivery>), ApiError> {
-    state.auth.verify_csrf(&state.database, &headers).await?;
-    require_admin(&state, &headers).await?;
+    require_admin_mutation(&state, &headers).await?;
     ensure_enabled()?;
     let source_id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
     let transaction = state.database.begin().await?;
@@ -112,6 +110,12 @@ async fn replay_delivery(
 
 async fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
     let actor = state.auth.actor(&state.database, headers).await?.ok_or(ApiError::Unauthorized)?;
+    if actor.has_role("admin") { Ok(()) } else { Err(ApiError::Forbidden) }
+}
+
+async fn require_admin_mutation(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+    let actor = state.auth.actor_for_mutation(&state.database, headers).await?
+        .ok_or(ApiError::Unauthorized)?;
     if actor.has_role("admin") { Ok(()) } else { Err(ApiError::Forbidden) }
 }
 

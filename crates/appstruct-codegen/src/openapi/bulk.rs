@@ -53,11 +53,11 @@ fn bulk_result_schema() -> Value {
 }
 
 fn bulk_delete_schema() -> Value {
-    json!({ "type": "object", "required": ["ids", "expected_revisions"], "properties": { "ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 }, "expected_revisions": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } } } })
+    json!({ "type": "object", "required": ["ids", "expected_revisions"], "properties": { "ids": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 100 }, "expected_revisions": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 }, "maxProperties": 100 } } })
 }
 
 fn bulk_update_schema(entity: &EntityIr) -> Value {
-    json!({ "type": "object", "required": ["ids", "patch", "expected_revisions"], "properties": { "ids": { "type": "array", "items": { "type": "string" }, "minItems": 1 }, "patch": schema_ref(&format!("Update{}Input", entity.rust_name)), "expected_revisions": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } } } })
+    json!({ "type": "object", "required": ["ids", "patch", "expected_revisions"], "properties": { "ids": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": 100 }, "patch": schema_ref(&format!("Update{}Input", entity.rust_name)), "expected_revisions": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 }, "maxProperties": 100 } } })
 }
 
 pub(super) fn add_common_schemas(schemas: &mut Map<String, Value>) {

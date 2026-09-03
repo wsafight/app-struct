@@ -76,6 +76,15 @@ fn resources_publish_bulk_and_csv_contracts() {
     assert!(api.contains("/_export.csv"));
     assert!(api.contains("/_import.csv"));
     assert!(api.contains("expected_revisions"));
+    assert!(api.contains("bulk_request_size_is_valid"));
+    assert!(api.contains("MAX_CSV_IMPORT_ROWS"));
+    assert!(api.contains("CSV_EXPORT_PAGE_SIZE"));
+    let openapi: Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    assert_eq!(
+        openapi["components"]["schemas"]["BulkDeleteInput"]["properties"]["ids"]["maxItems"],
+        100
+    );
     let client = artifact_text(&artifacts, "web/src/generated/client.ts");
     assert!(client.contains("bulkUpdate"));
     assert!(client.contains("exportCsv"));
