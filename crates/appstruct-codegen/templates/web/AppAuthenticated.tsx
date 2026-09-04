@@ -1,6 +1,5 @@
 __REACT_IMPORT__
 import { AuthProvider, RequireAuth } from "../auth/Auth";
-import { AdminJobsPage, AdminPage, AdminUsersPage, AdminWebhooksPage, ApiTokensPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "../auth/AuthPages";
 __RESOURCE_IMPORT__
 import { customPages } from "../generated/registry";
 import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
@@ -11,6 +10,17 @@ import { Layout } from "./Layout";
 import { resourceRoutes } from "./ResourceRoutes";
 
 __AUDIT_PAGE__
+const LoginPage = lazy(() => import("../auth/AuthPages").then(({ LoginPage: component }) => ({ default: component })));
+const RegisterPage = lazy(() => import("../auth/AuthPages").then(({ RegisterPage: component }) => ({ default: component })));
+const ForgotPasswordPage = lazy(() => import("../auth/AuthPages").then(({ ForgotPasswordPage: component }) => ({ default: component })));
+const ResetPasswordPage = lazy(() => import("../auth/AuthPages").then(({ ResetPasswordPage: component }) => ({ default: component })));
+const VerifyEmailPage = lazy(() => import("../auth/AuthPages").then(({ VerifyEmailPage: component }) => ({ default: component })));
+const ApiTokensPage = lazy(() => import("../auth/AuthPages").then(({ ApiTokensPage: component }) => ({ default: component })));
+const AdminPage = lazy(() => import("../auth/AuthPages").then(({ AdminPage: component }) => ({ default: component })));
+const AdminUsersPage = lazy(() => import("../auth/AuthPages").then(({ AdminUsersPage: component }) => ({ default: component })));
+const AdminJobsPage = lazy(() => import("../auth/AuthPages").then(({ AdminJobsPage: component }) => ({ default: component })));
+const AdminWebhooksPage = lazy(() => import("../auth/AuthPages").then(({ AdminWebhooksPage: component }) => ({ default: component })));
+
 export function App({ registry }: { registry?: AppStructRegistry }) {
   const [router] = useState(() => createRuntimeRouter(AuthRoot, appRoutes(registry)));
   return <RuntimeRouter router={router} />;

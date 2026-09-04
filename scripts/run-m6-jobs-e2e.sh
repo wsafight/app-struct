@@ -226,6 +226,12 @@ jq -e '.data == null' "$temporary_root/lock-released.json" >/dev/null
 
 curl --fail --silent --show-error -c "$jar" -b "$jar" \
   "$api/api/admin/jobs" >"$temporary_root/jobs.json"
+jq -e '.meta.page == 1 and .meta.page_size == 25 and .meta.total >= 2' \
+  "$temporary_root/jobs.json" >/dev/null
+curl --fail --silent --show-error -b "$jar" \
+  "$api/api/admin/jobs?page=2&page_size=1" >"$temporary_root/jobs-page-2.json"
+jq -e '.meta.page == 2 and .meta.page_size == 1 and .meta.total >= 2 and (.data | length) == 1' \
+  "$temporary_root/jobs-page-2.json" >/dev/null
 dead_job="$(jq -er '.data[] | select(.kind == "fail" and .status == "dead") | .id' "$temporary_root/jobs.json")"
 succeeded_job="$(jq -er '.data[] | select(.kind == "succeed" and .status == "succeeded") | .id' "$temporary_root/jobs.json")"
 curl --fail --silent --show-error -c "$jar" -b "$jar" \
@@ -240,6 +246,8 @@ jq -e '.id != $id and .status == "queued" and .attempts == 0' \
   --arg id "$succeeded_job" "$temporary_root/replayed.json" >/dev/null
 curl --fail --silent --show-error -b "$jar" \
   "$api/api/admin/webhooks" >"$temporary_root/admin-webhooks.json"
+jq -e '.meta.page == 1 and .meta.page_size == 25 and .meta.total >= 2' \
+  "$temporary_root/admin-webhooks.json" >/dev/null
 dead_delivery="$(jq -er '.data[] | select(.endpoint == "hanging" and .status == "dead") | .id' "$temporary_root/admin-webhooks.json")"
 succeeded_delivery="$(jq -er '.data[] | select(.endpoint == "operations" and .status == "succeeded") | .id' "$temporary_root/admin-webhooks.json")"
 curl --fail --silent --show-error -b "$jar" -H "X-CSRF-Token: $csrf" -X POST \
@@ -275,6 +283,8 @@ grep -q "module stopped" "$log"
 grep -q "shutdown signal received" "$temporary_root/secondary-api.log"
 
 if APPSTRUCT_ENV=production DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
+  APPSTRUCT_ALLOWED_ORIGIN="https://appstruct.example" \
+  APPSTRUCT_FRONTEND_URL="https://appstruct.example" \
   APPSTRUCT_BIND="127.0.0.1:0" "$backend" >"$temporary_root/config-error.log" 2>&1
 then
   echo "invalid production mail configuration unexpectedly started" >&2

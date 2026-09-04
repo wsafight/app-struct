@@ -18,7 +18,7 @@ Admin 运维概览和受保护的 Jobs 重试/重放操作；Billing 不在预�
 | Rust | 1.98.0，带 rustfmt 和 Clippy | CLI 和生成的后端 |
 | PostgreSQL | 推荐 17 | 迁移和生成的 API |
 | Node.js | 推荐 24 | 生成的 Web 应用 |
-| pnpm | 9.12.3 | 按锁文件安装 Web 依赖 |
+| pnpm | 11.25.0 | 按锁文件安装 Web 依赖 |
 | Docker Compose | 当前版本，可选 | 仅用于 `database.dev.mode: managed` |
 
 仓库根目录和生成项目都会固定 Rust 版本。Web 模板也会提交 pnpm 锁文件，确保不同机器上的

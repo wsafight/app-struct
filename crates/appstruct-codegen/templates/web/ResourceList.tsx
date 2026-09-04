@@ -11,6 +11,7 @@ import {
   Upload,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { ConfirmDialog } from "../components/Dialog";
 import { useResourceListController } from "../controller";
 import { Link, useSearchParams } from "../navigation";
 import type {
@@ -46,6 +47,11 @@ export function ResourceList({
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [actionError, setActionError] = useState("");
+  const [confirmation, setConfirmation] = useState<{
+    title: string;
+    description: string;
+    action(): Promise<void>;
+  } | null>(null);
   const queryString = searchParams.toString();
   const trashMode = resource.softDelete && searchParams.get("trash") === "1";
   const page = boundedInteger(searchParams.get("page"), 1, 10_000, 1);
@@ -134,8 +140,13 @@ export function ResourceList({
     const action = resource.softDelete
       ? "Move this record to trash"
       : "Delete this record";
-    if (!window.confirm(`${action}?`)) return;
-    await runChange(() => resource.api.remove(id));
+    setConfirmation({
+      title: action,
+      description: "This action cannot be undone from the current view.",
+      action: async () => {
+        await runChange(() => resource.api.remove(id));
+      },
+    });
   }
 
   function revisionMap(ids: string[]): Record<string, number> {
@@ -186,6 +197,12 @@ export function ResourceList({
     actor,
     runChange,
     onError: setActionError,
+    confirm: (description, action) =>
+      setConfirmation({
+        title: trashMode ? "Permanently delete records" : "Delete records",
+        description,
+        action,
+      }),
   });
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const error =
@@ -332,6 +349,19 @@ export function ResourceList({
           </button>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmation !== null}
+        title={confirmation?.title ?? "Confirm action"}
+        description={confirmation?.description ?? ""}
+        confirmLabel="Delete"
+        danger
+        onCancel={() => setConfirmation(null)}
+        onConfirm={async () => {
+          const action = confirmation?.action;
+          if (action) await action();
+          setConfirmation(null);
+        }}
+      />
     </main>
   );
 }

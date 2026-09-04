@@ -19,7 +19,7 @@ jobs:
           components: clippy,rustfmt
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.12.3
+          version: 11.25.0
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Run tests

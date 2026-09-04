@@ -37,7 +37,7 @@ CLI 生成路径已拆为 orchestration、ownership 和 transaction 模块。`ge
 
 M5 Template 初始化已进入 CLI。`new` 在项目发现前执行，以当前目录或全局 `--project` 指定目录为 parent；名称限制为可移植的小写 ASCII package/directory name。内置 `minimal/dashboard/saas` 文件表在编译期嵌入二进制，通过固定 sibling staging 写完后提交，目标或 staging 存在时不覆盖。Template 产物归用户所有，包含 `appstruct.lock`、固定 1.98.0 的 `rust-toolchain.toml`、`app/backend` 用户扩展 crate、环境示例和本地状态 ignore；`generate` 仍只拥有 `generated/`。
 
-M5 build/doctor 已实现。项目 `.env` 使用 dotenv parser 读取但不修改 CLI 进程环境，显式环境变量始终优先；错误和诊断只报告变量名或连接结果。doctor 根据 IR 的 `database.dev.mode` 选择 Docker/Compose 或 PostgreSQL migration status 检查，并提供 text/JSON 两种确定性结构。build 先完成生成事务，若缺少 backend `Cargo.lock` 则生成一次，之后目录交换在 Cargo.toml 未变化时保留该 transient lock；Clippy 与 release build 均使用 `--locked` 和 `.appstruct/cache/backend-target`。Web Artifact 在 ownership manifest 计算前由临时目录内、pnpm lock 固定的 Prettier 3.9.6 格式化；build 再运行 frozen install、format check、`tsc --noEmit` 与 Vite build。
+M5 build/doctor 已实现。项目 `.env` 使用 dotenv parser 读取但不修改 CLI 进程环境，显式环境变量始终优先；错误和诊断只报告变量名或连接结果。doctor 根据 IR 的 `database.dev.mode` 选择 Docker/Compose 或 PostgreSQL migration status 检查，并提供 text/JSON 两种确定性结构。build 先完成生成事务，若缺少 backend `Cargo.lock` 则生成一次，之后目录交换在 Cargo.toml 未变化时保留该 transient lock；Clippy 与 release build 均使用 `--locked` 和 `.appstruct/cache/backend-target`。Web Artifact 在 ownership manifest 计算前由临时目录内、pnpm lock 固定的 Prettier 3.9.6 格式化；build 再运行 frozen install、format check、`tsc6 --noEmit` 与 Vite build。
 
 M5 dev server 已实现。CLI 在 external 模式显式传递从进程环境或 `.env` 得到的数据库 URL，不修改父进程环境；managed 模式只协调 Compose `postgres` service，并记录本次 session 是否拥有其生命周期。`database.dev.migration` 提供 `auto/prompt/never/unmanaged`，managed 默认 prompt，external 默认 unmanaged；never 同时只读检查 Spec diff、pending/history 和 catalog drift，unmanaged 不调用迁移子系统。策略检查通过后执行 canonical generation、debug backend build 和 frozen Web install。协调器指纹覆盖 `appstruct.yaml`、`appstruct.lock`、`spec/` 与 `app/backend/`；重载时为 API 和 pnpm/Vite 分配独立 Unix 进程组，TERM 整组退出并在超时后 kill，避免包装进程退出后遗留 Vite。Ctrl-C 与 Drop 路径幂等清理子进程，只停止本 session 启动的 managed PostgreSQL。生产 backend runtime 始终不执行迁移。
 
@@ -639,7 +639,7 @@ App Spec -> Rust API -> OpenAPI -> 前端
 
 - OpenAPI 负责传输类型和 endpoint 客户端。
 - UI Generator 负责资源 Manifest、路由和字段组件引用。
-- TypeScript 输出使用项目本地、由 `pnpm-lock.yaml` 固定版本的 Prettier 格式化，并经过 `tsc --noEmit` 验证；禁止调用 PATH 中未锁定的全局工具。
+- TypeScript 输出使用项目本地、由 `pnpm-lock.yaml` 固定版本的 Prettier 格式化，并经过 `tsc6 --noEmit` 验证；禁止调用 PATH 中未锁定的全局工具。
 - 自定义组件 registry 使用 `satisfies` 对 Manifest 引用进行编译期校验。
 
 ### 11.5 安全写入

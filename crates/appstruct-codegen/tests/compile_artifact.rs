@@ -110,6 +110,10 @@ fn resources_publish_bulk_and_csv_contracts() {
     assert!(client.contains("bulkUpdate"));
     assert!(client.contains("exportCsv"));
     assert!(client.contains("importCsv"));
+    assert!(client.contains("if (init?.body != null && !headers.has(\"Content-Type\"))"));
+    assert!(
+        !client.contains("headers.set(\"Content-Type\", \"application/json\");\n  const method")
+    );
 }
 
 #[test]
@@ -140,6 +144,11 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(package.contains("@tanstack/react-table"));
     assert!(package.contains("@tanstack/react-form"));
     assert!(package.contains("typescript-eslint"));
+    assert!(package.contains("@testing-library/react"));
+    assert!(package.contains("happy-dom"));
+    assert!(package.contains("pnpm@11.25.0"));
+    assert!(package.contains("tsc6 --noEmit"));
+    assert!(!package.contains("@typescript/native"));
     assert!(package.contains("vitest run"));
     assert!(!package.contains("react-router-dom"));
     assert!(main.contains("QueryClientProvider"));
@@ -154,6 +163,7 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(framework_test.contains("buildResourceFilterQuery"));
     assert!(framework_test.contains("supportsInlineEdit"));
     assert!(routes.contains("validateSearch: validateResourceSearch"));
+    assert!(artifact_text(&artifacts, "web/src/components/Dialog.tsx").contains("<dialog"));
     let table = artifact_text(&artifacts, "web/src/pages/resource-list/ResourceTable.tsx");
     assert!(list.contains("useRealtimeResource"));
     assert!(table.contains("useTable"));
@@ -256,7 +266,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 76);
+    assert_eq!(artifacts.len(), 78);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -273,6 +283,10 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("Argon2"));
     assert!(artifact_text(&artifacts, "backend/src/auth/recovery.rs").contains("verify_email"));
     assert!(artifact_text(&artifacts, "backend/src/auth/admin.rs").contains("admin_overview"));
+    let admin = artifact_text(&artifacts, "backend/src/auth/admin.rs");
+    assert!(admin.contains("page_size"));
+    assert!(admin.contains("OFFSET $2"));
+    assert!(admin.contains("OFFSET $3"));
     let session = artifact_text(&artifacts, "backend/src/auth/session.rs");
     assert!(session.contains("Bearer "));
     assert!(session.contains("APPSTRUCT_ALLOWED_ORIGIN"));
@@ -309,6 +323,11 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(auth_pages.contains("if (redirecting.current) return;"));
     assert!(auth_pages.contains("}, [auth.user, navigate, submitting]);"));
     assert!(auth_pages.contains("await navigate(from, { replace: true });"));
+    assert!(auth_pages.contains("AdminPagination"));
+    assert!(auth_pages.contains("appQueryKeys.admin.users"));
+    let app = artifact_text(&artifacts, "web/src/app/App.tsx");
+    assert!(app.contains("lazy(() => import(\"../auth/AuthPages\")"));
+    assert!(!app.contains("from \"../auth/AuthPages\";"));
     let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
     assert!(resources.contains(r#""mode":"role","role":"admin""#));
     assert!(resources.contains("export const auditAccess"));
@@ -497,6 +516,15 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
     assert!(openapi["paths"]["/api/auth/tokens"]["post"].is_object());
     assert!(openapi["paths"]["/api/admin/overview"]["get"].is_object());
     assert_eq!(
+        openapi["paths"]["/api/admin/users"]["get"]["parameters"][0]["name"],
+        "page"
+    );
+    assert_eq!(
+        openapi["paths"]["/api/admin/users"]["get"]["responses"]["200"]["content"]["application/json"]
+            ["schema"]["required"],
+        serde_json::json!(["data", "meta"])
+    );
+    assert_eq!(
         openapi["paths"]["/api/auth/logout"]["post"]["parameters"][0]["name"],
         "X-CSRF-Token"
     );
@@ -507,7 +535,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 66);
+    assert_eq!(artifacts.len(), 68);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiError } from "./generated/client";
+import { ApiError, requestHeaders } from "./generated/client";
 import { validateResourceSearch } from "./navigation";
 import {
   buildResourceFilterQuery,
@@ -7,7 +7,7 @@ import {
 } from "./pages/ResourceFilters";
 import { supportsInlineEdit } from "./pages/resource-list/InlineEditor";
 import { formatValue } from "./pages/resource-list/ResourceTable";
-import { resourceQueryKeys, shouldRetryQuery } from "./query";
+import { appQueryKeys, resourceQueryKeys, shouldRetryQuery } from "./query";
 import {
   canAccessResource,
   canAccessRule,
@@ -89,6 +89,28 @@ describe("shouldRetryQuery", () => {
       shouldRetryQuery(2, new ApiError(503, "UNAVAILABLE", "try again")),
     ).toBe(false);
     expect(shouldRetryQuery(0, new Error("unexpected"))).toBe(false);
+  });
+});
+
+describe("requestHeaders", () => {
+  it("does not force a content type on bodyless requests", () => {
+    expect(requestHeaders().has("Content-Type")).toBe(false);
+  });
+
+  it("defaults request bodies to JSON without overriding explicit types", () => {
+    expect(
+      requestHeaders({
+        method: "POST",
+        body: JSON.stringify({ ok: true }),
+      }).get("Content-Type"),
+    ).toBe("application/json");
+    expect(
+      requestHeaders({
+        method: "POST",
+        headers: { "Content-Type": "text/csv" },
+        body: "name\nexample",
+      }).get("Content-Type"),
+    ).toBe("text/csv");
   });
 });
 
@@ -234,6 +256,21 @@ describe("resourceQueryKeys", () => {
       "app::Note",
       "options",
       "",
+    ]);
+  });
+});
+
+describe("appQueryKeys", () => {
+  it("includes pagination and filters in admin cache keys", () => {
+    expect(appQueryKeys.admin.jobs("dead", 2, 25)).toEqual([
+      "admin",
+      "jobs",
+      { status: "dead", page: 2, pageSize: 25 },
+    ]);
+    expect(appQueryKeys.admin.users(3, 50)).toEqual([
+      "admin",
+      "users",
+      { page: 3, pageSize: 50 },
     ]);
   });
 });

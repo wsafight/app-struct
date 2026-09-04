@@ -42,16 +42,19 @@ struct AdminUser {
 }
 
 #[derive(Serialize)]
-struct AdminUserList { data: Vec<AdminUser> }
+struct AdminListMeta { page: u64, page_size: u64, total: u64 }
+
+#[derive(Serialize)]
+struct AdminUserList { data: Vec<AdminUser>, meta: AdminListMeta }
 
 #[derive(Serialize)]
 struct AdminSessionRevocation { revoked: u64 }
 
 #[derive(Deserialize)]
-struct AdminUserQuery { limit: Option<u64> }
+struct AdminUserQuery { page: Option<u64>, page_size: Option<u64> }
 
 #[derive(Deserialize)]
-struct AdminJobQuery { status: Option<String>, limit: Option<u64> }
+struct AdminJobQuery { status: Option<String>, page: Option<u64>, page_size: Option<u64> }
 
 #[derive(Serialize)]
 struct AdminJob {
@@ -69,7 +72,7 @@ struct AdminJob {
 }
 
 #[derive(Serialize)]
-struct AdminJobList { data: Vec<AdminJob> }
+struct AdminJobList { data: Vec<AdminJob>, meta: AdminListMeta }
 
 async fn admin_overview(
     State(state): State<AppState>, headers: HeaderMap,
@@ -92,21 +95,28 @@ async fn list_admin_users(
     State(state): State<AppState>, headers: HeaderMap, Query(input): Query<AdminUserQuery>,
 ) -> Result<Json<AdminUserList>, ApiError> {
     require_admin(&state, &headers).await?;
-    let limit = input.limit.unwrap_or(50);
-    if !(1..=100).contains(&limit) {
-        return Err(ApiError::InvalidQuery("limit must be between 1 and 100".to_owned()));
-    }
+    let (page, page_size, offset) = admin_pagination(input.page, input.page_size)?;
+    let count_sql = format!(
+        "SELECT COUNT(*) AS total FROM {users} u JOIN \"_appstruct_auth_accounts\" a ON a.user_id = u.{id}",
+        id = quote_ident(config::USER_ID_COLUMN),
+        users = quote_ident(config::USER_TABLE),
+    );
+    let count = state.database.query_one_raw(Statement::from_string(
+        DbBackend::Postgres, count_sql,
+    )).await?.ok_or(ApiError::Internal)?;
+    let total: i64 = count.try_get("", "total")?;
     let sql = format!(
-        "SELECT u.{id} AS id, u.{email} AS email, a.roles, a.email_verified_at, a.created_at, (SELECT COUNT(*) FROM \"_appstruct_auth_sessions\" s WHERE s.user_id = a.user_id AND s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP) AS active_sessions FROM {users} u JOIN \"_appstruct_auth_accounts\" a ON a.user_id = u.{id} ORDER BY a.created_at DESC, u.{id} DESC LIMIT $1",
+        "SELECT u.{id} AS id, u.{email} AS email, a.roles, a.email_verified_at, a.created_at, (SELECT COUNT(*) FROM \"_appstruct_auth_sessions\" s WHERE s.user_id = a.user_id AND s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP) AS active_sessions FROM {users} u JOIN \"_appstruct_auth_accounts\" a ON a.user_id = u.{id} ORDER BY a.created_at DESC, u.{id} DESC LIMIT $1 OFFSET $2",
         id = quote_ident(config::USER_ID_COLUMN),
         email = quote_ident(config::USER_EMAIL_COLUMN),
         users = quote_ident(config::USER_TABLE),
     );
     let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres, sql, [i64::try_from(limit).unwrap_or(100).into()],
+        DbBackend::Postgres, sql,
+        [i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
     )).await?;
     let data = rows.into_iter().map(admin_user_from_row).collect::<Result<Vec<_>, _>>()?;
-    Ok(Json(AdminUserList { data }))
+    Ok(Json(AdminUserList { data, meta: AdminListMeta { page, page_size, total: u64::try_from(total).unwrap_or(0) } }))
 }
 
 async fn revoke_admin_user_sessions(
@@ -143,17 +153,34 @@ async fn list_admin_jobs(
             "status must be queued, running, succeeded, or dead".to_owned(),
         ));
     }
-    let limit = input.limit.unwrap_or(50);
-    if !(1..=100).contains(&limit) {
-        return Err(ApiError::InvalidQuery("limit must be between 1 and 100".to_owned()));
-    }
+    let (page, page_size, offset) = admin_pagination(input.page, input.page_size)?;
+    let count = state.database.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT COUNT(*) AS total FROM \"_appstruct_jobs\" WHERE ($1::text IS NULL OR status::text = $1)",
+        [input.status.clone().into()],
+    )).await?.ok_or(ApiError::Internal)?;
+    let total: i64 = count.try_get("", "total")?;
     let rows = state.database.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
-        "SELECT id, queue, kind, status::text AS status, tenant_id, attempts, max_attempts, run_at, last_error, created_at, completed_at FROM \"_appstruct_jobs\" WHERE ($1::text IS NULL OR status::text = $1) ORDER BY created_at DESC, id DESC LIMIT $2",
-        [input.status.into(), i64::try_from(limit).unwrap_or(100).into()],
+        "SELECT id, queue, kind, status::text AS status, tenant_id, attempts, max_attempts, run_at, last_error, created_at, completed_at FROM \"_appstruct_jobs\" WHERE ($1::text IS NULL OR status::text = $1) ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
+        [input.status.into(), i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
     )).await?;
     let data = rows.into_iter().map(admin_job_from_row).collect::<Result<Vec<_>, _>>()?;
-    Ok(Json(AdminJobList { data }))
+    Ok(Json(AdminJobList { data, meta: AdminListMeta { page, page_size, total: u64::try_from(total).unwrap_or(0) } }))
+}
+
+fn admin_pagination(page: Option<u64>, page_size: Option<u64>) -> Result<(u64, u64, u64), ApiError> {
+    let page = page.unwrap_or(1);
+    let page_size = page_size.unwrap_or(25);
+    if !(1..=10_000).contains(&page) || !(1..=100).contains(&page_size) {
+        return Err(ApiError::InvalidQuery(
+            "page must be between 1 and 10000 and page_size between 1 and 100".to_owned(),
+        ));
+    }
+    let offset = (page - 1).checked_mul(page_size).ok_or_else(|| {
+        ApiError::InvalidQuery("pagination is too large".to_owned())
+    })?;
+    Ok((page, page_size, offset))
 }
 
 async fn retry_admin_job(

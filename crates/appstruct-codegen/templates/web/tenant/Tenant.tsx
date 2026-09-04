@@ -1,7 +1,8 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, MailPlus, Plus, Trash2, Users } from "lucide-react";
 import {
-  FormEvent,
-  ReactNode,
+  type FormEvent,
+  type ReactNode,
   createContext,
   useCallback,
   useContext,
@@ -11,13 +12,14 @@ import {
   useState,
 } from "react";
 import { Link, Outlet, useSearchParams } from "../navigation";
+import { PromptDialog } from "../components/Dialog";
 import {
   tenantApi,
   tenantStorageKey,
   type TenantInvitation,
   type TenantOrganization,
 } from "../generated/client";
-import { queryClient } from "../query";
+import { appQueryKeys } from "../query";
 import { errorMessage } from "../resource";
 
 interface TenantContextValue {
@@ -29,71 +31,98 @@ interface TenantContextValue {
 }
 
 const TenantContext = createContext<TenantContextValue | null>(null);
+const EMPTY_ORGANIZATIONS: TenantOrganization[] = [];
 
 export function TenantProvider({ children }: { children: ReactNode }) {
-  const [loading, setLoading] = useState(true);
-  const [organizations, setOrganizations] = useState<TenantOrganization[]>([]);
-  const [current, setCurrent] = useState<TenantOrganization | null>(null);
+  const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState(() => tenantApi.current() ?? "");
+  const organizationsQuery = useQuery({
+    queryKey: appQueryKeys.tenant.organizations,
+    queryFn: ({ signal }) => tenantApi.listOrganizations({ signal }),
+  });
+  const organizations = organizationsQuery.data?.data ?? EMPTY_ORGANIZATIONS;
+  const current =
+    organizations.find((item) => item.id === selectedId) ??
+    organizations[0] ??
+    null;
 
-  const loadOrganizations = useCallback(() => {
-    setLoading(true);
-    tenantApi
-      .listOrganizations()
-      .then(({ data }) => {
-        setOrganizations(data);
-        const selected =
-          data.find((item) => item.id === tenantApi.current()) ??
-          data[0] ??
-          null;
-        if (selected) tenantApi.select(selected.id);
-        else tenantApi.clear();
-        setCurrent(selected);
-      })
-      .catch(() => {
-        setOrganizations([]);
-        setCurrent(null);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const clearTenantQueries = useCallback(() => {
+    void queryClient.cancelQueries();
+    queryClient.removeQueries({
+      predicate: (query) => {
+        const root = query.queryKey[0];
+        return root !== appQueryKeys.session[0] && root !== "tenant";
+      },
+    });
+  }, [queryClient]);
+
+  const createOrganization = useMutation({
+    mutationFn: tenantApi.createOrganization,
+    onSuccess: (organization) => {
+      tenantApi.select(organization.id);
+      setSelectedId(organization.id);
+      queryClient.setQueryData(
+        appQueryKeys.tenant.organizations,
+        (previous: { data: TenantOrganization[] } | undefined) => ({
+          data: [...(previous?.data ?? []), organization].sort((a, b) =>
+            a.name.localeCompare(b.name),
+          ),
+        }),
+      );
+      clearTenantQueries();
+    },
+  });
 
   useEffect(() => {
-    loadOrganizations();
+    if (organizationsQuery.isSuccess) {
+      if (current) {
+        tenantApi.select(current.id);
+        if (current.id !== selectedId) setSelectedId(current.id);
+      } else {
+        tenantApi.clear();
+        if (selectedId) setSelectedId("");
+      }
+    }
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== tenantStorageKey) return;
-      void queryClient.cancelQueries();
-      queryClient.clear();
-      loadOrganizations();
+      setSelectedId(tenantApi.current() ?? "");
+      clearTenantQueries();
+      void queryClient.invalidateQueries({
+        queryKey: appQueryKeys.tenant.organizations,
+      });
     };
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, [loadOrganizations]);
+  }, [
+    clearTenantQueries,
+    current,
+    organizationsQuery.isSuccess,
+    queryClient,
+    selectedId,
+  ]);
 
   const value = useMemo<TenantContextValue>(
     () => ({
-      loading,
+      loading: organizationsQuery.isPending,
       organizations,
       current,
       async create(name) {
-        const organization = await tenantApi.createOrganization(name);
-        tenantApi.select(organization.id);
-        void queryClient.cancelQueries();
-        queryClient.clear();
-        setOrganizations((items) =>
-          [...items, organization].sort((a, b) => a.name.localeCompare(b.name)),
-        );
-        setCurrent(organization);
+        await createOrganization.mutateAsync(name);
       },
       select(id) {
         if (id === current?.id) return;
         tenantApi.select(id);
-        void queryClient.cancelQueries();
-        queryClient.clear();
-        setCurrent(
-          organizations.find((organization) => organization.id === id) ?? null,
-        );
+        setSelectedId(id);
+        clearTenantQueries();
       },
     }),
-    [current, loading, organizations],
+    [
+      clearTenantQueries,
+      createOrganization,
+      current,
+      organizations,
+      organizationsQuery.isPending,
+    ],
   );
 
   return (
@@ -116,83 +145,98 @@ export function RequireTenant() {
 
 export function TenantSwitcher() {
   const tenant = useTenant();
-  async function create() {
-    const name = window.prompt("Organization name")?.trim();
-    if (name) {
-      await tenant.create(name);
-    }
-  }
+  const [creating, setCreating] = useState(false);
   return (
-    <div className="tenant-switcher">
-      <Building2 size={16} aria-hidden />
-      <select
-        aria-label="Current organization"
-        value={tenant.current?.id ?? ""}
-        onChange={(event) => tenant.select(event.target.value)}
-      >
-        {tenant.organizations.map((organization) => (
-          <option key={organization.id} value={organization.id}>
-            {organization.name}
-          </option>
-        ))}
-      </select>
-      <Link
-        to="/organization"
-        title="Organization settings"
-        aria-label="Organization settings"
-      >
-        <Users size={15} />
-      </Link>
-      <button
-        type="button"
+    <>
+      <div className="tenant-switcher">
+        <Building2 size={16} aria-hidden />
+        <select
+          aria-label="Current organization"
+          value={tenant.current?.id ?? ""}
+          onChange={(event) => tenant.select(event.target.value)}
+        >
+          {tenant.organizations.map((organization) => (
+            <option key={organization.id} value={organization.id}>
+              {organization.name}
+            </option>
+          ))}
+        </select>
+        <Link
+          to="/organization"
+          title="Organization settings"
+          aria-label="Organization settings"
+        >
+          <Users size={15} />
+        </Link>
+        <button
+          type="button"
+          title="Create organization"
+          aria-label="Create organization"
+          onClick={() => setCreating(true)}
+        >
+          <Plus size={15} />
+        </button>
+      </div>
+      <PromptDialog
+        open={creating}
         title="Create organization"
-        aria-label="Create organization"
-        onClick={() => void create()}
-      >
-        <Plus size={15} />
-      </button>
-    </div>
+        label="Organization name"
+        confirmLabel="Create"
+        onCancel={() => setCreating(false)}
+        onConfirm={async (name) => {
+          await tenant.create(name);
+          setCreating(false);
+        }}
+      />
+    </>
   );
 }
 
 export function OrganizationPage() {
   const tenant = useTenant();
-  const [invitations, setInvitations] = useState<TenantInvitation[]>([]);
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   const owner = tenant.current?.role === "owner";
-
-  useEffect(() => {
-    if (owner)
-      tenantApi
-        .listInvitations()
-        .then(({ data }) => setInvitations(data))
-        .catch((reason) => setError(errorMessage(reason)));
-  }, [owner, tenant.current?.id]);
+  const queryKey = appQueryKeys.tenant.invitations(tenant.current?.id ?? "");
+  const invitationsQuery = useQuery({
+    queryKey,
+    queryFn: ({ signal }) => tenantApi.listInvitations({ signal }),
+    enabled: owner,
+  });
+  const invitations = invitationsQuery.data?.data ?? [];
+  const inviteMutation = useMutation({
+    mutationFn: (invitationEmail: string) => tenantApi.invite(invitationEmail),
+    onSuccess: (invitation) => {
+      queryClient.setQueryData(
+        queryKey,
+        (previous: { data: TenantInvitation[] } | undefined) => ({
+          data: [invitation, ...(previous?.data ?? [])],
+        }),
+      );
+      setEmail("");
+    },
+  });
+  const revokeMutation = useMutation({
+    mutationFn: tenantApi.revokeInvitation,
+    onSuccess: (_, id) => {
+      queryClient.setQueryData(
+        queryKey,
+        (previous: { data: TenantInvitation[] } | undefined) => ({
+          data: (previous?.data ?? []).filter((item) => item.id !== id),
+        }),
+      );
+    },
+  });
+  const requestError =
+    inviteMutation.error ?? revokeMutation.error ?? invitationsQuery.error;
+  const error = requestError ? errorMessage(requestError) : "";
 
   async function invite(event: FormEvent) {
     event.preventDefault();
-    setError("");
-    setBusy(true);
     try {
-      const invitation = await tenantApi.invite(email);
-      setInvitations((items) => [invitation, ...items]);
-      setEmail("");
-    } catch (reason) {
-      setError(errorMessage(reason));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function revoke(id: string) {
-    setError("");
-    try {
-      await tenantApi.revokeInvitation(id);
-      setInvitations((items) => items.filter((item) => item.id !== id));
-    } catch (reason) {
-      setError(errorMessage(reason));
+      await inviteMutation.mutateAsync(email);
+    } catch {
+      // The mutation state renders the request error.
     }
   }
 
@@ -225,7 +269,10 @@ export function OrganizationPage() {
                 placeholder="name@example.com"
                 required
               />
-              <button className="primary-button" disabled={busy}>
+              <button
+                className="primary-button"
+                disabled={inviteMutation.isPending}
+              >
                 <MailPlus size={16} /> Invite
               </button>
             </form>
@@ -257,7 +304,8 @@ export function OrganizationPage() {
                           className="icon-button danger"
                           title="Revoke invitation"
                           aria-label={`Revoke invitation for ${invitation.email}`}
-                          onClick={() => void revoke(invitation.id)}
+                          disabled={revokeMutation.isPending}
+                          onClick={() => revokeMutation.mutate(invitation.id)}
                         >
                           <Trash2 size={15} />
                         </button>

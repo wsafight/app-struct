@@ -31,12 +31,12 @@ export interface TenantInvitation {
 }
 
 export const tenantApi = {
-  listOrganizations: () => request<{ data: TenantOrganization[] }>("/api/tenant/organizations"),
+  listOrganizations: (options: RequestOptions = {}) => request<{ data: TenantOrganization[] }>("/api/tenant/organizations", options),
   createOrganization: (name: string) => request<TenantOrganization>("/api/tenant/organizations", {
     method: "POST",
     body: JSON.stringify({ name }),
   }),
-  listInvitations: () => request<{ data: TenantInvitation[] }>("/api/tenant/invitations"),
+  listInvitations: (options: RequestOptions = {}) => request<{ data: TenantInvitation[] }>("/api/tenant/invitations", options),
   invite: (email: string, role: TenantInvitation["role"] = "member") =>
     request<TenantInvitation>("/api/tenant/invitations", {
       method: "POST", body: JSON.stringify({ email, role }),

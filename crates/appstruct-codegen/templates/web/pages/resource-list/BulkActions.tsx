@@ -17,6 +17,7 @@ interface BulkActionOptions {
   actor: AccessActor | null;
   runChange: (operation: () => Promise<void>) => Promise<boolean>;
   onError: (message: string) => void;
+  confirm: (description: string, action: () => Promise<void>) => void;
 }
 
 export function useBulkActions({
@@ -27,6 +28,7 @@ export function useBulkActions({
   actor,
   runChange,
   onError,
+  confirm,
 }: BulkActionOptions) {
   const writableFields = useMemo(
     () =>
@@ -59,22 +61,21 @@ export function useBulkActions({
     );
   }
 
-  async function bulkDelete() {
-    if (
-      !selectedIds.length ||
-      !window.confirm(
-        `${trashMode ? "Permanently delete" : resource.softDelete ? "Move to trash" : "Delete"} ${selectedIds.length} selected ${resource.label} records?`,
-      )
-    )
-      return;
-    await runChange(async () => {
-      const result = await resource.api.bulkDelete({
-        ids: selectedIds,
-        expected_revisions: revisionMap(selectedIds),
-      });
-      if (result.failed.length)
-        onError(`${result.failed.length} records could not be deleted`);
-    });
+  function bulkDelete() {
+    if (!selectedIds.length) return;
+    confirm(
+      `${trashMode ? "Permanently delete" : resource.softDelete ? "Move to trash" : "Delete"} ${selectedIds.length} selected ${resource.label} records?`,
+      async () => {
+        await runChange(async () => {
+          const result = await resource.api.bulkDelete({
+            ids: selectedIds,
+            expected_revisions: revisionMap(selectedIds),
+          });
+          if (result.failed.length)
+            onError(`${result.failed.length} records could not be deleted`);
+        });
+      },
+    );
   }
 
   async function restoreSelected() {

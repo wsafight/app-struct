@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::process::{Command, ExitCode};
 
-const REQUIRED_PNPM: &str = "9.12.3";
+const REQUIRED_PNPM: &str = "11.25.0";
 
 #[derive(Debug, Serialize)]
 struct DoctorReport {

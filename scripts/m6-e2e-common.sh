@@ -123,7 +123,7 @@ m6_wait_for_dev() {
 }
 
 m6_typecheck_web() {
-  pnpm --dir "$project/generated/web" exec tsc --noEmit
+  pnpm --dir "$project/generated/web" exec tsc6 --noEmit
 }
 
 m6_run_playwright() {

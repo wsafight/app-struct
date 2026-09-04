@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 test("API health endpoints propagate request IDs", async ({ request }) => {
@@ -82,6 +83,8 @@ test("authentication screen fits a mobile viewport", async ({
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(overflow).toBe(false);
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations).toEqual([]);
   await page.screenshot({
     path: testInfo.outputPath("mobile-login.png"),
     fullPage: true,

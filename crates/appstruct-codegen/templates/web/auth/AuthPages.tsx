@@ -1,6 +1,15 @@
-import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   CopyPlus,
   KeyRound,
@@ -32,6 +41,8 @@ import {
   type ApiToken,
   type CreatedApiToken,
 } from "../generated/client";
+import { appQueryKeys } from "../query";
+import { errorMessage } from "../resource";
 import { useAuth } from "./Auth";
 
 export function LoginPage() {
@@ -338,53 +349,58 @@ export function VerifyEmailPage() {
 }
 
 export function ApiTokensPage() {
-  const [tokens, setTokens] = useState<ApiToken[]>([]);
+  const queryClient = useQueryClient();
   const [created, setCreated] = useState<CreatedApiToken | null>(null);
   const [name, setName] = useState("");
   const [expires, setExpires] = useState("");
-  const [error, setError] = useState("");
-  useEffect(() => {
-    authApi
-      .listApiTokens()
-      .then(setTokens)
-      .catch((reason) =>
-        setError(
-          reason instanceof Error ? reason.message : "Unable to load tokens",
-        ),
-      );
-  }, []);
-  async function create(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    try {
-      const token = await authApi.createApiToken(
-        name,
-        expires ? Number(expires) : undefined,
-      );
+  const tokensQuery = useQuery({
+    queryKey: appQueryKeys.tokens,
+    queryFn: ({ signal }) => authApi.listApiTokens({ signal }),
+  });
+  const tokens = tokensQuery.data ?? [];
+  const createMutation = useMutation({
+    mutationFn: ({
+      tokenName,
+      expiresInDays,
+    }: {
+      tokenName: string;
+      expiresInDays?: number;
+    }) => authApi.createApiToken(tokenName, expiresInDays),
+    onSuccess: (token) => {
       setCreated(token);
-      setTokens((items) => [token, ...items]);
+      queryClient.setQueryData(
+        appQueryKeys.tokens,
+        (items: ApiToken[] = []) => [token, ...items],
+      );
       setName("");
       setExpires("");
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Unable to create token",
-      );
-    }
-  }
-  async function revoke(id: string) {
-    try {
-      await authApi.revokeApiToken(id);
-      setTokens((items) =>
+    },
+  });
+  const revokeMutation = useMutation({
+    mutationFn: authApi.revokeApiToken,
+    onSuccess: (_, id) => {
+      queryClient.setQueryData(appQueryKeys.tokens, (items: ApiToken[] = []) =>
         items.map((token) =>
           token.id === id
             ? { ...token, revoked_at: new Date().toISOString() }
             : token,
         ),
       );
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Unable to revoke token",
-      );
+    },
+  });
+  const requestError =
+    createMutation.error ?? revokeMutation.error ?? tokensQuery.error;
+  const error = requestError ? errorMessage(requestError) : "";
+
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    try {
+      await createMutation.mutateAsync({
+        tokenName: name,
+        expiresInDays: expires ? Number(expires) : undefined,
+      });
+    } catch {
+      // The mutation state renders the request error.
     }
   }
   return (
@@ -442,7 +458,10 @@ export function ApiTokensPage() {
             onChange={(event) => setExpires(event.target.value)}
             placeholder="Days (optional)"
           />
-          <button className="primary-button">
+          <button
+            className="primary-button"
+            disabled={createMutation.isPending}
+          >
             <Plus size={16} /> Create token
           </button>
         </form>
@@ -476,7 +495,8 @@ export function ApiTokensPage() {
                       className="icon-button danger"
                       title="Revoke token"
                       aria-label={`Revoke ${token.name}`}
-                      onClick={() => void revoke(token.id)}
+                      disabled={revokeMutation.isPending}
+                      onClick={() => revokeMutation.mutate(token.id)}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -494,22 +514,15 @@ export function ApiTokensPage() {
 
 export function AdminPage() {
   const auth = useAuth();
-  const [overview, setOverview] = useState<AdminOverview | null>(null);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (!auth.user?.roles.includes("admin")) return;
-    adminApi
-      .overview()
-      .then(setOverview)
-      .catch((reason) =>
-        setError(
-          reason instanceof Error
-            ? reason.message
-            : "Unable to load admin overview",
-        ),
-      );
-  }, [auth.user]);
-  if (!auth.user?.roles.includes("admin")) return <Navigate to="/" replace />;
+  const isAdmin = auth.user?.roles.includes("admin") ?? false;
+  const overviewQuery = useQuery({
+    queryKey: appQueryKeys.admin.overview,
+    queryFn: ({ signal }) => adminApi.overview({ signal }),
+    enabled: isAdmin,
+  });
+  if (!isAdmin) return <Navigate to="/" replace />;
+  const overview: AdminOverview | null = overviewQuery.data ?? null;
+  const error = overviewQuery.error ? errorMessage(overviewQuery.error) : "";
   const metrics = overview
     ? ([
         ["Users", overview.users],
@@ -564,38 +577,44 @@ export function AdminPage() {
 
 export function AdminUsersPage() {
   const auth = useAuth();
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (!auth.user?.roles.includes("admin")) return;
-    adminApi
-      .listUsers()
-      .then(setUsers)
-      .catch((reason) =>
-        setError(
-          reason instanceof Error ? reason.message : "Unable to load users",
-        ),
+  const queryClient = useQueryClient();
+  const isAdmin = auth.user?.roles.includes("admin") ?? false;
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+  const queryKey = appQueryKeys.admin.users(page, pageSize);
+  const usersQuery = useQuery({
+    queryKey,
+    queryFn: ({ signal }) =>
+      adminApi.listUsers({ page, page_size: pageSize }, { signal }),
+    enabled: isAdmin,
+    placeholderData: (previous) => previous,
+  });
+  const revokeMutation = useMutation({
+    mutationFn: adminApi.revokeUserSessions,
+    onSuccess: (_, id) => {
+      queryClient.setQueryData(queryKey, (response: typeof usersQuery.data) =>
+        response
+          ? {
+              ...response,
+              data: response.data.map((user) =>
+                user.id === id ? { ...user, active_sessions: 0 } : user,
+              ),
+            }
+          : response,
       );
-  }, [auth.user]);
-  if (!auth.user?.roles.includes("admin"))
-    return <Navigate to="/admin" replace />;
+    },
+  });
+  if (!isAdmin) return <Navigate to="/admin" replace />;
+  const users = usersQuery.data?.data ?? [];
+  const total = usersQuery.data?.meta.total ?? 0;
+  const requestError = revokeMutation.error ?? usersQuery.error;
+  const error = requestError ? errorMessage(requestError) : "";
+
   async function revokeSessions(user: AdminUser) {
-    setBusy(user.id);
-    setError("");
     try {
-      await adminApi.revokeUserSessions(user.id);
-      setUsers((items) =>
-        items.map((item) =>
-          item.id === user.id ? { ...item, active_sessions: 0 } : item,
-        ),
-      );
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Unable to revoke sessions",
-      );
-    } finally {
-      setBusy("");
+      await revokeMutation.mutateAsync(user.id);
+    } catch {
+      // The mutation state renders the request error.
     }
   }
   return (
@@ -640,7 +659,7 @@ export function AdminUsersPage() {
                     className="icon-button"
                     title="Revoke all sessions"
                     aria-label={`Revoke all sessions for ${user.email}`}
-                    disabled={Boolean(busy)}
+                    disabled={revokeMutation.isPending}
                     onClick={() => void revokeSessions(user)}
                   >
                     <LogIn size={15} />
@@ -654,49 +673,59 @@ export function AdminUsersPage() {
           <div className="empty">No users yet</div>
         )}
       </section>
+      <AdminPagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+      />
     </main>
   );
 }
 
 export function AdminJobsPage() {
   const auth = useAuth();
-  const [jobs, setJobs] = useState<AdminJob[]>([]);
+  const queryClient = useQueryClient();
+  const isAdmin = auth.user?.roles.includes("admin") ?? false;
   const [status, setStatus] = useState<"" | AdminJobStatus>("");
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (!adminFeatures.jobs || !auth.user?.roles.includes("admin")) return;
-    setError("");
-    adminApi
-      .listJobs(status || undefined)
-      .then(setJobs)
-      .catch((reason) =>
-        setError(
-          reason instanceof Error ? reason.message : "Unable to load jobs",
-        ),
-      );
-  }, [auth.user, status]);
-  if (!auth.user?.roles.includes("admin") || !adminFeatures.jobs)
-    return <Navigate to="/admin" replace />;
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+  const queryKey = appQueryKeys.admin.jobs(status, page, pageSize);
+  const jobsQuery = useQuery({
+    queryKey,
+    queryFn: ({ signal }) =>
+      adminApi.listJobs(
+        { status: status || undefined, page, page_size: pageSize },
+        { signal },
+      ),
+    enabled: adminFeatures.jobs && isAdmin,
+    placeholderData: (previous) => previous,
+  });
+  const jobMutation = useMutation({
+    mutationFn: ({
+      id,
+      operation,
+    }: {
+      id: string;
+      operation: "retry" | "replay";
+    }) =>
+      operation === "retry" ? adminApi.retryJob(id) : adminApi.replayJob(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: appQueryKeys.admin.all });
+    },
+  });
+  if (!isAdmin || !adminFeatures.jobs) return <Navigate to="/admin" replace />;
+  const jobs: AdminJob[] = jobsQuery.data?.data ?? [];
+  const total = jobsQuery.data?.meta.total ?? 0;
+  const requestError = jobMutation.error ?? jobsQuery.error;
+  const error = requestError ? errorMessage(requestError) : "";
+  const busy = jobMutation.isPending;
+
   async function mutate(id: string, operation: "retry" | "replay") {
-    setBusy(`${operation}:${id}`);
-    setError("");
     try {
-      const job =
-        operation === "retry"
-          ? await adminApi.retryJob(id)
-          : await adminApi.replayJob(id);
-      setJobs((items) =>
-        operation === "retry"
-          ? items.map((item) => (item.id === id ? job : item))
-          : [job, ...items],
-      );
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : `Unable to ${operation} job`,
-      );
-    } finally {
-      setBusy("");
+      await jobMutation.mutateAsync({ id, operation });
+    } catch {
+      // The mutation state renders the request error.
     }
   }
   return (
@@ -713,9 +742,10 @@ export function AdminJobsPage() {
           Status
           <select
             value={status}
-            onChange={(event) =>
-              setStatus(event.target.value as "" | AdminJobStatus)
-            }
+            onChange={(event) => {
+              setStatus(event.target.value as "" | AdminJobStatus);
+              setPage(1);
+            }}
           >
             <option value="">All statuses</option>
             <option value="queued">Queued</option>
@@ -770,7 +800,7 @@ export function AdminJobsPage() {
                         className="icon-button"
                         title="Retry job"
                         aria-label={`Retry ${job.kind}`}
-                        disabled={Boolean(busy)}
+                        disabled={busy}
                         onClick={() => void mutate(job.id, "retry")}
                       >
                         <RotateCcw size={15} />
@@ -782,7 +812,7 @@ export function AdminJobsPage() {
                         className="icon-button"
                         title="Replay as a new job"
                         aria-label={`Replay ${job.kind}`}
-                        disabled={Boolean(busy)}
+                        disabled={busy}
                         onClick={() => void mutate(job.id, "replay")}
                       >
                         <CopyPlus size={15} />
@@ -798,53 +828,62 @@ export function AdminJobsPage() {
           <div className="empty">No jobs match this status</div>
         )}
       </section>
+      <AdminPagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+      />
     </main>
   );
 }
 
 export function AdminWebhooksPage() {
   const auth = useAuth();
-  const [deliveries, setDeliveries] = useState<AdminWebhookDelivery[]>([]);
+  const queryClient = useQueryClient();
+  const isAdmin = auth.user?.roles.includes("admin") ?? false;
   const [status, setStatus] = useState<"" | AdminWebhookStatus>("");
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (!adminFeatures.webhooks || !auth.user?.roles.includes("admin")) return;
-    setError("");
-    adminApi
-      .listWebhooks(status || undefined)
-      .then(setDeliveries)
-      .catch((reason) =>
-        setError(
-          reason instanceof Error
-            ? reason.message
-            : "Unable to load webhook deliveries",
-        ),
-      );
-  }, [auth.user, status]);
-  if (!auth.user?.roles.includes("admin") || !adminFeatures.webhooks)
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+  const queryKey = appQueryKeys.admin.webhooks(status, page, pageSize);
+  const webhooksQuery = useQuery({
+    queryKey,
+    queryFn: ({ signal }) =>
+      adminApi.listWebhooks(
+        { status: status || undefined, page, page_size: pageSize },
+        { signal },
+      ),
+    enabled: adminFeatures.webhooks && isAdmin,
+    placeholderData: (previous) => previous,
+  });
+  const webhookMutation = useMutation({
+    mutationFn: ({
+      id,
+      operation,
+    }: {
+      id: string;
+      operation: "retry" | "replay";
+    }) =>
+      operation === "retry"
+        ? adminApi.retryWebhook(id)
+        : adminApi.replayWebhook(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: appQueryKeys.admin.all });
+    },
+  });
+  if (!isAdmin || !adminFeatures.webhooks)
     return <Navigate to="/admin" replace />;
+  const deliveries: AdminWebhookDelivery[] = webhooksQuery.data?.data ?? [];
+  const total = webhooksQuery.data?.meta.total ?? 0;
+  const requestError = webhookMutation.error ?? webhooksQuery.error;
+  const error = requestError ? errorMessage(requestError) : "";
+  const busy = webhookMutation.isPending;
+
   async function mutate(id: string, operation: "retry" | "replay") {
-    setBusy(`${operation}:${id}`);
-    setError("");
     try {
-      const delivery =
-        operation === "retry"
-          ? await adminApi.retryWebhook(id)
-          : await adminApi.replayWebhook(id);
-      setDeliveries((items) =>
-        operation === "retry"
-          ? items.map((item) => (item.id === id ? delivery : item))
-          : [delivery, ...items],
-      );
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : `Unable to ${operation} webhook delivery`,
-      );
-    } finally {
-      setBusy("");
+      await webhookMutation.mutateAsync({ id, operation });
+    } catch {
+      // The mutation state renders the request error.
     }
   }
   return (
@@ -863,9 +902,10 @@ export function AdminWebhooksPage() {
           Status
           <select
             value={status}
-            onChange={(event) =>
-              setStatus(event.target.value as "" | AdminWebhookStatus)
-            }
+            onChange={(event) => {
+              setStatus(event.target.value as "" | AdminWebhookStatus);
+              setPage(1);
+            }}
           >
             <option value="">All statuses</option>
             <option value="pending">Pending</option>
@@ -920,7 +960,7 @@ export function AdminWebhooksPage() {
                         className="icon-button"
                         title="Retry delivery"
                         aria-label={`Retry ${delivery.event}`}
-                        disabled={Boolean(busy)}
+                        disabled={busy}
                         onClick={() => void mutate(delivery.id, "retry")}
                       >
                         <RotateCcw size={15} />
@@ -933,7 +973,7 @@ export function AdminWebhooksPage() {
                         className="icon-button"
                         title="Replay as a new delivery"
                         aria-label={`Replay ${delivery.event}`}
-                        disabled={Boolean(busy)}
+                        disabled={busy}
                         onClick={() => void mutate(delivery.id, "replay")}
                       >
                         <CopyPlus size={15} />
@@ -949,7 +989,54 @@ export function AdminWebhooksPage() {
           <div className="empty">No webhook deliveries match this status</div>
         )}
       </section>
+      <AdminPagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+      />
     </main>
+  );
+}
+
+export function AdminPagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange(page: number): void;
+}) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  return (
+    <div className="pagination">
+      <span>
+        Page {page} of {pages} ({total} total)
+      </span>
+      <div>
+        <button
+          type="button"
+          className="icon-button"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          aria-label="Previous page"
+        >
+          <ChevronLeft size={17} />
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          disabled={page >= pages}
+          onClick={() => onPageChange(page + 1)}
+          aria-label="Next page"
+        >
+          <ChevronRight size={17} />
+        </button>
+      </div>
+    </div>
   );
 }
 

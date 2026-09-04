@@ -62,12 +62,20 @@ fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             include_str!("../templates/web/controller.ts").to_owned(),
         ),
         (
+            "web/src/components/Dialog.tsx",
+            include_str!("../templates/web/Dialog.tsx").to_owned(),
+        ),
+        (
             "web/src/navigation.tsx",
             include_str!("../templates/web/navigation.tsx").to_owned(),
         ),
         (
             "web/src/framework.test.ts",
             include_str!("../templates/web/framework.test.ts").to_owned(),
+        ),
+        (
+            "web/src/interaction.test.tsx",
+            include_str!("../templates/web/interaction.test.tsx").to_owned(),
         ),
         ("web/src/app/App.tsx", app::source(ir)),
         (
@@ -211,7 +219,7 @@ fn tsconfig() -> &'static str {
 }
 
 fn vite_config() -> &'static str {
-    r#"import { defineConfig } from "vite";
+    r#"import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
@@ -220,6 +228,7 @@ export default defineConfig({
     alias: { react: new URL("./node_modules/react", import.meta.url).pathname },
   },
   server: { host: "127.0.0.1", port: 5173 },
+  test: { environment: "happy-dom" },
 });
 "#
 }

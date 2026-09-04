@@ -49,6 +49,16 @@ export interface AdminUser {
 
 export interface AdminSessionRevocation { revoked: number; }
 
+export interface AdminListQuery {
+  page?: number;
+  page_size?: number;
+}
+
+export interface AdminListResponse<T> {
+  data: T[];
+  meta: { page: number; page_size: number; total: number };
+}
+
 export type AdminJobStatus = "queued" | "running" | "succeeded" | "dead";
 
 export interface AdminJob {
@@ -80,6 +90,18 @@ export interface AdminWebhookDelivery {
   last_error: string | null;
   created_at: string;
   completed_at: string | null;
+}
+
+function adminListPath(
+  path: string,
+  query: AdminListQuery & { status?: string },
+): string {
+  const params = new URLSearchParams();
+  if (query.page) params.set("page", String(query.page));
+  if (query.page_size) params.set("page_size", String(query.page_size));
+  if (query.status) params.set("status", query.status);
+  const search = params.toString();
+  return search ? `${path}?${search}` : path;
 }
 
 "#
@@ -122,23 +144,23 @@ export const authApi = {{
   requestEmailVerification: () => request<void>("/api/auth/email/request", {{ method: "POST" }}),
   verifyEmail: (token: string) => request<void>("/api/auth/email/verify", {{ method: "POST", body: JSON.stringify({{ token }}) }}),
   startOidc: () => {{ window.location.assign(`${{API_BASE}}/api/auth/oauth/oidc/start`); }},
-  listApiTokens: () => request<ApiToken[]>("/api/auth/tokens"),
+  listApiTokens: (options: RequestOptions = {{}}) => request<ApiToken[]>("/api/auth/tokens", options),
   createApiToken: (name: string, expiresInDays?: number) => request<CreatedApiToken>("/api/auth/tokens", {{ method: "POST", body: JSON.stringify({{ name, expires_in_days: expiresInDays }}) }}),
   revokeApiToken: (id: string) => request<void>(`/api/auth/tokens/${{id}}`, {{ method: "DELETE" }}),
 }};
 
 export const adminApi = {{
-  overview: () => request<AdminOverview>("/api/admin/overview"),
-  listUsers: (limit = 50) =>
-    request<{{ data: AdminUser[] }}>(`/api/admin/users?limit=${{limit}}`).then((response) => response.data),
+  overview: (options: RequestOptions = {{}}) => request<AdminOverview>("/api/admin/overview", options),
+  listUsers: (query: AdminListQuery = {{}}, options: RequestOptions = {{}}) =>
+    request<AdminListResponse<AdminUser>>(adminListPath("/api/admin/users", query), options),
   revokeUserSessions: (id: string) =>
     request<AdminSessionRevocation>(`/api/admin/users/${{id}}/revoke-sessions`, {{ method: "POST" }}),
-  listJobs: (status?: AdminJobStatus) =>
-    request<{{ data: AdminJob[] }}>(`/api/admin/jobs${{status ? `?status=${{status}}` : ""}}`).then((response) => response.data),
+  listJobs: (query: AdminListQuery & {{ status?: AdminJobStatus }} = {{}}, options: RequestOptions = {{}}) =>
+    request<AdminListResponse<AdminJob>>(adminListPath("/api/admin/jobs", query), options),
   retryJob: (id: string) => request<AdminJob>(`/api/admin/jobs/${{id}}/retry`, {{ method: "POST" }}),
   replayJob: (id: string) => request<AdminJob>(`/api/admin/jobs/${{id}}/replay`, {{ method: "POST" }}),
-  listWebhooks: (status?: AdminWebhookStatus) =>
-    request<{{ data: AdminWebhookDelivery[] }}>(`/api/admin/webhooks${{status ? `?status=${{status}}` : ""}}`).then((response) => response.data),
+  listWebhooks: (query: AdminListQuery & {{ status?: AdminWebhookStatus }} = {{}}, options: RequestOptions = {{}}) =>
+    request<AdminListResponse<AdminWebhookDelivery>>(adminListPath("/api/admin/webhooks", query), options),
   retryWebhook: (id: string) => request<AdminWebhookDelivery>(`/api/admin/webhooks/${{id}}/retry`, {{ method: "POST" }}),
   replayWebhook: (id: string) => request<AdminWebhookDelivery>(`/api/admin/webhooks/${{id}}/replay`, {{ method: "POST" }}),
 }};

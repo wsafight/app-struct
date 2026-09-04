@@ -11,7 +11,7 @@ installer is assumed to exist during the technical preview.
 | Rust | 1.98.0 with rustfmt and Clippy | CLI and generated backend |
 | PostgreSQL | 17 recommended | migrations and generated API |
 | Node.js | 24 recommended | generated Web application |
-| pnpm | 9.12.3 | locked Web dependency installation |
+| pnpm | 11.25.0 | locked Web dependency installation |
 | Docker Compose | Current release, optional | `database.dev.mode: managed` only |
 
 The root `rust-toolchain.toml` and every generated project pin Rust 1.98.0. This was the

@@ -1,46 +1,25 @@
+import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, History } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { auditApi, type AuditEvent } from "../generated/client";
 import { auditAccess } from "../generated/resources";
+import { appQueryKeys } from "../query";
 import { errorMessage, useCanAccessRule } from "../resource";
 
 export function AuditPage() {
   const canRead = useCanAccessRule(auditAccess);
-  const [events, setEvents] = useState<AuditEvent[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const requestId = useRef(0);
   const pageSize = 25;
-
-  useEffect(() => {
-    if (!canRead) return;
-    const currentRequest = ++requestId.current;
-    let active = true;
-    setLoading(true);
-    setError("");
-    const controller = new AbortController();
-    auditApi
-      .list({ page, page_size: pageSize }, { signal: controller.signal })
-      .then((response) => {
-        if (active && currentRequest === requestId.current) {
-          setEvents(response.data);
-          setTotal(response.meta.total);
-        }
-      })
-      .catch((reason) => {
-        if (active && currentRequest === requestId.current)
-          setError(errorMessage(reason));
-      })
-      .finally(() => {
-        if (active && currentRequest === requestId.current) setLoading(false);
-      });
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [canRead, page]);
+  const query = useQuery({
+    queryKey: appQueryKeys.audit(page, pageSize),
+    queryFn: ({ signal }) =>
+      auditApi.list({ page, page_size: pageSize }, { signal }),
+    enabled: canRead,
+    placeholderData: (previous) => previous,
+  });
+  const events: AuditEvent[] = query.data?.data ?? [];
+  const total = query.data?.meta.total ?? 0;
+  const error = query.error ? errorMessage(query.error) : "";
 
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (!canRead)
@@ -77,21 +56,21 @@ export function AuditPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {query.isPending && (
               <tr>
                 <td className="empty" colSpan={5}>
                   Loading...
                 </td>
               </tr>
             )}
-            {!loading && events.length === 0 && (
+            {!query.isPending && events.length === 0 && (
               <tr>
                 <td className="empty" colSpan={5}>
                   No audit events
                 </td>
               </tr>
             )}
-            {!loading &&
+            {!query.isPending &&
               events.map((event) => <AuditRow key={event.id} event={event} />)}
           </tbody>
         </table>

@@ -9,11 +9,7 @@ pub(super) fn source(ir: &AppIr) -> String {
     include_str!("../../templates/web/AppAuthenticated.tsx")
         .replace(
             "__REACT_IMPORT__",
-            if audit {
-                "import { lazy, useState, type ComponentType } from \"react\";"
-            } else {
-                "import { useState, type ComponentType } from \"react\";"
-            },
+            "import { lazy, useState, type ComponentType } from \"react\";",
         )
         .replace(
             "__RESOURCE_IMPORT__",

@@ -48,10 +48,10 @@ fn users_path() -> Value {
             "operationId": "listAdminUsers", "tags": ["Admin"],
             "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
             "parameters": [
-                { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }
+                page_parameter(), page_size_parameter()
             ],
             "responses": {
-                "200": response("Registered users", &json!({ "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": schema_ref("AdminUser") } } })),
+                "200": response("Registered users", &admin_list_schema("AdminUser")),
                 "400": error_response(), "401": error_response(), "403": error_response()
             }
         }
@@ -153,10 +153,10 @@ fn jobs_path() -> Value {
             "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
             "parameters": [
                 { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["queued", "running", "succeeded", "dead"] } },
-                { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }
+                page_parameter(), page_size_parameter()
             ],
             "responses": {
-                "200": response("Recent jobs", &json!({ "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": schema_ref("AdminJob") } } })),
+                "200": response("Recent jobs", &admin_list_schema("AdminJob")),
                 "400": error_response(), "401": error_response(), "403": error_response(), "404": error_response()
             }
         }
@@ -235,11 +235,38 @@ fn webhooks_path() -> Value {
             "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
             "parameters": [
                 { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "delivering", "succeeded", "dead"] } },
-                { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 } }
+                page_parameter(), page_size_parameter()
             ],
             "responses": {
-                "200": response("Recent webhook deliveries", &json!({ "type": "object", "required": ["data"], "properties": { "data": { "type": "array", "items": schema_ref("AdminWebhookDelivery") } } })),
+                "200": response("Recent webhook deliveries", &admin_list_schema("AdminWebhookDelivery")),
                 "400": error_response(), "401": error_response(), "403": error_response(), "404": error_response()
+            }
+        }
+    })
+}
+
+fn page_parameter() -> Value {
+    json!({ "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 10000, "default": 1 } })
+}
+
+fn page_size_parameter() -> Value {
+    json!({ "name": "page_size", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 } })
+}
+
+fn admin_list_schema(item: &str) -> Value {
+    json!({
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties": {
+            "data": { "type": "array", "items": schema_ref(item) },
+            "meta": {
+                "type": "object",
+                "required": ["page", "page_size", "total"],
+                "properties": {
+                    "page": { "type": "integer", "minimum": 1 },
+                    "page_size": { "type": "integer", "minimum": 1, "maximum": 100 },
+                    "total": { "type": "integer", "minimum": 0 }
+                }
             }
         }
     })

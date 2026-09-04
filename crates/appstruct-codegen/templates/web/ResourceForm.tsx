@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { z } from "zod";
+import { ConfirmDialog } from "../components/Dialog";
 import type {
   AppStructRegistry,
   FieldComponentProps,
@@ -294,8 +295,18 @@ function ResourceFormEditor({
 }
 
 function UnsavedChangesGuard({ enabled }: { enabled: boolean }) {
-  useUnsavedChanges(enabled);
-  return null;
+  const blocker = useUnsavedChanges(enabled);
+  return (
+    <ConfirmDialog
+      open={blocker.blocked}
+      title="Discard unsaved changes?"
+      description="Your changes on this form will be lost."
+      confirmLabel="Discard"
+      danger
+      onCancel={blocker.reset}
+      onConfirm={blocker.proceed}
+    />
+  );
 }
 
 function FieldControl({

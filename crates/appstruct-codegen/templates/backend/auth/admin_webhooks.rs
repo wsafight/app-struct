@@ -17,7 +17,8 @@ pub(super) fn router() -> Router<AppState> {
 #[derive(Deserialize)]
 struct DeliveryQuery {
     status: Option<String>,
-    limit: Option<u64>,
+    page: Option<u64>,
+    page_size: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -37,7 +38,10 @@ struct AdminWebhookDelivery {
 }
 
 #[derive(Serialize)]
-struct DeliveryList { data: Vec<AdminWebhookDelivery> }
+struct DeliveryList { data: Vec<AdminWebhookDelivery>, meta: DeliveryListMeta }
+
+#[derive(Serialize)]
+struct DeliveryListMeta { page: u64, page_size: u64, total: u64 }
 
 async fn list_deliveries(
     State(state): State<AppState>, headers: HeaderMap, Query(input): Query<DeliveryQuery>,
@@ -51,17 +55,29 @@ async fn list_deliveries(
             "status must be pending, delivering, succeeded, or dead".to_owned(),
         ));
     }
-    let limit = input.limit.unwrap_or(50);
-    if !(1..=100).contains(&limit) {
-        return Err(ApiError::InvalidQuery("limit must be between 1 and 100".to_owned()));
+    let page = input.page.unwrap_or(1);
+    let page_size = input.page_size.unwrap_or(25);
+    if !(1..=10_000).contains(&page) || !(1..=100).contains(&page_size) {
+        return Err(ApiError::InvalidQuery(
+            "page must be between 1 and 10000 and page_size between 1 and 100".to_owned(),
+        ));
     }
+    let offset = (page - 1).checked_mul(page_size).ok_or_else(|| {
+        ApiError::InvalidQuery("pagination is too large".to_owned())
+    })?;
+    let count = state.database.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT COUNT(*) AS total FROM \"_appstruct_webhook_deliveries\" WHERE ($1::text IS NULL OR status::text = $1)",
+        [input.status.clone().into()],
+    )).await?.ok_or(ApiError::Internal)?;
+    let total: i64 = count.try_get("", "total")?;
     let rows = state.database.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
-        "SELECT id, endpoint, event, status::text AS status, tenant_id, attempts, max_attempts, next_attempt_at, response_status, last_error, created_at, completed_at FROM \"_appstruct_webhook_deliveries\" WHERE ($1::text IS NULL OR status::text = $1) ORDER BY created_at DESC, id DESC LIMIT $2",
-        [input.status.into(), i64::try_from(limit).unwrap_or(100).into()],
+        "SELECT id, endpoint, event, status::text AS status, tenant_id, attempts, max_attempts, next_attempt_at, response_status, last_error, created_at, completed_at FROM \"_appstruct_webhook_deliveries\" WHERE ($1::text IS NULL OR status::text = $1) ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
+        [input.status.into(), i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
     )).await?;
     let data = rows.into_iter().map(delivery_from_row).collect::<Result<Vec<_>, _>>()?;
-    Ok(Json(DeliveryList { data }))
+    Ok(Json(DeliveryList { data, meta: DeliveryListMeta { page, page_size, total: u64::try_from(total).unwrap_or(0) } }))
 }
 
 async fn retry_delivery(

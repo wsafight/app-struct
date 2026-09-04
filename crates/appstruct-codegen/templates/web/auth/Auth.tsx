@@ -1,15 +1,19 @@
 import {
+  type QueryClient,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
   createContext,
-  ReactNode,
+  type ReactNode,
   useContext,
   useEffect,
   useMemo,
   useRef,
-  useState,
 } from "react";
 import { Outlet, useLocation, useNavigate } from "../navigation";
 import { authApi, sessionSyncKey, type AuthUser } from "../generated/client";
-import { queryClient } from "../query";
+import { appQueryKeys } from "../query";
 import { ResourceActorProvider } from "../resource";
 
 interface AuthContextValue {
@@ -22,68 +26,67 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function clearPrivateQueries(queryClient: QueryClient) {
+  queryClient.removeQueries({
+    predicate: (query) => query.queryKey[0] !== appQueryKeys.session[0],
+  });
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const queryClient = useQueryClient();
+  const session = useQuery<AuthUser | null>({
+    queryKey: appQueryKeys.session,
+    queryFn: ({ signal }) => authApi.me({ signal }),
+    staleTime: 5 * 60_000,
+  });
+  const loading = session.isPending;
+  const user = session.data ?? null;
 
   useEffect(() => {
-    let controller = new AbortController();
-    const refreshUser = () => {
-      controller.abort();
-      controller = new AbortController();
-      const requestController = controller;
-      setLoading(true);
-      authApi
-        .me({ signal: requestController.signal })
-        .then(setUser)
-        .catch((reason) => {
-          if ((reason as { name?: string }).name !== "AbortError")
-            setUser(null);
-        })
-        .finally(() => {
-          if (!requestController.signal.aborted) setLoading(false);
-        });
-    };
     const handleUnauthorized = () => {
-      queryClient.clear();
-      setUser(null);
-      setLoading(false);
+      void queryClient.cancelQueries();
+      clearPrivateQueries(queryClient);
+      queryClient.setQueryData(appQueryKeys.session, null);
     };
     const handleStorage = (event: StorageEvent) => {
       if (event.key === sessionSyncKey) {
-        queryClient.clear();
-        refreshUser();
+        void queryClient.cancelQueries();
+        clearPrivateQueries(queryClient);
+        void queryClient.invalidateQueries({ queryKey: appQueryKeys.session });
       }
     };
     window.addEventListener("appstruct:unauthorized", handleUnauthorized);
     window.addEventListener("storage", handleStorage);
-    refreshUser();
     return () => {
-      controller.abort();
       window.removeEventListener("appstruct:unauthorized", handleUnauthorized);
       window.removeEventListener("storage", handleStorage);
     };
-  }, []);
+  }, [queryClient]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       loading,
       user,
       async login(email, password) {
-        queryClient.clear();
-        setUser(await authApi.login(email, password));
+        const nextUser = await authApi.login(email, password);
+        await queryClient.cancelQueries();
+        clearPrivateQueries(queryClient);
+        queryClient.setQueryData(appQueryKeys.session, nextUser);
       },
       async register(email, password) {
-        queryClient.clear();
-        setUser(await authApi.register(email, password));
+        const nextUser = await authApi.register(email, password);
+        await queryClient.cancelQueries();
+        clearPrivateQueries(queryClient);
+        queryClient.setQueryData(appQueryKeys.session, nextUser);
       },
       async logout() {
         await authApi.logout();
-        queryClient.clear();
-        setUser(null);
+        await queryClient.cancelQueries();
+        clearPrivateQueries(queryClient);
+        queryClient.setQueryData(appQueryKeys.session, null);
       },
     }),
-    [loading, user],
+    [loading, queryClient, user],
   );
 
   return (

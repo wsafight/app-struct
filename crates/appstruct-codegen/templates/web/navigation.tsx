@@ -21,7 +21,6 @@ import {
   type ReactNode,
   Suspense,
   useCallback,
-  useEffect,
   useMemo,
 } from "react";
 
@@ -98,11 +97,15 @@ export function useUnsavedChanges(enabled: boolean) {
     enableBeforeUnload: enabled,
     withResolver: true,
   });
-  useEffect(() => {
-    if (blocker.status !== "blocked") return;
-    if (window.confirm("Discard unsaved changes?")) blocker.proceed();
-    else blocker.reset();
-  }, [blocker]);
+  return {
+    blocked: blocker.status === "blocked",
+    proceed: () => {
+      if (blocker.status === "blocked") blocker.proceed();
+    },
+    reset: () => {
+      if (blocker.status === "blocked") blocker.reset();
+    },
+  };
 }
 
 type SearchParamsInput =
@@ -133,13 +136,14 @@ export function useSearchParams(): [
   return [searchParams, setSearchParams];
 }
 
-export interface RuntimeRoute {
-  id?: string;
-  path?: string;
+interface RuntimeRouteBase {
   component: ComponentType;
   validateSearch?: (search: Record<string, unknown>) => Record<string, unknown>;
   children?: RuntimeRoute[];
 }
+
+export type RuntimeRoute = RuntimeRouteBase &
+  ({ id: string; path?: never } | { path: string; id?: never });
 
 export interface ResourceSearch {
   page?: number;
@@ -212,7 +216,7 @@ function createRuntimeRoute(
   const route = createRoute({
     getParentRoute: () => parent,
     ...(definition.path === undefined
-      ? { id: definition.id! }
+      ? { id: definition.id }
       : { path: definition.path }),
     component: definition.component,
     ...(definition.validateSearch

@@ -38,3 +38,26 @@ export const resourceQueryKeys = {
   options: (resourceId: string, query = "") =>
     [...resourceQueryKeys.all(resourceId), "options", query] as const,
 };
+
+export const appQueryKeys = {
+  session: ["session"] as const,
+  tenant: {
+    all: ["tenant"] as const,
+    organizations: ["tenant", "organizations"] as const,
+    invitations: (organizationId: string) =>
+      ["tenant", organizationId, "invitations"] as const,
+  },
+  audit: (page: number, pageSize: number) =>
+    ["audit", { page, pageSize }] as const,
+  tokens: ["auth", "tokens"] as const,
+  admin: {
+    all: ["admin"] as const,
+    overview: ["admin", "overview"] as const,
+    users: (page: number, pageSize: number) =>
+      ["admin", "users", { page, pageSize }] as const,
+    jobs: (status: string, page: number, pageSize: number) =>
+      ["admin", "jobs", { status, page, pageSize }] as const,
+    webhooks: (status: string, page: number, pageSize: number) =>
+      ["admin", "webhooks", { status, page, pageSize }] as const,
+  },
+};

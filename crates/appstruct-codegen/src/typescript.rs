@@ -145,10 +145,12 @@ function broadcastSessionChange(): void {
   try { window.localStorage.setItem(sessionSyncKey, `${Date.now()}:${Math.random()}`); } catch { /* Storage can be unavailable in privacy modes. */ }
 }
 
-async function request<T>(path: string, init?: RequestInit, revisionKey?: string): Promise<T> {
+export function requestHeaders(init?: RequestInit, revisionKey?: string): Headers {
   const headers = new Headers(init?.headers);
-  headers.set("Content-Type", "application/json");
   const method = init?.method ?? "GET";
+  if (init?.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const tenant = currentTenant();
   if (tenant) headers.set("X-AppStruct-Tenant", tenant);
   if (method !== "GET" && method !== "HEAD") {
@@ -156,9 +158,14 @@ async function request<T>(path: string, init?: RequestInit, revisionKey?: string
     if (csrf) headers.set("X-CSRF-Token", csrf);
   }
   if (init?.method === "PATCH" || init?.method === "DELETE") {
-    const etag = resourceEtags.get(path);
+    const etag = revisionKey ? resourceEtags.get(revisionKey) : undefined;
     if (etag) headers.set("If-Match", etag);
   }
+  return headers;
+}
+
+async function request<T>(path: string, init?: RequestInit, revisionKey?: string): Promise<T> {
+  const headers = requestHeaders(init, revisionKey ?? path);
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
