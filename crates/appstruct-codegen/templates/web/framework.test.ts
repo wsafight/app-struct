@@ -145,10 +145,7 @@ describe("canAccessRule", () => {
       canAccessRule(
         {
           mode: "any",
-          rules: [
-            { mode: "role", role: "admin" },
-            { mode: "authenticated" },
-          ],
+          rules: [{ mode: "role", role: "admin" }, { mode: "authenticated" }],
         },
         actor,
       ),
@@ -157,10 +154,7 @@ describe("canAccessRule", () => {
       canAccessRule(
         {
           mode: "all",
-          rules: [
-            { mode: "role", role: "admin" },
-            { mode: "authenticated" },
-          ],
+          rules: [{ mode: "role", role: "admin" }, { mode: "authenticated" }],
         },
         actor,
       ),
@@ -201,9 +195,9 @@ describe("canAccessResource", () => {
     expect(canAccessResource(notes, "list", null)).toBe(true);
     expect(canAccessResource(notes, "read", null)).toBe(false);
     expect(canAccessResource(notes, "create", actor)).toBe(true);
-    expect(
-      canAccessResource(notes, "update", actor, { owner: "user-1" }),
-    ).toBe(true);
+    expect(canAccessResource(notes, "update", actor, { owner: "user-1" })).toBe(
+      true,
+    );
     expect(canAccessResource(notes, "delete", actor)).toBe(false);
     expect(canAccessResource(notes, "delete", admin)).toBe(true);
   });
@@ -281,9 +275,9 @@ describe("resource filters and display", () => {
     expect(
       supportsInlineEdit(field({ name: "id", kind: "uuid", primaryKey: true })),
     ).toBe(false);
-    expect(
-      supportsInlineEdit(field({ name: "notes", kind: "json" })),
-    ).toBe(false);
+    expect(supportsInlineEdit(field({ name: "notes", kind: "json" }))).toBe(
+      false,
+    );
     expect(
       supportsInlineEdit(
         field({ name: "title", kind: "string", readOnly: true }),

@@ -71,14 +71,21 @@ async fn request_password_reset(
     }
     state.auth.validate_origin(&headers)?;
     let email = normalize_email(&input.email)?;
-    state.auth.check_login_rate(&state.database, &format!("reset:{email}")).await?;
+    state.auth.consume_auth_rate_limit(&state.database, &format!("reset:{email}")).await?;
     if let Some(user_id) = find_user_id(&state, &email).await? {
         let token = random_token();
-        state.database.execute_raw(Statement::from_sql_and_values(
+        let transaction = state.database.begin().await?;
+        transaction.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "UPDATE \"_appstruct_auth_password_resets\" SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL",
+            [user_id.into()],
+        )).await?;
+        transaction.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "INSERT INTO \"_appstruct_auth_password_resets\" (token_hash, user_id, expires_at, created_at) VALUES ($1, $2, CURRENT_TIMESTAMP + INTERVAL '30 minutes', CURRENT_TIMESTAMP)",
             [token_hash(&token).into(), user_id.into()],
         )).await?;
+        transaction.commit().await?;
         let url = format!("{}/reset-password?token={token}", state.auth.config.frontend_url);
         state.auth.mail.send_password_reset(&state.database, &email, &url).await?;
     }
@@ -108,8 +115,8 @@ async fn reset_password(
     )).await?;
     transaction.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,
-        "UPDATE \"_appstruct_auth_password_resets\" SET used_at = CURRENT_TIMESTAMP WHERE token_hash = $1",
-        [token_hash(&input.token).into()],
+        "UPDATE \"_appstruct_auth_password_resets\" SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL",
+        [user_id.into()],
     )).await?;
     transaction.execute_raw(Statement::from_sql_and_values(
         DbBackend::Postgres,

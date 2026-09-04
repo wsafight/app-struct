@@ -24,6 +24,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         &ir.file.allowed_content_types,
         ir.file.max_bytes,
     );
+    let metadata = metadata_source();
     let validation = validation_source();
     render(quote! {
         use async_trait::async_trait;
@@ -36,6 +37,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         use std::{env, fmt, path::{Component, Path}, sync::Arc};
         #contract
         #state
+        #metadata
         #validation
         #provider_source
     })
@@ -117,6 +119,14 @@ fn state_source(
                 &self, object_key: &str, original_name: &str, content_type: &str,
                 content: &[u8], tenant_id: Option<uuid::Uuid>,
             ) -> Result<FileMetadata, FileError> {
+                self.put_with_connection(
+                    &self.database, object_key, original_name, content_type, content, tenant_id,
+                ).await
+            }
+            pub(crate) async fn put_with_connection<C: ConnectionTrait>(
+                &self, database: &C, object_key: &str, original_name: &str, content_type: &str,
+                content: &[u8], tenant_id: Option<uuid::Uuid>,
+            ) -> Result<FileMetadata, FileError> {
                 validate_key(object_key)?;
                 validate_name(original_name)?;
                 let size = u64::try_from(content.len()).unwrap_or(u64::MAX);
@@ -125,7 +135,7 @@ fn state_source(
                 let checksum = format!("{:x}", Sha256::digest(content));
                 self.provider.put(object_key, content).await?;
                 match insert_metadata(
-                    &self.database, object_key, original_name, content_type, size, &checksum, tenant_id,
+                    database, object_key, original_name, content_type, size, &checksum, tenant_id,
                 ).await {
                     Ok(metadata) => Ok(metadata),
                     Err(error) => {
@@ -137,8 +147,13 @@ fn state_source(
             pub async fn get(
                 &self, object_key: &str, tenant_id: Option<uuid::Uuid>,
             ) -> Result<(FileMetadata, Vec<u8>), FileError> {
+                self.get_with_connection(&self.database, object_key, tenant_id).await
+            }
+            pub(crate) async fn get_with_connection<C: ConnectionTrait>(
+                &self, database: &C, object_key: &str, tenant_id: Option<uuid::Uuid>,
+            ) -> Result<(FileMetadata, Vec<u8>), FileError> {
                 validate_key(object_key)?;
-                let metadata = load_metadata(&self.database, object_key, tenant_id).await?;
+                let metadata = load_metadata(database, object_key, tenant_id).await?;
                 let content = self.provider.get(object_key).await?;
                 if format!("{:x}", Sha256::digest(&content)) != metadata.checksum {
                     return Err(FileError::Storage("stored object checksum does not match metadata".to_owned()));
@@ -148,19 +163,29 @@ fn state_source(
             pub async fn delete(
                 &self, object_key: &str, tenant_id: Option<uuid::Uuid>,
             ) -> Result<(), FileError> {
+                self.delete_with_connection(&self.database, object_key, tenant_id).await
+            }
+            pub(crate) async fn delete_with_connection<C: ConnectionTrait>(
+                &self, database: &C, object_key: &str, tenant_id: Option<uuid::Uuid>,
+            ) -> Result<(), FileError> {
                 validate_key(object_key)?;
-                load_metadata(&self.database, object_key, tenant_id).await?;
-                self.database.execute_raw(Statement::from_sql_and_values(
+                load_metadata(database, object_key, tenant_id).await?;
+                self.provider.delete(object_key).await?;
+                database.execute_raw(Statement::from_sql_and_values(
                     DbBackend::Postgres,
                     "DELETE FROM \"_appstruct_files\" WHERE object_key = $1 AND tenant_id IS NOT DISTINCT FROM $2",
                     [object_key.to_owned().into(), tenant_id.into()],
                 )).await?;
-                self.provider.delete(object_key).await?;
                 Ok(())
             }
         }
-        async fn insert_metadata(
-            database: &DatabaseConnection, object_key: &str, original_name: &str,
+    }
+}
+
+fn metadata_source() -> proc_macro2::TokenStream {
+    quote! {
+        async fn insert_metadata<C: ConnectionTrait>(
+            database: &C, object_key: &str, original_name: &str,
             content_type: &str, size: u64, checksum: &str, tenant_id: Option<uuid::Uuid>,
         ) -> Result<FileMetadata, FileError> {
             let id = uuid::Uuid::now_v7();
@@ -171,8 +196,8 @@ fn state_source(
             )).await?.ok_or_else(|| DbErr::Custom("file metadata insert returned no row".to_owned()))?;
             row_to_metadata(row).map_err(FileError::from)
         }
-        async fn load_metadata(
-            database: &DatabaseConnection, object_key: &str, tenant_id: Option<uuid::Uuid>,
+        async fn load_metadata<C: ConnectionTrait>(
+            database: &C, object_key: &str, tenant_id: Option<uuid::Uuid>,
         ) -> Result<FileMetadata, FileError> {
             let row = database.query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
@@ -300,7 +325,7 @@ fn object_store_provider() -> proc_macro2::TokenStream {
 
 fn disabled_source() -> Result<String, CodegenError> {
     render(quote! {
-        use sea_orm::DatabaseConnection;
+        use sea_orm::{ConnectionTrait, DatabaseConnection};
         use std::{fmt, sync::Arc};
         #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)] pub struct FileMetadata;
         #[derive(Debug)] pub enum FileError { Disabled }
@@ -312,8 +337,11 @@ fn disabled_source() -> Result<String, CodegenError> {
             pub fn from_env(_database: DatabaseConnection) -> Result<Self, FileError> { Ok(Self) }
             pub fn with_provider(_database: DatabaseConnection, _provider: Arc<dyn FileProvider>, _allowed_content_types: Vec<String>) -> Self { Self }
             pub async fn put(&self, _key: &str, _name: &str, _content_type: &str, _content: &[u8], _tenant_id: Option<uuid::Uuid>) -> Result<FileMetadata, FileError> { Err(FileError::Disabled) }
+            pub(crate) async fn put_with_connection<C: ConnectionTrait>(&self, _database: &C, _key: &str, _name: &str, _content_type: &str, _content: &[u8], _tenant_id: Option<uuid::Uuid>) -> Result<FileMetadata, FileError> { Err(FileError::Disabled) }
             pub async fn get(&self, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(FileMetadata, Vec<u8>), FileError> { Err(FileError::Disabled) }
+            pub(crate) async fn get_with_connection<C: ConnectionTrait>(&self, _database: &C, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(FileMetadata, Vec<u8>), FileError> { Err(FileError::Disabled) }
             pub async fn delete(&self, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(), FileError> { Err(FileError::Disabled) }
+            pub(crate) async fn delete_with_connection<C: ConnectionTrait>(&self, _database: &C, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(), FileError> { Err(FileError::Disabled) }
         }
     })
 }

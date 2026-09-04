@@ -16,7 +16,7 @@ fn audit_contract_generates_a_compilable_backend() {
 
     let sql = artifact_text(&artifacts, "database/0001_initial.sql");
     assert!(sql.contains("_appstruct_audit_events"));
-    assert!(sql.contains("CHECK (\"operation\" IN ('create', 'update', 'delete'))"));
+    assert!(sql.contains("CHECK (\"operation\" IN ('create', 'update', 'delete', 'restore'))"));
     assert!(sql.contains("FOREIGN KEY (\"actor_id\")"));
     assert!(sql.contains("FOREIGN KEY (\"tenant_id\")"));
 
@@ -43,6 +43,11 @@ fn audit_contract_generates_a_compilable_backend() {
         openapi["paths"]["/api/audit/events"]["get"]["parameters"][2]["name"],
         "X-AppStruct-Tenant"
     );
+    assert_eq!(
+        openapi["components"]["schemas"]["AuditEvent"]["properties"]["operation"]["enum"],
+        serde_json::json!(["create", "update", "delete", "restore"])
+    );
+    assert!(client.contains("operation: \"create\" | \"update\" | \"delete\" | \"restore\""));
 
     let manifest = temporary.path().join("generated/backend/Cargo.toml");
     assert_rustfmt(&manifest);

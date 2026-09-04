@@ -51,7 +51,17 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  if (auth.user) return <Navigate to="/" replace />;
+  const redirecting = useRef(false);
+
+  useEffect(() => {
+    if (!auth.user || submitting) {
+      redirecting.current = false;
+      return;
+    }
+    if (redirecting.current) return;
+    redirecting.current = true;
+    void navigate("/", { replace: true });
+  }, [auth.user, navigate, submitting]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -78,7 +88,7 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
       const from = fromState?.pathname
         ? `${fromState.pathname}${search}${hash}`
         : "/";
-      navigate(from, { replace: true });
+      await navigate(from, { replace: true });
     } catch (reason) {
       setError(
         reason instanceof Error

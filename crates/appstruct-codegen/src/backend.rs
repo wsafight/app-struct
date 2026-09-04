@@ -284,8 +284,8 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
             ModulePlan, ModuleRuntime, ModuleStarter, RUNTIME_API_VERSION, ServiceHandle,
             ServiceHandles, ShutdownError, ShutdownFailure, ShutdownFailureKind, ShutdownReport,
             StartupError, SupervisedTaskHandle, TenantId, bulk_failure,
-            bulk_request_size_is_valid, csv_escape, csv_json_value, decode_cursor, encode_cursor,
-            parse_csv_rows, parse_revision_etag, revision_etag,
+            bulk_request_size_is_valid, csv_cell, csv_escape, csv_json_value, decode_cursor,
+            encode_cursor, parse_csv_rows, parse_revision_etag, revision_etag,
         };
         pub const GENERATED_RUNTIME_API_VERSION: u32 = #runtime_api_version;
         const _: [(); GENERATED_RUNTIME_API_VERSION as usize] =

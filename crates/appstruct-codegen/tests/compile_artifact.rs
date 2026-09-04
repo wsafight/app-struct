@@ -79,12 +79,33 @@ fn resources_publish_bulk_and_csv_contracts() {
     assert!(api.contains("bulk_request_size_is_valid"));
     assert!(api.contains("MAX_CSV_IMPORT_ROWS"));
     assert!(api.contains("CSV_EXPORT_PAGE_SIZE"));
+    assert!(api.contains("before_validate_create(&context, &mut input)"));
+    assert!(api.contains("let mut created = Vec::new()"));
+    assert!(api.contains("let savepoint = transaction.begin().await?"));
+    assert!(api.contains("savepoint.rollback().await?"));
+    assert!(api.contains("error.into_bulk_failure(&row_id)"));
+    assert!(api.contains("publish_realtime_event(&state, &context, \"project.created\", model)"));
+    assert!(api.contains("run_after_commit("));
+    assert!(api.contains("crate::HookOperation::Create"));
+    let error = artifact_text(&artifacts, "backend/src/error.rs");
+    assert!(error.contains("fn into_bulk_failure"));
+    assert!(error.contains("bulk database operation failed"));
     let openapi: Value =
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
     assert_eq!(
         openapi["components"]["schemas"]["BulkDeleteInput"]["properties"]["ids"]["maxItems"],
         100
     );
+    for method in ["patch", "delete"] {
+        let parameters = openapi["paths"]["/api/projects/_bulk"][method]["parameters"]
+            .as_array()
+            .unwrap();
+        assert!(
+            !parameters
+                .iter()
+                .any(|parameter| parameter["name"] == "If-Match")
+        );
+    }
     let client = artifact_text(&artifacts, "web/src/generated/client.ts");
     assert!(client.contains("bulkUpdate"));
     assert!(client.contains("exportCsv"));
@@ -144,6 +165,9 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(filters.contains("buildResourceFilterQuery"));
     assert!(form.contains("useForm"));
     assert!(form.contains("buildValidationSchema"));
+    assert!(form.contains("editing && canSubmit && recordQuery.isPending"));
+    assert!(form.contains("initialRecord={recordQuery.data}"));
+    assert!(form.contains("recordFormValues(initialRecord, fields)"));
     assert!(list.contains("useResourceListController"));
     let html = artifact_text(&artifacts, "web/index.html");
     let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
@@ -254,21 +278,37 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(session.contains("APPSTRUCT_ALLOWED_ORIGIN"));
     assert!(session.contains("is required when APPSTRUCT_ENV=production"));
     assert!(session.contains("validate_browser_origin"));
-    assert!(session.contains("record_login_failure"));
+    assert!(session.contains("consume_auth_rate_limit"));
+    assert!(session.contains("RETURNING attempts"));
+    assert!(session.contains("attempts > 10"));
     assert!(session.contains("clear_login_attempts"));
     assert!(session.contains(r#"DELETE FROM "_appstruct_auth_login_attempts""#));
     let handlers = artifact_text(&artifacts, "backend/src/auth/handlers.rs");
-    assert!(handlers.contains("record_login_failure"));
+    assert!(handlers.contains("consume_auth_rate_limit"));
+    assert!(!handlers.contains("record_login_failure"));
     assert!(handlers.contains("clear_login_attempts"));
+    let recovery = artifact_text(&artifacts, "backend/src/auth/recovery.rs");
+    assert!(recovery.contains("consume_auth_rate_limit"));
+    assert!(recovery.contains("reset:{email}"));
+    assert!(recovery.contains("WHERE user_id = $1 AND used_at IS NULL"));
+    let auth = artifact_text(&artifacts, "web/src/auth/Auth.tsx");
+    assert!(auth.contains("const redirecting = useRef(false)"));
+    assert!(auth.contains("pathname: location.pathname"));
+    assert!(!auth.contains("<Navigate to=\"/login\""));
     let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
     assert!(layout.contains("sidebar-account"));
     assert_eq!(layout.matches("aria-label=\"Sign out\"").count(), 2);
     assert!(layout.contains("<span>Project Hub</span>"));
+    assert!(layout.contains("await auth.logout();"));
+    assert!(!layout.contains("useNavigate"));
     assert!(artifact_text(&artifacts, "web/src/styles.css").contains(".sidebar-account"));
-    assert!(
-        artifact_text(&artifacts, "web/src/auth/AuthPages.tsx")
-            .contains("auth-brand\">Project Hub")
-    );
+    let auth_pages = artifact_text(&artifacts, "web/src/auth/AuthPages.tsx");
+    assert!(auth_pages.contains("auth-brand\">Project Hub"));
+    assert!(!auth_pages.contains("if (auth.user) return <Navigate"));
+    assert!(auth_pages.contains("if (!auth.user || submitting)"));
+    assert!(auth_pages.contains("if (redirecting.current) return;"));
+    assert!(auth_pages.contains("}, [auth.user, navigate, submitting]);"));
+    assert!(auth_pages.contains("await navigate(from, { replace: true });"));
     let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
     assert!(resources.contains(r#""mode":"role","role":"admin""#));
     assert!(resources.contains("export const auditAccess"));
@@ -345,7 +385,11 @@ fn oauth_enabled_auth_publishes_oidc_contracts() {
     let artifacts = plan(&ir).unwrap();
     let sql = artifact_text(&artifacts, "database/0001_initial.sql");
     assert!(sql.contains("_appstruct_auth_oauth_accounts"));
-    assert!(artifact_text(&artifacts, "backend/src/auth/oauth.rs").contains("start_oidc"));
+    let oauth = artifact_text(&artifacts, "backend/src/auth/oauth.rs");
+    assert!(oauth.contains("start_oidc"));
+    assert!(oauth.contains("get(\"email_verified\")"));
+    assert!(oauth.contains("!= Some(true)"));
+    assert!(oauth.contains("find_or_create_oauth_user(&state, subject, &email)"));
     assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("startOidc"));
     let openapi: Value =
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
@@ -406,6 +450,22 @@ fn m6_tenant_contract_generates_a_compilable_backend() {
             .iter()
             .any(|parameter| parameter["name"] == "X-AppStruct-Tenant")
     );
+    for (path, method) in [
+        ("/api/projects/_bulk", "patch"),
+        ("/api/projects/_bulk", "delete"),
+        ("/api/projects/_export.csv", "get"),
+        ("/api/projects/_import.csv", "post"),
+    ] {
+        let parameters = openapi["paths"][path][method]["parameters"]
+            .as_array()
+            .unwrap();
+        assert!(
+            parameters.iter().any(|parameter| {
+                parameter["name"] == "X-AppStruct-Tenant" && parameter["required"] == true
+            }),
+            "missing required tenant header for {method} {path}"
+        );
+    }
     assert!(openapi["paths"]["/api/tenant/organizations"]["post"].is_object());
     assert!(openapi["paths"]["/api/tenant/invitations"]["post"].is_object());
     assert!(openapi["paths"]["/api/tenant/invitations/{token}/accept"]["post"].is_object());

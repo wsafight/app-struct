@@ -51,6 +51,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - suite: browser
+            script: scripts/run-m5-browser-e2e.sh
+            database: appstruct_browser_e2e
+            browsers: true
+          - suite: audit
+            script: scripts/run-m6-audit-e2e.sh
+            database: appstruct_audit_e2e
+            browsers: true
+          - suite: mail
+            script: scripts/run-m6-mail-e2e.sh
+            database: appstruct_mail_e2e
+            browsers: false
+          - suite: file
+            script: scripts/run-m6-file-e2e.sh
+            database: appstruct_file_e2e
+            browsers: false
+          - suite: bulk
+            script: scripts/run-m6-bulk-e2e.sh
+            database: appstruct_bulk_e2e
+            browsers: false
           - suite: jobs
             script: scripts/run-m6-jobs-e2e.sh
             database: appstruct_e2e

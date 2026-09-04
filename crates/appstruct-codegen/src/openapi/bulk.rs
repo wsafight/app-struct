@@ -1,4 +1,4 @@
-use super::{auth, error_response, if_match_parameter, request_body, response, schema_ref, tenant};
+use super::{auth, error_response, request_body, response, schema_ref, tenant};
 use appstruct_ir::{AppIr, EntityIr};
 use serde_json::{Map, Value, json};
 
@@ -6,19 +6,21 @@ pub(super) fn add_paths(paths: &mut Map<String, Value>, _ir: &AppIr, entity: &En
     let name = &entity.rust_name;
     let base = format!("/api/{}/", entity.table_name);
     let security = auth::security(&entity.access.list);
-    let mut bulk_parameters = Vec::new();
+    let mut tenant_parameters = Vec::new();
     if entity.tenant_scoped {
-        bulk_parameters.push(tenant::parameter());
+        tenant_parameters.push(tenant::parameter());
     }
     paths.insert(format!("{base}_bulk"), json!({
-        "patch": { "operationId": format!("bulkUpdate{name}"), "tags": [name], "security": auth::security(&entity.access.update), "parameters": [if_match_parameter()], "requestBody": request_body(&format!("BulkUpdate{name}Input")), "responses": { "200": response("Bulk update result", &schema_ref("BulkResult")), "403": error_response() } },
-        "delete": { "operationId": format!("bulkDelete{name}"), "tags": [name], "security": auth::security(&entity.access.delete), "parameters": [if_match_parameter()], "requestBody": request_body("BulkDeleteInput"), "responses": { "200": response("Bulk delete result", &schema_ref("BulkResult")), "403": error_response() } }
+        "patch": { "operationId": format!("bulkUpdate{name}"), "tags": [name], "security": auth::security(&entity.access.update), "parameters": tenant_parameters.clone(), "requestBody": request_body(&format!("BulkUpdate{name}Input")), "responses": { "200": response("Bulk update result", &schema_ref("BulkResult")), "403": error_response() } },
+        "delete": { "operationId": format!("bulkDelete{name}"), "tags": [name], "security": auth::security(&entity.access.delete), "parameters": tenant_parameters.clone(), "requestBody": request_body("BulkDeleteInput"), "responses": { "200": response("Bulk delete result", &schema_ref("BulkResult")), "403": error_response() } }
     }));
-    paths.insert(format!("{base}_export.csv"), json!({ "get": { "operationId": format!("export{name}Csv"), "tags": [name], "security": security, "parameters": bulk_parameters, "responses": { "200": { "description": "CSV export", "content": { "text/csv": { "schema": { "type": "string" } } } }, "403": error_response() } } }));
-    paths.insert(format!("{base}_import.csv"), json!({ "post": { "operationId": format!("import{name}Csv"), "tags": [name], "security": auth::security(&entity.access.create), "requestBody": { "required": true, "content": { "text/csv": { "schema": { "type": "string" } } } }, "responses": { "200": response("CSV import result", &schema_ref("BulkResult")), "403": error_response() } } }));
+    paths.insert(format!("{base}_export.csv"), json!({ "get": { "operationId": format!("export{name}Csv"), "tags": [name], "security": security, "parameters": tenant_parameters.clone(), "responses": { "200": { "description": "CSV export", "content": { "text/csv": { "schema": { "type": "string" } } } }, "403": error_response() } } }));
+    paths.insert(format!("{base}_import.csv"), json!({ "post": { "operationId": format!("import{name}Csv"), "tags": [name], "security": auth::security(&entity.access.create), "parameters": tenant_parameters.clone(), "requestBody": { "required": true, "content": { "text/csv": { "schema": { "type": "string" } } } }, "responses": { "200": response("CSV import result", &schema_ref("BulkResult")), "403": error_response() } } }));
     if entity.views.soft_delete {
-        paths.insert(format!("{base}_trash"), json!({ "get": { "operationId": format!("list{name}Trash"), "tags": [name], "security": security, "parameters": trash_parameters(), "responses": { "200": response("Trashed resources", &schema_ref(&format!("{name}ListResponse"))), "403": error_response() } } }));
-        paths.insert(format!("{base}_restore"), json!({ "post": { "operationId": format!("restore{name}"), "tags": [name], "security": auth::security(&entity.access.update), "requestBody": request_body("BulkDeleteInput"), "responses": { "200": response("Restore result", &schema_ref("BulkResult")), "403": error_response() } } }));
+        let mut parameters = trash_parameters();
+        parameters.extend(tenant_parameters.clone());
+        paths.insert(format!("{base}_trash"), json!({ "get": { "operationId": format!("list{name}Trash"), "tags": [name], "security": security, "parameters": parameters, "responses": { "200": response("Trashed resources", &schema_ref(&format!("{name}ListResponse"))), "403": error_response() } } }));
+        paths.insert(format!("{base}_restore"), json!({ "post": { "operationId": format!("restore{name}"), "tags": [name], "security": auth::security(&entity.access.update), "parameters": tenant_parameters, "requestBody": request_body("BulkDeleteInput"), "responses": { "200": response("Restore result", &schema_ref("BulkResult")), "403": error_response() } } }));
     }
 }
 

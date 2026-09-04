@@ -56,6 +56,61 @@ impl From<DbErr> for ApiError {
     }
 }
 
+impl ApiError {
+    pub(crate) fn into_bulk_failure(self, id: &str) -> appstruct_runtime::BulkFailure {
+        let (code, message) = match self {
+            Self::InvalidId => ("invalid_id", "The resource identifier is invalid".to_owned()),
+            Self::InvalidQuery(message) => ("invalid_query", message),
+            Self::InvalidTenant => ("invalid_tenant", "A valid tenant is required".to_owned()),
+            Self::InvalidPrecondition => (
+                "invalid_precondition",
+                "The record precondition is invalid".to_owned(),
+            ),
+            Self::PreconditionRequired => (
+                "precondition_required",
+                "An expected revision is required".to_owned(),
+            ),
+            Self::ConcurrentModification => (
+                "concurrent_modification",
+                "The record changed after it was loaded".to_owned(),
+            ),
+            Self::InvalidCredentialsInput => ("invalid_input", "The input is invalid".to_owned()),
+            Self::InvalidCsrf => ("forbidden", "The request could not be verified".to_owned()),
+            Self::InvalidResetToken
+            | Self::InvalidInvitationToken
+            | Self::InvalidEmailVerificationToken
+            | Self::InvalidOAuthState => ("invalid_input", "The input is invalid".to_owned()),
+            Self::OAuthConfiguration | Self::OAuthProvider | Self::Internal => {
+                tracing::error!(id, "bulk item failed with an internal service error");
+                ("internal_error", "The record could not be processed".to_owned())
+            }
+            Self::Unauthorized => ("unauthorized", "Authentication is required".to_owned()),
+            Self::TooManyRequests => ("rate_limited", "Too many attempts".to_owned()),
+            Self::Forbidden => ("forbidden", "The operation is not allowed".to_owned()),
+            Self::NotFound => ("not_found", "The record was not found".to_owned()),
+            Self::Conflict(message) => ("conflict", message),
+            Self::Validation(fields) => {
+                let message = fields
+                    .into_iter()
+                    .map(|field| format!("{}: {}", field.field, field.message))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                ("validation_failed", message)
+            }
+            Self::Database(error) => {
+                let detail = error.to_string();
+                if detail.contains("duplicate key") || detail.contains("violates unique constraint") {
+                    ("conflict", "The record conflicts with existing data".to_owned())
+                } else {
+                    tracing::error!(id, error = %detail, "bulk database operation failed");
+                    ("database_error", "The record could not be persisted".to_owned())
+                }
+            }
+        };
+        appstruct_runtime::bulk_failure(id, code, message)
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code, message, fields) = match self {

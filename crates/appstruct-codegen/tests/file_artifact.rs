@@ -46,17 +46,21 @@ fn assert_provider(
     assert!(file.contains("file key must be a safe relative path"));
     assert!(file.contains("stored object checksum does not match metadata"));
     assert!(file.contains("tenant_id IS NOT DISTINCT FROM"));
+    assert!(file.contains("put_with_connection<C: ConnectionTrait>"));
+    assert!(file.contains("load_metadata<C: ConnectionTrait>"));
     let delete = &file[file.find("pub async fn delete").expect("delete handler")..];
     let metadata = delete.find("DELETE FROM").expect("metadata delete");
     let storage = delete.find("self.provider.delete").expect("storage delete");
     assert!(
-        metadata < storage,
-        "file delete must drop metadata before storage"
+        storage < metadata,
+        "file delete must remove storage before metadata so failures remain retryable"
     );
     let extensions = artifact_text(&artifacts, "backend/src/extensions.rs");
     assert!(extensions.contains("pub async fn put_file"));
     assert!(extensions.contains("pub async fn get_file"));
     assert!(extensions.contains("pub async fn delete_file"));
+    assert!(extensions.contains("put_with_connection("));
+    assert!(extensions.contains("delete_with_connection(self"));
     let manifest = artifact_text(&artifacts, "backend/Cargo.toml");
     assert!(manifest.contains("object_store"));
     assert_eq!(

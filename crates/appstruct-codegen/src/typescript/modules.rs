@@ -57,7 +57,7 @@ pub(super) fn audit_source() -> String {
   id: string;
   entity: string;
   record_id: string;
-  operation: "create" | "update" | "delete";
+  operation: "create" | "update" | "delete" | "restore";
   actor_id: string | null;
   tenant_id: string | null;
   before: unknown | null;

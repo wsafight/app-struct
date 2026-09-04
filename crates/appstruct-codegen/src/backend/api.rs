@@ -56,7 +56,6 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         entity,
         &bulk::SourceContext {
             module: &module,
-            parse_id: &parse_id,
             primary: &primary,
             hooks: &hooks,
             policy: &policy,

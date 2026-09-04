@@ -949,7 +949,9 @@ size、SHA-256、nullable tenant 和创建时间；Tenant 外键使用 `SET NULL
 对象写入使用 create-only，不覆盖既有 key；元数据插入失败时 best-effort 删除刚写对象。路径验证拒绝
 absolute、反斜杠、NUL、`.`/`..`、空片段和非规范路径。文本、JSON 和嗅探到的二进制内容必须与声明
 MIME 相符；读取重新校验 checksum。get/delete SQL 使用 `tenant_id IS NOT DISTINCT FROM` 绑定租户，
-跨租户统一表现为元数据不存在。
+跨租户统一表现为元数据不存在。`RequestContext` 将自身的 `ConnectionTrait` 传给 metadata 操作，使 hook
+内的 metadata 写入参与当前业务事务；直接调用 `FileState` 时仍使用其默认连接。删除先调用幂等的对象
+存储 delete，再删除 metadata，因此 metadata 删除失败后可重试，而不会先丢失对象的追踪记录。
 
 ### 13.3 Repository
 

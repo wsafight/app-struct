@@ -1,0 +1,43 @@
+domain: bulk
+
+entities:
+  Entry:
+    label: Entry
+    table: entries
+    tenant: true
+    audit: true
+    soft_delete: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      code:
+        type: string
+        required: true
+        unique: true
+        min_length: 2
+        max_length: 40
+        sortable: true
+      title:
+        type: string
+        required: true
+        max_length: 120
+      secret:
+        type: string
+        required: true
+        max_length: 200
+        access:
+          read: { role: admin }
+      deleted_at:
+        type: datetime
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { authenticated: true }
+      read: { role: admin }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { authenticated: true }

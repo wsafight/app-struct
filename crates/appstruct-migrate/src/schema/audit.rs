@@ -18,6 +18,7 @@ pub(super) fn tables() -> Vec<TableSchema> {
                         "create".to_owned(),
                         "update".to_owned(),
                         "delete".to_owned(),
+                        "restore".to_owned(),
                     ],
                 },
                 false,

@@ -137,15 +137,19 @@ fn methods() -> TokenStream {
                 content_type: &str, content: &[u8],
             ) -> Result<crate::FileMetadata, crate::FileError> {
                 self.file.ok_or(crate::FileError::Disabled)?
-                    .put(object_key, original_name, content_type, content, self.tenant).await
+                    .put_with_connection(
+                        self, object_key, original_name, content_type, content, self.tenant,
+                    ).await
             }
             pub async fn get_file(
                 &self, object_key: &str,
             ) -> Result<(crate::FileMetadata, Vec<u8>), crate::FileError> {
-                self.file.ok_or(crate::FileError::Disabled)?.get(object_key, self.tenant).await
+                self.file.ok_or(crate::FileError::Disabled)?
+                    .get_with_connection(self, object_key, self.tenant).await
             }
             pub async fn delete_file(&self, object_key: &str) -> Result<(), crate::FileError> {
-                self.file.ok_or(crate::FileError::Disabled)?.delete(object_key, self.tenant).await
+                self.file.ok_or(crate::FileError::Disabled)?
+                    .delete_with_connection(self, object_key, self.tenant).await
             }
         }
     }

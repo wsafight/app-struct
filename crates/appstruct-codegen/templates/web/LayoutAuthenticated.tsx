@@ -1,5 +1,5 @@
 import { Boxes, LogOut__HISTORY_ICON__ } from "lucide-react";
-import { NavLink, Outlet, useNavigate } from "../navigation";
+import { NavLink, Outlet } from "../navigation";
 import { useAuth } from "../auth/Auth";
 __AUDIT_RESOURCE_IMPORT__
 import { type ResourceDefinition, __RESOURCE_HOOKS__ } from "../resource";
@@ -7,13 +7,11 @@ __TENANT_IMPORT__
 
 export function Layout({ resources, pages }: { resources: ResourceDefinition[]; pages: readonly { name: string; label: string; path: string }[] }) {
   const auth = useAuth();
-  const navigate = useNavigate();
   const visibleResources = useVisibleResources(resources);
   const isAdmin = auth.user?.roles.includes("admin") ?? false;
 __AUDIT_ACCESS__
   async function logout() {
     await auth.logout();
-    navigate("/login", { replace: true });
   }
   return <div className="shell">
     <aside className="sidebar">

@@ -7,13 +7,7 @@ import {
   RefreshCw,
   Save,
 } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ComponentType,
-} from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { z } from "zod";
 import type {
   AppStructRegistry,
@@ -49,6 +43,62 @@ export function ResourceForm({
   registry?: AppStructRegistry;
 }) {
   const { id } = useParams();
+  const editing = id !== undefined;
+  const canSubmit = useCanAccess(resource, editing ? "update" : "create");
+  const recordQuery = useQuery({
+    queryKey: resourceQueryKeys.detail(resource.id, id ?? ""),
+    queryFn: ({ signal }) => resource.api.get(id!, { signal }),
+    enabled: Boolean(editing && id && canSubmit),
+  });
+  const routeKey = `${resource.id}:${id ?? "new"}`;
+
+  if (editing && canSubmit && recordQuery.isPending) {
+    return (
+      <main className="page form-page">
+        <div className="page-heading">
+          <div>
+            <Link className="back-link" to={`/${resource.slug}`}>
+              <ArrowLeft size={16} /> {resource.label}
+            </Link>
+            <h1>Edit {resource.label}</h1>
+          </div>
+        </div>
+        <div className="form-frame">Loading...</div>
+      </main>
+    );
+  }
+
+  return (
+    <ResourceFormEditor
+      key={`${routeKey}:${recordQuery.data ? "loaded" : "empty"}`}
+      resource={resource}
+      resources={resources}
+      registry={registry}
+      id={id}
+      initialRecord={recordQuery.data}
+      recordError={recordQuery.error}
+      refetchRecord={async () => (await recordQuery.refetch()).data}
+    />
+  );
+}
+
+function ResourceFormEditor({
+  resource,
+  resources,
+  registry,
+  id,
+  initialRecord,
+  recordError,
+  refetchRecord,
+}: {
+  resource: ResourceDefinition;
+  resources: ResourceDefinition[];
+  registry?: AppStructRegistry;
+  id?: string;
+  initialRecord?: ResourceRecord;
+  recordError: unknown;
+  refetchRecord(): Promise<ResourceRecord | undefined>;
+}) {
   const navigate = useNavigate();
   const actor = useResourceActor();
   const queryClient = useQueryClient();
@@ -56,7 +106,6 @@ export function ResourceForm({
   const canSubmit = useCanAccess(resource, editing ? "update" : "create");
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [conflict, setConflict] = useState(false);
-  const initializedRecord = useRef("");
   const fields = useMemo(
     () =>
       resource.fields.filter(
@@ -67,17 +116,17 @@ export function ResourceForm({
       ),
     [actor, resource],
   );
-  const defaultValues = useMemo(() => emptyFormValues(fields), [fields]);
+  const defaultValues = useMemo(
+    () =>
+      initialRecord
+        ? recordFormValues(initialRecord, fields)
+        : emptyFormValues(fields),
+    [fields, initialRecord],
+  );
   const validationSchema = useMemo(
     () => buildValidationSchema(fields),
     [fields],
   );
-
-  const recordQuery = useQuery({
-    queryKey: resourceQueryKeys.detail(resource.id, id ?? ""),
-    queryFn: ({ signal }) => resource.api.get(id!, { signal }),
-    enabled: Boolean(editing && id && canSubmit),
-  });
 
   const saveMutation = useMutation({
     mutationFn: (input: ResourceInput) =>
@@ -127,19 +176,6 @@ export function ResourceForm({
     },
   });
 
-  useEffect(() => {
-    const routeKey = `${resource.id}:${id ?? "new"}`;
-    if (editing) {
-      if (recordQuery.data && initializedRecord.current !== routeKey) {
-        form.reset(recordFormValues(recordQuery.data, fields));
-        initializedRecord.current = routeKey;
-      }
-    } else if (initializedRecord.current !== routeKey) {
-      form.reset(defaultValues);
-      initializedRecord.current = routeKey;
-    }
-  }, [defaultValues, editing, fields, form, id, recordQuery.data, resource.id]);
-
   if (!canSubmit) {
     return (
       <main className="page">
@@ -153,8 +189,8 @@ export function ResourceForm({
   async function reloadRecord() {
     setConflict(false);
     saveMutation.reset();
-    const result = await recordQuery.refetch();
-    if (result.data) form.reset(recordFormValues(result.data, fields));
+    const record = await refetchRecord();
+    if (record) form.reset(recordFormValues(record, fields));
   }
 
   function clearServerError(field: string) {
@@ -168,8 +204,8 @@ export function ResourceForm({
 
   const pageError = saveMutation.error
     ? errorMessage(saveMutation.error)
-    : recordQuery.error
-      ? errorMessage(recordQuery.error)
+    : recordError
+      ? errorMessage(recordError)
       : "";
   return (
     <main className="page form-page">
@@ -197,68 +233,62 @@ export function ResourceForm({
           )}
         </div>
       )}
-      {recordQuery.isPending && editing ? (
-        <div className="form-frame">Loading...</div>
-      ) : (
-        <form
-          className="form-frame"
-          onSubmit={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void form.handleSubmit();
-          }}
+      <form
+        className="form-frame"
+        onSubmit={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void form.handleSubmit();
+        }}
+      >
+        <form.Subscribe
+          selector={(state) => [state.isDirty, state.isSubmitting] as const}
         >
+          {([dirty, submitting]) => (
+            <UnsavedChangesGuard enabled={dirty && !submitting} />
+          )}
+        </form.Subscribe>
+        <div className="form-grid">
+          {fields.map((field) => (
+            <form.Field key={field.name} name={field.name}>
+              {(formField) => (
+                <FieldControl
+                  field={field}
+                  resources={resources}
+                  registry={registry}
+                  value={formField.state.value}
+                  error={
+                    serverErrors[field.name] ??
+                    validationMessage(formField.state.meta.errors)
+                  }
+                  onBlur={formField.handleBlur}
+                  onChange={(value) => {
+                    clearServerError(field.name);
+                    formField.handleChange(value);
+                  }}
+                />
+              )}
+            </form.Field>
+          ))}
+        </div>
+        <div className="form-actions">
+          <Link className="secondary-button" to={`/${resource.slug}`}>
+            Cancel
+          </Link>
           <form.Subscribe
-            selector={(state) => [state.isDirty, state.isSubmitting] as const}
+            selector={(state) => [state.canSubmit, state.isSubmitting] as const}
           >
-            {([dirty, submitting]) => (
-              <UnsavedChangesGuard enabled={dirty && !submitting} />
+            {([ready, submitting]) => (
+              <button
+                className="primary-button"
+                disabled={!ready || submitting}
+              >
+                <Save size={17} /> {submitting ? "Saving..." : "Save"}
+              </button>
             )}
           </form.Subscribe>
-          <div className="form-grid">
-            {fields.map((field) => (
-              <form.Field key={field.name} name={field.name}>
-                {(formField) => (
-                  <FieldControl
-                    field={field}
-                    resources={resources}
-                    registry={registry}
-                    value={formField.state.value}
-                    error={
-                      serverErrors[field.name] ??
-                      validationMessage(formField.state.meta.errors)
-                    }
-                    onBlur={formField.handleBlur}
-                    onChange={(value) => {
-                      clearServerError(field.name);
-                      formField.handleChange(value);
-                    }}
-                  />
-                )}
-              </form.Field>
-            ))}
-          </div>
-          <div className="form-actions">
-            <Link className="secondary-button" to={`/${resource.slug}`}>
-              Cancel
-            </Link>
-            <form.Subscribe
-              selector={(state) =>
-                [state.canSubmit, state.isSubmitting] as const
-              }
-            >
-              {([ready, submitting]) => (
-                <button
-                  className="primary-button"
-                  disabled={!ready || submitting}
-                >
-                  <Save size={17} /> {submitting ? "Saving..." : "Save"}
-                </button>
-              )}
-            </form.Subscribe>
-          </div>
-        </form>
-      )}
+        </div>
+      </form>
     </main>
   );
 }

@@ -35,15 +35,25 @@ pub(super) fn export(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                     "CSV export is limited to {MAX_CSV_EXPORT_ROWS} rows"
                 )));
             }
-            let mut csv = String::with_capacity(8_192); csv.push_str(&[#(csv_escape(#headers)),*].join(",")); csv.push('\n');
+            let columns = [#((#headers, #fields)),*]
+                .into_iter()
+                .filter(|(_, field)| field_read_allowed(&context, field))
+                .collect::<Vec<_>>();
+            let mut csv = String::with_capacity(8_192);
+            csv.push_str(&columns.iter().map(|(name, _)| csv_escape(name)).collect::<Vec<_>>().join(","));
+            csv.push('\n');
             let mut offset = 0;
             while offset < total {
                 let models = select.clone().offset(offset).limit(CSV_EXPORT_PAGE_SIZE).all(&state.database).await?;
                 for model in models {
-                    let value = serde_json::to_value(model).map_err(|_| ApiError::Internal)?;
+                    let value = redact_model(&context, model)?;
                     let object = value.as_object().ok_or(ApiError::Internal)?;
-                    let row = [#(object.get(#fields).map(std::string::ToString::to_string).unwrap_or_default()),*];
-                    csv.push_str(&row.iter().map(|value| csv_escape(value.trim_matches('"'))).collect::<Vec<_>>().join(",")); csv.push('\n');
+                    let row = columns
+                        .iter()
+                        .map(|(_, field)| object.get(*field).map(csv_cell).unwrap_or_default())
+                        .collect::<Vec<_>>();
+                    csv.push_str(&row.iter().map(|value| csv_escape(value)).collect::<Vec<_>>().join(","));
+                    csv.push('\n');
                 }
                 offset += CSV_EXPORT_PAGE_SIZE;
             }
@@ -82,6 +92,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
         quote! { #name => { object.insert(#name.to_owned(), csv_json_value(raw, #kind)); } }
     });
     let audit = super::audit_event(*audit_enabled, entity_id, primary, "create");
+    let create_event = format!("{module}.created");
     quote! {
         async fn import_csv(State(state): State<AppState>, headers: HeaderMap, body: String) -> Result<Json<BulkResult>, ApiError> {
             let context = state.mutation_context(&headers).await?;
@@ -95,18 +106,62 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
             if header_row.iter().map(String::as_str).any(|name| !expected.contains(&name)) { return Err(ApiError::InvalidQuery("CSV contains an unknown column".to_owned())); }
             let actor = context.actor().cloned(); let tenant = context.tenant(); let transaction = state.database.begin().await?;
             let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };
+            let mut created = Vec::new();
             for (index, row) in rows.iter().skip(1).enumerate() {
+                let row_id = index.to_string();
+                if row.len() != header_row.len() {
+                    result.failed.push(bulk_failure(&row_id, "invalid_row", "CSV row has a different number of columns than the header"));
+                    continue;
+                }
                 let mut object = serde_json::Map::new();
                 for (column, raw) in header_row.iter().zip(row.iter()) { match column.as_str() { #(#field_match)* _ => {} } }
-                let mut input: CreateInput = match serde_json::from_value(serde_json::Value::Object(object)) { Ok(input) => input, Err(error) => { result.failed.push(bulk_failure(&index.to_string(), "invalid_row", error.to_string())); continue; } };
-                authorize_create_fields(&context, &input)?; validate_create(&input)?;
-                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant);
-                if !(#create_allowed) || !state.extensions.#policy().can_create(&context, &input).await? { result.failed.push(bulk_failure(&index.to_string(), "forbidden", "record creation is not allowed")); continue; }
-                state.extensions.#hooks().before_create(&context, &mut input).await?;
-                let active = #module::ActiveModel { #(#create_values,)* #active_default }; let model = active.insert(&transaction).await?;
-                state.extensions.#hooks().after_create(&context, &model).await?; #audit result.succeeded.push(index.to_string());
+                let mut input: CreateInput = match serde_json::from_value(serde_json::Value::Object(object)) { Ok(input) => input, Err(error) => { result.failed.push(bulk_failure(&row_id, "invalid_row", error.to_string())); continue; } };
+                let preparation: Result<(), ApiError> = async {
+                    authorize_create_fields(&context, &input)?;
+                    state.extensions.#hooks().before_validate_create(&context, &mut input).await?;
+                    validate_create(&input)?;
+                    Ok(())
+                }.await;
+                if let Err(error) = preparation {
+                    result.failed.push(error.into_bulk_failure(&row_id));
+                    continue;
+                }
+                let savepoint = transaction.begin().await?;
+                let outcome: Result<#module::Model, ApiError> = async {
+                    let context = RequestContext::transaction_with_file(&savepoint, &state.mail, &state.file, &state.realtime, actor.clone(), tenant);
+                    state.extensions.#hooks().before_create(&context, &mut input).await?;
+                    authorize_create_fields(&context, &input)?;
+                    validate_create(&input)?;
+                    if !(#create_allowed) {
+                        return Err(access_denied(&context));
+                    }
+                    if !state.extensions.#policy().can_create(&context, &input).await? {
+                        return Err(ApiError::Forbidden);
+                    }
+                    let active = #module::ActiveModel { #(#create_values,)* #active_default };
+                    let model = active.insert(&savepoint).await?;
+                    state.extensions.#hooks().after_create(&context, &model).await?;
+                    #audit
+                    Ok(model)
+                }.await;
+                match outcome {
+                    Ok(model) => {
+                        savepoint.commit().await?;
+                        result.succeeded.push(row_id);
+                        created.push(model);
+                    }
+                    Err(error) => {
+                        savepoint.rollback().await?;
+                        result.failed.push(error.into_bulk_failure(&row_id));
+                    }
+                }
             }
-            transaction.commit().await?; Ok(Json(result))
+            transaction.commit().await?;
+            for model in &created {
+                publish_realtime_event(&state, &context, #create_event, model);
+                run_after_commit(&state, crate::HookOperation::Create, model, actor.clone(), tenant).await;
+            }
+            Ok(Json(result))
         }
     }
 }

@@ -137,6 +137,10 @@ fn field_access_is_enforced_and_published_to_contracts() {
     assert!(api.contains("redact_model"));
     assert!(api.contains("authorize_create_fields"));
     assert!(api.contains("actor.has_role(\"admin\")"));
+    assert!(api.contains("field_read_allowed(&context, field)"));
+    assert!(api.contains("let value = redact_model(&context, model)?"));
+    assert!(api.contains("object.get(*field).map(csv_cell)"));
+    assert!(!api.contains("trim_matches('\\\"')"));
 
     let client = artifact_text(&artifacts, "web/src/generated/client.ts");
     assert!(client.contains("status?: string"));
@@ -163,4 +167,60 @@ fn field_access_is_enforced_and_published_to_contracts() {
         "{}",
         String::from_utf8_lossy(&checked.stderr)
     );
+}
+
+#[test]
+fn bulk_mutations_use_read_access_scope_and_fallible_ids() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
+    let mut ir = appstruct_compiler::compile_project(&fixture).unwrap();
+    let project = ir
+        .entities
+        .iter_mut()
+        .find(|entity| entity.rust_name == "Project")
+        .unwrap();
+    project.access.list = appstruct_ir::AccessRuleIr::Public;
+    project.access.read = appstruct_ir::AccessRuleIr::Role {
+        role: "bulk_reader".to_owned(),
+    };
+
+    let artifacts = appstruct_codegen::plan(&ir).unwrap();
+    let api = artifact_text(&artifacts, "backend/src/api/project.rs");
+    let update = &api[api.find("async fn bulk_update").unwrap()..];
+    let update = &update[..update.find("async fn bulk_delete").unwrap()];
+    assert!(update.contains("actor.has_role(\"bulk_reader\")"));
+    assert!(update.contains("Uuid::parse_str(id_text)"));
+    assert!(update.contains("error.into_bulk_failure(id_text)"));
+    assert!(update.contains("let savepoint = transaction.begin().await?"));
+    assert!(update.contains("savepoint.rollback().await?"));
+    assert!(update.contains("before_validate_update(&context, &mut input.patch)"));
+}
+
+#[test]
+fn tenant_soft_delete_openapi_requires_tenant_for_trash_and_restore() {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");
+    let mut ir = appstruct_compiler::compile_project(&fixture).unwrap();
+    ir.entities
+        .iter_mut()
+        .find(|entity| entity.rust_name == "Project")
+        .unwrap()
+        .views
+        .soft_delete = true;
+
+    let artifacts = appstruct_codegen::plan(&ir).unwrap();
+    let openapi: Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    for (path, method) in [
+        ("/api/projects/_trash", "get"),
+        ("/api/projects/_restore", "post"),
+    ] {
+        assert!(
+            openapi["paths"][path][method]["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|parameter| parameter["name"] == "X-AppStruct-Tenant"
+                    && parameter["required"] == true)
+        );
+    }
 }

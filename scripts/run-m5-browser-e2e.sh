@@ -52,6 +52,29 @@ for ((attempt = 0; attempt < startup_timeout; attempt += 1)); do
     PLAYWRIGHT_API_URL="http://127.0.0.1:$api_port" \
       PLAYWRIGHT_BASE_URL="http://127.0.0.1:$web_port" \
       pnpm test:e2e
+
+    missing_email="missing-$(date +%s)-$RANDOM@example.test"
+    for attempt in {1..10}; do
+      status="$(curl --silent --show-error -o "$temporary_root/reset-$attempt.json" \
+        -w '%{http_code}' -H "Content-Type: application/json" \
+        -d "{\"email\":\"$missing_email\"}" \
+        "http://127.0.0.1:$api_port/api/auth/password/request")"
+      if [[ "$status" != "204" ]]; then
+        echo "expected password reset attempt $attempt to return HTTP 204, got $status" >&2
+        cat "$temporary_root/reset-$attempt.json" >&2
+        exit 1
+      fi
+    done
+    status="$(curl --silent --show-error -o "$temporary_root/reset-limited.json" \
+      -w '%{http_code}' -H "Content-Type: application/json" \
+      -d "{\"email\":\"$missing_email\"}" \
+      "http://127.0.0.1:$api_port/api/auth/password/request")"
+    if [[ "$status" != "429" ]]; then
+      echo "expected password reset attempt 11 to return HTTP 429, got $status" >&2
+      cat "$temporary_root/reset-limited.json" >&2
+      exit 1
+    fi
+    jq -e '.error.code == "RATE_LIMITED"' "$temporary_root/reset-limited.json" >/dev/null
     exit 0
   fi
   if ! kill -0 "$dev_pid" 2>/dev/null; then

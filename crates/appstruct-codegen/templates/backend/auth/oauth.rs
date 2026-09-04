@@ -78,6 +78,9 @@ async fn oidc_callback(
     let claims: serde_json::Value = userinfo_response.json().await.map_err(|_| ApiError::OAuthProvider)?;
     let subject = claims.get("sub").and_then(serde_json::Value::as_str)
         .ok_or(ApiError::OAuthProvider)?;
+    if claims.get("email_verified").and_then(serde_json::Value::as_bool) != Some(true) {
+        return Err(ApiError::OAuthProvider);
+    }
     let email = normalize_email(
         claims.get("email").and_then(serde_json::Value::as_str).ok_or(ApiError::OAuthProvider)?,
     )?;

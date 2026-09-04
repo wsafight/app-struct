@@ -231,38 +231,14 @@ impl AuthState {
         Ok(())
     }
 
-    pub(crate) async fn check_login_rate<C: ConnectionTrait>(
+    pub(crate) async fn consume_auth_rate_limit<C: ConnectionTrait>(
         &self,
         database: &C,
         key: &str,
     ) -> Result<(), ApiError> {
         cleanup_login_attempts(database).await?;
-        let Some(row) = database
+        let row = database
             .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                r#"SELECT attempts FROM "_appstruct_auth_login_attempts"
-                   WHERE "key" = $1
-                     AND window_started_at > CURRENT_TIMESTAMP - INTERVAL '1 minute'"#,
-                [key.to_owned().into()],
-            ))
-            .await?
-        else {
-            return Ok(());
-        };
-        let attempts: i32 = row.try_get("", "attempts")?;
-        if attempts >= 10 {
-            return Err(ApiError::TooManyRequests);
-        }
-        Ok(())
-    }
-
-    pub(crate) async fn record_login_failure<C: ConnectionTrait>(
-        &self,
-        database: &C,
-        key: &str,
-    ) -> Result<(), ApiError> {
-        database
-            .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 r#"INSERT INTO "_appstruct_auth_login_attempts" ("key", window_started_at, attempts)
                    VALUES ($1, CURRENT_TIMESTAMP, 1)
@@ -270,16 +246,22 @@ impl AuthState {
                      attempts = CASE
                        WHEN "_appstruct_auth_login_attempts".window_started_at <= CURRENT_TIMESTAMP - INTERVAL '1 minute'
                        THEN 1
-                       ELSE "_appstruct_auth_login_attempts".attempts + 1
+                       ELSE LEAST("_appstruct_auth_login_attempts".attempts + 1, 11)
                      END,
                      window_started_at = CASE
                        WHEN "_appstruct_auth_login_attempts".window_started_at <= CURRENT_TIMESTAMP - INTERVAL '1 minute'
                        THEN CURRENT_TIMESTAMP
                        ELSE "_appstruct_auth_login_attempts".window_started_at
-                     END"#,
+                     END
+                   RETURNING attempts"#,
                 [key.to_owned().into()],
             ))
-            .await?;
+            .await?
+            .ok_or(ApiError::Internal)?;
+        let attempts: i32 = row.try_get("", "attempts")?;
+        if attempts > 10 {
+            return Err(ApiError::TooManyRequests);
+        }
         Ok(())
     }
 

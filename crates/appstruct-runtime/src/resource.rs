@@ -122,6 +122,17 @@ pub fn csv_escape(value: &str) -> String {
     }
 }
 
+#[must_use]
+pub fn csv_cell(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::String(value) => value.clone(),
+        serde_json::Value::Bool(value) => value.to_string(),
+        serde_json::Value::Number(value) => value.to_string(),
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => value.to_string(),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CsvError;
 
@@ -236,6 +247,14 @@ mod tests {
         assert_eq!(csv_escape("plain"), "plain");
         assert_eq!(csv_escape("a,b"), "\"a,b\"");
         assert_eq!(csv_escape("say \"hi\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(csv_cell(&serde_json::Value::Null), "");
+        assert_eq!(
+            csv_cell(&serde_json::json!("say \"hi\"\nnext")),
+            "say \"hi\"\nnext"
+        );
+        assert_eq!(csv_cell(&serde_json::json!(true)), "true");
+        assert_eq!(csv_cell(&serde_json::json!(12.5)), "12.5");
+        assert_eq!(csv_cell(&serde_json::json!(["one", 2])), "[\"one\",2]");
         assert_eq!(csv_json_value("", "string"), serde_json::Value::Null);
         assert_eq!(csv_json_value("true", "boolean"), serde_json::json!(true));
         assert_eq!(csv_json_value("nope", "boolean"), serde_json::json!("nope"));

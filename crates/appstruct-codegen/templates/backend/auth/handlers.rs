@@ -113,7 +113,7 @@ async fn login(
     state.auth.validate_origin(&headers)?;
     let email = normalize_email(&input.email)?;
     validate_password(&input.password)?;
-    state.auth.check_login_rate(&state.database, &email).await?;
+    state.auth.consume_auth_rate_limit(&state.database, &email).await?;
     let sql = format!(
         "SELECT a.user_id, a.password_hash, a.roles, a.email_verified_at FROM \"_appstruct_auth_accounts\" a JOIN {users} u ON u.{id} = a.user_id WHERE LOWER(u.{email}) = $1",
         users = quote_ident(config::USER_TABLE),
@@ -136,7 +136,6 @@ async fn login(
         .ok()
         .is_some_and(|hash| Argon2::default().verify_password(input.password.as_bytes(), &hash).is_ok());
     let Some(row) = row.filter(|_| valid) else {
-        state.auth.record_login_failure(&state.database, &email).await?;
         return Err(ApiError::Unauthorized);
     };
     state.auth.clear_login_attempts(&state.database, &email).await?;

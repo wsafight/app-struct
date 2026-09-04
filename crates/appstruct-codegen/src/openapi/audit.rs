@@ -47,7 +47,7 @@ fn event_schema() -> Value {
             "id": { "type": "string", "format": "uuid" },
             "entity": { "type": "string" },
             "record_id": { "type": "string" },
-            "operation": { "type": "string", "enum": ["create", "update", "delete"] },
+            "operation": { "type": "string", "enum": ["create", "update", "delete", "restore"] },
             "actor_id": { "type": ["string", "null"], "format": "uuid" },
             "tenant_id": { "type": ["string", "null"], "format": "uuid" },
             "before": { "type": ["object", "array", "string", "number", "boolean", "null"] },

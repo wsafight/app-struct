@@ -4,9 +4,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import { Navigate, Outlet, useLocation } from "../navigation";
+import { Outlet, useLocation, useNavigate } from "../navigation";
 import { authApi, sessionSyncKey, type AuthUser } from "../generated/client";
 import { queryClient } from "../query";
 import { ResourceActorProvider } from "../resource";
@@ -101,10 +102,36 @@ export function useAuth(): AuthContextValue {
 export function RequireAuth() {
   const { loading, user } = useAuth();
   const location = useLocation();
-  if (loading) return <div className="auth-loading" aria-label="Loading" />;
-  return user ? (
-    <Outlet />
-  ) : (
-    <Navigate to="/login" state={{ from: location }} replace />
-  );
+  const navigate = useNavigate();
+  const redirecting = useRef(false);
+
+  useEffect(() => {
+    if (loading || user) {
+      redirecting.current = false;
+      return;
+    }
+    if (redirecting.current) return;
+    redirecting.current = true;
+    void navigate("/login", {
+      replace: true,
+      state: {
+        from: {
+          pathname: location.pathname,
+          searchStr: location.searchStr,
+          hash: location.hash,
+        },
+      },
+    });
+  }, [
+    loading,
+    location.hash,
+    location.pathname,
+    location.searchStr,
+    navigate,
+    user,
+  ]);
+
+  if (loading || !user)
+    return <div className="auth-loading" aria-label="Loading" />;
+  return <Outlet />;
 }
