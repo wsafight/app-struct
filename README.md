@@ -222,9 +222,10 @@ APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_saas_
   scripts/run-m6-saas-e2e.sh
 ```
 
-The CI and release workflows also run `scripts/run-template-build.sh`, which creates a fresh SaaS
-project and verifies generated Web formatting, TypeScript types, and the Vite production bundle
-without requiring a database.
+The CI and release workflows run `scripts/run-template-build.sh` on Node 24 and 25. It creates a
+fresh SaaS project and verifies production dependency advisories, generated Web formatting, tests,
+TypeScript types, and the Vite production bundle without requiring a database. Releases also run
+the complete PostgreSQL E2E matrix before building binaries.
 
 Rust source files are limited to 400 lines by a repository test. Generated projects also pin
 their Rust and pnpm dependency graphs so repeated generation and production builds remain
@@ -234,7 +235,7 @@ Signed remote modules support `install`, `update`, `verify`, `uninstall`, and `l
 `docs/module-registry.md` for the lockfile, trust pinning, and offline verification contract.
 
 Before committing or pushing a change, inspect the worktree and run the checks that match the
-files you changed:
+files you changed. The advisory check requires `cargo-deny` 0.20.2 or newer:
 
 ```bash
 git status --short --branch
@@ -243,7 +244,13 @@ git diff --check
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo deny check advisories
+scripts/run-template-build.sh
 ```
+
+Specialized generated-backend, coverage, and package targets can accumulate several gigabytes. Run
+`scripts/clean-test-artifacts.sh` to remove only those disposable artifacts, or pass `--all` to
+delegate a complete workspace cleanup to `cargo clean`.
 
 Do not commit local secrets or generated machine state. In particular, keep `.env` files (except
 intentional `.env.example` templates), private keys and certificates, `node_modules/`, `target/`,

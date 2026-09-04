@@ -194,17 +194,22 @@ appstruct update
 
 ## 质量检查
 
-使用仓库固定工具链运行：
+使用仓库固定工具链运行；依赖公告检查需要 `cargo-deny` 0.20.2 或更高版本：
 
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo deny check advisories
+scripts/run-template-build.sh
 ```
 
 需要 PostgreSQL 的浏览器测试使用独立测试数据库，并通过对应的 `scripts/run-*-e2e.sh` 脚本
-执行。生成项目还应运行 `pnpm install --frozen-lockfile`、`pnpm run format:check`、
-`pnpm run typecheck` 和 `pnpm run build`。
+执行。CI 与发布流程会在 Node 24 和 25 上检查生成 Web 的生产依赖、格式、测试、类型和构建，
+并在构建发布二进制前运行完整 PostgreSQL E2E 矩阵。
+
+专用生成后端、覆盖率和打包 target 会占用较多空间。`scripts/clean-test-artifacts.sh` 仅清理这些
+可丢弃目录；传入 `--all` 时才会通过 `cargo clean` 清理整个 workspace 构建缓存。
 
 提交前检查工作区：
 
@@ -218,9 +223,9 @@ Playwright 报告或 `test-results/`。`.env.example` 中的占位配置可以�
 
 ## 当前边界
 
-AppStruct 仍是技术预览。当前发布流程需要维护者手动配置 GitHub 远端、执行质量门，并在
-生产发布中单独审核和应用迁移。Billing、定时任务、签名 Webhook、部署适配器和可视化编辑器
-属于后续路线图，不应被视为当前预设 v1 的稳定承诺。
+AppStruct 仍是技术预览。当前发布流程需要维护者手动配置 GitHub 远端，并在生产发布中单独
+审核和应用迁移。Billing、托管部署适配器和可视化编辑器属于后续路线图，不应被视为当前
+预设 v1 的稳定承诺。
 
 ## 许可证
 

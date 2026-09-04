@@ -26,7 +26,9 @@ git ls-files -co --exclude-standard | rg '(^|/)(\.env($|\.)|node_modules|target|
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
+cargo deny check advisories
 scripts/verify-packages.sh
+scripts/run-template-build.sh
 ```
 
 `.env.example` files containing placeholders are expected. Real `.env` files, credentials,
@@ -61,7 +63,7 @@ scripts/verify-packages.sh
 
 The packaging script uses local crates.io patches only while verifying the unpublished lockstep
 crate set. Packaged manifests still contain normal registry dependencies with compatible versions,
-not local paths.
+not local paths. The advisory database currently requires `cargo-deny` 0.20.2 or newer.
 
 ## Publish Crates
 
@@ -69,8 +71,10 @@ Publish in dependency order and wait for each crate to appear in the crates.io i
 consumers:
 
 ```text
-appstruct-ir
-appstruct-compiler and appstruct-migrate
+appstruct-contracts
+appstruct-ir, appstruct-module-sdk, and appstruct-runtime
+appstruct-compiler
+appstruct-migrate
 appstruct-codegen
 appstruct-cli
 ```
@@ -81,8 +85,9 @@ binary release workflow so a source tag cannot consume crates.io credentials.
 
 ## Publish Binaries
 
-Create and push a `v<workspace-version>` tag. `.github/workflows/release.yml` first runs formatting,
-strict Clippy, and workspace tests, then builds these archives:
+Create and push a `v<workspace-version>` tag. `.github/workflows/release.yml` first runs dependency
+advisory checks, formatting, strict Clippy, workspace tests, generated Web builds on Node 24 and 25,
+and the complete PostgreSQL E2E matrix. It then builds these archives:
 
 ```text
 x86_64-unknown-linux-gnu
@@ -97,5 +102,5 @@ x86_64-pc-windows-msvc
 Linux and macOS releases are `.tar.gz` archives; Windows is a `.zip` archive containing
 `appstruct.exe`. Each archive also contains the root README and has a sibling `.sha256` file. The
 workflow rejects a tag whose version does not match Cargo metadata and uploads artifacts only after
-the quality job succeeds. Inspect the created GitHub release and test one fresh installation before
-announcing it.
+all quality, template, and E2E jobs succeed. Inspect the created GitHub release and test one fresh
+installation before announcing it.

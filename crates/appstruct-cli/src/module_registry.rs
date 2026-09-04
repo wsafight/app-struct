@@ -6,9 +6,10 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, env, fs, io, path::Path, process::ExitCode, time::Duration};
+use std::{collections::BTreeMap, env, fs, io, path::Path, process::ExitCode};
 
 mod lifecycle;
+mod transport;
 mod verification;
 
 const LOCK_PATH: &str = "appstruct.modules.lock";
@@ -110,33 +111,12 @@ fn install(
     public_key: Option<&str>,
 ) -> Result<(), String> {
     let (name, version) = parse_reference(reference)?;
-    validate_registry_url(registry)?;
+    let url = transport::package_url(registry, name, version)?;
     let public_key = public_key
         .map(str::to_owned)
         .or_else(|| env::var("APPSTRUCT_REGISTRY_PUBLIC_KEY").ok())
         .ok_or_else(|| "--public-key or APPSTRUCT_REGISTRY_PUBLIC_KEY is required".to_owned())?;
-    let url = format!(
-        "{}/v1/modules/{name}/{version}",
-        registry.trim_end_matches('/')
-    );
-    let response = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|error| format!("cannot create registry client: {error}"))?
-        .get(&url)
-        .header("accept", "application/json")
-        .send()
-        .map_err(|error| format!("cannot download `{url}`: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("registry rejected `{reference}`: {error}"))?;
-    let bytes = response
-        .bytes()
-        .map_err(|error| format!("cannot read registry response: {error}"))?;
-    if bytes.len() > MAX_PACKAGE_BYTES {
-        return Err(format!(
-            "registry response exceeds {MAX_PACKAGE_BYTES} bytes"
-        ));
-    }
+    let bytes = transport::download(&url, reference, MAX_PACKAGE_BYTES)?;
     install_envelope(project, registry, &public_key, name, version, &bytes)
 }
 
@@ -342,17 +322,6 @@ fn parse_reference(reference: &str) -> Result<(&str, &str), String> {
         .rsplit_once('@')
         .filter(|(name, version)| !name.is_empty() && !version.is_empty())
         .ok_or_else(|| "module reference must use `vendor/name@version`".to_owned())
-}
-
-fn validate_registry_url(registry: &str) -> Result<(), String> {
-    if registry.starts_with("https://")
-        || registry.starts_with("http://localhost:")
-        || registry.starts_with("http://127.0.0.1:")
-    {
-        Ok(())
-    } else {
-        Err("registry URL must use HTTPS (HTTP is allowed only for localhost)".to_owned())
-    }
 }
 
 const fn lock_version() -> u32 {

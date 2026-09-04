@@ -1,13 +1,35 @@
 pub(super) fn tenant_storage_source() -> &'static str {
     r#"export const tenantStorageKey = "appstruct_tenant";
 
+function browserStorage(): Storage | undefined {
+  try {
+    const storage = window.localStorage;
+    return typeof storage?.getItem === "function" &&
+      typeof storage.setItem === "function" &&
+      typeof storage.removeItem === "function"
+      ? storage
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function currentTenant(): string | undefined {
-  return window.localStorage.getItem(tenantStorageKey) ?? undefined;
+  try {
+    return browserStorage()?.getItem(tenantStorageKey) ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function selectTenant(id?: string): void {
-  if (id) window.localStorage.setItem(tenantStorageKey, id);
-  else window.localStorage.removeItem(tenantStorageKey);
+  try {
+    const storage = browserStorage();
+    if (id) storage?.setItem(tenantStorageKey, id);
+    else storage?.removeItem(tenantStorageKey);
+  } catch {
+    // Storage can reject writes in privacy modes or restricted frames.
+  }
   resourceEtags.clear();
 }
 "#

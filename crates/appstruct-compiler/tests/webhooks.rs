@@ -29,8 +29,13 @@ fn lowers_signed_webhook_endpoints() {
 fn rejects_insecure_or_incomplete_webhook_endpoints() {
     for (old, new, code) in [
         (
-            "http://127.0.0.1:__WEBHOOK_PORT__/ok",
+            "http://127.0.0.1:57600/ok",
             "http://example.com/hook",
+            "AS3074",
+        ),
+        (
+            "http://127.0.0.1:57600/ok",
+            "http://localhost:57600@external.example/hook",
             "AS3074",
         ),
         (
@@ -47,6 +52,23 @@ fn rejects_insecure_or_incomplete_webhook_endpoints() {
         fs::write(path, source.replacen(old, new, 1)).unwrap();
         let diagnostics = compile_project(temporary.path()).unwrap_err();
         assert!(diagnostics.iter().any(|diagnostic| diagnostic.code == code));
+    }
+}
+
+#[test]
+fn accepts_https_and_loopback_webhook_urls() {
+    for url in [
+        "https://hooks.example.com/events",
+        "http://localhost:57600/events",
+        "http://127.0.0.2:57600/events",
+        "http://[::1]:57600/events",
+    ] {
+        let temporary = tempfile::tempdir().unwrap();
+        copy_project(&fixture(), temporary.path());
+        let path = temporary.path().join("appstruct.yaml");
+        let source = fs::read_to_string(&path).unwrap();
+        fs::write(path, source.replacen("http://127.0.0.1:57600/ok", url, 1)).unwrap();
+        compile_project(temporary.path()).unwrap();
     }
 }
 

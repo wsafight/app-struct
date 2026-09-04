@@ -51,6 +51,7 @@ tempfile = "3.27.0"
 jsonschema = { version = "0.51.0", default-features = false }
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 uuid = { version = "1.25.0", features = ["serde", "v7"] }
+url = "2.5.8"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

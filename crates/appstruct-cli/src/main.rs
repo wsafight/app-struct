@@ -253,15 +253,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_and_check_commands_succeed_for_the_m0_fixture() {
-        assert_eq!(
-            run(Cli {
-                project: None,
-                format: report::OutputFormat::Text,
-                command: Command::Schema,
-            }),
-            ExitCode::SUCCESS
-        );
+    fn check_commands_succeed_for_the_m0_fixture() {
         assert_eq!(
             run(Cli {
                 project: Some(fixture()),
@@ -319,19 +311,25 @@ mod tests {
             }),
             ExitCode::SUCCESS
         );
-        let _ = run(Cli {
-            project: Some(fixture()),
-            format: report::OutputFormat::Json,
-            command: Command::Preset {
-                command: preset::PresetCommand::Show { expanded: false },
-            },
-        });
-        let _ = run(Cli {
-            project: Some(fixture()),
-            format: report::OutputFormat::Text,
-            command: Command::Module {
-                command: module_registry::ModuleCommand::List,
-            },
-        });
+        assert_ne!(
+            run(Cli {
+                project: Some(fixture()),
+                format: report::OutputFormat::Json,
+                command: Command::Preset {
+                    command: preset::PresetCommand::Show { expanded: false },
+                },
+            }),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            run(Cli {
+                project: Some(fixture()),
+                format: report::OutputFormat::Text,
+                command: Command::Module {
+                    command: module_registry::ModuleCommand::List,
+                },
+            }),
+            ExitCode::SUCCESS
+        );
     }
 }

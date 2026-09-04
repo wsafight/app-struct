@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiError, requestHeaders } from "./generated/client";
+import { ApiError, requestHeaders, tenantApi } from "./generated/client";
 import { validateResourceSearch } from "./navigation";
 import {
   buildResourceFilterQuery,
@@ -111,6 +111,25 @@ describe("requestHeaders", () => {
         body: "name\nexample",
       }).get("Content-Type"),
     ).toBe("text/csv");
+  });
+
+  it("continues when browser storage is unavailable", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get: () => {
+        throw new DOMException("Storage is disabled", "SecurityError");
+      },
+    });
+    try {
+      expect(requestHeaders().has("X-AppStruct-Tenant")).toBe(false);
+      expect(tenantApi.current()).toBeUndefined();
+      expect(() => tenantApi.select("tenant-1")).not.toThrow();
+      expect(() => tenantApi.clear()).not.toThrow();
+    } finally {
+      if (descriptor) Object.defineProperty(window, "localStorage", descriptor);
+      else delete (window as { localStorage?: Storage }).localStorage;
+    }
   });
 });
 

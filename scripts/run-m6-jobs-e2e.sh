@@ -25,7 +25,7 @@ m6_cleanup_extra() {
 }
 
 m6_prepare_fixture m6-jobs-project
-perl -pi -e "s/__WEBHOOK_PORT__/$webhook_port/g" "$project/appstruct.yaml"
+perl -pi -e "s/127\.0\.0\.1:57600/127.0.0.1:$webhook_port/g" "$project/appstruct.yaml"
 
 node "$project/webhook-receiver.mjs" "$webhook_port" \
   "$temporary_root/webhooks.jsonl" "operations-e2e-secret" \

@@ -115,16 +115,13 @@ fn rejects_a_tampered_registry_signature() {
 }
 
 #[test]
-fn parse_reference_and_registry_urls_validate_shape() {
+fn parse_reference_validates_shape() {
     assert_eq!(
         super::parse_reference("vendor/analytics@1.2.3").unwrap(),
         ("vendor/analytics", "1.2.3")
     );
     assert!(super::parse_reference("vendor/analytics").is_err());
     assert!(super::parse_reference("@1.2.3").is_err());
-    assert!(super::validate_registry_url("https://registry.example.com").is_ok());
-    assert!(super::validate_registry_url("http://127.0.0.1:8080").is_ok());
-    assert!(super::validate_registry_url("http://example.com").is_err());
 }
 
 #[test]

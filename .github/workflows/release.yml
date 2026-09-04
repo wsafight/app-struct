@@ -8,18 +8,29 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   quality:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0
         with:
           toolchain: 1.98.0
           components: clippy,rustfmt
-      - uses: pnpm/action-setup@v4
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          version: 11.25.0
+          cache-on-failure: true
+          shared-key: release-quality
+      - name: Check Rust dependency advisories
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          command-arguments: advisories
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Run tests
@@ -27,10 +38,16 @@ jobs:
           APPSTRUCT_PERF_BUDGET_MULTIPLIER: 2
         run: cargo test --workspace --locked
       - run: scripts/verify-packages.sh
-      - run: scripts/run-template-build.sh
+
+  postgres-e2e:
+    uses: ./.github/workflows/postgres-e2e.yml
+
+  template-build:
+    uses: ./.github/workflows/template-build.yml
 
   binaries:
-    needs: quality
+    needs: [quality, postgres-e2e, template-build]
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -60,11 +77,15 @@ jobs:
             package: windows
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0
         with:
           toolchain: 1.98.0
           targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          cache-on-failure: true
+          shared-key: release-${{ matrix.target }}
       - name: Validate tag version
         shell: bash
         run: |
@@ -104,7 +125,7 @@ jobs:
           Compress-Archive -Path "dist/$archive" -DestinationPath "dist/$archive.zip"
           $hash = (Get-FileHash "dist/$archive.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $archive.zip" | Set-Content -Encoding ascii "dist/$archive.zip.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: appstruct-${{ matrix.target }}
           path: |
@@ -116,10 +137,11 @@ jobs:
   release:
     needs: binaries
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: appstruct-*
           path: dist

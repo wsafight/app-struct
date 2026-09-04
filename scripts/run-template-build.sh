@@ -18,6 +18,7 @@ target/debug/appstruct --project "$temporary_root/ci-check" generate
 
 cd "$temporary_root/ci-check/generated/web"
 pnpm install --frozen-lockfile
+pnpm audit --prod --audit-level high
 pnpm run format:check
 pnpm run lint
 pnpm run typecheck

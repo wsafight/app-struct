@@ -1,6 +1,7 @@
 use crate::surface::{SurfaceWebhookEndpoint, SurfaceWebhooks};
 use appstruct_ir::{Diagnostic, SourceSpan, WebhookEndpointIr, WebhooksIr};
 use std::collections::BTreeSet;
+use url::{Host, Url};
 
 pub(crate) fn lower_webhooks(
     webhooks: &SurfaceWebhooks,
@@ -182,7 +183,20 @@ fn valid_env(value: &str) -> bool {
 }
 
 fn valid_url(value: &str) -> bool {
-    value.starts_with("https://")
-        || value.starts_with("http://localhost:")
-        || value.starts_with("http://127.0.0.1:")
+    let Ok(url) = Url::parse(value) else {
+        return false;
+    };
+    if !url.username().is_empty() || url.password().is_some() || url.fragment().is_some() {
+        return false;
+    }
+    match url.scheme() {
+        "https" => url.host().is_some(),
+        "http" => match url.host() {
+            Some(Host::Domain(host)) => host.eq_ignore_ascii_case("localhost"),
+            Some(Host::Ipv4(address)) => address.is_loopback(),
+            Some(Host::Ipv6(address)) => address.is_loopback(),
+            None => false,
+        },
+        _ => false,
+    }
 }

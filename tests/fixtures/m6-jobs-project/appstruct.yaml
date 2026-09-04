@@ -49,13 +49,13 @@ modules:
     request_timeout_ms: 500
     endpoints:
       operations:
-        url: http://127.0.0.1:__WEBHOOK_PORT__/ok
+        url: http://127.0.0.1:57600/ok
         secret_env: APPSTRUCT_WEBHOOK_OPERATIONS_SECRET
         events: [project.created]
         max_attempts: 4
         backoff_seconds: 3
       hanging:
-        url: http://127.0.0.1:__WEBHOOK_PORT__/hang
+        url: http://127.0.0.1:57600/hang
         secret_env: APPSTRUCT_WEBHOOK_HANGING_SECRET
         events: [project.archived]
         max_attempts: 1
