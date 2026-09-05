@@ -1,0 +1,38 @@
+version: 1
+
+app:
+  name: workflow-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+    migration: auto
+
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+    registration: false
+    password_reset: false
+  rbac:
+    roles: [sales, auditor, admin]
+    default_role: sales
+  tenant:
+    enabled: true
+  audit:
+    enabled: true
+    reader_roles: [admin]
+  webhooks:
+    enabled: true
+    endpoints:
+      workflow:
+        url: http://127.0.0.1:57600/workflow
+        secret_env: APPSTRUCT_WEBHOOK_WORKFLOW_SECRET
+        events: [order.workflow.submit, order.workflow.approve, order.workflow.reject]
+  realtime:
+    enabled: true
+
+includes:
+  - spec/order.yaml
+  - spec/identity.yaml

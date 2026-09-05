@@ -1,0 +1,76 @@
+domain: sales
+
+entities:
+  Order:
+    label: Orders
+    table: orders
+    tenant: true
+    audit: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      number:
+        type: string
+        required: true
+        unique: true
+        max_length: 32
+        searchable: true
+      status:
+        type: enum
+        required: true
+        values: [draft, auditing, approved, rejected]
+        filterable: true
+      owner:
+        type: relation
+        target: User
+        required: true
+        on_delete: restrict
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    workflow:
+      field: status
+      initial: draft
+      transitions:
+        submit:
+          from: [draft, rejected]
+          to: auditing
+          access: { owner: owner }
+        approve:
+          from: [auditing]
+          to: approved
+          access: { role: auditor }
+        reject:
+          from: [auditing]
+          to: rejected
+          input: RejectOrderInput
+          access: { role: auditor }
+    access:
+      list:
+        any:
+          - owner: owner
+          - role: auditor
+          - role: admin
+      read:
+        any:
+          - owner: owner
+          - role: auditor
+          - role: admin
+      create: { role: sales }
+      update:
+        any:
+          - owner: owner
+          - role: admin
+      delete: { role: admin }
+
+value_objects:
+  RejectOrderInput:
+    fields:
+      reason:
+        type: text
+        required: true
+      notify_sales:
+        type: boolean

@@ -1,0 +1,53 @@
+version: 1
+
+app:
+  name: report-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+    migration: auto
+
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+    registration: false
+    password_reset: false
+  rbac:
+    roles: [sales, auditor, admin]
+    default_role: sales
+  tenant:
+    enabled: true
+  audit:
+    enabled: true
+    reader_roles: [admin]
+  jobs:
+    enabled: true
+    poll_interval_ms: 25
+    lease_seconds: 30
+    queues:
+      reports: { max_attempts: 3, backoff_seconds: 1 }
+  file:
+    enabled: true
+    provider: local
+    local_root: .appstruct/files
+    max_bytes: 10485760
+    allowed_content_types: [application/pdf]
+  report:
+    enabled: true
+    queue: reports
+    max_input_bytes: 262144
+    retention_days: 30
+    reader_roles: [auditor, admin]
+    templates:
+      order-summary:
+        version: 1
+        body: "Order summary: {{ input.order_id }}"
+        input_schema: '{"type":"object","required":["order_id"],"properties":{"order_id":{"type":"string","format":"uuid"}},"additionalProperties":false}'
+        data_schema_version: 1
+
+includes:
+  - spec/order.yaml
+  - spec/identity.yaml

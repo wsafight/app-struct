@@ -1,6 +1,7 @@
 //! `AppStruct` configuration loading, validation, and normalization.
 
 mod access;
+mod activity;
 mod audit;
 mod auth;
 mod extension;
@@ -17,10 +18,12 @@ mod module_registry;
 mod naming;
 mod preset;
 mod realtime;
+mod report;
 mod surface;
 mod tenant;
 mod validation;
 mod webhooks;
+mod workflow;
 mod yaml;
 
 pub use loading::discover_project;

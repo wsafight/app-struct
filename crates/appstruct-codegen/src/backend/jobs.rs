@@ -4,6 +4,7 @@ use appstruct_ir::AppIr;
 use quote::quote;
 
 mod disabled;
+mod dispatch;
 mod schedule;
 
 use disabled::disabled_source;
@@ -30,6 +31,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let schedule_persistence = schedule::persistence();
     let persistence = persistence_source();
     let mail = (ir.mail.enabled).then(mail_source);
+    let dispatcher = dispatch::source(ir);
     render(quote! {
         use async_trait::async_trait;
         use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement, TransactionTrait};
@@ -47,6 +49,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         #schedule_persistence
         #persistence
         #mail
+        #dispatcher
     })
 }
 

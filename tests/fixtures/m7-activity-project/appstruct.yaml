@@ -1,0 +1,43 @@
+version: 1
+
+app:
+  name: activity-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+    migration: auto
+
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+    registration: false
+    password_reset: false
+  rbac:
+    roles: [member, admin]
+    default_role: member
+  tenant:
+    enabled: true
+  audit:
+    enabled: true
+    reader_roles: [admin]
+  file:
+    enabled: true
+    provider: local
+    local_root: .appstruct/files
+    max_bytes: 10485760
+    allowed_content_types: [text/plain, image/png]
+  realtime:
+    enabled: true
+  activity:
+    enabled: true
+    max_comment_bytes: 4000
+    attachments: true
+    admin_roles: [admin]
+    resources: [Order]
+
+includes:
+  - spec/order.yaml
+  - spec/identity.yaml

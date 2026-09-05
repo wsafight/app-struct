@@ -21,6 +21,12 @@ pub(super) fn indexes(ir: &AppIr) -> Vec<IndexSchema> {
     if ir.realtime.enabled {
         indexes.extend(realtime());
     }
+    if ir.report.enabled {
+        indexes.extend(report());
+    }
+    if ir.activity.enabled {
+        indexes.extend(activity());
+    }
     indexes
 }
 
@@ -176,6 +182,52 @@ fn realtime() -> [IndexSchema; 3] {
             "_appstruct_realtime_events",
             &["occurred_at"],
             None,
+        ),
+    ]
+}
+
+fn report() -> [IndexSchema; 3] {
+    [
+        index(
+            "appstruct::report::runs_actor_timeline",
+            "_appstruct_report_runs",
+            &["tenant_id", "actor_id", "created_at", "id"],
+            None,
+        ),
+        index(
+            "appstruct::report::runs_stage_timeline",
+            "_appstruct_report_runs",
+            &["tenant_id", "stage", "created_at", "id"],
+            None,
+        ),
+        index(
+            "appstruct::report::runs_expiry",
+            "_appstruct_report_runs",
+            &["expires_at", "id"],
+            None,
+        ),
+    ]
+}
+
+fn activity() -> [IndexSchema; 3] {
+    [
+        index(
+            "appstruct::activity::record_timeline",
+            "_appstruct_activity_entries",
+            &["tenant_id", "resource", "record_id", "occurred_at", "id"],
+            None,
+        ),
+        index(
+            "appstruct::activity::actor_timeline",
+            "_appstruct_activity_entries",
+            &["tenant_id", "actor_id", "occurred_at", "id"],
+            None,
+        ),
+        index(
+            "appstruct::activity::governance_timeline",
+            "_appstruct_activity_entries",
+            &["tenant_id", "withdrawn_at", "id"],
+            Some("withdrawn_at IS NOT NULL"),
         ),
     ]
 }

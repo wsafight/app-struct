@@ -4,7 +4,9 @@ import { Link, useParams } from "../navigation";
 import type { ResourceDefinition } from "../resource";
 import { canAccessRule, errorMessage, useResourceActor } from "../resource";
 import { formatValue } from "./ResourceList";
+import { WorkflowActions } from "./WorkflowActions";
 __AUDIT_IMPORT__
+__ACTIVITY_IMPORT__
 
 export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
   const { id } = useParams();
@@ -33,14 +35,17 @@ export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
             {record ? formatValue(record[resource.primaryKey]) : "Loading..."}
           </h1>
         </div>
-        {id && controller.canUpdate && (
-          <Link
-            className="primary-button"
-            to={`/${resource.slug}/${encodeURIComponent(id)}/edit`}
-          >
-            <Edit3 size={16} /> Edit
-          </Link>
-        )}
+        <div className="detail-actions">
+          {id && record && <WorkflowActions id={id} resource={resource} />}
+          {id && controller.canUpdate && (
+            <Link
+              className="primary-button"
+              to={`/${resource.slug}/${encodeURIComponent(id)}/edit`}
+            >
+              <Edit3 size={16} /> Edit
+            </Link>
+          )}
+        </div>
       </div>
       {controller.error && (
         <div className="alert" role="alert">
@@ -62,6 +67,7 @@ export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
               ))}
           </dl>
 __RECORD_HISTORY__
+__ACTIVITY_TIMELINE__
         </>
       )}
     </main>

@@ -37,7 +37,7 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
         #request_context
 
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        pub enum HookOperation { Create, Update, Delete }
+        pub enum HookOperation { Create, Update, Delete, Transition }
 
         #(#values)*
         #(#hooks)*
@@ -73,6 +73,10 @@ fn hook_contract(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
     let trait_name = format_ident!("{}Hooks", entity.rust_name);
     let default_name = format_ident!("Default{}Hooks", entity.rust_name);
     let module = parse_ident(&module_name(entity))?;
+    let workflow = entity.workflow.as_ref().map(|_| quote! {
+        async fn before_transition(&self, _ctx: &RequestContext, _transition: &str, _before: &entities::#module::Model, _input: &mut api::#module::WorkflowTransitionInput) -> Result<(), ApiError> { Ok(()) }
+        async fn after_transition(&self, _ctx: &RequestContext, _transition: &str, _before: &entities::#module::Model, _input: &api::#module::WorkflowTransitionInput, _after: &entities::#module::Model) -> Result<(), ApiError> { Ok(()) }
+    });
     Ok(quote! {
         #[async_trait]
         pub trait #trait_name: Send + Sync {
@@ -84,6 +88,7 @@ fn hook_contract(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
             async fn after_update(&self, _ctx: &RequestContext, _before: &entities::#module::Model, _after: &entities::#module::Model) -> Result<(), ApiError> { Ok(()) }
             async fn before_delete(&self, _ctx: &RequestContext, _model: &entities::#module::Model) -> Result<(), ApiError> { Ok(()) }
             async fn after_delete(&self, _ctx: &RequestContext, _model: &entities::#module::Model) -> Result<(), ApiError> { Ok(()) }
+            #workflow
             async fn after_commit(&self, _ctx: &RequestContext, _operation: HookOperation, _model: &entities::#module::Model) -> Result<(), ApiError> { Ok(()) }
         }
 
@@ -97,6 +102,12 @@ fn policy_contract(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
     let trait_name = format_ident!("{}Policy", entity.rust_name);
     let default_name = format_ident!("Default{}Policy", entity.rust_name);
     let module = parse_ident(&module_name(entity))?;
+    let workflow = entity.workflow.as_ref().map(|_| quote! {
+        async fn can_view_transition(&self, _ctx: &RequestContext, _transition: &str, _before: &entities::#module::Model, _after: &entities::#module::Model) -> Result<bool, ApiError> { Ok(true) }
+        async fn can_transition(&self, ctx: &RequestContext, transition: &str, before: &entities::#module::Model, _input: &api::#module::WorkflowTransitionInput, after: &entities::#module::Model) -> Result<bool, ApiError> {
+            self.can_view_transition(ctx, transition, before, after).await
+        }
+    });
     Ok(quote! {
         #[async_trait]
         pub trait #trait_name: Send + Sync {
@@ -105,6 +116,7 @@ fn policy_contract(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
             async fn can_create(&self, _ctx: &RequestContext, _input: &api::#module::CreateInput) -> Result<bool, ApiError> { Ok(true) }
             async fn can_update(&self, _ctx: &RequestContext, _before: &entities::#module::Model, _input: &api::#module::UpdateInput, _after: &entities::#module::Model) -> Result<bool, ApiError> { Ok(true) }
             async fn can_delete(&self, _ctx: &RequestContext, _model: &entities::#module::Model) -> Result<bool, ApiError> { Ok(true) }
+            #workflow
         }
 
         struct #default_name;

@@ -63,6 +63,7 @@ pub(super) fn export(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStream {
     let BulkContext {
         module,
@@ -74,15 +75,15 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
         primary,
         entity_id,
         audit_enabled,
+        activity_resource,
         ..
     } = context;
     let fields = entity
         .fields
         .iter()
-        .filter(|field| field.generated.is_none())
+        .filter(|field| field.generated.is_none() && !entity.is_workflow_field(field))
         .collect::<Vec<_>>();
-    let field_names = entity
-        .fields
+    let field_names = fields
         .iter()
         .map(|field| field.api_name.as_str())
         .collect::<Vec<_>>();
@@ -92,6 +93,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
         quote! { #name => { object.insert(#name.to_owned(), csv_json_value(raw, #kind)); } }
     });
     let audit = super::audit_event(*audit_enabled, entity_id, primary, "create");
+    let activity = super::activity_event(*activity_resource, primary, "created");
     let create_event = format!("{module}.created");
     quote! {
         async fn import_csv(State(state): State<AppState>, headers: HeaderMap, body: String) -> Result<Json<BulkResult>, ApiError> {
@@ -142,6 +144,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                     let model = active.insert(&savepoint).await?;
                     state.extensions.#hooks().after_create(&context, &model).await?;
                     #audit
+                    #activity
                     Ok(model)
                 }.await;
                 match outcome {

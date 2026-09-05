@@ -146,6 +146,78 @@ a {
   margin-top: 22px;
   font-size: 13px;
 }
+.report-create {
+  padding: 16px 0 20px;
+  border-top: 1px solid #d8dfe1;
+}
+.report-create h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+.report-create-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+}
+.report-create-grid label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #536168;
+  font-size: 12px;
+}
+.report-create-grid input,
+.report-create-grid select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #bdc8cc;
+  border-radius: 5px;
+  padding: 0 10px;
+  background: #fff;
+  color: #182026;
+}
+.report-create-grid .checkbox-field {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  gap: 8px;
+}
+.report-create-grid .checkbox-field input {
+  width: 16px;
+  min-height: 16px;
+}
+.report-run-button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+.report-table td small {
+  display: block;
+  margin-top: 3px;
+  color: #65737a;
+  font-size: 11px;
+}
+.report-table progress {
+  width: 100px;
+  height: 7px;
+  margin-right: 8px;
+  accent-color: #1c6157;
+}
+.report-status {
+  display: inline-flex;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #e6ecee;
+  color: #405057;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.report-status.succeeded { background: #dcefe8; color: #185c4f; }
+.report-status.failed { background: #f8dfdf; color: #8c2828; }
+.report-status.cancelled { background: #ececef; color: #565861; }
+.report-status.rendering,
+.report-status.publishing { background: #e4edf7; color: #285b87; }
 .admin-jobs-table th:first-child,
 .admin-jobs-table td:first-child {
   width: 180px;
@@ -378,6 +450,20 @@ a {
   margin: 5px 0 0;
   color: #65737a;
   font-size: 13px;
+}
+.detail-actions,
+.workflow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.workflow-error {
+  width: 100%;
+  margin-top: 8px;
+  color: #8f302d;
+  font-size: 12px;
 }
 .toolbar,
 .row-actions,
@@ -989,6 +1075,37 @@ a {
   border-radius: 5px;
   padding: 8px 10px;
 }
+.workflow-input {
+  display: grid;
+  gap: 14px;
+}
+.workflow-input label:not(.workflow-checkbox) {
+  display: grid;
+  gap: 6px;
+  color: #536168;
+  font-size: 12px;
+  font-weight: 600;
+}
+.workflow-input select,
+.workflow-input textarea {
+  min-height: 38px;
+  border: 1px solid #bdc8cc;
+  border-radius: 5px;
+  background: white;
+  padding: 8px 10px;
+}
+.workflow-input textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+.workflow-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #536168;
+  font-size: 13px;
+  font-weight: 600;
+}
 .audit-table th:last-child,
 .audit-table td:last-child {
   width: auto;
@@ -1086,6 +1203,171 @@ a {
   margin-top: 22px;
   border-top: 1px solid #d8dfe1;
   padding-top: 18px;
+}
+.activity-timeline {
+  margin-top: 22px;
+  border-top: 1px solid #d8dfe1;
+  padding-top: 18px;
+}
+.activity-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.activity-heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.activity-composer {
+  margin-bottom: 16px;
+  border: 1px solid #cbd4d7;
+  border-radius: 6px;
+  background: white;
+}
+.activity-composer textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  border: 0;
+  border-bottom: 1px solid #e1e6e8;
+  border-radius: 6px 6px 0 0;
+  padding: 11px 12px;
+  font: inherit;
+}
+.activity-composer textarea:focus {
+  outline: 2px solid #2f6f64;
+  outline-offset: -2px;
+}
+.activity-composer-actions {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 7px 9px;
+  color: #65737a;
+  font-size: 12px;
+}
+.activity-composer-actions .limit-error {
+  color: #a23934;
+  font-weight: 600;
+}
+.attachment-picker {
+  max-width: 260px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: #425158;
+}
+.attachment-picker span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+.activity-list {
+  position: relative;
+  margin-left: 8px;
+  border-left: 1px solid #cbd4d7;
+}
+.activity-entry {
+  position: relative;
+  padding: 0 0 18px 22px;
+}
+.activity-entry:last-child {
+  padding-bottom: 5px;
+}
+.activity-entry-marker {
+  position: absolute;
+  top: 5px;
+  left: -5px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid white;
+  border-radius: 50%;
+  background: #2f6f64;
+  box-shadow: 0 0 0 1px #88a19b;
+}
+.activity-entry.system .activity-entry-marker {
+  background: #637077;
+}
+.activity-entry-content {
+  position: relative;
+  min-width: 0;
+}
+.activity-entry-content header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #718087;
+  font-size: 12px;
+}
+.activity-entry-content header strong {
+  color: #334147;
+  font-weight: 650;
+}
+.activity-entry-content p {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.activity-system-event {
+  color: #536168;
+  text-transform: capitalize;
+}
+.activity-tombstone {
+  color: #78868b;
+  font-style: italic;
+}
+.attachment-download {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #176451;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-entry-actions {
+  position: absolute;
+  top: -7px;
+  right: 0;
+  display: flex;
+  gap: 3px;
+}
+.moderation-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 9px;
+}
+.moderation-form input {
+  min-width: min(280px, 100%);
+  height: 34px;
+  flex: 1 1 240px;
+  border: 1px solid #9babad;
+  border-radius: 4px;
+  padding: 0 8px;
+}
+.activity-load-more {
+  margin: 14px 0 0 30px;
 }
 .record-history-heading {
   display: flex;
@@ -1192,6 +1474,7 @@ a {
   }
 }
 @media (max-width: 760px) {
+  .report-create-grid { grid-template-columns: 1fr; }
   .shell {
     display: block;
   }

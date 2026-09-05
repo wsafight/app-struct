@@ -19,6 +19,7 @@ pub(super) struct SourceContext<'context> {
     pub create_values: &'context [TokenStream],
     pub active_default: Option<&'context TokenStream>,
     pub updates: &'context [TokenStream],
+    pub activity_resource: Option<&'context str>,
 }
 
 pub(super) struct BulkContext<'context> {
@@ -41,6 +42,7 @@ pub(super) struct BulkContext<'context> {
     pub soft_delete: bool,
     pub trash_scope: &'context TokenStream,
     pub restore_scope: &'context TokenStream,
+    pub activity_resource: Option<&'context str>,
 }
 
 pub(super) fn source(
@@ -59,6 +61,7 @@ pub(super) fn source(
         create_values,
         active_default,
         updates,
+        activity_resource,
     } = source;
     let trash_scope = access::trash_scope(entity, module, &entity.access.list)?;
     let read_scope = access::scope(entity, module, &entity.access.read)?;
@@ -90,6 +93,7 @@ pub(super) fn source(
         soft_delete: entity.views.soft_delete,
         trash_scope: &trash_scope,
         restore_scope: &restore_scope,
+        activity_resource: *activity_resource,
     };
     let update = mutations::update(&context);
     let delete = mutations::delete(&context);
@@ -191,5 +195,22 @@ fn audit_event(enabled: bool, entity_id: &str, primary: &Ident, operation: &str)
             quote! { crate::audit::record(&savepoint, &context, #entity_id, after.#primary.to_string(), "restore", Some(&before), Some(&after)).await?; }
         }
         _ => TokenStream::new(),
+    }
+}
+
+fn activity_event(resource: Option<&str>, primary: &Ident, event: &str) -> TokenStream {
+    let Some(resource) = resource else {
+        return TokenStream::new();
+    };
+    let model = match event {
+        "created" => quote! { model },
+        "updated" | "restored" => quote! { after },
+        "deleted" => quote! { deleted },
+        _ => unreachable!(),
+    };
+    quote! {
+        crate::activity::record_system_event(
+            &savepoint, &context, #resource, #model.#primary.to_string(), #event,
+        ).await?;
     }
 }

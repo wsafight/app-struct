@@ -24,6 +24,13 @@ fn json_round_trip_accepts_compatible_versions() {
     let parsed = from_json(&to_json(&legacy).unwrap()).unwrap();
     assert_eq!(parsed.schema_version, SCHEMA_VERSION);
 
+    for version in MIN_COMPATIBLE_SCHEMA_VERSION..SCHEMA_VERSION {
+        let mut compatible = empty();
+        compatible.schema_version = version;
+        let parsed = from_json(&to_json(&compatible).unwrap()).unwrap();
+        assert_eq!(parsed.schema_version, SCHEMA_VERSION);
+    }
+
     let mut future = empty();
     future.schema_version = SCHEMA_VERSION + 10;
     assert!(from_json(&to_json(&future).unwrap()).is_err());

@@ -51,6 +51,14 @@ export const appQueryKeys = {
   },
   audit: (page: number, pageSize: number, entity = "", recordId = "") =>
     ["audit", { page, pageSize, entity, recordId }] as const,
+  activity: (resource: string, recordId: string) =>
+    ["activity", resource, recordId] as const,
+  reports: {
+    all: ["reports"] as const,
+    templates: ["reports", "templates"] as const,
+    runs: (page: number, pageSize: number) =>
+      ["reports", "runs", { page, pageSize }] as const,
+  },
   tokens: ["auth", "tokens"] as const,
   admin: {
     all: ["admin"] as const,

@@ -10,11 +10,11 @@ pub(super) fn validation_rules(
     update: bool,
 ) -> Result<Vec<TokenStream>, CodegenError> {
     let mut rules = Vec::new();
-    for field in entity
-        .fields
-        .iter()
-        .filter(|field| field.generated.is_none() && (!update || !field.primary_key))
-    {
+    for field in entity.fields.iter().filter(|field| {
+        field.generated.is_none()
+            && !entity.is_workflow_field(field)
+            && (!update || !field.primary_key)
+    }) {
         rules.extend(text_validation(field, update)?);
         rules.extend(enum_validation(field, update)?);
         rules.extend(numeric_validation(field, update)?);

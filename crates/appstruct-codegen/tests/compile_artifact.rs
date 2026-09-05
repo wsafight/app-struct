@@ -271,7 +271,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 85);
+    assert_eq!(artifacts.len(), 88);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -551,7 +551,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 70);
+    assert_eq!(artifacts.len(), 73);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")

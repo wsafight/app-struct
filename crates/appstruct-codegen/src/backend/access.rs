@@ -139,6 +139,18 @@ pub(super) fn update_allowed(
     )
 }
 
+pub(super) fn transition_allowed(
+    entity: &EntityIr,
+    rule: &AccessRuleIr,
+) -> Result<TokenStream, CodegenError> {
+    allowed(
+        entity,
+        rule,
+        &quote! { before },
+        Some(&quote! { candidate }),
+    )
+}
+
 pub(super) fn operation_allowed(rule: &AccessRuleIr) -> TokenStream {
     match rule {
         AccessRuleIr::Public => quote! { true },

@@ -19,7 +19,7 @@ pub(super) fn tables() -> Vec<TableSchema> {
                 column(
                     "status",
                     DatabaseType::Enum {
-                        values: ["queued", "running", "succeeded", "dead"]
+                        values: ["queued", "running", "succeeded", "dead", "cancelled"]
                             .into_iter()
                             .map(str::to_owned)
                             .collect(),

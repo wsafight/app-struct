@@ -46,6 +46,12 @@ fn document(ir: &AppIr) -> Value {
     if ir.realtime.enabled {
         realtime::add(&mut paths, &mut schemas);
     }
+    if ir.report.enabled {
+        report::add(ir, &mut paths, &mut schemas);
+    }
+    if ir.activity.enabled {
+        activity::add(ir, &mut paths, &mut schemas);
+    }
     extension::add(ir, &mut paths, &mut schemas);
     let security_schemes = auth::security_schemes(ir.auth.enabled);
     json!({
@@ -128,6 +134,7 @@ fn error_schema() -> Value {
         }
     })
 }
+mod activity;
 mod admin;
 mod admin_schedules;
 mod admin_storage;
@@ -137,5 +144,6 @@ mod bulk;
 mod entity;
 mod extension;
 mod realtime;
+mod report;
 mod saved_views;
 mod tenant;

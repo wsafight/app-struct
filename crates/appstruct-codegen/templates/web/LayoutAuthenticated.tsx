@@ -1,4 +1,4 @@
-import { Boxes, LogOut__HISTORY_ICON__ } from "lucide-react";
+import { Boxes, LogOut__HISTORY_ICON____REPORT_ICON__ } from "lucide-react";
 import { NavLink, Outlet } from "../navigation";
 import { useAuth } from "../auth/Auth";
 __AUDIT_RESOURCE_IMPORT__
@@ -23,6 +23,7 @@ __TENANT_SWITCHER__
         <NavLink to="/tokens">API tokens</NavLink>
         {isAdmin && <NavLink to="/admin">Administration</NavLink>}
 __AUDIT_LINK__
+__REPORT_LINK__
       </nav>
       <div className="sidebar-account">
         <div className="account">

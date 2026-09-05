@@ -64,17 +64,24 @@ pub fn from_compatible_json(source: &str) -> Result<AppIr, IrCompatibilityError>
         Ok(7) => {
             migrate_v7(&mut value)?;
             migrate_v10(&mut value)?;
+            migrate_v11(&mut value)?;
         }
         Ok(8) => {
             migrate_v8(&mut value)?;
             migrate_v9(&mut value)?;
             migrate_v10(&mut value)?;
+            migrate_v11(&mut value)?;
         }
         Ok(9) => {
             migrate_v9(&mut value)?;
             migrate_v10(&mut value)?;
+            migrate_v11(&mut value)?;
         }
-        Ok(10) => migrate_v10(&mut value)?,
+        Ok(10) => {
+            migrate_v10(&mut value)?;
+            migrate_v11(&mut value)?;
+        }
+        Ok(11) => migrate_v11(&mut value)?,
         _ => return Err(IrCompatibilityError::UnsupportedVersion { found: version }),
     }
     serde_json::from_value(value).map_err(IrCompatibilityError::from)
@@ -152,6 +159,26 @@ fn migrate_v10(value: &mut Value) -> Result<(), IrCompatibilityError> {
         "dev_migration".to_owned(),
         Value::String("unmanaged".to_owned()),
     );
+    value["ir_version"] = Value::from(IR_VERSION);
+    Ok(())
+}
+
+fn migrate_v11(value: &mut Value) -> Result<(), IrCompatibilityError> {
+    let root = value
+        .as_object_mut()
+        .ok_or_else(|| invalid_shape("IR v11 root must be an object"))?;
+    if !root.contains_key("report") {
+        root.insert(
+            "report".to_owned(),
+            serde_json::to_value(crate::ReportIr::default())?,
+        );
+    }
+    if !root.contains_key("activity") {
+        root.insert(
+            "activity".to_owned(),
+            serde_json::to_value(crate::ActivityIr::default())?,
+        );
+    }
     value["ir_version"] = Value::from(IR_VERSION);
     Ok(())
 }
@@ -295,5 +322,57 @@ mod tests {
             migrated.database.dev_migration,
             crate::DatabaseMigrationPolicy::Unmanaged
         );
+    }
+
+    #[test]
+    fn migrates_v11_without_enabling_report_or_activity_modules() {
+        let source = include_str!("../../../tests/golden/m0-app-ir.json");
+        let mut value: serde_json::Value = serde_json::from_str(source).unwrap();
+        value["ir_version"] = 11.into();
+        value.as_object_mut().unwrap().remove("report");
+        value.as_object_mut().unwrap().remove("activity");
+        let module_count = value["modules"].as_array().unwrap().len();
+
+        let migrated = from_compatible_json(&serde_json::to_string(&value).unwrap()).unwrap();
+
+        assert_eq!(migrated.ir_version, IR_VERSION);
+        assert!(!migrated.report.enabled);
+        assert!(!migrated.activity.enabled);
+        assert_eq!(migrated.modules.len(), module_count);
+        assert!(
+            migrated
+                .modules
+                .iter()
+                .all(|module| module.name != "appstruct/report"
+                    && module.name != "appstruct/activity")
+        );
+    }
+
+    #[test]
+    fn migrating_v11_preserves_explicit_service_contracts() {
+        let source = include_str!("../../../tests/golden/m0-app-ir.json");
+        let mut value: serde_json::Value = serde_json::from_str(source).unwrap();
+        value["ir_version"] = 11.into();
+        value["report"] = serde_json::json!({
+            "enabled": false,
+            "queue": "legacy-reports",
+            "max_input_bytes": 42,
+            "retention_days": 7,
+            "reader_roles": [],
+            "templates": []
+        });
+        value["activity"] = serde_json::json!({
+            "enabled": false,
+            "max_comment_bytes": 2048,
+            "attachments": false,
+            "admin_roles": [],
+            "resources": []
+        });
+
+        let migrated = from_compatible_json(&serde_json::to_string(&value).unwrap()).unwrap();
+
+        assert_eq!(migrated.report.queue, "legacy-reports");
+        assert_eq!(migrated.report.max_input_bytes, 42);
+        assert_eq!(migrated.activity.max_comment_bytes, 2048);
     }
 }

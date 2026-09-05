@@ -1,4 +1,5 @@
 mod access;
+mod activity;
 mod api;
 mod audit;
 mod auth;
@@ -12,6 +13,7 @@ mod manifest;
 mod operations;
 mod query;
 mod realtime;
+mod report;
 mod runtime;
 mod startup;
 mod tenant;
@@ -101,11 +103,13 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         ),
     ]);
     artifacts.extend(audit::plan(ir)?);
+    artifacts.extend(activity::plan(ir)?);
     artifacts.extend(auth::plan(ir)?);
     artifacts.extend(file::plan(ir)?);
     artifacts.extend(jobs::plan(ir)?);
     artifacts.extend(mail::plan(ir)?);
     artifacts.extend(realtime::plan(ir)?);
+    artifacts.extend(report::plan(ir)?);
     artifacts.extend(tenant::plan(ir)?);
     artifacts.extend(webhooks::plan(ir)?);
     artifacts.extend(entity_artifacts(ir)?);
@@ -264,6 +268,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub mod entities;
         pub mod extensions;
         mod audit;
+        mod activity;
         mod auth;
         mod error;
         mod file;
@@ -272,6 +277,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod openapi;
         mod operations;
         mod realtime;
+        mod report;
         mod tenant;
         mod webhooks;
 
@@ -301,6 +307,12 @@ fn service_exports(ir: &AppIr) -> TokenStream {
     let mail_job_exports = (ir.jobs.enabled && ir.mail.enabled).then(|| {
         quote! { pub use jobs::{MailJobHandler, MailJobPayload}; }
     });
+    let report_exports = ir.report.enabled.then(|| {
+        quote! { pub use report::{ReportRun, ReportTemplate}; }
+    });
+    let activity_exports = ir.activity.enabled.then(|| {
+        quote! { pub use activity::ActivityEntry; }
+    });
     quote! {
         pub use file::{FileError, FileMetadata, FileProvider, FileState};
         pub use jobs::{
@@ -309,6 +321,8 @@ fn service_exports(ir: &AppIr) -> TokenStream {
         #mail_job_exports
         pub use mail::{MailDelivery, MailError, MailMessage, MailProvider, MailState};
         pub use realtime::{RealtimeEvent, RealtimeState};
+        #report_exports
+        #activity_exports
         pub use webhooks::{WebhookError, WebhookReceipt, WebhookWorker, WebhookWorkerHandle};
     }
 }

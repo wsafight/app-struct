@@ -9,6 +9,7 @@ import type {
   CursorListResponse,
   ListQuery,
   ListResponse,
+  WorkflowCapabilities,
 } from "./generated/client";
 import type { AppStructRegistry } from "./generated/registry";
 import {
@@ -140,6 +141,15 @@ export interface ResourceApi {
     query?: Pick<ListQuery, "page" | "page_size">,
     options?: { signal?: AbortSignal },
   ): Promise<ListResponse<ResourceRecord>>;
+  transitions?(
+    id: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<WorkflowCapabilities>;
+  transition?(
+    id: string,
+    action: string,
+    input?: unknown,
+  ): Promise<ResourceRecord>;
 }
 
 export type FieldKind =
@@ -175,6 +185,36 @@ export interface FieldDefinition {
   uiComponent?: keyof AppStructRegistry["fields"];
 }
 
+export interface WorkflowInputFieldDefinition {
+  name: string;
+  label: string;
+  kind: FieldKind;
+  required: boolean;
+  values?: string[];
+  relation?: string;
+}
+
+export interface WorkflowTransitionDefinition {
+  name: string;
+  label: string;
+  to: string;
+  input?: {
+    name: string;
+    fields: WorkflowInputFieldDefinition[];
+  };
+}
+
+export interface WorkflowDefinition {
+  field: string;
+  transitions: WorkflowTransitionDefinition[];
+}
+
+export interface ActivityDefinition {
+  maxCommentBytes: number;
+  attachments: boolean;
+  adminRoles: string[];
+}
+
 export interface ResourceDefinition {
   id: string;
   name: string;
@@ -185,6 +225,8 @@ export interface ResourceDefinition {
   softDelete: boolean;
   access: ResourceAccess;
   fields: FieldDefinition[];
+  workflow?: WorkflowDefinition;
+  activity?: ActivityDefinition;
   api: ResourceApi;
 }
 

@@ -1,8 +1,10 @@
+mod activity;
 mod auth;
 mod bulk;
 mod entity;
 mod modules;
 mod realtime;
+mod report;
 mod saved_views;
 use crate::{Artifact, ArtifactKind, generated_header};
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, OperationTypeIr, ValueObjectIr};
@@ -34,10 +36,16 @@ fn client_source(ir: &AppIr) -> String {
     if ir.realtime.enabled {
         sections.push(realtime::source().to_owned());
     }
+    if ir.report.enabled {
+        sections.push(report::source(ir));
+    }
+    if ir.activity.enabled {
+        sections.push(activity::source(ir));
+    }
     sections.extend(ir.value_objects.iter().map(value_object_type));
     for entity in &ir.entities {
         sections.push(entity_types(entity));
-        sections.push(entity::client(entity));
+        sections.push(entity::client(ir, entity));
     }
     sections.extend(operation_clients(ir));
     format!("{}\n", sections.join("\n"))
@@ -117,6 +125,9 @@ fn request_runtime_source() -> &'static str {
 export interface RequestOptions { signal?: AbortSignal; }
 export const sessionSyncKey = "appstruct_session_sync";
 
+export interface WorkflowTransitionCapability { name: string; to: string; input: string | null; }
+export interface WorkflowCapabilities { state: string; revision: number; allowed_transitions: WorkflowTransitionCapability[]; }
+
 export interface FieldViolation {
   field: string;
   message: string;
@@ -147,7 +158,7 @@ function broadcastSessionChange(): void {
   try { window.localStorage.setItem(sessionSyncKey, `${Date.now()}:${Math.random()}`); } catch { /* Storage can be unavailable in privacy modes. */ }
 }
 
-export function requestHeaders(init?: RequestInit, revisionKey?: string): Headers {
+export function requestHeaders(init?: RequestInit, revisionKey?: string, requireRevision = false): Headers {
   const headers = new Headers(init?.headers);
   const method = init?.method ?? "GET";
   if (init?.body != null && !headers.has("Content-Type")) {
@@ -159,15 +170,15 @@ export function requestHeaders(init?: RequestInit, revisionKey?: string): Header
     const csrf = cookieValue("appstruct_csrf");
     if (csrf) headers.set("X-CSRF-Token", csrf);
   }
-  if (init?.method === "PATCH" || init?.method === "DELETE") {
+  if (init?.method === "PATCH" || init?.method === "DELETE" || requireRevision) {
     const etag = revisionKey ? resourceEtags.get(revisionKey) : undefined;
     if (etag) headers.set("If-Match", etag);
   }
   return headers;
 }
 
-async function request<T>(path: string, init?: RequestInit, revisionKey?: string): Promise<T> {
-  const headers = requestHeaders(init, revisionKey ?? path);
+async function request<T>(path: string, init?: RequestInit, revisionKey?: string, requireRevision = false): Promise<T> {
+  const headers = requestHeaders(init, revisionKey ?? path, requireRevision);
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
@@ -292,19 +303,36 @@ fn entity_types(entity: &EntityIr) -> String {
     let create_fields = entity
         .fields
         .iter()
-        .filter(|field| field.generated.is_none())
+        .filter(|field| field.generated.is_none() && !entity.is_workflow_field(field))
         .map(|field| input_property(field, false))
         .collect::<Vec<_>>()
         .join("\n");
     let update_fields = entity
         .fields
         .iter()
-        .filter(|field| !field.primary_key && field.generated.is_none())
+        .filter(|field| {
+            !field.primary_key && field.generated.is_none() && !entity.is_workflow_field(field)
+        })
         .map(|field| input_property(field, true))
         .collect::<Vec<_>>()
         .join("\n");
+    let workflow = entity
+        .workflow
+        .as_ref()
+        .map_or_else(String::new, |workflow| {
+            let names = workflow
+                .transitions
+                .iter()
+                .map(|transition| format!("{:?}", transition.name))
+                .collect::<Vec<_>>()
+                .join(" | ");
+            format!(
+                "\nexport type {}WorkflowTransition = {names};\n",
+                entity.rust_name,
+            )
+        });
     format!(
-        "export interface {} {{\n{model_fields}\n}}\n\nexport interface Create{}Input {{\n{create_fields}\n}}\n\nexport interface Update{}Input {{\n{update_fields}\n}}\n",
+        "export interface {} {{\n{model_fields}\n}}\n\nexport interface Create{}Input {{\n{create_fields}\n}}\n\nexport interface Update{}Input {{\n{update_fields}\n}}\n{workflow}",
         entity.rust_name, entity.rust_name, entity.rust_name
     )
 }

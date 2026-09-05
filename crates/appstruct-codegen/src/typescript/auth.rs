@@ -64,7 +64,7 @@ export interface AdminListResponse<T> {
   meta: { page: number; page_size: number; total: number };
 }
 
-export type AdminJobStatus = "queued" | "running" | "succeeded" | "dead";
+export type AdminJobStatus = "queued" | "running" | "succeeded" | "dead" | "cancelled";
 
 export interface AdminJob {
   id: string;

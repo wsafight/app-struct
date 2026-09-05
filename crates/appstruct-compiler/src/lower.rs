@@ -1,4 +1,5 @@
 use crate::access::build_access;
+use crate::activity::lower_activity;
 use crate::audit::lower_audit;
 use crate::auth::lower_auth;
 use crate::extension::{ExtensionContext, lower_extensions};
@@ -8,6 +9,7 @@ use crate::mail::lower_mail;
 use crate::module::{LoadedModule, resolve_modules_for_app};
 use crate::naming::{pluralize, to_snake_case};
 use crate::realtime::lower_realtime;
+use crate::report::lower_report;
 mod indexes;
 use self::indexes::build_indexes;
 mod seeds;
@@ -16,6 +18,7 @@ use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceRoot};
 use crate::tenant::lower_tenant;
 use crate::validation::validate_entity_declarations;
 use crate::webhooks::lower_webhooks;
+use crate::workflow::lower_workflow;
 use appstruct_ir::{
     AppIr, AppMeta, AuthIr, ConcurrencyIr, DatabaseDevMode, DatabaseIr, DatabaseMigrationPolicy,
     DatabaseProvider, Diagnostic, EntityId, EntityIr, EntityViewsIr, FieldTypeIr, HooksIr,
@@ -63,12 +66,38 @@ pub(crate) fn build_ir(
     let webhooks = lower_webhooks(&root.webhooks, &root.app_name.span, &mut diagnostics);
     let realtime = lower_realtime(&root.realtime, &auth, &root.app_name.span, &mut diagnostics);
     let file = lower_file(&root.file, &root.app_name.span, &mut diagnostics);
+    let report = lower_report(
+        &root.report,
+        &auth,
+        &jobs,
+        &file,
+        &root.app_name.span,
+        &mut diagnostics,
+    );
     let known_entities = surface_entities
         .iter()
         .map(|entity| entity.name.value.clone())
         .collect::<BTreeSet<_>>();
-    let (mut entities, mut relations, seeds) =
-        lower_entities(surface_entities, &known_entities, &auth, &mut diagnostics);
+    let known_values = value_objects
+        .iter()
+        .map(|value| value.name.value.clone())
+        .collect::<BTreeSet<_>>();
+    let (mut entities, mut relations, seeds) = lower_entities(
+        surface_entities,
+        &known_entities,
+        &known_values,
+        &auth,
+        &mut diagnostics,
+    );
+    let activity = lower_activity(
+        &root.activity,
+        &auth,
+        &audit,
+        &file,
+        &entities,
+        &root.app_name.span,
+        &mut diagnostics,
+    );
     let resource_paths = entities
         .iter()
         .map(|entity| entity.table_name.clone())
@@ -97,6 +126,8 @@ pub(crate) fn build_ir(
         &webhooks,
         &realtime,
         &file,
+        &report,
+        &activity,
         local_modules,
     )
     .map_err(|error| {
@@ -127,6 +158,8 @@ pub(crate) fn build_ir(
         webhooks,
         realtime,
         file,
+        report,
+        activity,
         enums: Vec::new(),
         value_objects: extensions.value_objects,
         entities,
@@ -168,6 +201,7 @@ fn canonicalize_entities(entities: &mut [EntityIr], relations: &mut [RelationIr]
 fn lower_entities(
     surface_entities: Vec<SurfaceEntity>,
     known_entities: &BTreeSet<String>,
+    known_values: &BTreeSet<String>,
     auth: &AuthIr,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> (Vec<EntityIr>, Vec<RelationIr>, Vec<appstruct_ir::SeedIr>) {
@@ -231,6 +265,7 @@ fn lower_entities(
         }
         let indexes = build_indexes(&entity, &entity_id, &fields, diagnostics);
         seeds.extend(build_seeds(&entity, &entity_id, &fields, diagnostics));
+        let workflow = lower_workflow(&entity, &fields, known_values, auth, diagnostics);
         relations.append(&mut entity_relations);
         if let Some(access) = access {
             entities.push(EntityIr {
@@ -251,6 +286,7 @@ fn lower_entities(
                 concurrency: ConcurrencyIr { enabled: true },
                 tenant_scoped: entity.tenant_scoped,
                 audit_enabled: entity.audit_enabled,
+                workflow,
             });
         }
     }

@@ -151,10 +151,10 @@ async fn list_admin_jobs(
     require_admin(&state, &headers).await?;
     ensure_jobs_enabled()?;
     if input.status.as_deref().is_some_and(|status| {
-        !matches!(status, "queued" | "running" | "succeeded" | "dead")
+        !matches!(status, "queued" | "running" | "succeeded" | "dead" | "cancelled")
     }) {
         return Err(ApiError::InvalidQuery(
-            "status must be queued, running, succeeded, or dead".to_owned(),
+            "status must be queued, running, succeeded, dead, or cancelled".to_owned(),
         ));
     }
     let (page, page_size, offset) = admin_pagination(input.page, input.page_size)?;

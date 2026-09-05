@@ -1,7 +1,7 @@
 use crate::surface::Located;
 use appstruct_ir::{
-    AuditIr, AuthIr, Diagnostic, FileIr, JobsIr, MailIr, ModuleArtifactIr, ModuleOrigin,
-    RealtimeIr, ResolvedModule, TenantIr, WebhooksIr,
+    ActivityIr, AuditIr, AuthIr, Diagnostic, FileIr, JobsIr, MailIr, ModuleArtifactIr,
+    ModuleOrigin, RealtimeIr, ReportIr, ResolvedModule, TenantIr, WebhooksIr,
 };
 use appstruct_module_sdk::{
     ModuleGraphError, ModuleManifest, resolve_modules, validate_manifest, validate_relative_path,
@@ -223,10 +223,13 @@ pub(crate) fn resolve_modules_for_app(
     webhooks: &WebhooksIr,
     realtime: &RealtimeIr,
     file: &FileIr,
+    report: &ReportIr,
+    activity: &ActivityIr,
     local_modules: Vec<LoadedModule>,
 ) -> Result<Vec<ResolvedModule>, ModuleGraphError> {
-    let mut manifests =
-        official_manifests(auth, tenant, audit, mail, jobs, webhooks, realtime, file);
+    let mut manifests = official_manifests(
+        auth, tenant, audit, mail, jobs, webhooks, realtime, file, report, activity,
+    );
     manifests.extend(local_modules.iter().map(|module| module.manifest.clone()));
     let resolved = resolve_modules(manifests)?;
     let external_modules = local_modules
@@ -266,6 +269,8 @@ fn official_manifests(
     webhooks: &WebhooksIr,
     realtime: &RealtimeIr,
     file: &FileIr,
+    report: &ReportIr,
+    activity: &ActivityIr,
 ) -> Vec<ModuleManifest> {
     let mut manifests = Vec::new();
     if auth.enabled {
@@ -284,12 +289,14 @@ fn official_manifests(
         manifests.push(manifest("mail", &[MAIL_DELIVERY], &[]));
     }
     if jobs.enabled {
-        let requires = if mail.enabled {
-            &[MAIL_DELIVERY][..]
-        } else {
-            &[]
-        };
-        manifests.push(manifest("jobs", &["jobs.outbox"], requires));
+        let mut requires = Vec::new();
+        if mail.enabled {
+            requires.push(MAIL_DELIVERY);
+        }
+        if report.enabled {
+            requires.push("file.storage");
+        }
+        manifests.push(manifest("jobs", &["jobs.outbox"], &requires));
     }
     if webhooks.enabled {
         manifests.push(manifest("webhooks", &["webhooks.delivery"], &[]));
@@ -303,6 +310,20 @@ fn official_manifests(
     }
     if file.enabled {
         manifests.push(manifest("file", &["file.storage"], &[]));
+    }
+    if report.enabled {
+        manifests.push(manifest(
+            "report",
+            &["report.render"],
+            &[AUTH_IDENTITY, "jobs.outbox", "file.storage"],
+        ));
+    }
+    if activity.enabled {
+        let mut requires = vec![AUTH_IDENTITY, "audit.events"];
+        if activity.attachments {
+            requires.push("file.storage");
+        }
+        manifests.push(manifest("activity", &["activity.timeline"], &requires));
     }
     manifests
 }

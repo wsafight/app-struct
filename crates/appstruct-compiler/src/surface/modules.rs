@@ -113,3 +113,33 @@ pub(crate) struct SurfaceFile {
     pub allowed_content_types: Vec<Located<String>>,
     pub span: Option<SourceSpan>,
 }
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SurfaceReport {
+    pub enabled: bool,
+    pub queue: Option<Located<String>>,
+    pub max_input_bytes: Option<Located<u64>>,
+    pub retention_days: Option<Located<u64>>,
+    pub reader_roles: Vec<Located<String>>,
+    pub templates: Vec<SurfaceReportTemplate>,
+    pub span: Option<SourceSpan>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceReportTemplate {
+    pub name: Located<String>,
+    pub version: Located<u64>,
+    pub body: Located<String>,
+    pub input_schema: Located<String>,
+    pub data_schema_version: Option<Located<u64>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SurfaceActivity {
+    pub enabled: bool,
+    pub max_comment_bytes: Option<Located<u64>>,
+    pub attachments: bool,
+    pub admin_roles: Vec<Located<String>>,
+    pub resources: Vec<Located<String>>,
+    pub span: Option<SourceSpan>,
+}

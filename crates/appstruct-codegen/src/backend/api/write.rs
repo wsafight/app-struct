@@ -11,6 +11,7 @@ pub(super) struct HandlerContext<'context> {
     pub parse_id: &'context TokenStream,
     pub primary: &'context Ident,
     pub soft_delete: bool,
+    pub activity_resource: Option<&'context str>,
 }
 
 pub(super) fn handlers(
@@ -27,6 +28,7 @@ pub(super) fn handlers(
         parse_id,
         primary,
         soft_delete,
+        activity_resource,
     } = context;
     let read_scope = access::member_scope(entity, module, &entity.access.read)?;
     let create_allowed = access::create_allowed(entity, &entity.access.create)?;
@@ -41,6 +43,9 @@ pub(super) fn handlers(
     let create_audit = audit_event(entity, primary, "create");
     let update_audit = audit_event(entity, primary, "update");
     let delete_audit = audit_event(entity, primary, "delete");
+    let create_activity = super::activity::write_event(*activity_resource, primary, "created");
+    let update_activity = super::activity::write_event(*activity_resource, primary, "updated");
+    let delete_activity = super::activity::write_event(*activity_resource, primary, "deleted");
     let create = create_handler(
         module,
         hooks,
@@ -49,6 +54,7 @@ pub(super) fn handlers(
         active_default,
         &create_allowed,
         &create_audit,
+        &create_activity,
         &create_event,
     );
     let update = update_handler(
@@ -57,6 +63,7 @@ pub(super) fn handlers(
         &read_scope,
         &update_allowed,
         &update_audit,
+        &update_activity,
         &update_event,
     );
     let delete = delete_handler(
@@ -67,6 +74,7 @@ pub(super) fn handlers(
         &read_scope,
         &delete_allowed,
         &delete_audit,
+        &delete_activity,
         *soft_delete,
         &delete_event,
     );
@@ -115,6 +123,7 @@ fn create_handler(
     active_default: Option<&TokenStream>,
     create_allowed: &TokenStream,
     audit: &TokenStream,
+    activity: &TokenStream,
     event: &Literal,
 ) -> TokenStream {
     quote! {
@@ -147,6 +156,7 @@ fn create_handler(
                 let model = active.insert(&transaction).await?;
                 state.extensions.#hooks().after_create(&context, &model).await?;
                 #audit
+                #activity
                 model
             };
             transaction.commit().await?;
@@ -163,6 +173,7 @@ fn update_handler(
     read_scope: &TokenStream,
     update_allowed: &TokenStream,
     audit: &TokenStream,
+    activity: &TokenStream,
     event: &Literal,
 ) -> TokenStream {
     let HandlerContext {
@@ -222,6 +233,7 @@ fn update_handler(
                 let after = active.update(&transaction).await?;
                 state.extensions.#hooks().after_update(&context, &before, &after).await?;
                 #audit
+                #activity
                 after
             };
             transaction.commit().await?;
@@ -241,6 +253,7 @@ fn delete_handler(
     read_scope: &TokenStream,
     delete_allowed: &TokenStream,
     audit: &TokenStream,
+    activity: &TokenStream,
     soft_delete: bool,
     event: &Literal,
 ) -> TokenStream {
@@ -296,6 +309,7 @@ fn delete_handler(
                 let deleted = { #delete_model };
                 state.extensions.#hooks().after_delete(&context, &deleted).await?;
                 #audit
+                #activity
                 deleted
             };
             transaction.commit().await?;

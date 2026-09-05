@@ -42,16 +42,17 @@ fn query_parameter(name: &str, minimum: u64, maximum: Option<u64>) -> Value {
 fn event_schema() -> Value {
     json!({
         "type": "object",
-        "required": ["id", "entity", "record_id", "operation", "actor_id", "tenant_id", "before", "after", "occurred_at"],
+        "required": ["id", "entity", "record_id", "operation", "actor_id", "tenant_id", "before", "after", "metadata", "occurred_at"],
         "properties": {
             "id": { "type": "string", "format": "uuid" },
             "entity": { "type": "string" },
             "record_id": { "type": "string" },
-            "operation": { "type": "string", "enum": ["create", "update", "delete", "restore"] },
+            "operation": { "type": "string", "pattern": "^(create|update|delete|restore|workflow\\.[a-z][a-z0-9_]*|report\\.(create|cancel|download)|activity\\.(withdraw|moderate))$" },
             "actor_id": { "type": ["string", "null"], "format": "uuid" },
             "tenant_id": { "type": ["string", "null"], "format": "uuid" },
             "before": { "type": ["object", "array", "string", "number", "boolean", "null"] },
             "after": { "type": ["object", "array", "string", "number", "boolean", "null"] },
+            "metadata": { "type": ["object", "null"] },
             "occurred_at": { "type": "string", "format": "date-time" }
         }
     })

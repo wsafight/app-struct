@@ -46,6 +46,15 @@ pub(crate) fn build_operation_access(
     lower_rule(rule, None, auth, diagnostics)
 }
 
+pub(crate) fn build_entity_operation_access(
+    rule: &Located<SurfaceAccessRule>,
+    entity: &SurfaceEntity,
+    auth: &AuthIr,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<AccessRuleIr> {
+    lower_rule(rule, Some(entity), auth, diagnostics)
+}
+
 pub(crate) fn build_field_access(
     field: &SurfaceField,
     auth: &AuthIr,

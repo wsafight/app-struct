@@ -23,6 +23,16 @@ pub(super) fn definitions(ir: &AppIr) -> TokenStream {
             }
         }
     });
+    let report_schedule = ir.report.enabled.then(|| {
+        let queue = &ir.report.queue;
+        quote! {
+            ScheduleConfig {
+                name: "_appstruct_report_retention", cron: "@every 24h",
+                interval_seconds: Some(86_400), queue: #queue,
+                kind: "report.cleanup", payload: "{}",
+            }
+        }
+    });
     quote! {
         #[derive(Clone, Copy)]
         struct ScheduleConfig {
@@ -33,7 +43,9 @@ pub(super) fn definitions(ir: &AppIr) -> TokenStream {
             kind: &'static str,
             payload: &'static str,
         }
-        fn schedule_configs() -> &'static [ScheduleConfig] { &[#(#schedules),*] }
+        fn schedule_configs() -> &'static [ScheduleConfig] {
+            &[#(#schedules,)* #report_schedule]
+        }
     }
 }
 

@@ -47,7 +47,7 @@ pub enum Compatibility {
 
 pub const IR: VersionRange = VersionRange {
     minimum: 7,
-    current: 11,
+    current: 12,
 };
 pub const RUNTIME_API: VersionRange = VersionRange::exact(4);
 pub const MODULE_API: VersionRange = VersionRange::exact(1);
@@ -57,7 +57,7 @@ pub const PROJECT_LAYOUT: VersionRange = VersionRange {
 };
 pub const DATABASE_SCHEMA: VersionRange = VersionRange {
     minimum: 1,
-    current: 2,
+    current: 3,
 };
 pub const OWNERSHIP_MANIFEST: VersionRange = VersionRange::exact(1);
 pub const CACHE_SCHEMA: VersionRange = VersionRange::exact(2);

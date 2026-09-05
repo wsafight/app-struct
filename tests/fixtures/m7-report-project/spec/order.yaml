@@ -1,0 +1,32 @@
+domain: sales
+
+entities:
+  Order:
+    label: Orders
+    table: orders
+    tenant: true
+    audit: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      number:
+        type: string
+        required: true
+        unique: true
+        max_length: 32
+      owner:
+        type: relation
+        target: User
+        required: true
+        on_delete: restrict
+      created_at:
+        type: datetime
+        generated: now
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { role: sales }
+      update: { role: sales }
+      delete: { role: admin }

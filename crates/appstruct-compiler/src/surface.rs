@@ -1,4 +1,5 @@
 mod access;
+mod activity;
 mod audit;
 mod auth;
 mod context;
@@ -12,20 +13,22 @@ mod model;
 mod modules;
 mod preset;
 mod realtime;
+mod report;
 mod seeds;
 mod tenant;
 mod value;
 mod webhooks;
+mod workflow;
 
 pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
 pub(crate) use model::{
     FieldFlags, Located, SurfaceAccess, SurfaceAccessRule, SurfaceDomain, SurfaceEntity,
-    SurfaceField, SurfaceFieldAccess, SurfaceRoot,
+    SurfaceField, SurfaceFieldAccess, SurfaceRoot, SurfaceWorkflow,
 };
 pub(crate) use modules::{
-    SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobQueue, SurfaceJobSchedule, SurfaceJobs,
-    SurfaceMail, SurfaceMailTemplate, SurfacePreset, SurfaceRealtime, SurfaceTenant,
-    SurfaceWebhookEndpoint, SurfaceWebhooks,
+    SurfaceActivity, SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobQueue, SurfaceJobSchedule,
+    SurfaceJobs, SurfaceMail, SurfaceMailTemplate, SurfacePreset, SurfaceRealtime, SurfaceReport,
+    SurfaceReportTemplate, SurfaceTenant, SurfaceWebhookEndpoint, SurfaceWebhooks,
 };
 
 use self::context::DecodeContext;
@@ -35,6 +38,7 @@ use self::value::{
     ensure_known_keys, expect_mapping, expect_scalar_string, expect_sequence, expect_string,
     expect_u64, optional_bool, optional_string, optional_u64, required, unknown_key_diagnostics,
 };
+use self::workflow::decode_workflow;
 use crate::yaml::{MappingEntry, Node};
 use appstruct_ir::Diagnostic;
 
@@ -77,12 +81,15 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
             context.capture(webhooks::decode(modules.as_ref())),
             context.capture(realtime::decode(modules.as_ref())),
             context.capture(file::decode(modules.as_ref())),
+            context.capture(report::decode(modules.as_ref())),
+            context.capture(activity::decode(modules.as_ref())),
         )
     });
 
     let value = (|| {
         let database = database?;
-        let (auth, tenant, audit, mail, jobs, webhooks, realtime, file) = decoded_modules?;
+        let (auth, tenant, audit, mail, jobs, webhooks, realtime, file, report, activity) =
+            decoded_modules?;
         Some(SurfaceRoot {
             version: version?,
             app_name: app_name?,
@@ -99,6 +106,8 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
             webhooks: webhooks?,
             realtime: realtime?,
             file: file?,
+            report: report?,
+            activity: activity?,
             includes: includes?,
             module_manifests: module_manifests?,
         })
@@ -227,6 +236,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
             "tenant",
             "audit",
             "soft_delete",
+            "workflow",
         ],
         "entity definition",
     )?;
@@ -264,6 +274,10 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
         tenant_scoped: optional_bool(mapping, "tenant")?,
         audit_enabled: optional_bool(mapping, "audit")?,
         soft_delete: optional_bool(mapping, "soft_delete")?,
+        workflow: mapping
+            .get("workflow")
+            .map(|workflow| decode_workflow(&workflow.value))
+            .transpose()?,
         span: entry.value.span.clone(),
     })
 }

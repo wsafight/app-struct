@@ -94,6 +94,7 @@ fn write_guards(entity: &EntityIr, update: bool) -> Result<Vec<TokenStream>, Cod
         .filter(|field| {
             field.write_access.is_some()
                 && field.generated.is_none()
+                && !entity.is_workflow_field(field)
                 && (!update || !field.primary_key)
         })
         .map(|field| {

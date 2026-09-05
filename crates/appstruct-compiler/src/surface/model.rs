@@ -1,7 +1,7 @@
 use super::{
-    SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobs, SurfaceMail, SurfaceOperation,
-    SurfacePage, SurfacePreset, SurfaceRealtime, SurfaceTenant, SurfaceValueObject,
-    SurfaceWebhooks,
+    SurfaceActivity, SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobs, SurfaceMail,
+    SurfaceOperation, SurfacePage, SurfacePreset, SurfaceRealtime, SurfaceReport, SurfaceTenant,
+    SurfaceValueObject, SurfaceWebhooks,
 };
 use crate::yaml::MappingEntry;
 use appstruct_ir::SourceSpan;
@@ -29,6 +29,8 @@ pub(crate) struct SurfaceRoot {
     pub webhooks: SurfaceWebhooks,
     pub realtime: SurfaceRealtime,
     pub file: SurfaceFile,
+    pub report: SurfaceReport,
+    pub activity: SurfaceActivity,
     pub includes: Vec<Located<String>>,
     pub module_manifests: Vec<Located<String>>,
 }
@@ -64,6 +66,25 @@ pub(crate) struct SurfaceEntity {
     pub tenant_scoped: bool,
     pub audit_enabled: bool,
     pub soft_delete: bool,
+    pub workflow: Option<SurfaceWorkflow>,
+    pub span: SourceSpan,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceWorkflow {
+    pub field: Located<String>,
+    pub initial: Located<String>,
+    pub transitions: Vec<SurfaceWorkflowTransition>,
+    pub span: SourceSpan,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceWorkflowTransition {
+    pub name: Located<String>,
+    pub from: Vec<Located<String>>,
+    pub to: Located<String>,
+    pub input: Option<Located<String>>,
+    pub access: Located<SurfaceAccessRule>,
     pub span: SourceSpan,
 }
 

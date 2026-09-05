@@ -91,7 +91,9 @@
         "jobs": { "$ref": "#/$defs/jobsModule" },
         "webhooks": { "$ref": "#/$defs/webhooksModule" },
         "realtime": { "$ref": "#/$defs/realtimeModule" },
-        "file": { "$ref": "#/$defs/fileModule" }
+        "file": { "$ref": "#/$defs/fileModule" },
+        "report": { "$ref": "#/$defs/reportModule" },
+        "activity": { "$ref": "#/$defs/activityModule" }
       },
       "additionalProperties": false
     },
@@ -253,6 +255,58 @@
       },
       "additionalProperties": false
     },
+    "reportModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "queue": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+        "max_input_bytes": { "type": "integer", "minimum": 1, "maximum": 4194304 },
+        "retention_days": { "type": "integer", "minimum": 1, "maximum": 3650 },
+        "reader_roles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/roleName" },
+          "uniqueItems": true
+        },
+        "templates": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "pattern": "^[a-z0-9_-]{1,80}$" },
+          "additionalProperties": { "$ref": "#/$defs/reportTemplate" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "reportTemplate": {
+      "type": "object",
+      "required": ["version", "body", "input_schema"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 1048576 },
+        "input_schema": { "type": "string", "minLength": 2 },
+        "data_schema_version": { "type": "integer", "minimum": 1, "maximum": 4294967295 }
+      },
+      "additionalProperties": false
+    },
+    "activityModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "max_comment_bytes": { "type": "integer", "minimum": 1, "maximum": 65536 },
+        "attachments": { "type": "boolean" },
+        "admin_roles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/roleName" },
+          "uniqueItems": true
+        },
+        "resources": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/typeName" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
     "domain": {
       "type": "object",
       "required": ["domain"],
@@ -310,7 +364,39 @@
         "access": { "$ref": "#/$defs/crudAccess" },
         "tenant": { "type": "boolean" },
         "audit": { "type": "boolean" },
-        "soft_delete": { "type": "boolean" }
+        "soft_delete": { "type": "boolean" },
+        "workflow": { "$ref": "#/$defs/workflow" }
+      },
+      "additionalProperties": false
+    },
+    "workflow": {
+      "type": "object",
+      "required": ["field", "initial", "transitions"],
+      "properties": {
+        "field": { "$ref": "#/$defs/fieldName" },
+        "initial": { "type": "string", "minLength": 1 },
+        "transitions": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/fieldName" },
+          "additionalProperties": { "$ref": "#/$defs/workflowTransition" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "workflowTransition": {
+      "type": "object",
+      "required": ["from", "to", "access"],
+      "properties": {
+        "from": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "to": { "type": "string", "minLength": 1 },
+        "input": { "$ref": "#/$defs/typeName" },
+        "access": { "$ref": "#/$defs/accessRule" }
       },
       "additionalProperties": false
     },

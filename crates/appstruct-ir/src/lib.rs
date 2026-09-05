@@ -6,18 +6,21 @@ mod seed;
 mod service;
 mod validation;
 mod views;
+mod workflow;
 pub use compatibility::{IrCompatibilityError, from_compatible_json};
 pub use database::{DatabaseDevMode, DatabaseIr, DatabaseMigrationPolicy, DatabaseProvider};
 pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
 pub use seed::SeedIr;
 use serde::{Deserialize, Serialize};
 pub use service::{
-    AuditIr, FileIr, FileProviderIr, JobQueueIr, JobScheduleIr, JobsIr, MailIr, MailProviderIr,
-    MailTemplateIr, PresetIr, RealtimeIr, TenantIr, WebhookEndpointIr, WebhooksIr,
+    ActivityIr, ActivityResourceIr, AuditIr, FileIr, FileProviderIr, JobQueueIr, JobScheduleIr,
+    JobsIr, MailIr, MailProviderIr, MailTemplateIr, PresetIr, RealtimeIr, ReportIr,
+    ReportTemplateIr, TenantIr, WebhookEndpointIr, WebhooksIr,
 };
 use std::fmt;
 pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir};
 pub use views::EntityViewsIr;
+pub use workflow::{WorkflowIr, WorkflowTransitionIr};
 pub const IR_VERSION: u32 = appstruct_contracts::IR.current;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +39,10 @@ pub struct AppIr {
     #[serde(default, skip_serializing_if = "RealtimeIr::is_disabled")]
     pub realtime: RealtimeIr,
     pub file: FileIr,
+    #[serde(default, skip_serializing_if = "ReportIr::is_disabled")]
+    pub report: ReportIr,
+    #[serde(default, skip_serializing_if = "ActivityIr::is_disabled")]
+    pub activity: ActivityIr,
     pub enums: Vec<EnumIr>,
     pub value_objects: Vec<ValueObjectIr>,
     pub entities: Vec<EntityIr>,
@@ -110,6 +117,8 @@ pub struct EntityIr {
     pub concurrency: ConcurrencyIr,
     pub tenant_scoped: bool,
     pub audit_enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<WorkflowIr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

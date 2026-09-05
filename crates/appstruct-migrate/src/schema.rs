@@ -4,6 +4,7 @@ use appstruct_ir::{
 };
 use serde::{Deserialize, Serialize};
 
+mod activity;
 mod audit;
 mod auth;
 mod file;
@@ -11,6 +12,7 @@ mod jobs;
 mod mail;
 mod module_indexes;
 mod realtime;
+mod report;
 mod tenant;
 mod webhooks;
 
@@ -184,6 +186,15 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
     if ir.file.enabled {
         tables.extend(file::tables());
         foreign_keys.extend(file::foreign_keys(ir));
+    }
+    if ir.report.enabled {
+        tables.extend(report::tables());
+        unique_constraints.extend(report::unique_constraints());
+        foreign_keys.extend(report::foreign_keys(ir));
+    }
+    if ir.activity.enabled {
+        tables.extend(activity::tables());
+        foreign_keys.extend(activity::foreign_keys(ir));
     }
     Ok(DatabaseSchema {
         schema_version: SCHEMA_VERSION,
@@ -370,7 +381,7 @@ pub fn from_json(source: &str) -> Result<DatabaseSchema, serde_json::Error> {
     let mut schema: DatabaseSchema = serde_json::from_str(source)?;
     match schema.schema_version {
         SCHEMA_VERSION => Ok(schema),
-        MIN_COMPATIBLE_SCHEMA_VERSION => {
+        found if (MIN_COMPATIBLE_SCHEMA_VERSION..SCHEMA_VERSION).contains(&found) => {
             schema.schema_version = SCHEMA_VERSION;
             Ok(schema)
         }

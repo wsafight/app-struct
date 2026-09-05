@@ -1,4 +1,4 @@
-use super::{BulkContext, audit_event};
+use super::{BulkContext, activity_event, audit_event};
 use proc_macro2::TokenStream;
 use quote::quote;
 
@@ -13,9 +13,11 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
         entity_id,
         restore_scope,
         audit_enabled,
+        activity_resource,
         ..
     } = context;
     let audit = audit_event(*audit_enabled, entity_id, primary, "restore");
+    let activity = activity_event(*activity_resource, primary, "restored");
     let update_event = format!("{module}.updated");
     quote! {
         async fn restore(
@@ -67,6 +69,7 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
                     let after = active.update(&savepoint).await?;
                     state.extensions.#hooks().after_update(&context, &before, &after).await?;
                     #audit
+                    #activity
                     Ok(after)
                 }.await;
                 match outcome {
@@ -103,9 +106,11 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
         read_scope,
         audit_enabled,
         entity_id,
+        activity_resource,
         ..
     } = context;
     let audit = audit_event(*audit_enabled, entity_id, primary, "update");
+    let activity = activity_event(*activity_resource, primary, "updated");
     let update_event = format!("{module}.updated");
     quote! {
         async fn bulk_update(
@@ -160,6 +165,7 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
                     let after = active.update(&savepoint).await?;
                     state.extensions.#hooks().after_update(&context, &before, &after).await?;
                     #audit
+                    #activity
                     Ok(after)
                 }.await;
                 match outcome {
@@ -196,9 +202,11 @@ pub(super) fn delete(context: &BulkContext<'_>) -> TokenStream {
         audit_enabled,
         entity_id,
         soft_delete,
+        activity_resource,
         ..
     } = context;
     let audit = audit_event(*audit_enabled, entity_id, primary, "delete");
+    let activity = activity_event(*activity_resource, primary, "deleted");
     let delete_event = format!("{module}.deleted");
     let delete_model = if *soft_delete {
         quote! {
@@ -258,6 +266,7 @@ pub(super) fn delete(context: &BulkContext<'_>) -> TokenStream {
                     let deleted = { #delete_model };
                     state.extensions.#hooks().after_delete(&context, &deleted).await?;
                     #audit
+                    #activity
                     Ok(deleted)
                 }.await;
                 match outcome {

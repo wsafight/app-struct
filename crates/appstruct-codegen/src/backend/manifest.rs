@@ -63,6 +63,13 @@ pub(super) fn cargo(ir: &AppIr) -> String {
     if ir.mail.enabled {
         manifest.push_str("minijinja = \"=2.12.0\"\n");
     }
+    if ir.report.enabled {
+        if !ir.mail.enabled {
+            manifest.push_str("minijinja = \"=2.12.0\"\n");
+        }
+        manifest.push_str("jsonschema = \"=0.51.0\"\n");
+        manifest.push_str("ring = \"=0.17.14\"\n");
+    }
     if ir.webhooks.enabled
         && !ir.auth.oauth_enabled
         && !(ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend)

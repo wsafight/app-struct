@@ -1,10 +1,21 @@
 use appstruct_ir::AppIr;
 
+pub(super) fn requires_registry(ir: &AppIr) -> bool {
+    !ir.pages.is_empty()
+        || ir
+            .entities
+            .iter()
+            .flat_map(|entity| &entity.fields)
+            .any(|field| field.ui_component.is_some())
+}
+
+#[allow(clippy::too_many_lines)]
 pub(super) fn source(ir: &AppIr) -> String {
     if !ir.auth.enabled {
         return include_str!("../../templates/web/App.tsx").to_owned();
     }
     let audit = ir.audit.enabled;
+    let report = ir.report.enabled;
     let tenant = ir.tenant.enabled;
     include_str!("../../templates/web/AppAuthenticated.tsx")
         .replace(
@@ -44,6 +55,14 @@ pub(super) fn source(ir: &AppIr) -> String {
             },
         )
         .replace(
+            "__REPORT_PAGE__",
+            if report {
+                "const ReportPage = lazy(() => import(\"../report/ReportPage\").then(({ ReportPage: component }) => ({ default: component })));\n"
+            } else {
+                ""
+            },
+        )
+        .replace(
             "__TENANT_ROOT__",
             if tenant {
                 "function TenantRoot() {\n  return <TenantProvider><RequireTenant /></TenantProvider>;\n}\n"
@@ -76,6 +95,14 @@ pub(super) fn source(ir: &AppIr) -> String {
             },
         )
         .replace(
+            "__REPORT_ROUTE__",
+            if report {
+                "    { path: \"/reports\", component: ReportPage },"
+            } else {
+                ""
+            },
+        )
+        .replace(
             "__ORGANIZATION_ROUTE__",
             if tenant {
                 "    { path: \"/organization\", component: OrganizationPage },"
@@ -99,9 +126,11 @@ pub(super) fn layout_source(ir: &AppIr) -> String {
         return include_str!("../../templates/web/Layout.tsx").replace("__APP_TITLE__", &title);
     }
     let audit = ir.audit.enabled;
+    let report = ir.report.enabled;
     let tenant = ir.tenant.enabled;
     include_str!("../../templates/web/LayoutAuthenticated.tsx")
         .replace("__HISTORY_ICON__", if audit { ", History" } else { "" })
+        .replace("__REPORT_ICON__", if report { ", FileText" } else { "" })
         .replace(
             "__AUDIT_RESOURCE_IMPORT__",
             if audit {
@@ -146,6 +175,14 @@ pub(super) fn layout_source(ir: &AppIr) -> String {
             "__AUDIT_LINK__",
             if audit {
                 "        {canReadAudit && <NavLink to=\"/audit\"><History size={15} /> Audit log</NavLink>}"
+            } else {
+                ""
+            },
+        )
+        .replace(
+            "__REPORT_LINK__",
+            if report {
+                "        <NavLink to=\"/reports\"><FileText size={15} /> Reports</NavLink>"
             } else {
                 ""
             },

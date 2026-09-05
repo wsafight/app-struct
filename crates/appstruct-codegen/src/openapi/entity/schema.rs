@@ -21,13 +21,74 @@ pub(super) fn add_schemas(schemas: &mut Map<String, Value>, entity: &EntityIr) {
         aggregate_response_schema(),
     );
     super::super::bulk::add_schemas(schemas, entity);
+    add_workflow_schemas(schemas, entity);
+}
+
+fn add_workflow_schemas(schemas: &mut Map<String, Value>, entity: &EntityIr) {
+    let Some(workflow) = &entity.workflow else {
+        return;
+    };
+    let singular = &entity.rust_name;
+    schemas.insert(
+        format!("{singular}WorkflowTransitionCapability"),
+        json!({
+            "type": "object",
+            "required": ["name", "to", "input"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "enum": workflow.transitions.iter().map(|transition| &transition.name).collect::<Vec<_>>(),
+                },
+                "to": { "type": "string" },
+                "input": { "type": ["string", "null"] },
+            },
+        }),
+    );
+    schemas.insert(
+        format!("{singular}WorkflowCapabilities"),
+        json!({
+            "type": "object",
+            "required": ["state", "revision", "allowed_transitions"],
+            "properties": {
+                "state": { "type": "string" },
+                "revision": { "type": "integer", "format": "int64", "minimum": 1 },
+                "allowed_transitions": {
+                    "type": "array",
+                    "items": schema_ref(&format!("{singular}WorkflowTransitionCapability")),
+                },
+            },
+        }),
+    );
+    let mut inputs = workflow
+        .transitions
+        .iter()
+        .filter_map(|transition| transition.input.as_ref())
+        .map(|input| schema_ref(input.trim_start_matches("app::")))
+        .collect::<Vec<_>>();
+    if workflow
+        .transitions
+        .iter()
+        .any(|transition| transition.input.is_none())
+    {
+        inputs.push(json!({ "type": "object", "maxProperties": 0 }));
+    }
+    schemas.insert(
+        format!("{singular}WorkflowTransitionInput"),
+        json!({ "oneOf": inputs }),
+    );
 }
 
 fn entity_schema(entity: &EntityIr) -> Value {
     let properties = entity
         .fields
         .iter()
-        .map(|field| (field.rust_name.clone(), field_schema(field, true)))
+        .map(|field| {
+            let mut schema = field_schema(field, true);
+            if entity.is_workflow_field(field) {
+                schema["readOnly"] = Value::Bool(true);
+            }
+            (field.rust_name.clone(), schema)
+        })
         .collect::<Map<_, _>>();
     let required = entity
         .fields
@@ -44,9 +105,9 @@ fn input_schema(entity: &EntityIr, update: bool) -> Value {
         .iter()
         .filter(|field| {
             if update {
-                !field.primary_key && field.generated.is_none()
+                !field.primary_key && field.generated.is_none() && !entity.is_workflow_field(field)
             } else {
-                field.generated.is_none()
+                field.generated.is_none() && !entity.is_workflow_field(field)
             }
         })
         .collect::<Vec<_>>();

@@ -304,7 +304,9 @@ fn starter_arm(module: &ResolvedModule, variant: &Ident) -> Result<TokenStream, 
             let mail = context.mail.as_ref()
                 .ok_or_else(|| missing_module_state("appstruct/mail"))?;
             let handle = start_job_worker(
-                &context.database, &context.extensions, mail, context.health.clone(),
+                &context.database, &context.extensions, mail,
+                context.file.as_ref().ok_or_else(|| missing_module_state("appstruct/file"))?,
+                context.health.clone(),
             )
                 .map(|handle| Box::new(handle) as Box<dyn ServiceHandle>);
             Ok(handle)
@@ -314,7 +316,8 @@ fn starter_arm(module: &ResolvedModule, variant: &Ident) -> Result<TokenStream, 
                 .map(|handle| Box::new(handle) as Box<dyn ServiceHandle>);
             Ok(handle)
         },
-        "appstruct/audit" | "appstruct/rbac" | "appstruct/realtime" | "appstruct/tenant" => {
+        "appstruct/activity" | "appstruct/audit" | "appstruct/rbac" | "appstruct/realtime"
+        | "appstruct/report" | "appstruct/tenant" => {
             quote! { Ok(None) }
         }
         _ => {
@@ -331,6 +334,7 @@ fn module_variant(module: &ResolvedModule) -> Result<Ident, CodegenError> {
         return Ok(format_ident!("Local{}", module.startup_order));
     }
     match module.name.as_str() {
+        "appstruct/activity" => Ok(format_ident!("Activity")),
         "appstruct/auth" => Ok(format_ident!("Auth")),
         "appstruct/audit" => Ok(format_ident!("Audit")),
         "appstruct/file" => Ok(format_ident!("File")),
@@ -338,6 +342,7 @@ fn module_variant(module: &ResolvedModule) -> Result<Ident, CodegenError> {
         "appstruct/mail" => Ok(format_ident!("Mail")),
         "appstruct/rbac" => Ok(format_ident!("Rbac")),
         "appstruct/realtime" => Ok(format_ident!("Realtime")),
+        "appstruct/report" => Ok(format_ident!("Report")),
         "appstruct/tenant" => Ok(format_ident!("Tenant")),
         "appstruct/webhooks" => Ok(format_ident!("Webhooks")),
         name => Err(CodegenError::new(format!(

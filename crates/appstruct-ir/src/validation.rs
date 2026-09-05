@@ -1,10 +1,16 @@
+mod activity;
 mod error;
 mod graph;
 mod indexes;
+mod report;
 mod seeds;
+mod workflow;
+use self::activity::validate_activity;
 use self::graph::{validate_modules, validate_operations, validate_services};
 use self::indexes::validate_indexes;
+use self::report::validate_report;
 use self::seeds::validate_seeds;
+use self::workflow::validate_workflow;
 use crate::{
     AccessRuleIr, AppIr, EntityId, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr, IR_VERSION,
     RelationIr,
@@ -29,11 +35,13 @@ pub fn validate_app_ir(ir: &AppIr) -> Result<(), IrValidationErrors> {
         "value_objects",
         &mut errors,
     );
-    validate_entities(ir, &entities, &mut errors);
+    validate_entities(ir, &entities, &value_objects, &mut errors);
     validate_seeds(ir, &entities, &mut errors);
     validate_relations(ir, &entities, &mut errors);
     validate_services(ir, &entities, &mut errors);
     validate_operations(ir, &entities, &value_objects, &mut errors);
+    validate_report(ir, &mut errors);
+    validate_activity(ir, &entities, &mut errors);
     validate_modules(ir, &mut errors);
     errors.sort_by(|left, right| {
         left.path
@@ -65,6 +73,7 @@ fn entity_index<'ir>(
 fn validate_entities(
     ir: &AppIr,
     entities: &BTreeMap<&str, &EntityIr>,
+    value_objects: &BTreeSet<&str>,
     errors: &mut Vec<IrValidationError>,
 ) {
     let mut field_ids = BTreeSet::new();
@@ -109,9 +118,11 @@ fn validate_entities(
         for (name, rule) in entity_access(entity) {
             validate_access_rule(rule, entity, &format!("{path}.access.{name}"), errors);
         }
+        validate_workflow(entity, &path, value_objects, errors);
         validate_indexes(entity, &path, errors);
     }
 }
+
 fn validate_field_access_rule(
     rule: &AccessRuleIr,
     path: &str,
@@ -274,7 +285,7 @@ fn validate_relation_endpoint(
         );
     }
 }
-fn validate_access_rule(
+pub(super) fn validate_access_rule(
     rule: &AccessRuleIr,
     entity: &EntityIr,
     path: &str,

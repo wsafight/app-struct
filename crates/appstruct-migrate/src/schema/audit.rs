@@ -11,23 +11,12 @@ pub(super) fn tables() -> Vec<TableSchema> {
             column("id", DatabaseType::Uuid, false, true),
             column("entity", DatabaseType::Text, false, false),
             column("record_id", DatabaseType::Text, false, false),
-            column(
-                "operation",
-                DatabaseType::Enum {
-                    values: vec![
-                        "create".to_owned(),
-                        "update".to_owned(),
-                        "delete".to_owned(),
-                        "restore".to_owned(),
-                    ],
-                },
-                false,
-                false,
-            ),
+            column("operation", DatabaseType::Text, false, false),
             column("actor_id", DatabaseType::Uuid, true, false),
             column("tenant_id", DatabaseType::Uuid, true, false),
             column("before", DatabaseType::Json, true, false),
             column("after", DatabaseType::Json, true, false),
+            column("metadata", DatabaseType::Json, true, false),
             column("occurred_at", DatabaseType::Datetime, false, false),
         ],
     }]

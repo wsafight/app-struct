@@ -14,6 +14,7 @@ pub(super) fn decode(modules_entry: Option<&MappingEntry>) -> Result<SurfaceAuth
         modules,
         &[
             "auth", "rbac", "tenant", "audit", "mail", "jobs", "webhooks", "realtime", "file",
+            "report", "activity",
         ],
         "`modules`",
     )?;

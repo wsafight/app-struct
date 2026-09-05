@@ -1,6 +1,8 @@
+mod activity;
 mod bulk;
 mod fields;
 mod realtime;
+mod workflow;
 mod write;
 use super::query::list_support;
 use super::validation::validation_rules;
@@ -10,6 +12,7 @@ use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenError> {
     let module = parse_ident(&module_name(entity))?;
     let create_fields = dto_fields(entity, false)?;
@@ -25,6 +28,10 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
     let primary = parse_ident(&primary_key(entity)?.rust_name)?;
     let hooks = format_ident!("{}_hooks", module_name(entity));
     let policy = format_ident!("{}_policy", module_name(entity));
+    let activity_resource = ir
+        .activity
+        .resource_for_entity(&entity.id)
+        .map(|resource| resource.resource.as_str());
     let list = list_support(ir, entity, &module, &policy)?;
     let aggregate = super::query::aggregate::aggregate_support(ir, entity, &module, &policy)?;
     let handlers = write::handlers(
@@ -36,6 +43,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
             parse_id: &parse_id,
             primary: &primary,
             soft_delete: entity.views.soft_delete,
+            activity_resource,
         },
         &create_values,
         active_default.as_ref(),
@@ -48,6 +56,20 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
     } else {
         TokenStream::new()
     };
+    let activity = activity::support(ir, entity, &module, &policy, &parse_id)?;
+    let workflow = workflow::support(
+        ir,
+        entity,
+        &workflow::WorkflowContext {
+            module: &module,
+            hooks: &hooks,
+            policy: &policy,
+            parse_id: &parse_id,
+            primary: &primary,
+        },
+    )?;
+    let workflow_routes = workflow.routes;
+    let workflow_support = workflow.tokens;
     let list_scope = super::access::scope(entity, &module, &entity.access.list)?;
     let create_allowed = super::access::create_allowed(entity, &entity.access.create)?;
     let update_allowed = super::access::update_allowed(entity, &entity.access.update)?;
@@ -66,6 +88,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
             create_values: &create_values,
             active_default: active_default.as_ref(),
             updates: &updates,
+            activity_resource,
         },
     )?;
     let restore_route = entity
@@ -100,6 +123,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
                 .route("/_export.csv", get(export_csv))
                 .route("/_import.csv", axum::routing::post(import_csv))
                 #restore_route
+                #workflow_routes
                 .route("/{id}", get(read).patch(update).delete(delete))
         }
         #list
@@ -108,6 +132,8 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         #validators
         #field_access
         #realtime
+        #activity
+        #workflow_support
         #bulk
     })
 }
@@ -161,40 +187,45 @@ fn create_values(entity: &EntityIr) -> Result<Vec<TokenStream>, CodegenError> {
     entity
         .fields
         .iter()
-        .filter_map(|field| create_value(field).transpose())
+        .filter_map(|field| create_value(entity, field).transpose())
         .collect()
 }
 
-fn create_value(field: &FieldIr) -> Result<Option<TokenStream>, CodegenError> {
+fn create_value(entity: &EntityIr, field: &FieldIr) -> Result<Option<TokenStream>, CodegenError> {
     let name = parse_ident(&field.rust_name)?;
-    let value = match field.generated {
-        Some(GeneratedValueIr::UuidV7) => quote! { uuid::Uuid::now_v7() },
-        Some(GeneratedValueIr::Now) if matches!(field.ty, FieldTypeIr::Date) => {
-            quote! { chrono::Utc::now().date_naive() }
-        }
-        Some(GeneratedValueIr::Now) => quote! { chrono::Utc::now() },
-        Some(GeneratedValueIr::AutoIncrement) => return Ok(None),
-        Some(GeneratedValueIr::Revision) => quote! { 1_i64 },
-        Some(GeneratedValueIr::Tenant) => quote! { context.require_tenant()? },
-        None => field.default.as_ref().map_or_else(
-            || {
-                if field.write_access.is_some() && !field.nullable {
-                    let field_name = field.api_name.clone();
-                    let message = format!("field `{}` is required", field.api_name);
-                    quote! {
-                        input.#name.ok_or_else(|| ApiError::Validation(vec![FieldViolation {
-                            field: #field_name.to_owned(), message: #message.to_owned()
-                        }]))?
+    let value = if entity.is_workflow_field(field) {
+        let initial = &entity.workflow.as_ref().expect("workflow exists").initial;
+        quote! { #initial.to_owned() }
+    } else {
+        match field.generated {
+            Some(GeneratedValueIr::UuidV7) => quote! { uuid::Uuid::now_v7() },
+            Some(GeneratedValueIr::Now) if matches!(field.ty, FieldTypeIr::Date) => {
+                quote! { chrono::Utc::now().date_naive() }
+            }
+            Some(GeneratedValueIr::Now) => quote! { chrono::Utc::now() },
+            Some(GeneratedValueIr::AutoIncrement) => return Ok(None),
+            Some(GeneratedValueIr::Revision) => quote! { 1_i64 },
+            Some(GeneratedValueIr::Tenant) => quote! { context.require_tenant()? },
+            None => field.default.as_ref().map_or_else(
+                || {
+                    if field.write_access.is_some() && !field.nullable {
+                        let field_name = field.api_name.clone();
+                        let message = format!("field `{}` is required", field.api_name);
+                        quote! {
+                            input.#name.ok_or_else(|| ApiError::Validation(vec![FieldViolation {
+                                field: #field_name.to_owned(), message: #message.to_owned()
+                            }]))?
+                        }
+                    } else {
+                        quote! { input.#name }
                     }
-                } else {
-                    quote! { input.#name }
-                }
-            },
-            |default| {
-                let default = default_expression(field, default);
-                quote! { input.#name.unwrap_or_else(|| #default) }
-            },
-        ),
+                },
+                |default| {
+                    let default = default_expression(field, default);
+                    quote! { input.#name.unwrap_or_else(|| #default) }
+                },
+            ),
+        }
     };
     Ok(Some(quote! { #name: Set(#value) }))
 }
@@ -271,10 +302,11 @@ fn copy_type(field_type: &FieldTypeIr) -> bool {
 }
 
 fn writable_fields(entity: &EntityIr, update: bool) -> impl Iterator<Item = &FieldIr> {
-    entity
-        .fields
-        .iter()
-        .filter(move |field| field.generated.is_none() && (!update || !field.primary_key))
+    entity.fields.iter().filter(move |field| {
+        field.generated.is_none()
+            && !entity.is_workflow_field(field)
+            && (!update || !field.primary_key)
+    })
 }
 
 fn primary_key(entity: &EntityIr) -> Result<&FieldIr, CodegenError> {

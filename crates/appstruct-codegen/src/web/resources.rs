@@ -1,5 +1,7 @@
 use crate::generated_header;
-use appstruct_ir::{AccessRuleIr, AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
+use appstruct_ir::{
+    AccessRuleIr, AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr, ValueFieldIr,
+};
 use std::fmt::Write;
 
 pub(super) fn source(ir: &AppIr) -> String {
@@ -17,7 +19,7 @@ pub(super) fn source(ir: &AppIr) -> String {
     let resources = ir
         .entities
         .iter()
-        .map(resource_source)
+        .map(|entity| resource_source(ir, entity))
         .collect::<Vec<_>>()
         .join(",\n");
     format!(
@@ -29,7 +31,7 @@ pub(super) fn source(ir: &AppIr) -> String {
     )
 }
 
-fn resource_source(entity: &EntityIr) -> String {
+fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
     let fields = entity
         .fields
         .iter()
@@ -39,7 +41,7 @@ fn resource_source(entity: &EntityIr) -> String {
                 Some(GeneratedValueIr::Revision | GeneratedValueIr::Tenant)
             )
         })
-        .map(field_source)
+        .map(|field| field_source(entity, field))
         .collect::<Vec<_>>()
         .join(",\n");
     let primary_key = entity
@@ -48,8 +50,10 @@ fn resource_source(entity: &EntityIr) -> String {
         .find(|field| field.primary_key)
         .map_or("id", |field| field.rust_name.as_str());
     let api = format!("{}Api", lower_camel(&entity.rust_name));
+    let workflow = workflow_source(ir, entity);
+    let activity = activity_source(ir, entity);
     format!(
-        "{{\n  id: {:?},\n  name: {:?},\n  eventPrefix: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  softDelete: {},\n  access: {},\n  fields: [\n{}\n  ],\n  api: {} as unknown as ResourceApi,\n}}",
+        "{{\n  id: {:?},\n  name: {:?},\n  eventPrefix: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  softDelete: {},\n  access: {},\n  fields: [\n{}\n  ],\n{}{}  api: {} as unknown as ResourceApi,\n}}",
         entity.id.0,
         entity.rust_name,
         event_prefix(entity),
@@ -59,8 +63,81 @@ fn resource_source(entity: &EntityIr) -> String {
         entity.views.soft_delete,
         serde_json::to_string(&entity.access).expect("access IR is serializable"),
         indent(&fields, 4),
+        workflow,
+        activity,
         api,
     )
+}
+
+fn activity_source(ir: &AppIr, entity: &EntityIr) -> String {
+    ir.activity
+        .resource_for_entity(&entity.id)
+        .map(|_| {
+            format!(
+                "  activity: {{ maxCommentBytes: {}, attachments: {}, adminRoles: {:?} }},\n",
+                ir.activity.max_comment_bytes, ir.activity.attachments, ir.activity.admin_roles,
+            )
+        })
+        .unwrap_or_default()
+}
+
+fn workflow_source(ir: &AppIr, entity: &EntityIr) -> String {
+    let Some(workflow) = &entity.workflow else {
+        return String::new();
+    };
+    let transitions = workflow
+        .transitions
+        .iter()
+        .map(|transition| {
+            let mut properties = vec![
+                format!("name: {:?}", transition.name),
+                format!("label: {:?}", humanize(&transition.name)),
+                format!("to: {:?}", transition.to),
+            ];
+            if let Some(input) = &transition.input {
+                let value = ir
+                    .value_objects
+                    .iter()
+                    .find(|value| value.id == *input)
+                    .expect("IR validation guarantees workflow input exists");
+                let fields = value
+                    .fields
+                    .iter()
+                    .map(value_field_source)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                properties.push(format!(
+                    "input: {{ name: {:?}, fields: [{fields}] }}",
+                    value.rust_name,
+                ));
+            }
+            format!("{{ {} }}", properties.join(", "))
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "  workflow: {{ field: {:?}, transitions: [{transitions}] }},\n",
+        entity
+            .workflow_field()
+            .expect("IR validation guarantees workflow field exists")
+            .rust_name,
+    )
+}
+
+fn value_field_source(field: &ValueFieldIr) -> String {
+    let mut properties = vec![
+        format!("name: {:?}", field.rust_name),
+        format!("label: {:?}", humanize(&field.rust_name)),
+        format!("kind: {:?}", field_kind(&field.ty)),
+        format!("required: {}", field.required),
+    ];
+    if let FieldTypeIr::Enum { values } = &field.ty {
+        properties.push(format!("values: {values:?}"));
+    }
+    if let FieldTypeIr::Relation { target } = &field.ty {
+        properties.push(format!("relation: {:?}", target.0));
+    }
+    format!("{{ {} }}", properties.join(", "))
 }
 
 fn event_prefix(entity: &EntityIr) -> String {
@@ -92,13 +169,16 @@ fn audit_access_source(ir: &AppIr) -> String {
     serde_json::to_string(&rule).expect("access IR is serializable")
 }
 
-fn field_source(field: &FieldIr) -> String {
+fn field_source(entity: &EntityIr, field: &FieldIr) -> String {
     let mut properties = vec![
         format!("name: {:?}", field.rust_name),
         format!("label: {:?}", humanize(&field.api_name)),
         format!("kind: {:?}", field_kind(&field.ty)),
         format!("required: {}", !field.nullable && field.default.is_none()),
-        format!("readOnly: {}", field.generated.is_some()),
+        format!(
+            "readOnly: {}",
+            field.generated.is_some() || entity.is_workflow_field(field)
+        ),
         format!("primaryKey: {}", field.primary_key),
         format!("searchable: {}", field.capabilities.searchable),
         format!("filterable: {}", field.capabilities.filterable),

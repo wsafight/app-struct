@@ -136,7 +136,7 @@ fn application_source() -> TokenStream {
                 let mut runtime = ModuleRuntime::default();
                 let health = ApplicationHealth::starting();
                 if let Some(worker) = start_job_worker(
-                    &database, &extensions, &mail, health.clone(),
+                    &database, &extensions, &mail, &file, health.clone(),
                 ) {
                     runtime.push_service("appstruct/jobs", worker);
                 }
@@ -232,7 +232,7 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
                 #(#routes)*
                 .merge(operations::router()).merge(audit::router())
                 .merge(auth::router()).merge(tenant::router())
-                .merge(realtime::router())
+                .merge(realtime::router()).merge(report::router()).merge(activity::router())
                 .route("/health/live", get(liveness)).route("/health/ready", get(readiness))
                 .route("/metrics", get(metrics))
                 .route("/openapi.json", get(openapi)).layer(cors)
@@ -303,25 +303,22 @@ fn start_worker(ir: &AppIr) -> TokenStream {
         return quote! {
             fn start_job_worker(
                 _database: &DatabaseConnection, _extensions: &AppExtensions, _mail: &MailState,
+                _file: &FileState,
                 _health: ApplicationHealth,
             ) -> Option<JobWorkerHandle> { None }
         };
     }
-    if ir.mail.enabled {
+    if ir.mail.enabled || ir.report.enabled {
         quote! {
             fn start_job_worker(
                 database: &DatabaseConnection, extensions: &AppExtensions, mail: &MailState,
+                file: &FileState,
                 health: ApplicationHealth,
             ) -> Option<JobWorkerHandle> {
-                let worker = if let Some(handler) = extensions.job_handler() {
-                    JobWorker::new(database.clone(), handler)
-                } else {
-                    JobWorker::for_kind(
-                        database.clone(),
-                        std::sync::Arc::new(MailJobHandler::new(mail.clone())),
-                        "mail.send",
-                    )
-                };
+                let handler = jobs::generated_job_handler(
+                    database.clone(), mail.clone(), file.clone(), extensions.job_handler(),
+                );
+                let worker = JobWorker::new(database.clone(), handler);
                 Some(worker.spawn_with_health(health))
             }
         }
@@ -329,6 +326,7 @@ fn start_worker(ir: &AppIr) -> TokenStream {
         quote! {
             fn start_job_worker(
                 database: &DatabaseConnection, extensions: &AppExtensions, _mail: &MailState,
+                _file: &FileState,
                 health: ApplicationHealth,
             ) -> Option<JobWorkerHandle> {
                 let Some(handler) = extensions.job_handler() else {

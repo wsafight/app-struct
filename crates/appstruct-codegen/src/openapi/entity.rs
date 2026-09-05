@@ -2,7 +2,7 @@ use super::{
     auth, error_response, if_match_parameter, request_body, response, schema_ref, tenant,
     versioned_response,
 };
-use appstruct_ir::{AppIr, EntityIr, FieldTypeIr};
+use appstruct_ir::{AccessRuleIr, AppIr, EntityIr, FieldTypeIr};
 use serde_json::{Map, Value, json};
 
 mod schema;
@@ -95,6 +95,92 @@ pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, entity: &Ent
     );
     add_aggregate_path(paths, ir, entity);
     super::bulk::add_paths(paths, ir, entity);
+    add_workflow_paths(paths, entity);
+}
+
+fn add_workflow_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {
+    let Some(workflow) = &entity.workflow else {
+        return;
+    };
+    let singular = &entity.rust_name;
+    let capabilities_path = format!("/api/{}/{{id}}/_transitions", entity.table_name);
+    let transition_path = format!("{capabilities_path}/{{action}}");
+    let mut base_parameters = vec![json!({
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": schema::primary_key(entity),
+    })];
+    if entity.tenant_scoped {
+        base_parameters.push(tenant::parameter());
+    }
+    paths.insert(
+        capabilities_path,
+        json!({
+            "get": {
+                "operationId": format!("get{singular}WorkflowCapabilities"),
+                "tags": [singular],
+                "security": auth::security(&entity.access.read),
+                "parameters": base_parameters,
+                "responses": {
+                    "200": versioned_response(
+                        "Allowed workflow transitions for the current record revision",
+                        &schema_ref(&format!("{singular}WorkflowCapabilities")),
+                    ),
+                    "404": error_response(),
+                }
+            }
+        }),
+    );
+    let mut mutation_parameters = vec![
+        json!({
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": schema::primary_key(entity),
+        }),
+        json!({
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+                "type": "string",
+                "enum": workflow.transitions.iter().map(|transition| &transition.name).collect::<Vec<_>>(),
+            },
+        }),
+        if_match_parameter(),
+    ];
+    if entity.tenant_scoped {
+        mutation_parameters.push(tenant::parameter());
+    }
+    let access = AccessRuleIr::Any {
+        rules: workflow
+            .transitions
+            .iter()
+            .map(|transition| transition.access.clone())
+            .collect(),
+    };
+    paths.insert(
+        transition_path,
+        json!({
+            "post": {
+                "operationId": format!("transition{singular}Workflow"),
+                "tags": [singular],
+                "security": auth::security(&access),
+                "parameters": mutation_parameters,
+                "requestBody": request_body(&format!("{singular}WorkflowTransitionInput")),
+                "responses": {
+                    "200": versioned_response("Workflow transition completed", &schema_ref(singular)),
+                    "403": error_response(),
+                    "404": error_response(),
+                    "409": error_response(),
+                    "412": error_response(),
+                    "422": error_response(),
+                    "428": error_response(),
+                }
+            }
+        }),
+    );
 }
 fn add_aggregate_path(paths: &mut Map<String, Value>, ir: &AppIr, entity: &EntityIr) {
     let singular = &entity.rust_name;

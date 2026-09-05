@@ -1,6 +1,6 @@
-use appstruct_ir::EntityIr;
+use appstruct_ir::{AppIr, EntityIr};
 
-pub(super) fn client(entity: &EntityIr) -> String {
+pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
     let variable = lower_camel(&entity.rust_name);
     let model = &entity.rust_name;
     let path = format!("/api/{}/", entity.table_name);
@@ -11,6 +11,36 @@ pub(super) fn client(entity: &EntityIr) -> String {
     } else {
         String::new()
     };
+    let workflow = entity.workflow.as_ref().map_or_else(String::new, |workflow| {
+        let typed = workflow
+            .transitions
+            .iter()
+            .map(|transition| {
+                let name = &transition.name;
+                let endpoint = format!("${{member}}/_transitions/{name}");
+                transition.input.as_ref().map_or_else(
+                    || format!(
+                        "  {name}: (id: string) => {{\n    const member = `{path}${{encodeURIComponent(id)}}`;\n    return request<{model}>(`{endpoint}`, {{ method: \"POST\", body: \"{{}}\" }}, member, true);\n  }},\n",
+                    ),
+                    |input| {
+                        let input_type = ir
+                            .value_objects
+                            .iter()
+                            .find(|value| value.id == *input)
+                            .expect("IR validation guarantees workflow input exists")
+                            .rust_name
+                            .as_str();
+                        format!(
+                            "  {name}: (id: string, input: {input_type}) => {{\n    const member = `{path}${{encodeURIComponent(id)}}`;\n    return request<{model}>(`{endpoint}`, {{ method: \"POST\", body: JSON.stringify(input) }}, member, true);\n  }},\n",
+                        )
+                    },
+                )
+            })
+            .collect::<String>();
+        format!(
+            "  transitions: (id: string, options: RequestOptions = {{}}) => {{\n    const member = `{path}${{encodeURIComponent(id)}}`;\n    return request<WorkflowCapabilities>(`${{member}}/_transitions`, options, member);\n  }},\n  transition: (id: string, action: {model}WorkflowTransition, input: unknown = {{}}) => {{\n    const member = `{path}${{encodeURIComponent(id)}}`;\n    return request<{model}>(`${{member}}/_transitions/${{encodeURIComponent(action)}}`, {{ method: \"POST\", body: JSON.stringify(input) }}, member, true);\n  }},\n{typed}",
+        )
+    });
     format!(
         r#"export const {variable}Api = {{
   list: (query: ListQuery = {{}}, options: RequestOptions = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query), options),
@@ -36,7 +66,7 @@ pub(super) fn client(entity: &EntityIr) -> String {
   bulkDelete: (input: BulkDeleteRequest) => request<BulkResult>("{path}_bulk", {{ method: "DELETE", body: JSON.stringify(input) }}),
   exportCsv: () => requestText("{path}_export.csv"),
   importCsv: (csv: string) => request<BulkResult>("{path}_import.csv", {{ method: "POST", headers: {{ "Content-Type": "text/csv" }}, body: csv }}),
-{restore}}};
+{restore}{workflow}}};
 "#
     )
 }

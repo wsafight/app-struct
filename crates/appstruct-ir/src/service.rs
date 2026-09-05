@@ -143,6 +143,71 @@ pub struct FileIr {
     pub allowed_content_types: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportIr {
+    pub enabled: bool,
+    pub queue: String,
+    pub max_input_bytes: u64,
+    pub retention_days: u32,
+    pub reader_roles: Vec<String>,
+    pub templates: Vec<ReportTemplateIr>,
+}
+
+impl ReportIr {
+    #[must_use]
+    pub fn is_disabled(&self) -> bool {
+        !self.enabled && self.templates.is_empty()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportTemplateIr {
+    pub name: String,
+    pub version: u32,
+    pub document_type: String,
+    pub body: String,
+    pub artifact_digest: String,
+    pub input_schema: String,
+    pub data_schema_version: u32,
+}
+
+/// Record-scoped collaboration settings and the entities that expose a timeline.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActivityIr {
+    pub enabled: bool,
+    pub max_comment_bytes: u32,
+    pub attachments: bool,
+    pub admin_roles: Vec<String>,
+    pub resources: Vec<ActivityResourceIr>,
+}
+
+impl ActivityIr {
+    #[must_use]
+    pub fn is_disabled(&self) -> bool {
+        !self.enabled && self.resources.is_empty()
+    }
+
+    #[must_use]
+    pub fn resource_for_entity(&self, entity: &crate::EntityId) -> Option<&ActivityResourceIr> {
+        self.resources
+            .iter()
+            .find(|resource| resource.entity == *entity)
+    }
+
+    #[must_use]
+    pub fn resource(&self, key: &str) -> Option<&ActivityResourceIr> {
+        self.resources
+            .iter()
+            .find(|resource| resource.resource == key)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActivityResourceIr {
+    pub entity: crate::EntityId,
+    pub resource: String,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileProviderIr {

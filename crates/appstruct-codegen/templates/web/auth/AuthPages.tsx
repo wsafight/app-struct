@@ -755,6 +755,7 @@ export function AdminJobsPage() {
             <option value="running">Running</option>
             <option value="succeeded">Succeeded</option>
             <option value="dead">Dead</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </label>
       </div>

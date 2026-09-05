@@ -30,7 +30,7 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
 
 fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
     let title = app_display_name(&ir.app.name);
-    let main = if requires_registry(ir) {
+    let main = if app::requires_registry(ir) {
         include_str!("../templates/web/main_with_registry.tsx")
     } else {
         include_str!("../templates/web/main.tsx")
@@ -112,6 +112,22 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             } else {
                 ""
             },
+        )
+        .replace(
+            "__ACTIVITY_IMPORT__",
+            if ir.activity.enabled {
+                "import { ActivityTimeline } from \"../activity/ActivityTimeline\";"
+            } else {
+                ""
+            },
+        )
+        .replace(
+            "__ACTIVITY_TIMELINE__",
+            if ir.activity.enabled {
+                "          {id && resource.activity && <ActivityTimeline resource={resource} recordId={id} />}"
+            } else {
+                ""
+            },
         );
     vec![
         (
@@ -149,6 +165,10 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
         (
             "web/src/pages/ResourceForm.tsx",
             include_str!("../templates/web/ResourceForm.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/WorkflowActions.tsx",
+            include_str!("../templates/web/WorkflowActions.tsx").to_owned(),
         ),
         ("web/src/pages/ResourceDetail.tsx", resource_detail),
         (
@@ -217,15 +237,32 @@ fn extend_module_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
             ),
         ]);
     }
-}
-
-fn requires_registry(ir: &AppIr) -> bool {
-    !ir.pages.is_empty()
-        || ir
-            .entities
-            .iter()
-            .flat_map(|entity| &entity.fields)
-            .any(|field| field.ui_component.is_some())
+    if ir.report.enabled {
+        artifacts.push(Artifact::text(
+            "web/src/report/ReportPage.tsx",
+            include_str!("../templates/web/report/ReportPage.tsx"),
+            ArtifactKind::Web,
+        ));
+    }
+    if ir.activity.enabled {
+        let activity_realtime = if ir.realtime.enabled {
+            include_str!("../templates/web/activity/useActivityRealtime.ts")
+        } else {
+            include_str!("../templates/web/activity/useActivityRealtimeDisabled.ts")
+        };
+        artifacts.extend([
+            Artifact::text(
+                "web/src/activity/ActivityTimeline.tsx",
+                include_str!("../templates/web/activity/ActivityTimeline.tsx"),
+                ArtifactKind::Web,
+            ),
+            Artifact::text(
+                "web/src/activity/useActivityRealtime.ts",
+                activity_realtime,
+                ArtifactKind::Web,
+            ),
+        ]);
+    }
 }
 
 fn tsconfig() -> &'static str {
