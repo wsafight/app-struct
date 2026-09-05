@@ -1,0 +1,63 @@
+version: 1
+
+app:
+  name: operations-demo
+
+database:
+  provider: postgres
+  dev:
+    mode: managed
+
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+    registration: true
+    password_reset: false
+  rbac:
+    roles: [operator, supplier, auditor, admin]
+    default_role: operator
+  tenant:
+    enabled: true
+  audit:
+    enabled: true
+    reader_roles: [auditor, admin]
+  jobs:
+    enabled: true
+    poll_interval_ms: 25
+    lease_seconds: 30
+    queues:
+      reports: { max_attempts: 3, backoff_seconds: 1 }
+  file:
+    enabled: true
+    provider: local
+    local_root: .appstruct/files
+    max_bytes: 10485760
+    allowed_content_types: [application/pdf, text/plain, image/png]
+  realtime:
+    enabled: true
+    heartbeat_seconds: 5
+    presence_ttl_seconds: 15
+  report:
+    enabled: true
+    queue: reports
+    max_input_bytes: 262144
+    retention_days: 30
+    reader_roles: [auditor, admin]
+    templates:
+      order-summary:
+        version: 1
+        body: "Order summary {{ input.order_number }} ({{ input.order_id }})"
+        input_schema: '{"type":"object","required":["order_id","order_number"],"properties":{"order_id":{"type":"string","format":"uuid"},"order_number":{"type":"string","minLength":1,"maxLength":32}},"additionalProperties":false}'
+        data_schema_version: 1
+  activity:
+    enabled: true
+    max_comment_bytes: 4000
+    attachments: true
+    admin_roles: [admin]
+    resources: [Order]
+
+includes:
+  - spec/identity.yaml
+  - spec/catalog.yaml
+  - spec/orders.yaml

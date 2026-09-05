@@ -7,6 +7,9 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         "version = \"0.0.0\"\n",
         "edition = \"2024\"\n",
         "rust-version = \"1.98\"\n\n",
+        "[features]\n",
+        "default = []\n",
+        "test-support = []\n\n",
         "[dependencies]\n",
         "appstruct-runtime = { path = \"runtime\" }\n",
         "async-trait = \"=0.1.89\"\n",
@@ -18,7 +21,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
         "serde_json = \"=1.0.151\"\n",
         "tinyvec = \"=1.12.0\"\n",
-        "tokio = { version = \"=1.53.1\", features = [\"macros\", \"net\", \"rt-multi-thread\", \"signal\", \"sync\", \"time\"] }\n",
+        "tokio = { version = \"=1.53.1\", features = [\"io-util\", \"macros\", \"net\", \"rt-multi-thread\", \"signal\", \"sync\", \"time\"] }\n",
         "tower-http = { version = \"=0.7.0\", features = [\"cors\", \"request-id\", \"trace\"] }\n",
         "tracing = \"=0.1.44\"\n",
         "tracing-subscriber = { version = \"=0.3.22\", features = [\"env-filter\", \"fmt\"] }\n",
@@ -61,14 +64,17 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         }
     }
     if ir.mail.enabled {
-        manifest.push_str("minijinja = \"=2.12.0\"\n");
+        manifest.push_str("minijinja = { version = \"=2.12.0\", features = [\"fuel\"] }\n");
     }
     if ir.report.enabled {
         if !ir.mail.enabled {
-            manifest.push_str("minijinja = \"=2.12.0\"\n");
+            manifest.push_str("minijinja = { version = \"=2.12.0\", features = [\"fuel\"] }\n");
         }
         manifest.push_str("jsonschema = \"=0.51.0\"\n");
         manifest.push_str("ring = \"=0.17.14\"\n");
+        if ir.report.renderer == appstruct_ir::ReportRendererIr::Chromium {
+            manifest.push_str("lopdf = { version = \"=0.44.0\", default-features = false }\n");
+        }
     }
     if ir.webhooks.enabled
         && !ir.auth.oauth_enabled

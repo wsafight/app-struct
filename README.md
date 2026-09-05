@@ -172,6 +172,7 @@ non-null changes without writing files; use `--deny-warnings` in CI to enforce o
 - [Upgrading](docs/upgrading.md)
 - [Deployment](docs/deployment.md)
 - [Generated resource queries](docs/data-querying.md)
+- [Lossless scalar values and datetime controls](docs/scalar-values.md)
 - [Headless Web controllers](docs/headless-controller.md)
 - [Schema indexes](docs/schema-indexes.md)
 - [Seed data](docs/seeding.md)
@@ -181,8 +182,12 @@ non-null changes without writing files; use `--deny-warnings` in CI to enforce o
 - [Entity workflows](docs/workflows.md)
 - [Reports](docs/reports.md)
 - [Record activity](docs/activity.md)
+- [Business UI semantics](docs/business-ui-semantics.md)
 - [Saved views](docs/saved-views.md)
 - [Operations Admin console](docs/admin-console.md)
+- [Operations Demo findings](docs/operations-demo-findings.md)
+- [Aggregate line items RFC](docs/aggregate-line-items-rfc.md)
+- [Production report renderer adapter RFC](docs/report-renderer-adapter-rfc.md)
 - [Releasing](docs/releasing.md)
 - [Next product roadmap](docs/next-product-roadmap.md)
 - [Product requirements](PRODUCT.md)
@@ -224,12 +229,21 @@ APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_file_
 
 APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_saas_e2e' \
   scripts/run-m6-saas-e2e.sh
+
+APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_operations_e2e' \
+  scripts/run-operations-e2e.sh
 ```
 
-The CI and release workflows run `scripts/run-template-build.sh` on Node 24 and 25. It creates a
-fresh SaaS project and verifies production dependency advisories, generated Web formatting, tests,
+The CI and release workflows run `scripts/run-template-build.sh` on Node 24 and 25 for the minimal,
+dashboard and SaaS templates. It verifies production dependency advisories, generated Web formatting, tests,
 TypeScript types, and the Vite production bundle without requiring a database. Releases also run
 the complete PostgreSQL E2E matrix before building binaries.
+
+Generated backends include bounded HTTP and job metrics. A two-tenant PostgreSQL workload measures
+list, cursor, aggregate, read and audited CRUD latency; see [observability](docs/observability.md).
+Version-pinned installers and production Compose probes are described in
+[installation](docs/installation.md) and [deployment](docs/deployment.md). Linux deployment and
+Chromium isolation checks are release prerequisites, alongside the native archive installer tests.
 
 Rust source files are limited to 400 lines by a repository test. Generated projects also pin
 their Rust and pnpm dependency graphs so repeated generation and production builds remain

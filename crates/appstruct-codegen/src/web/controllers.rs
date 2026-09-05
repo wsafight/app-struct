@@ -1,0 +1,32 @@
+pub(super) fn files() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "web/src/pages/AggregateEditor.tsx",
+            include_str!("../../templates/web/AggregateEditor.tsx").to_owned(),
+        ),
+        (
+            "web/src/collection-draft.ts",
+            include_str!("../../templates/web/collection-draft.ts").to_owned(),
+        ),
+        (
+            "web/src/controller.ts",
+            include_str!("../../templates/web/controller.ts").to_owned(),
+        ),
+        (
+            "web/src/controller.test.tsx",
+            include_str!("../../templates/web/controller.test.tsx").to_owned(),
+        ),
+        (
+            "web/src/relations.tsx",
+            include_str!("../../templates/web/relations.tsx").to_owned(),
+        ),
+        (
+            "web/src/form-controller.ts",
+            include_str!("../../templates/web/form-controller.ts").to_owned(),
+        ),
+        (
+            "web/src/url-controller.ts",
+            include_str!("../../templates/web/url-controller.ts").to_owned(),
+        ),
+    ]
+}

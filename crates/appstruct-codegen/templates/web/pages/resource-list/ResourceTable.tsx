@@ -7,7 +7,9 @@ import {
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, Eye, RotateCcw, Trash2 } from "lucide-react";
 import { type InputHTMLAttributes, useEffect, useRef } from "react";
+import { formatMoney } from "../../field-values";
 import { Link } from "../../navigation";
+import { RelationValue, useRelationRecords } from "../../relations";
 import type {
   AccessActor,
   FieldDefinition,
@@ -24,6 +26,7 @@ const resourceColumnHelper = createColumnHelper<
 >();
 
 interface ResourceTableProps {
+  resources: ResourceDefinition[];
   resource: ResourceDefinition;
   actor: AccessActor | null;
   records: ResourceRecord[];
@@ -48,6 +51,7 @@ interface ResourceTableProps {
 }
 
 export function ResourceTable({
+  resources,
   resource,
   actor,
   records,
@@ -63,6 +67,7 @@ export function ResourceTable({
   remove,
   restore,
 }: ResourceTableProps) {
+  const relations = useRelationRecords(resources, records, visibleFields);
   const columns = [
     resourceColumnHelper.display({
       id: "selection",
@@ -107,6 +112,15 @@ export function ResourceTable({
           ),
         cell: (info) => {
           const record = info.row.original;
+          if (field.relation)
+            return (
+              <RelationValue
+                field={field}
+                value={record[field.name]}
+                resources={resources}
+                records={relations}
+              />
+            );
           const editable =
             !trashMode &&
             supportsInlineEdit(field) &&
@@ -123,7 +137,9 @@ export function ResourceTable({
               onSave={(value) => updateField(record, field, value)}
             />
           ) : (
-            formatValue(info.getValue())
+            <span className={field.semantic ? "semantic-value" : undefined}>
+              {formatFieldValue(record, field)}
+            </span>
           );
         },
       }),
@@ -262,4 +278,22 @@ export function formatValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+export function formatFieldValue(
+  record: ResourceRecord,
+  field: FieldDefinition,
+): string {
+  const value = record[field.name];
+  if (field.semantic?.kind !== "money") return formatValue(value);
+  if (value === null || value === undefined || value === "") return "-";
+  const currency = record[field.semantic.currencyField];
+  if (typeof currency !== "string") {
+    return formatValue(value);
+  }
+  try {
+    return formatMoney(value, currency, field.semantic.fractionDigits);
+  } catch {
+    return `${currency} ${formatValue(value)}`;
+  }
 }

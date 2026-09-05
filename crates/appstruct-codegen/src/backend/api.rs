@@ -1,6 +1,8 @@
 mod activity;
+mod aggregates;
 mod bulk;
 mod fields;
+mod lookup;
 mod realtime;
 mod workflow;
 mod write;
@@ -33,7 +35,18 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         .resource_for_entity(&entity.id)
         .map(|resource| resource.resource.as_str());
     let list = list_support(ir, entity, &module, &policy)?;
+    let lookup = lookup::support(
+        entity,
+        &module,
+        &policy,
+        &super::query::helpers::column_ident(primary_key(entity)?)?,
+        &parse_id,
+    )?;
     let aggregate = super::query::aggregate::aggregate_support(ir, entity, &module, &policy)?;
+    let collections = aggregates::support(ir, entity)?;
+    let collection_routes = collections.routes;
+    let collection_support = collections.tokens;
+    let collection_guard = collections.guard;
     let handlers = write::handlers(
         entity,
         &write::HandlerContext {
@@ -106,7 +119,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         };
         use sea_orm::{
             ActiveModelTrait, ActiveValue::Set, EntityTrait, IntoActiveModel,
-            #model_trait QuerySelect, TransactionTrait, TryIntoModel,
+            #model_trait ColumnTrait as _, QuerySelect, TransactionTrait, TryIntoModel,
         };
         use serde::{Deserialize, Serialize};
         use std::collections::BTreeMap;
@@ -119,15 +132,20 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
             Router::new()
                 .route("/", get(list).post(create))
                 .route("/_aggregate", get(aggregate))
+                .route("/_lookup", get(lookup))
                 .route("/_bulk", axum::routing::patch(bulk_update).delete(bulk_delete))
                 .route("/_export.csv", get(export_csv))
                 .route("/_import.csv", axum::routing::post(import_csv))
                 #restore_route
                 #workflow_routes
+                #collection_routes
                 .route("/{id}", get(read).patch(update).delete(delete))
+                #collection_guard
         }
         #list
+        #lookup
         #aggregate
+        #collection_support
         #handlers
         #validators
         #field_access
@@ -180,7 +198,10 @@ fn dto_field(field: &FieldIr, update: bool) -> Result<TokenStream, CodegenError>
     if update || field.default.is_some() || field.write_access.is_some() {
         ty = quote! { Option<#ty> };
     }
-    Ok(quote! { pub #name: #ty })
+    let depth = u8::from(field.nullable)
+        + u8::from(update || field.default.is_some() || field.write_access.is_some());
+    let scalar = super::scalar::attributes(&field.ty, depth);
+    Ok(quote! { #scalar pub #name: #ty })
 }
 
 fn create_values(entity: &EntityIr) -> Result<Vec<TokenStream>, CodegenError> {

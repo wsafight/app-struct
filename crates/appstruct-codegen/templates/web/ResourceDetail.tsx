@@ -1,18 +1,25 @@
 import { ArrowLeft, Edit3 } from "lucide-react";
 import { useResourceDetailController } from "../controller";
 import { Link, useParams } from "../navigation";
+import { RelationValue, recordLabel, useRelationRecords } from "../relations";
 import type { ResourceDefinition } from "../resource";
-import { canAccessRule, errorMessage, useResourceActor } from "../resource";
-import { formatValue } from "./ResourceList";
-import { WorkflowActions } from "./WorkflowActions";
-__AUDIT_IMPORT__
-__ACTIVITY_IMPORT__
+import type { AppStructRegistry } from "../generated/registry";
+import { AggregateEditor } from "./AggregateEditor";
+import {
+  canAccessRule,
+  errorMessage,
+  isSemanticCompanion,
+  useResourceActor,
+} from "../resource";
+import { formatFieldValue } from "./ResourceList";
+import { WorkflowActions } from "./WorkflowActions";__DETAIL_IMPORTS__
 
-export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
+export function ResourceDetail({ resource, resources, registry }: { resource: ResourceDefinition; resources: ResourceDefinition[]; registry?: AppStructRegistry }) {
   const { id } = useParams();
   const actor = useResourceActor();
   const controller = useResourceDetailController(resource, id);
   const record = controller.record;
+  const relations = useRelationRecords(resources, record ? [record] : [], resource.fields);
 
   if (!controller.canRead) {
     return (
@@ -32,7 +39,7 @@ export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
             <ArrowLeft size={16} /> {resource.label}
           </Link>
           <h1>
-            {record ? formatValue(record[resource.primaryKey]) : "Loading..."}
+            {record ? recordLabel(resource, record) : "Loading..."}
           </h1>
         </div>
         <div className="detail-actions">
@@ -56,18 +63,24 @@ export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
         <>
           <dl className="detail-grid">
             {resource.fields
-              .filter((field) =>
-                canAccessRule(field.readAccess ?? { mode: "public" }, actor),
+              .filter(
+                (field) =>
+                  !isSemanticCompanion(field, resource.fields) &&
+                  canAccessRule(field.readAccess ?? { mode: "public" }, actor),
               )
               .map((field) => (
                 <div key={field.name}>
                   <dt>{field.label}</dt>
-                  <dd>{formatValue(record[field.name])}</dd>
+                  <dd className={field.semantic ? "semantic-value" : undefined}>
+                    {field.relation ? <RelationValue field={field} value={record[field.name]} resources={resources} records={relations} /> : formatFieldValue(record, field)}
+                  </dd>
                 </div>
               ))}
           </dl>
-__RECORD_HISTORY__
-__ACTIVITY_TIMELINE__
+          {id && resource.collections?.map((definition) => {
+            const child = resources.find((item) => item.id === definition.child);
+            return child ? <AggregateEditor key={`${id}:${definition.name}`} parent={resource} child={child} definition={definition} id={id} resources={resources} registry={registry} /> : null;
+          })}__DETAIL_EXTRAS__
         </>
       )}
     </main>

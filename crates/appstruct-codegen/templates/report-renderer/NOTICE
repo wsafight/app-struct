@@ -1,0 +1,6 @@
+seccomp.json is copied from Playwright v1.62.1:
+https://github.com/microsoft/playwright/blob/v1.62.1/utils/docker/seccomp_profile.json
+
+Playwright is copyright Microsoft Corporation and licensed under Apache-2.0.
+Its Docker seccomp profile derives from the Apache-2.0 Moby/Docker default profile.
+The Apache-2.0 license is included in LICENSE-SECCOMP. The profile is unmodified.

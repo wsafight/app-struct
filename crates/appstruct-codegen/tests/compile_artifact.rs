@@ -178,11 +178,13 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(list.contains("expected_revisions"));
     assert!(list.contains("ResourceFilters"));
     assert!(filters.contains("buildResourceFilterQuery"));
-    assert!(form.contains("useForm"));
-    assert!(form.contains("buildValidationSchema"));
+    assert!(form.contains("useResourceFormController"));
+    let form_controller = artifact_text(&artifacts, "web/src/form-controller.ts");
+    assert!(form_controller.contains("useForm"));
+    assert!(form_controller.contains("buildValidationSchema"));
     assert!(form.contains("editing && canSubmit && recordQuery.isPending"));
     assert!(form.contains("initialRecord={recordQuery.data}"));
-    assert!(form.contains("recordFormValues(initialRecord, fields)"));
+    assert!(form_controller.contains("recordFormValues(baseline, fields)"));
     assert!(list.contains("useResourceListController"));
     let html = artifact_text(&artifacts, "web/index.html");
     let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
@@ -271,7 +273,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 88);
+    assert_eq!(artifacts.len(), 99);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -551,7 +553,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 73);
+    assert_eq!(artifacts.len(), 83);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")
@@ -600,7 +602,7 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     );
     assert!(artifact_text(artifacts, "database/0001_initial.sql").contains("CREATE TABLE"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("/health/ready"));
-    assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("appstruct_health_ready"));
+    assert!(artifact_text(artifacts, "backend/src/metrics.rs").contains("appstruct_health_ready"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("MakeRequestUuid"));
     assert!(artifact_text(artifacts, "web/pnpm-lock.yaml").contains("lockfileVersion"));
     assert!(artifact_text(artifacts, "web/.gitignore").contains("node_modules/"));

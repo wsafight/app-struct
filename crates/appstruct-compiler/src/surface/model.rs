@@ -58,6 +58,8 @@ impl SurfaceDomain {
 pub(crate) struct SurfaceEntity {
     pub name: Located<String>,
     pub label: Option<Located<String>>,
+    pub display_field: Option<Located<String>>,
+    pub aggregates: Vec<appstruct_ir::AggregateIr>,
     pub table: Option<Located<String>>,
     pub fields: Vec<SurfaceField>,
     pub indexes: Vec<SurfaceIndex>,
@@ -120,8 +122,23 @@ pub(crate) struct SurfaceField {
     pub target: Option<Located<String>>,
     pub on_delete: Option<Located<String>>,
     pub ui_component: Option<Located<String>>,
+    pub ui_semantic: Option<SurfaceFieldSemantic>,
     pub access: Option<SurfaceFieldAccess>,
     pub span: SourceSpan,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum SurfaceFieldSemantic {
+    Money {
+        currency_field: Located<String>,
+        fraction_digits: Located<u64>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceFieldUi {
+    pub component: Option<Located<String>>,
+    pub semantic: Option<SurfaceFieldSemantic>,
 }
 
 #[derive(Clone, Debug)]

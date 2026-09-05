@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { DialogFrame } from "../components/Dialog";
+import { inputType, toApiValue } from "../field-values";
 import { resourceQueryKeys } from "../query";
 import {
   errorMessage,
@@ -20,8 +21,9 @@ export function WorkflowActions({
   id: string;
 }) {
   const queryClient = useQueryClient();
-  const [selected, setSelected] =
-    useState<WorkflowTransitionDefinition | null>(null);
+  const [selected, setSelected] = useState<WorkflowTransitionDefinition | null>(
+    null,
+  );
   const [values, setValues] = useState<Record<string, InputValue>>({});
   const [inputError, setInputError] = useState<string | null>(null);
   const workflow = resource.workflow;
@@ -47,10 +49,7 @@ export function WorkflowActions({
     }) => resource.api.transition!(id, transition.name, input),
     onSuccess: async (next) => {
       setSelected(null);
-      queryClient.setQueryData(
-        resourceQueryKeys.detail(resource.id, id),
-        next,
-      );
+      queryClient.setQueryData(resourceQueryKeys.detail(resource.id, id), next);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: capabilityKey }),
         queryClient.invalidateQueries({
@@ -225,6 +224,14 @@ function WorkflowField({
       <input
         required={field.required}
         type={inputType(field.kind)}
+        inputMode={
+          field.kind === "bigint"
+            ? "numeric"
+            : field.kind === "decimal"
+              ? "decimal"
+              : undefined
+        }
+        step={field.kind === "datetime" ? "any" : undefined}
         value={String(value ?? "")}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -243,26 +250,7 @@ function workflowInput(
       if (value === "" && field.required) {
         throw new Error(`${field.label} is required`);
       }
-      if (field.kind === "integer" || field.kind === "bigint") {
-        return [[field.name, Number(value)]];
-      }
-      if (field.kind === "json") {
-        try {
-          return [[field.name, JSON.parse(String(value))]];
-        } catch {
-          throw new Error(`${field.label} must contain valid JSON`);
-        }
-      }
-      return [[field.name, value]];
+      return [[field.name, toApiValue(value, field)]];
     }),
   );
-}
-
-function inputType(kind: WorkflowInputFieldDefinition["kind"]): string {
-  if (kind === "integer" || kind === "bigint" || kind === "decimal") {
-    return "number";
-  }
-  if (kind === "date") return "date";
-  if (kind === "datetime") return "datetime-local";
-  return "text";
 }

@@ -1,0 +1,59 @@
+use crate::{Artifact, ArtifactKind};
+
+pub(super) fn files() -> Vec<Artifact> {
+    [
+        (
+            "LICENSE-SECCOMP",
+            include_str!("../../../templates/report-renderer/LICENSE-SECCOMP"),
+        ),
+        (
+            "NOTICE",
+            include_str!("../../../templates/report-renderer/NOTICE"),
+        ),
+        (
+            "package.json",
+            include_str!("../../../templates/report-renderer/package.json"),
+        ),
+        (
+            "pnpm-lock.yaml",
+            include_str!("../../../templates/report-renderer/pnpm-lock.yaml"),
+        ),
+        (
+            "server.mjs",
+            include_str!("../../../templates/report-renderer/server.mjs"),
+        ),
+        (
+            "render.mjs",
+            include_str!("../../../templates/report-renderer/render.mjs"),
+        ),
+        (
+            "resources.mjs",
+            include_str!("../../../templates/report-renderer/resources.mjs"),
+        ),
+        (
+            "Dockerfile",
+            include_str!("../../../templates/report-renderer/Dockerfile"),
+        ),
+        (
+            "compose.yaml",
+            include_str!("../../../templates/report-renderer/compose.yaml"),
+        ),
+        (
+            "seccomp.json",
+            include_str!("../../../templates/report-renderer/seccomp.json"),
+        ),
+        (
+            "test.mjs",
+            include_str!("../../../templates/report-renderer/test.mjs"),
+        ),
+    ]
+    .into_iter()
+    .map(|(name, content)| {
+        Artifact::text(
+            format!("report-renderer/{name}"),
+            content,
+            ArtifactKind::Module,
+        )
+    })
+    .collect()
+}

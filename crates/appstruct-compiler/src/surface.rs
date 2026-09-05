@@ -1,5 +1,6 @@
 mod access;
 mod activity;
+mod aggregates;
 mod audit;
 mod auth;
 mod context;
@@ -23,7 +24,8 @@ mod workflow;
 pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
 pub(crate) use model::{
     FieldFlags, Located, SurfaceAccess, SurfaceAccessRule, SurfaceDomain, SurfaceEntity,
-    SurfaceField, SurfaceFieldAccess, SurfaceRoot, SurfaceWorkflow,
+    SurfaceField, SurfaceFieldAccess, SurfaceFieldSemantic, SurfaceFieldUi, SurfaceRoot,
+    SurfaceWorkflow,
 };
 pub(crate) use modules::{
     SurfaceActivity, SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobQueue, SurfaceJobSchedule,
@@ -236,6 +238,8 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
             "tenant",
             "audit",
             "soft_delete",
+            "display_field",
+            "aggregates",
             "workflow",
         ],
         "entity definition",
@@ -263,6 +267,12 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
             span: entry.key_span.clone(),
         },
         label: optional_string(mapping, "label", "entity `label`")?,
+        display_field: optional_string(mapping, "display_field", "entity `display_field`")?,
+        aggregates: mapping
+            .get("aggregates")
+            .map(|entry| aggregates::decode(&entry.value))
+            .transpose()?
+            .unwrap_or_default(),
         table: optional_string(mapping, "table", "entity `table`")?,
         fields,
         indexes,
@@ -328,6 +338,10 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
         optional_bool(mapping, "filterable")?,
     );
     flags.set(FieldFlags::SORTABLE, optional_bool(mapping, "sortable")?);
+    let ui = mapping
+        .get("ui")
+        .map(|ui| extension::decode_field_ui(&ui.value))
+        .transpose()?;
 
     Ok(SurfaceField {
         name: Located {
@@ -363,10 +377,8 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             .transpose()?,
         target: optional_string(mapping, "target", "relation `target`")?,
         on_delete: optional_string(mapping, "on_delete", "relation `on_delete`")?,
-        ui_component: mapping
-            .get("ui")
-            .map(|ui| extension::decode_ui_component(&ui.value))
-            .transpose()?,
+        ui_component: ui.as_ref().and_then(|ui| ui.component.clone()),
+        ui_semantic: ui.and_then(|ui| ui.semantic),
         access: mapping
             .get("access")
             .map(|access| access::decode_field_access(&access.value))

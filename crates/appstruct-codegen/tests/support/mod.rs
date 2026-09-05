@@ -7,7 +7,28 @@ use std::sync::Mutex;
 
 static CARGO_CHECK_LOCK: Mutex<()> = Mutex::new(());
 
+#[allow(dead_code)]
+pub fn cargo_test(manifest: &Path, test: &str) -> Output {
+    let _guard = CARGO_CHECK_LOCK
+        .lock()
+        .expect("generated crate check lock is not poisoned");
+    let _ = prepare_generated_package(manifest);
+    Command::new("cargo")
+        .args(["test", "--quiet", "--manifest-path"])
+        .arg(manifest)
+        .args(["--test", test])
+        .env("CARGO_TARGET_DIR", generated_target())
+        .env("CARGO_INCREMENTAL", "0")
+        .env("RUSTFLAGS", "-Dwarnings")
+        .output()
+        .unwrap()
+}
+
 pub fn cargo_check(manifest: &Path, library_only: bool) -> Output {
+    cargo_check_with_features(manifest, library_only, &[])
+}
+
+pub fn cargo_check_with_features(manifest: &Path, library_only: bool, features: &[&str]) -> Output {
     let _guard = CARGO_CHECK_LOCK
         .lock()
         .expect("generated crate check lock is not poisoned");
@@ -21,6 +42,9 @@ pub fn cargo_check(manifest: &Path, library_only: bool) -> Output {
         .env("RUSTFLAGS", "-Dwarnings");
     if library_only {
         command.arg("--lib");
+    }
+    if !features.is_empty() {
+        command.args(["--features", &features.join(",")]);
     }
     command.output().unwrap()
 }

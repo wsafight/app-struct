@@ -34,7 +34,17 @@ application-owned async mutation and invalidates every query for that resource a
 Call the typed methods on `resource.api` inside that operation; the generated backend remains the
 authorization and validation authority.
 
-The current controller slice does not own URL parameter parsing or TanStack Form state. Generated
-list pages still map router search parameters into `ListQuery`, and generated forms still own Zod,
-field errors, ETag conflicts, and unsaved-change protection. Those contracts should move behind
-controller APIs before custom forms can fully replace generated forms without duplicating behavior.
+`useResourceUrlController(resource)` owns normalized pagination, search, sort, authorized filters,
+trash state and URL updates. Pass its `query` and `trashMode` into the list controller. Query keys
+include the actual query object even when a custom page reuses its caller-supplied `cacheKey`.
+
+`useResourceFormController(resource, options)` owns TanStack Form, exact scalar validation, field
+errors, revision conflicts, mutation invalidation and dirty state. Mount it after loading an edit
+record and key the editor by resource and ID. Options accept `id`, `initialRecord`, an optional
+`refetchRecord`, and `onSaved`. Render fields with `controller.form.Field`; subscribe to
+`form.state.isDirty` and `isSubmitting` to connect the existing `useUnsavedChanges` navigation guard.
+The generated form consumes this same controller.
+
+Conflicts preserve the draft. `reloadRecord()` explicitly replaces it with the latest record and
+revision, clears field errors and resets dirty state. A successful save also resets dirty state
+before invoking `onSaved`. Custom pages own their presentation and destination route.

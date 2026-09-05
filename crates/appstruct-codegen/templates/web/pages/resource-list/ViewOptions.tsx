@@ -1,20 +1,28 @@
 import { Columns3, RotateCcw } from "lucide-react";
-import type { FieldDefinition } from "../../resource";
+import { isSemanticCompanion, type FieldDefinition } from "../../resource";
 
 const DEFAULT_COLUMN_COUNT = 6;
 
 export function defaultVisibleFieldNames(fields: FieldDefinition[]): string[] {
-  return fields.slice(0, DEFAULT_COLUMN_COUNT).map((field) => field.name);
+  return fields
+    .filter((field) => !isSemanticCompanion(field, fields))
+    .slice(0, DEFAULT_COLUMN_COUNT)
+    .map((field) => field.name);
 }
 
 export function resolveVisibleFields(
   fields: FieldDefinition[],
   selection: string | null,
 ): FieldDefinition[] {
-  if (!selection) return fields.slice(0, DEFAULT_COLUMN_COUNT);
+  if (!selection) {
+    const defaults = new Set(defaultVisibleFieldNames(fields));
+    return fields.filter((field) => defaults.has(field.name));
+  }
   const selected = new Set(selection.split(","));
   const visible = fields.filter((field) => selected.has(field.name));
-  return visible.length > 0 ? visible : fields.slice(0, DEFAULT_COLUMN_COUNT);
+  if (visible.length > 0) return visible;
+  const defaults = new Set(defaultVisibleFieldNames(fields));
+  return fields.filter((field) => defaults.has(field.name));
 }
 
 export function ViewOptions({

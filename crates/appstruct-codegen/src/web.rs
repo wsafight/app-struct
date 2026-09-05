@@ -1,4 +1,6 @@
 mod app;
+mod controllers;
+mod module_tests;
 mod resources;
 
 use crate::{Artifact, ArtifactKind, generated_header};
@@ -8,6 +10,8 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
     let mut artifacts = framework_files(ir)
         .into_iter()
         .chain(page_files(ir))
+        .chain(controllers::files())
+        .chain(module_tests::files(ir))
         .map(|(path, content)| Artifact::text(path, content, ArtifactKind::Web))
         .collect::<Vec<_>>();
     extend_module_artifacts(ir, &mut artifacts);
@@ -50,16 +54,20 @@ fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
         ),
         ("web/src/main.tsx", main.to_owned()),
         (
+            "web/src/field-values.ts",
+            include_str!("../templates/web/field-values.ts").to_owned(),
+        ),
+        (
+            "web/src/field-values.test.ts",
+            include_str!("../templates/web/field-values.test.ts").to_owned(),
+        ),
+        (
             "web/src/resource.ts",
             include_str!("../templates/web/resource.ts").to_owned(),
         ),
         (
             "web/src/query.ts",
             include_str!("../templates/web/query.ts").to_owned(),
-        ),
-        (
-            "web/src/controller.ts",
-            include_str!("../templates/web/controller.ts").to_owned(),
         ),
         (
             "web/src/components/Dialog.tsx",
@@ -96,39 +104,31 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
     } else {
         include_str!("../templates/web/realtime/useRealtimeResourceDisabled.ts")
     };
-    let resource_detail = include_str!("../templates/web/ResourceDetail.tsx")
-        .replace(
-            "__AUDIT_IMPORT__",
-            if ir.audit.enabled {
-                "import { RecordHistory } from \"../audit/RecordHistory\";"
-            } else {
-                ""
-            },
-        )
-        .replace(
-            "__RECORD_HISTORY__",
-            if ir.audit.enabled {
-                "          {id && <RecordHistory entity={resource.id} recordId={id} />}"
-            } else {
-                ""
-            },
-        )
-        .replace(
-            "__ACTIVITY_IMPORT__",
-            if ir.activity.enabled {
-                "import { ActivityTimeline } from \"../activity/ActivityTimeline\";"
-            } else {
-                ""
-            },
-        )
-        .replace(
-            "__ACTIVITY_TIMELINE__",
-            if ir.activity.enabled {
-                "          {id && resource.activity && <ActivityTimeline resource={resource} recordId={id} />}"
-            } else {
-                ""
-            },
+    let mut detail_imports = Vec::new();
+    let mut detail_extras = Vec::new();
+    if ir.audit.enabled {
+        detail_imports.push("import { RecordHistory } from \"../audit/RecordHistory\";");
+        detail_extras.push("{id && <RecordHistory entity={resource.id} recordId={id} />}");
+    }
+    if ir.activity.enabled {
+        detail_imports.push("import { ActivityTimeline } from \"../activity/ActivityTimeline\";");
+        detail_extras.push(
+            "{id && resource.activity && <ActivityTimeline resource={resource} recordId={id} />}",
         );
+    }
+    let detail_imports = if detail_imports.is_empty() {
+        String::new()
+    } else {
+        format!("\n{}", detail_imports.join("\n"))
+    };
+    let detail_extras = if detail_extras.is_empty() {
+        String::new()
+    } else {
+        format!("\n          {}", detail_extras.join("\n          "))
+    };
+    let resource_detail = include_str!("../templates/web/ResourceDetail.tsx")
+        .replace("__DETAIL_IMPORTS__", &detail_imports)
+        .replace("__DETAIL_EXTRAS__", &detail_extras);
     vec![
         (
             "web/src/pages/ResourceFilters.tsx",

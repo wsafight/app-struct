@@ -2,8 +2,28 @@ use appstruct_ir::AppIr;
 
 pub(super) fn source(ir: &AppIr) -> String {
     let mut source = types_source();
+    source.push_str(session_source());
     source.push_str(&api_source(ir));
     source
+}
+
+fn session_source() -> &'static str {
+    r"
+function broadcastSessionChange(): void {
+  try { window.localStorage.setItem(sessionSyncKey, `${Date.now()}:${Math.random()}`); } catch { /* Storage can be unavailable in privacy modes. */ }
+}
+
+function selectTenant(id?: string): void {
+  try {
+    const storage = browserStorage();
+    if (id) storage?.setItem(tenantStorageKey, id);
+    else storage?.removeItem(tenantStorageKey);
+  } catch {
+    // Storage can reject writes in privacy modes or restricted frames.
+  }
+  resourceEtags.clear();
+}
+"
 }
 
 fn types_source() -> String {

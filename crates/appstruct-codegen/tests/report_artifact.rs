@@ -88,3 +88,35 @@ fn generated_report_backend_is_rustfmt_clean_and_compiles() {
         String::from_utf8_lossy(&checked.stderr),
     );
 }
+
+#[test]
+fn chromium_adapter_is_packaged_and_generated_backend_compiles() {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m7-report-project");
+    let mut ir = compile_project(&fixture).unwrap();
+    ir.report.renderer = appstruct_ir::ReportRendererIr::Chromium;
+    let artifacts = plan(&ir).unwrap();
+    assert!(
+        artifact_text(&artifacts, "report-renderer/compose.yaml").contains("network_mode: none")
+    );
+    assert!(
+        artifact_text(&artifacts, "backend/src/report/adapter.rs").contains("validate_response")
+    );
+    let temporary = tempfile::tempdir().unwrap();
+    for artifact in artifacts {
+        let destination = temporary
+            .path()
+            .join("generated")
+            .join(artifact.relative_path);
+        fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        fs::write(destination, artifact.content).unwrap();
+    }
+    let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest);
+    let checked = cargo_check(&manifest, true);
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+}

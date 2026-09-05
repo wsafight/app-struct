@@ -37,6 +37,7 @@ jobs:
         env:
           APPSTRUCT_PERF_BUDGET_MULTIPLIER: 2
         run: cargo test --workspace --locked
+      - run: bash scripts/check-local-installer.sh
       - run: scripts/verify-packages.sh
       - name: Remove cargo package verification artifacts
         if: always()
@@ -50,3 +51,6 @@ jobs:
 
   template-build:
     uses: ./.github/workflows/template-build.yml
+
+  deployment:
+    uses: ./.github/workflows/deployment.yml

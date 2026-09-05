@@ -40,6 +40,14 @@ pub(super) fn validate_report(ir: &AppIr, errors: &mut Vec<IrValidationError>) {
             "must be between 1 and 4194304",
         );
     }
+    if report.renderer == crate::ReportRendererIr::Chromium && report.max_input_bytes > 1024 * 1024
+    {
+        push(
+            errors,
+            "report.max_input_bytes",
+            "chromium snapshots are limited to 1 MiB",
+        );
+    }
     if !(1..=3650).contains(&report.retention_days) {
         push(
             errors,

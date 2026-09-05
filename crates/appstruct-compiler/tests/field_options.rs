@@ -1,4 +1,5 @@
 use appstruct_compiler::compile_project;
+use appstruct_ir::FieldSemanticIr;
 use std::fs;
 
 fn compile_fields(fields: &str) -> Result<appstruct_ir::AppIr, Vec<appstruct_ir::Diagnostic>> {
@@ -24,6 +25,22 @@ fn codes(diagnostics: &[appstruct_ir::Diagnostic]) -> Vec<&str> {
         .iter()
         .map(|diagnostic| diagnostic.code.as_str())
         .collect()
+}
+
+#[test]
+fn resolves_display_fields_and_rejects_missing_or_non_label_values() {
+    let ir = compile_fields("      name: {type: string}\n    display_field: name\n").unwrap();
+    assert_eq!(
+        ir.entities[0].views.display_field.as_ref().unwrap().0,
+        "app::Item.name"
+    );
+    for field in ["missing", "amount"] {
+        let diagnostics = compile_fields(&format!(
+            "      amount: {{type: decimal}}\n    display_field: {field}\n"
+        ))
+        .unwrap_err();
+        assert!(codes(&diagnostics).contains(&"AS2042"));
+    }
 }
 
 #[test]
@@ -131,6 +148,46 @@ fn accepts_compatible_generated_values() {
         "      created_at:\n        type: datetime\n        generated: now\n      count:\n        type: integer\n        generated: auto_increment\n",
     )
     .unwrap();
+}
+
+#[test]
+fn accepts_money_ui_semantics_and_resolves_the_currency_field() {
+    let ir = compile_fields(
+        "      amount:\n        type: decimal\n        required: true\n        ui:\n          semantic: money\n          currency_field: currency\n          fraction_digits: 2\n      currency:\n        type: enum\n        required: true\n        values: [CNY, USD]\n",
+    )
+    .unwrap();
+    let amount = ir.entities[0]
+        .fields
+        .iter()
+        .find(|field| field.api_name == "amount")
+        .unwrap();
+    assert!(matches!(
+        amount.ui_semantic,
+        Some(FieldSemanticIr::Money {
+            ref currency_field,
+            fraction_digits: 2,
+        }) if currency_field.0 == "app::Item.currency"
+    ));
+}
+
+#[test]
+fn rejects_invalid_money_ui_semantics() {
+    let cases = [
+        "      amount:\n        type: string\n        ui:\n          semantic: money\n          currency_field: currency\n      currency:\n        type: enum\n        values: [CNY]\n",
+        "      amount:\n        type: decimal\n        ui:\n          semantic: money\n          currency_field: missing\n",
+        "      amount:\n        type: decimal\n        ui:\n          semantic: money\n          currency_field: currency\n          fraction_digits: 7\n      currency:\n        type: enum\n        values: [CNY]\n",
+        "      amount:\n        type: decimal\n        required: true\n        ui:\n          semantic: money\n          currency_field: currency\n      currency:\n        type: enum\n        values: [cny]\n",
+        "      amount:\n        type: decimal\n        required: true\n        ui:\n          semantic: money\n          currency_field: currency\n      currency:\n        type: enum\n        values: [CNY]\n",
+        "      amount:\n        type: decimal\n        ui:\n          semantic: money\n          currency_field: currency\n      currency:\n        type: enum\n        values: [CNY]\n        ui:\n          component: CurrencyPicker\n",
+        "      subtotal:\n        type: decimal\n        ui:\n          semantic: money\n          currency_field: currency\n      total:\n        type: decimal\n        ui:\n          semantic: money\n          currency_field: currency\n      currency:\n        type: enum\n        values: [CNY]\n",
+    ];
+    for fields in cases {
+        let diagnostics = compile_fields(fields).unwrap_err();
+        assert!(
+            codes(&diagnostics).contains(&"AS2020"),
+            "missing money diagnostic for {fields}"
+        );
+    }
 }
 
 #[test]

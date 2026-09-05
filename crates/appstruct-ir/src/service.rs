@@ -146,11 +146,35 @@ pub struct FileIr {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReportIr {
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "ReportRendererIr::is_capture")]
+    pub renderer: ReportRendererIr,
     pub queue: String,
     pub max_input_bytes: u64,
     pub retention_days: u32,
     pub reader_roles: Vec<String>,
     pub templates: Vec<ReportTemplateIr>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportRendererIr {
+    #[default]
+    Capture,
+    Chromium,
+}
+
+impl ReportRendererIr {
+    #[must_use]
+    pub const fn version(self) -> &'static str {
+        match self {
+            Self::Capture => "capture-v1",
+            Self::Chromium => "chromium-v1",
+        }
+    }
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    const fn is_capture(&self) -> bool {
+        matches!(self, Self::Capture)
+    }
 }
 
 impl ReportIr {

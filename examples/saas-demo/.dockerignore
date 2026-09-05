@@ -4,7 +4,7 @@
 .env.*
 **/target
 generated/web/node_modules
-.appstruct/cache/backend-target/debug
+.appstruct/cache
 .appstruct/files
 test-results
 playwright-report

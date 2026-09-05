@@ -5,6 +5,8 @@ use super::{
 use appstruct_ir::{AccessRuleIr, AppIr, EntityIr, FieldTypeIr};
 use serde_json::{Map, Value, json};
 
+mod collections;
+mod lookup;
 mod schema;
 pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, entity: &EntityIr) {
     let singular = &entity.rust_name;
@@ -94,8 +96,10 @@ pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, entity: &Ent
         }),
     );
     add_aggregate_path(paths, ir, entity);
+    lookup::add_path(paths, entity);
     super::bulk::add_paths(paths, ir, entity);
     add_workflow_paths(paths, entity);
+    collections::add_paths(paths, ir, entity);
 }
 
 fn add_workflow_paths(paths: &mut Map<String, Value>, entity: &EntityIr) {

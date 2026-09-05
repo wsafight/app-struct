@@ -1,8 +1,8 @@
 # Installation
 
-AppStruct is currently installed from a source checkout. The repository is prepared to publish
-crates.io packages and checksummed macOS/Linux/Windows archives, but no public package or binary
-installer is assumed to exist during the technical preview.
+AppStruct can be installed from a source checkout. Release automation packages checksummed
+macOS/Linux/Windows archives and version-pinned installers. No public release is assumed to exist
+during the technical preview; use source installation until a tag and its assets are published.
 
 ## Requirements
 
@@ -49,6 +49,37 @@ pnpm --version
 
 Re-run the locked release build and replace the installed binary after switching this checkout
 to another AppStruct revision.
+
+## Install A Published Release
+
+Download `install.sh` and its checksum from the selected GitHub release, review the script, then
+run it with an explicit version. The script does not select a moving `latest` release:
+
+```bash
+shasum -a 256 -c install.sh.sha256
+bash install.sh --version <version>
+```
+
+It chooses the native macOS archive or static Linux musl archive, verifies the archive SHA-256 and
+installs into `$HOME/.local/bin`. Use `--bin-dir` for another directory, `--target` to select a
+published glibc archive, or `--archive-dir` for archives and checksums already downloaded locally.
+No root access is needed, and PATH is not modified. Downloads use HTTPS. Installation streams only
+the expected binary entry and atomically replaces an existing binary after verification succeeds.
+A checksum or extraction failure preserves the installed version. Checksums establish download
+integrity; the release account and HTTPS remain the trust source.
+
+On x64 Windows, download and review `install.ps1` and its checksum from the same release:
+
+```powershell
+$expected = (Get-Content install.ps1.sha256).Split()[0]
+if ((Get-FileHash install.ps1 -Algorithm SHA256).Hash -ine $expected) { throw "checksum mismatch" }
+./install.ps1 -Version <version>
+```
+
+The Windows default is `$env:LOCALAPPDATA\Programs\AppStruct`. `-BinDir` and `-ArchiveDir` provide
+equivalent overrides. Add that directory to PATH using the normal operating-system settings.
+Both installers support replacing a version with any explicitly selected release, including a
+rollback. Replacing a CLI does not roll back database migrations.
 
 When a release provides a platform archive, download both the `.tar.gz` and matching `.sha256`
 file into one directory, verify it, and install the contained binary:

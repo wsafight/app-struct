@@ -3,8 +3,10 @@ use crate::{Artifact, ArtifactKind, CodegenError};
 use appstruct_ir::AppIr;
 use quote::quote;
 
+mod assets;
 mod contract;
 mod crypto;
+mod lifecycle;
 mod renderer;
 mod routes;
 mod worker;
@@ -15,19 +17,29 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     } else {
         disabled_source()?
     };
-    Ok(vec![Artifact::text(
+    let mut artifacts = vec![Artifact::text(
         "backend/src/report.rs",
         source,
         ArtifactKind::RustSource,
-    )])
+    )];
+    if ir.report.enabled && ir.report.renderer == appstruct_ir::ReportRendererIr::Chromium {
+        artifacts.extend(assets::files());
+        artifacts.push(Artifact::text(
+            "backend/src/report/adapter.rs",
+            include_str!("../../templates/backend/report_adapter.rs"),
+            ArtifactKind::RustSource,
+        ));
+    }
+    Ok(artifacts)
 }
 
 fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let contract = contract::source(ir);
     let crypto = crypto::source();
-    let renderer = renderer::source();
+    let renderer =
+        (ir.report.renderer == appstruct_ir::ReportRendererIr::Capture).then(renderer::source);
     let routes = routes::source(ir);
-    let worker = worker::source();
+    let worker = worker::source(ir.report.renderer);
     render(quote! {
         use crate::{ApiError, AppState, RequestContext};
         use axum::{

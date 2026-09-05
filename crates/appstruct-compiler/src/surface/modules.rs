@@ -117,6 +117,7 @@ pub(crate) struct SurfaceFile {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SurfaceReport {
     pub enabled: bool,
+    pub renderer: Option<Located<String>>,
     pub queue: Option<Located<String>>,
     pub max_input_bytes: Option<Located<u64>>,
     pub retention_days: Option<Located<u64>>,

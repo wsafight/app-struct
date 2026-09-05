@@ -1,5 +1,11 @@
 import { Check, Pencil, X } from "lucide-react";
 import { useState } from "react";
+import {
+  inputType,
+  toApiValue,
+  toFormValue,
+  valueError,
+} from "../../field-values";
 import type { FieldDefinition, ResourceRecord } from "../../resource";
 
 type EditorValue = string | boolean;
@@ -9,6 +15,7 @@ export function supportsInlineEdit(field: FieldDefinition): boolean {
     !field.primaryKey &&
     !field.readOnly &&
     !field.uiComponent &&
+    !field.semantic &&
     [
       "string",
       "integer",
@@ -33,20 +40,21 @@ export function InlineEditor({
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState<EditorValue>(() =>
-    formValue(record[field.name], field),
+    toFormValue(record[field.name], field),
   );
   const [saving, setSaving] = useState(false);
 
   function begin() {
-    setValue(formValue(record[field.name], field));
+    setValue(toFormValue(record[field.name], field));
     setEditing(true);
   }
 
   async function save() {
-    if (!isValid(value, field)) return;
+    if (valueError(value, field)) return;
     setSaving(true);
     try {
-      if (await onSave(apiValue(value, field))) setEditing(false);
+      if (await onSave(toApiValue(value, field, record[field.name])))
+        setEditing(false);
     } finally {
       setSaving(false);
     }
@@ -91,10 +99,21 @@ export function InlineEditor({
       ) : (
         <input
           type={inputType(field.kind)}
+          inputMode={
+            field.kind === "bigint"
+              ? "numeric"
+              : field.kind === "decimal"
+                ? "decimal"
+                : undefined
+          }
           value={String(value)}
           min={field.minimum}
           max={field.maximum}
-          step={field.kind === "decimal" ? "any" : undefined}
+          step={
+            field.kind === "datetime" || field.kind === "decimal"
+              ? "any"
+              : undefined
+          }
           onChange={(event) => setValue(event.target.value)}
           aria-label={field.label}
         />
@@ -102,7 +121,7 @@ export function InlineEditor({
       <button
         type="button"
         className="inline-edit-button"
-        disabled={saving || !isValid(value, field)}
+        disabled={saving || Boolean(valueError(value, field))}
         onClick={() => void save()}
         title="Save"
         aria-label={`Save ${field.label}`}
@@ -121,37 +140,6 @@ export function InlineEditor({
       </button>
     </div>
   );
-}
-
-function formValue(value: unknown, field: FieldDefinition): EditorValue {
-  if (field.kind === "boolean") return Boolean(value);
-  if (field.kind === "datetime" && typeof value === "string")
-    return value.slice(0, 16);
-  return value == null ? "" : String(value);
-}
-
-function apiValue(value: EditorValue, field: FieldDefinition): unknown {
-  if (value === "") return field.required ? value : null;
-  if (["integer", "bigint", "decimal"].includes(field.kind))
-    return Number(value);
-  if (field.kind === "datetime") return new Date(String(value)).toISOString();
-  return value;
-}
-
-function isValid(value: EditorValue, field: FieldDefinition): boolean {
-  if (value === "") return !field.required;
-  if (["integer", "bigint", "decimal"].includes(field.kind))
-    return Number.isFinite(Number(value));
-  if (field.kind === "datetime" || field.kind === "date")
-    return !Number.isNaN(Date.parse(String(value)));
-  return true;
-}
-
-function inputType(kind: FieldDefinition["kind"]): string {
-  if (["integer", "bigint", "decimal"].includes(kind)) return "number";
-  if (kind === "date") return "date";
-  if (kind === "datetime") return "datetime-local";
-  return "text";
 }
 
 function displayValue(value: unknown): string {

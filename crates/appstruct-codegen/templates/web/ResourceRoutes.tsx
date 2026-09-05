@@ -40,7 +40,13 @@ export function resourceRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
     },
     {
       path: `/${resource.slug}/$id`,
-      component: () => <ResourceDetail resource={resource} />,
+      component: () => (
+        <ResourceDetail
+          resource={resource}
+          resources={resources}
+          registry={registry}
+        />
+      ),
     },
     {
       path: `/${resource.slug}/$id/edit`,

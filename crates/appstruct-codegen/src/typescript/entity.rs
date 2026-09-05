@@ -4,6 +4,7 @@ pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
     let variable = lower_camel(&entity.rust_name);
     let model = &entity.rust_name;
     let path = format!("/api/{}/", entity.table_name);
+    let collections = super::collections::client(entity, &path);
     let restore = if entity.views.soft_delete {
         format!(
             "  trash: (query: Pick<ListQuery, \"page\" | \"page_size\"> = {{}}, options: RequestOptions = {{}}) => request<ListResponse<{model}>>(listPath(\"{path}_trash\", query), options),\n  restore: (input: BulkDeleteRequest) => request<BulkResult>(\"{path}_restore\", {{ method: \"POST\", body: JSON.stringify(input) }}),\n"
@@ -44,6 +45,7 @@ pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
     format!(
         r#"export const {variable}Api = {{
   list: (query: ListQuery = {{}}, options: RequestOptions = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query), options),
+  lookup: (ids: string[], options: RequestOptions = {{}}) => request<{model}[]>("{path}_lookup?" + new URLSearchParams({{ ids: ids.join(",") }}), options),
   listCursor: (query: CursorListQuery = {{}}, options: RequestOptions = {{}}) =>
     request<CursorListResponse<{model}>>(listPath("{path}", {{ limit: 25, ...query }}), options),
   aggregate: (query: AggregateQuery = {{}}, options: RequestOptions = {{}}) =>
@@ -66,7 +68,7 @@ pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
   bulkDelete: (input: BulkDeleteRequest) => request<BulkResult>("{path}_bulk", {{ method: "DELETE", body: JSON.stringify(input) }}),
   exportCsv: () => requestText("{path}_export.csv"),
   importCsv: (csv: string) => request<BulkResult>("{path}_import.csv", {{ method: "POST", headers: {{ "Content-Type": "text/csv" }}, body: csv }}),
-{restore}{workflow}}};
+{restore}{workflow}{collections}}};
 "#
     )
 }

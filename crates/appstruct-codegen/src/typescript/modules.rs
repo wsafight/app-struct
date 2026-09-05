@@ -22,16 +22,6 @@ function currentTenant(): string | undefined {
   }
 }
 
-function selectTenant(id?: string): void {
-  try {
-    const storage = browserStorage();
-    if (id) storage?.setItem(tenantStorageKey, id);
-    else storage?.removeItem(tenantStorageKey);
-  } catch {
-    // Storage can reject writes in privacy modes or restricted frames.
-  }
-  resourceEtags.clear();
-}
 "#
 }
 

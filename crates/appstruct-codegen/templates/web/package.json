@@ -16,6 +16,7 @@
     "@tanstack/react-query": "5.102.8",
     "@tanstack/react-router": "1.170.32",
     "@tanstack/react-table": "9.2.4",
+    "decimal.js": "10.6.0",
     "lucide-react": "1.40.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",

@@ -12,8 +12,11 @@ import {
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "../components/Dialog";
-import { useResourceListController } from "../controller";
-import { Link, useSearchParams } from "../navigation";
+import {
+  useResourceListController,
+  useResourceUrlController,
+} from "../controller";
+import { Link } from "../navigation";
 import type {
   FieldDefinition,
   ResourceDefinition,
@@ -26,7 +29,8 @@ import {
   useResourceActor,
 } from "../resource";
 import { useRealtimeResource } from "../realtime/useRealtimeResource";
-import { buildResourceFilterQuery, ResourceFilters } from "./ResourceFilters";
+import { ResourceFilters } from "./ResourceFilters";
+import { buildResourceFilterQuery } from "../url-controller";
 import { BulkToolbar, useBulkActions } from "./resource-list/BulkActions";
 import { ResourceInsights } from "./resource-list/ResourceInsights";
 import { ResourceTable } from "./resource-list/ResourceTable";
@@ -38,7 +42,7 @@ import {
   ViewOptions,
 } from "./resource-list/ViewOptions";
 
-export { formatValue } from "./resource-list/ResourceTable";
+export { formatFieldValue, formatValue } from "./resource-list/ResourceTable";
 
 export function ResourceList({
   resource,
@@ -49,7 +53,17 @@ export function ResourceList({
 }) {
   const actor = useResourceActor();
   const canCreate = useCanAccess(resource, "create");
-  const [searchParams, setSearchParams] = useSearchParams();
+  const url = useResourceUrlController(resource);
+  const {
+    searchParams,
+    queryString,
+    trashMode,
+    page,
+    pageSize,
+    sort,
+    filterFields,
+    updateParam,
+  } = url;
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [actionError, setActionError] = useState("");
@@ -58,11 +72,6 @@ export function ResourceList({
     description: string;
     action(): Promise<void>;
   } | null>(null);
-  const queryString = searchParams.toString();
-  const trashMode = resource.softDelete && searchParams.get("trash") === "1";
-  const page = boundedInteger(searchParams.get("page"), 1, 10_000, 1);
-  const pageSize = boundedInteger(searchParams.get("page_size"), 1, 100, 25);
-  const sort = searchParams.get("sort") ?? "";
   const listFields = useMemo(
     () =>
       resource.fields.filter(
@@ -76,26 +85,10 @@ export function ResourceList({
     () => resolveVisibleFields(listFields, searchParams.get("columns")),
     [listFields, searchParams],
   );
-  const filterFields = useMemo(
-    () =>
-      resource.fields.filter(
-        (field) =>
-          field.filterable &&
-          canAccessRule(field.readAccess ?? { mode: "public" }, actor),
-      ),
-    [actor, resource],
-  );
-
   const controller = useResourceListController(resource, {
     cacheKey: queryString,
     trashMode,
-    query: {
-      page,
-      page_size: pageSize,
-      sort: sort || undefined,
-      q: searchParams.get("q") ?? undefined,
-      ...buildResourceFilterQuery(filterFields, searchParams),
-    },
+    query: url.query,
     onChangeSuccess: () => setRowSelection({}),
   });
   const { records, total } = controller;
@@ -114,19 +107,6 @@ export function ResourceList({
     resourceSlug: resource.slug,
     eventPrefix: resource.eventPrefix,
   });
-
-  function updateParam(name: string, value?: string, replace = false) {
-    setSearchParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        if (value) next.set(name, value);
-        else next.delete(name);
-        if (name !== "page") next.delete("page");
-        return next;
-      },
-      { replace },
-    );
-  }
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
@@ -344,6 +324,7 @@ export function ResourceList({
         </div>
       )}
       <ResourceTable
+        resources={resources}
         resource={resource}
         actor={actor}
         records={records}
@@ -407,16 +388,4 @@ function AccessDenied() {
       </div>
     </main>
   );
-}
-
-function boundedInteger(
-  value: string | null,
-  minimum: number,
-  maximum: number,
-  fallback: number,
-): number {
-  const parsed = Number(value);
-  return Number.isInteger(parsed)
-    ? Math.min(maximum, Math.max(minimum, parsed))
-    : fallback;
 }

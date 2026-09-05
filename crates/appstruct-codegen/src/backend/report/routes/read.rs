@@ -71,11 +71,11 @@ pub(super) fn source(audit: bool) -> TokenStream {
             let transaction = state.database.begin().await?;
             let before = load_run_locked(&transaction, id, context.tenant()).await?;
             ensure_run_access(&context, &before)?;
-            if before.stage != "queued" { return Err(ApiError::ReportCancellationConflict); }
+            if !matches!(before.stage.as_str(), "queued" | "rendering") { return Err(ApiError::ReportCancellationConflict); }
             let job_id = before.execution_job_id.ok_or(ApiError::ReportCancellationConflict)?;
             let result = transaction.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
-                "UPDATE \"_appstruct_jobs\" SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'queued'",
+                "UPDATE \"_appstruct_jobs\" SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, locked_by = NULL, locked_until = NULL WHERE id = $1 AND status IN ('queued', 'running')",
                 [job_id.into()],
             )).await?;
             if result.rows_affected() != 1 { return Err(ApiError::ReportCancellationConflict); }

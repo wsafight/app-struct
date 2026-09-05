@@ -7,8 +7,19 @@ services:
       - .env.production
     environment:
       APPSTRUCT_BIND: 0.0.0.0:3000
-    ports:
-      - "3000:3000"
+      APPSTRUCT_ENV: production
+      APPSTRUCT_FILE_ROOT: /app/.appstruct/files
+    expose:
+      - "3000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - appstruct-files:/app/.appstruct/files
+    stop_grace_period: 60s
     restart: unless-stopped
 
   web:
@@ -16,5 +27,11 @@ services:
       context: .
       dockerfile: deploy/web.Dockerfile
     ports:
-      - "8080:80"
+      - "${APPSTRUCT_WEB_BIND:-127.0.0.1}:${APPSTRUCT_WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  appstruct-files:

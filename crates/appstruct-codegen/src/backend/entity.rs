@@ -41,7 +41,12 @@ fn entity_field(field: &FieldIr) -> Result<TokenStream, CodegenError> {
     } else {
         quote! { #[sea_orm(column_name = #column)] }
     };
-    Ok(quote! { #attributes pub #name: #ty })
+    let scalar = if matches!(field.generated, Some(GeneratedValueIr::Revision)) {
+        TokenStream::new()
+    } else {
+        super::scalar::attributes(&field.ty, u8::from(field.nullable))
+    };
+    Ok(quote! { #attributes #scalar pub #name: #ty })
 }
 
 fn relation_fields(ir: &AppIr, entity: &EntityIr) -> Result<Vec<TokenStream>, CodegenError> {

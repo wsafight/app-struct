@@ -259,6 +259,7 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
+        "renderer": { "enum": ["capture", "chromium"], "default": "capture" },
         "queue": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
         "max_input_bytes": { "type": "integer", "minimum": 1, "maximum": 4194304 },
         "retention_days": { "type": "integer", "minimum": 1, "maximum": 3650 },
@@ -365,7 +366,24 @@
         "tenant": { "type": "boolean" },
         "audit": { "type": "boolean" },
         "soft_delete": { "type": "boolean" },
+        "display_field": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$" },
+        "aggregates": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/fieldName" },
+          "additionalProperties": { "$ref": "#/$defs/aggregate" }
+        },
         "workflow": { "$ref": "#/$defs/workflow" }
+      },
+      "additionalProperties": false
+    },
+    "aggregate": {
+      "type": "object",
+      "required": ["entity", "relation"],
+      "properties": {
+        "entity": { "$ref": "#/$defs/typeName" },
+        "relation": { "$ref": "#/$defs/fieldName" },
+        "states": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "max_items": { "type": "integer", "minimum": 1, "maximum": 100, "default": 100 }
       },
       "additionalProperties": false
     },
@@ -468,11 +486,34 @@
         "on_delete": { "enum": ["restrict", "cascade", "set_null"] },
         "ui": {
           "type": "object",
-          "required": ["component"],
           "properties": {
-            "component": { "$ref": "#/$defs/typeName" }
+            "component": { "$ref": "#/$defs/typeName" },
+            "semantic": { "const": "money" },
+            "currency_field": { "$ref": "#/$defs/fieldName" },
+            "fraction_digits": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 6,
+              "default": 2
+            }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": ["component"],
+              "not": {
+                "anyOf": [
+                  { "required": ["semantic"] },
+                  { "required": ["currency_field"] },
+                  { "required": ["fraction_digits"] }
+                ]
+              }
+            },
+            {
+              "required": ["semantic", "currency_field"],
+              "not": { "required": ["component"] }
+            }
+          ]
         }
       },
       "additionalProperties": false

@@ -21,6 +21,14 @@ pub fn aggregate_support(
     let access_scope = super::access::scope(entity, module, &entity.access.list)?;
     let metric_arms = metric_arms(entity, module)?;
     let group_arms = group_arms(entity, module)?;
+    let expression_trait = entity
+        .fields
+        .iter()
+        .any(|field| {
+            field.capabilities.filterable
+                && matches!(field.ty, FieldTypeIr::Bigint | FieldTypeIr::Decimal)
+        })
+        .then(|| quote! { use sea_orm::ExprTrait as _; });
     let handler = aggregate_handler(&AggregateHandlerTokens {
         module,
         policy,
@@ -34,6 +42,7 @@ pub fn aggregate_support(
     });
     Ok(quote! {
         use std::collections::BTreeSet;
+        #expression_trait
 
         #[derive(Debug, Default, Deserialize)]
         pub struct AggregateQuery {
@@ -190,15 +199,20 @@ fn metric_arms(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream
         let avg_alias = LitStr::new(&format!("avg_{}", field.rust_name), Span::call_site());
         let min_alias = LitStr::new(&format!("min_{}", field.rust_name), Span::call_site());
         let max_alias = LitStr::new(&format!("max_{}", field.rust_name), Span::call_site());
+        let wire_cast = if matches!(field.ty, FieldTypeIr::Bigint | FieldTypeIr::Decimal) {
+            quote! { .cast_as("text") }
+        } else {
+            TokenStream::new()
+        };
         if supports_sum_avg(&field.ty) {
             arms.push(quote! {
                 #sum_name => {
                     #read_guard
-                    select = select.column_as(#module::Column::#column.sum(), #sum_alias);
+                    select = select.column_as(#module::Column::#column.sum() #wire_cast, #sum_alias);
                 },
                 #avg_name => {
                     #read_guard
-                    select = select.column_as(#module::Column::#column.avg(), #avg_alias);
+                    select = select.column_as(#module::Column::#column.avg() #wire_cast, #avg_alias);
                 }
             });
         }
@@ -206,11 +220,11 @@ fn metric_arms(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream
             arms.push(quote! {
                 #min_name => {
                     #read_guard
-                    select = select.column_as(#module::Column::#column.min(), #min_alias);
+                    select = select.column_as(#module::Column::#column.min() #wire_cast, #min_alias);
                 },
                 #max_name => {
                     #read_guard
-                    select = select.column_as(#module::Column::#column.max(), #max_alias);
+                    select = select.column_as(#module::Column::#column.max() #wire_cast, #max_alias);
                 }
             });
         }
@@ -227,13 +241,18 @@ fn group_arms(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream>
             let name = LitStr::new(&field.rust_name, Span::call_site());
             let column = column_ident(field)?;
             let alias = LitStr::new(&format!("group_{}", field.rust_name), Span::call_site());
+            let selected = if matches!(field.ty, FieldTypeIr::Bigint | FieldTypeIr::Decimal) {
+                quote! { sea_orm::sea_query::Expr::col((#module::Entity, #module::Column::#column)).cast_as("text") }
+            } else {
+                quote! { #module::Column::#column }
+            };
             Ok(quote! {
                 #name => {
                     if !field_read_allowed(&context, #name) {
                         return Err(access_denied(&context));
                     }
                     select = select
-                        .column_as(#module::Column::#column, #alias)
+                        .column_as(#selected, #alias)
                         .group_by(#module::Column::#column);
                 }
             })

@@ -31,7 +31,7 @@ fn mail_contract_generates_a_compilable_backend() {
     assert!(project_api.contains("ColumnTrait as _"));
     assert!(user_api.contains("ColumnTrait as _"));
     let manifest = artifact_text(&artifacts, "backend/Cargo.toml");
-    assert!(manifest.contains("minijinja = \"=2.12.0\""));
+    assert!(manifest.contains("minijinja = { version = \"=2.12.0\", features = [\"fuel\"] }"));
     assert!(!manifest.contains("reqwest"));
     let admin = artifact_text(&artifacts, "backend/src/auth/admin_storage.rs");
     assert!(admin.contains("/api/admin/mail"));

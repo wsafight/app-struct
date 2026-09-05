@@ -1,0 +1,7 @@
+lock_version = 1
+project_layout_version = 2
+appstruct = "0.1.0"
+
+[template]
+name = "operations-demo"
+version = "0.1.0"

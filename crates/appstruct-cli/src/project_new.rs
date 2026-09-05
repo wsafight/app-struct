@@ -217,6 +217,10 @@ const MINIMAL_FILES: &[TemplateFile] = &[
         content: include_str!("../templates/common/deploy/nginx.conf"),
     },
     TemplateFile {
+        path: "deploy/smoke.mjs",
+        content: include_str!("../templates/common/deploy/smoke.mjs"),
+    },
+    TemplateFile {
         path: ".env.example",
         content: include_str!("../templates/minimal/env.example"),
     },
@@ -270,6 +274,10 @@ const DASHBOARD_FILES: &[TemplateFile] = &[
     TemplateFile {
         path: "deploy/nginx.conf",
         content: include_str!("../templates/common/deploy/nginx.conf"),
+    },
+    TemplateFile {
+        path: "deploy/smoke.mjs",
+        content: include_str!("../templates/common/deploy/smoke.mjs"),
     },
     TemplateFile {
         path: ".env.example",
@@ -333,6 +341,10 @@ const SAAS_FILES: &[TemplateFile] = &[
     TemplateFile {
         path: "deploy/nginx.conf",
         content: include_str!("../templates/common/deploy/nginx.conf"),
+    },
+    TemplateFile {
+        path: "deploy/smoke.mjs",
+        content: include_str!("../templates/common/deploy/smoke.mjs"),
     },
     TemplateFile {
         path: ".env.example",

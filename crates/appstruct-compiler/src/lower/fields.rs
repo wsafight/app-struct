@@ -3,8 +3,8 @@ use crate::field_options::{build_generated, validate_field_options};
 use crate::surface::{SurfaceEntity, SurfaceField};
 use crate::validation::validate_primary_key;
 use appstruct_ir::{
-    AuthIr, Diagnostic, EntityId, FieldCapabilities, FieldId, FieldIr, FieldTypeIr,
-    GeneratedValueIr, RelationIr, SourceSpan, ValidationIr,
+    AuthIr, Diagnostic, EntityId, FieldCapabilities, FieldId, FieldIr, FieldSemanticIr,
+    FieldTypeIr, GeneratedValueIr, RelationIr, SourceSpan, ValidationIr,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -30,6 +30,7 @@ pub(super) fn tenant_field(entity_id: &EntityId) -> FieldIr {
         read_access: None,
         write_access: None,
         ui_component: None,
+        ui_semantic: None,
     }
 }
 
@@ -55,6 +56,7 @@ pub(super) fn revision_field(entity_id: &EntityId) -> FieldIr {
         read_access: None,
         write_access: None,
         ui_component: None,
+        ui_semantic: None,
     }
 }
 
@@ -83,6 +85,102 @@ pub(super) fn build_fields(
         }
     }
     (fields, relations)
+}
+
+pub(super) fn validate_field_semantics(
+    entity: &SurfaceEntity,
+    fields: &[FieldIr],
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let mut companions = BTreeMap::<&str, &SurfaceField>::new();
+    for surface_field in &entity.fields {
+        let Some(crate::surface::SurfaceFieldSemantic::Money { currency_field, .. }) =
+            &surface_field.ui_semantic
+        else {
+            continue;
+        };
+        let amount = fields
+            .iter()
+            .find(|field| field.api_name == surface_field.name.value);
+        let currency = fields
+            .iter()
+            .find(|field| field.api_name == currency_field.value);
+        let Some(currency) = currency else {
+            diagnostics.push(Diagnostic::error(
+                "AS2020",
+                format!(
+                    "money currency field `{}` does not exist on this entity",
+                    currency_field.value
+                ),
+                currency_field.span.clone(),
+            ));
+            continue;
+        };
+        let FieldTypeIr::Enum { values } = &currency.ty else {
+            diagnostics.push(Diagnostic::error(
+                "AS2020",
+                format!(
+                    "money currency field `{}` must be an enum",
+                    currency_field.value
+                ),
+                currency_field.span.clone(),
+            ));
+            continue;
+        };
+        if values
+            .iter()
+            .any(|value| value.len() != 3 || !value.bytes().all(|byte| byte.is_ascii_uppercase()))
+        {
+            diagnostics.push(Diagnostic::error(
+                "AS2020",
+                "money currency enum values must be three uppercase ASCII letters",
+                currency_field.span.clone(),
+            ));
+        }
+        if let Some(amount) = amount {
+            if amount.nullable != currency.nullable {
+                diagnostics.push(Diagnostic::error(
+                    "AS2020",
+                    "money amount and currency fields must have matching requiredness",
+                    currency_field.span.clone(),
+                ));
+            }
+            if amount.read_access != currency.read_access
+                || amount.write_access != currency.write_access
+            {
+                diagnostics.push(Diagnostic::error(
+                    "AS2020",
+                    "money amount and currency fields must have identical field access",
+                    currency_field.span.clone(),
+                ));
+            }
+        }
+        let target_surface = entity
+            .fields
+            .iter()
+            .find(|field| field.name.value == currency_field.value)
+            .expect("lowered field has a surface field");
+        if target_surface.ui_component.is_some() || target_surface.ui_semantic.is_some() {
+            diagnostics.push(Diagnostic::error(
+                "AS2020",
+                "a money currency field cannot declare its own UI component or semantic",
+                target_surface.span.clone(),
+            ));
+        }
+        if let Some(first) = companions.insert(&currency_field.value, surface_field) {
+            diagnostics.push(
+                Diagnostic::error(
+                    "AS2020",
+                    format!(
+                        "currency field `{}` cannot be shared by multiple money fields",
+                        currency_field.value
+                    ),
+                    currency_field.span.clone(),
+                )
+                .with_secondary(first.span.clone(), "first money field declared here"),
+            );
+        }
+    }
 }
 
 fn build_field(
@@ -138,6 +236,15 @@ fn build_field(
                 .ui_component
                 .as_ref()
                 .map(|component| component.value.clone()),
+            ui_semantic: field.ui_semantic.as_ref().map(|semantic| match semantic {
+                crate::surface::SurfaceFieldSemantic::Money {
+                    currency_field,
+                    fraction_digits,
+                } => FieldSemanticIr::Money {
+                    currency_field: FieldId(format!("{entity_id}.{}", currency_field.value)),
+                    fraction_digits: u8::try_from(fraction_digits.value).unwrap_or(u8::MAX),
+                },
+            }),
         },
         relation,
     ))

@@ -14,7 +14,12 @@ interface DialogFrameProps {
   onCancel(): void;
 }
 
-export function DialogFrame({ open, title, children, onCancel }: DialogFrameProps) {
+export function DialogFrame({
+  open,
+  title,
+  children,
+  onCancel,
+}: DialogFrameProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 

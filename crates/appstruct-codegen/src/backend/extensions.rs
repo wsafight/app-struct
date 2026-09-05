@@ -60,7 +60,8 @@ fn value_object(value: &ValueObjectIr) -> Result<TokenStream, CodegenError> {
             } else {
                 quote! { Option<#base> }
             };
-            Ok(quote! { pub #name: #ty })
+            let scalar = super::scalar::attributes(&field.ty, u8::from(!field.required));
+            Ok(quote! { #scalar pub #name: #ty })
         })
         .collect::<Result<Vec<_>, CodegenError>>()?;
     Ok(quote! {

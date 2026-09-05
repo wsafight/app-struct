@@ -4,6 +4,7 @@ mod database;
 mod extension;
 mod seed;
 mod service;
+mod ui;
 mod validation;
 mod views;
 mod workflow;
@@ -15,11 +16,13 @@ use serde::{Deserialize, Serialize};
 pub use service::{
     ActivityIr, ActivityResourceIr, AuditIr, FileIr, FileProviderIr, JobQueueIr, JobScheduleIr,
     JobsIr, MailIr, MailProviderIr, MailTemplateIr, PresetIr, RealtimeIr, ReportIr,
-    ReportTemplateIr, TenantIr, WebhookEndpointIr, WebhooksIr,
+    ReportRendererIr, ReportTemplateIr, TenantIr, WebhookEndpointIr, WebhooksIr,
 };
 use std::fmt;
+pub use ui::FieldSemanticIr;
+pub use validation::aggregates::validate_aggregates;
 pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir};
-pub use views::EntityViewsIr;
+pub use views::{AggregateIr, EntityViewsIr};
 pub use workflow::{WorkflowIr, WorkflowTransitionIr};
 pub const IR_VERSION: u32 = appstruct_contracts::IR.current;
 
@@ -151,6 +154,8 @@ pub struct FieldIr {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub write_access: Option<AccessRuleIr>,
     pub ui_component: Option<String>,
+    #[serde(default)]
+    pub ui_semantic: Option<FieldSemanticIr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

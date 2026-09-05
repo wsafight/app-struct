@@ -1,15 +1,18 @@
 mod activity;
+pub(crate) mod aggregates;
 mod error;
 mod graph;
 mod indexes;
 mod report;
 mod seeds;
+mod ui;
 mod workflow;
 use self::activity::validate_activity;
 use self::graph::{validate_modules, validate_operations, validate_services};
 use self::indexes::validate_indexes;
 use self::report::validate_report;
 use self::seeds::validate_seeds;
+use self::ui::validate_field_semantics;
 use self::workflow::validate_workflow;
 use crate::{
     AccessRuleIr, AppIr, EntityId, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr, IR_VERSION,
@@ -36,6 +39,9 @@ pub fn validate_app_ir(ir: &AppIr) -> Result<(), IrValidationErrors> {
         &mut errors,
     );
     validate_entities(ir, &entities, &value_objects, &mut errors);
+    if let Err(aggregate_errors) = aggregates::validate_aggregates(&ir.entities) {
+        errors.extend(aggregate_errors.0);
+    }
     validate_seeds(ir, &entities, &mut errors);
     validate_relations(ir, &entities, &mut errors);
     validate_services(ir, &entities, &mut errors);
@@ -115,6 +121,7 @@ fn validate_entities(
                 validate_field_access_rule(rule, &format!("{field_path}.write_access"), errors);
             }
         }
+        validate_field_semantics(entity, &path, errors);
         for (name, rule) in entity_access(entity) {
             validate_access_rule(rule, entity, &format!("{path}.access.{name}"), errors);
         }

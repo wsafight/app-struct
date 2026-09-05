@@ -14,6 +14,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - suite: benchmark
+            script: bash scripts/run-postgres-benchmark.sh
+            database: appstruct_benchmark_test
+            browsers: false
+          - suite: authorization
+            script: bash scripts/run-authorization-e2e.sh
+            database: appstruct_authorization_e2e
+            browsers: false
+          - suite: chromium-report
+            script: bash scripts/run-chromium-report-e2e.sh
+            database: appstruct_chromium_report_e2e
+            browsers: true
           - suite: browser
             script: scripts/run-m5-browser-e2e.sh
             database: appstruct_browser_e2e
@@ -45,6 +57,10 @@ jobs:
           - suite: saas
             script: scripts/run-m6-saas-e2e.sh
             database: appstruct_saas_e2e
+            browsers: true
+          - suite: operations
+            script: scripts/run-operations-e2e.sh
+            database: appstruct_operations_e2e
             browsers: true
     services:
       postgres:
@@ -85,3 +101,10 @@ jobs:
         env:
           APPSTRUCT_E2E_DATABASE_URL: postgresql://appstruct:appstruct@127.0.0.1:5432/${{ matrix.database }}
         run: ${{ matrix.script }}
+      - name: Upload database workload results
+        if: always() && matrix.suite == 'benchmark'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: postgres-workload
+          path: output/benchmarks/
+          if-no-files-found: ignore

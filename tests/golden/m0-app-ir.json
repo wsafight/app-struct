@@ -1,5 +1,5 @@
 {
-  "ir_version": 12,
+  "ir_version": 15,
   "app": {
     "name": "project-hub"
   },
@@ -81,7 +81,8 @@
             "filterable": false,
             "sortable": true
           },
-          "ui_component": null
+          "ui_component": null,
+          "ui_semantic": null
         },
         {
           "id": "app::Project.id",
@@ -108,7 +109,8 @@
             "filterable": false,
             "sortable": false
           },
-          "ui_component": null
+          "ui_component": null,
+          "ui_semantic": null
         },
         {
           "id": "app::Project.name",
@@ -135,7 +137,8 @@
             "filterable": false,
             "sortable": true
           },
-          "ui_component": null
+          "ui_component": null,
+          "ui_semantic": null
         },
         {
           "id": "app::Project.owner",
@@ -163,7 +166,8 @@
             "filterable": false,
             "sortable": false
           },
-          "ui_component": null
+          "ui_component": null,
+          "ui_semantic": null
         },
         {
           "id": "app::Project.revision",
@@ -190,7 +194,8 @@
             "filterable": false,
             "sortable": false
           },
-          "ui_component": null
+          "ui_component": null,
+          "ui_semantic": null
         },
         {
           "id": "app::Project.status",
@@ -222,7 +227,8 @@
             "filterable": true,
             "sortable": false
           },
-          "ui_component": null
+          "ui_component": null,
+          "ui_semantic": null
         }
       ],
       "access": {
@@ -323,7 +329,8 @@
             "filterable": false,
             "sortable": false
           },
-          "ui_component": null
+          "ui_component": null,
+          "ui_semantic": null
         },
         {
           "id": "app::User.id",
@@ -350,7 +357,8 @@
             "filterable": false,
             "sortable": false
           },
-          "ui_component": null
+          "ui_component": null,
+          "ui_semantic": null
         },
         {
           "id": "app::User.revision",
@@ -377,7 +385,8 @@
             "filterable": false,
             "sortable": false
           },
-          "ui_component": null
+          "ui_component": null,
+          "ui_semantic": null
         }
       ],
       "access": {

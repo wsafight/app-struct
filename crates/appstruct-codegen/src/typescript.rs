@@ -1,13 +1,16 @@
 mod activity;
 mod auth;
 mod bulk;
+mod collections;
 mod entity;
 mod modules;
 mod realtime;
 mod report;
 mod saved_views;
 use crate::{Artifact, ArtifactKind, generated_header};
-use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, OperationTypeIr, ValueObjectIr};
+use appstruct_ir::{
+    AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr, OperationTypeIr, ValueObjectIr,
+};
 use modules::{audit_source, tenant_source, tenant_storage_source};
 pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
     vec![Artifact::text(
@@ -20,7 +23,7 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
 fn client_source(ir: &AppIr) -> String {
     let mut sections = vec![
         generated_header("//"),
-        runtime_source(),
+        format!("{}{}", runtime_source(), collections::types()),
         tenant_storage_source().to_owned(),
         saved_views::source(ir),
     ];
@@ -120,7 +123,7 @@ fn runtime_source() -> String {
     )
 }
 fn request_runtime_source() -> &'static str {
-    r#"const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://127.0.0.1:3000";
+    r#"const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? (import.meta.env.PROD ? "" : "http://127.0.0.1:3000");
 
 export interface RequestOptions { signal?: AbortSignal; }
 export const sessionSyncKey = "appstruct_session_sync";
@@ -154,10 +157,6 @@ export class ApiError extends Error {
 
 const resourceEtags = new Map<string, string>();
 
-function broadcastSessionChange(): void {
-  try { window.localStorage.setItem(sessionSyncKey, `${Date.now()}:${Math.random()}`); } catch { /* Storage can be unavailable in privacy modes. */ }
-}
-
 export function requestHeaders(init?: RequestInit, revisionKey?: string, requireRevision = false): Headers {
   const headers = new Headers(init?.headers);
   const method = init?.method ?? "GET";
@@ -172,7 +171,7 @@ export function requestHeaders(init?: RequestInit, revisionKey?: string, require
   }
   if (init?.method === "PATCH" || init?.method === "DELETE" || requireRevision) {
     const etag = revisionKey ? resourceEtags.get(revisionKey) : undefined;
-    if (etag) headers.set("If-Match", etag);
+    if (etag && !headers.has("If-Match")) headers.set("If-Match", etag);
   }
   return headers;
 }
@@ -350,16 +349,20 @@ fn input_property(field: &FieldIr, update: bool) -> String {
 }
 
 fn model_type(field: &FieldIr) -> String {
+    if matches!(field.generated, Some(GeneratedValueIr::Revision)) {
+        return "number".to_owned();
+    }
     let nullable = if field.nullable { " | null" } else { "" };
     format!("{}{nullable}", base_type(&field.ty))
 }
 
 fn base_type(field_type: &FieldTypeIr) -> &'static str {
     match field_type {
-        FieldTypeIr::Integer | FieldTypeIr::Bigint => "number",
+        FieldTypeIr::Integer => "number",
         FieldTypeIr::Boolean => "boolean",
         FieldTypeIr::Json => "unknown",
         FieldTypeIr::Uuid
+        | FieldTypeIr::Bigint
         | FieldTypeIr::String
         | FieldTypeIr::Text
         | FieldTypeIr::Decimal

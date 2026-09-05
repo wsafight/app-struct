@@ -19,6 +19,7 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceReport, Diag
         report,
         &[
             "enabled",
+            "renderer",
             "queue",
             "max_input_bytes",
             "retention_days",
@@ -34,6 +35,7 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceReport, Diag
         .unwrap_or(true);
     Ok(SurfaceReport {
         enabled,
+        renderer: string(report.get("renderer"), "report renderer")?,
         queue: string(report.get("queue"), "report queue")?,
         max_input_bytes: number(report.get("max_input_bytes"), "report max input bytes")?,
         retention_days: number(report.get("retention_days"), "report retention days")?,

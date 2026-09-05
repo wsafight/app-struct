@@ -13,7 +13,7 @@ cleanup() {
 trap cleanup EXIT
 
 cargo build --locked -p appstruct-cli
-target/debug/appstruct --project "$temporary_root" new ci-check --template saas
+target/debug/appstruct --project "$temporary_root" new ci-check --template "${APPSTRUCT_TEMPLATE:-saas}"
 target/debug/appstruct --project "$temporary_root/ci-check" generate
 
 cd "$temporary_root/ci-check/generated/web"

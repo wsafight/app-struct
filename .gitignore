@@ -16,6 +16,7 @@
 **/.appstruct.lock.appstruct-update-backup
 
 # Browser test output.
+/output/
 /playwright-report/
 /test-results/
 **/node_modules/

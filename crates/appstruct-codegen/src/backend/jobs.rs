@@ -5,9 +5,13 @@ use quote::quote;
 
 mod disabled;
 mod dispatch;
+mod lease;
+mod metrics;
 mod schedule;
+mod test_support;
 
 use disabled::disabled_source;
+use test_support::{test_worker_gate_source, test_worker_gate_wait};
 
 pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     let source = if ir.jobs.enabled {
@@ -29,7 +33,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let enqueue = enqueue_source();
     let worker = worker_source(ir.jobs.poll_interval_ms, ir.jobs.lease_seconds);
     let schedule_persistence = schedule::persistence();
-    let persistence = persistence_source();
+    let persistence = persistence_source(ir.report.enabled);
     let mail = (ir.mail.enabled).then(mail_source);
     let dispatcher = dispatch::source(ir);
     render(quote! {
@@ -163,7 +167,10 @@ fn enqueue_source() -> proc_macro2::TokenStream {
 
 fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::TokenStream {
     let lease_seconds = i64::try_from(lease_seconds).unwrap_or(30);
+    let gate_wait = test_worker_gate_wait(poll_interval_ms);
     let lifecycle = worker_lifecycle_source();
+    let lease = lease::methods(lease_seconds);
+    let run_once = metrics::run_once(lease_seconds);
     quote! {
         pub struct JobWorker {
             database: DatabaseConnection,
@@ -172,6 +179,7 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
             kind: Option<String>,
         }
         impl JobWorker {
+            #lease
             pub fn new(database: DatabaseConnection, handler: Arc<dyn JobHandler>) -> Self {
                 Self {
                     database, handler, worker_id: uuid::Uuid::now_v7().to_string(), kind: None,
@@ -185,18 +193,7 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
                     kind: Some(kind.to_owned()),
                 }
             }
-            pub async fn run_once(&self) -> Result<bool, JobError> {
-                let Some(job) = claim(
-                    &self.database, &self.worker_id, #lease_seconds, self.kind.as_deref(),
-                ).await? else {
-                    return Ok(false);
-                };
-                match self.handler.handle(&job).await {
-                    Ok(()) => complete(&self.database, &self.worker_id, job.id).await?,
-                    Err(error) => fail(&self.database, &self.worker_id, &job, &error.0).await?,
-                }
-                Ok(true)
-            }
+            #run_once
             fn replica(&self) -> Self {
                 Self {
                     database: self.database.clone(), handler: Arc::clone(&self.handler),
@@ -230,6 +227,7 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
                         tasks.spawn(async move {
                             loop {
                                 if *lane_receiver.borrow() { break; }
+                                #gate_wait
                                 if index == 0 {
                                     if let Err(error) = schedule_due(&worker.database).await {
                                         tracing::error!(%error, "job schedule iteration failed");
@@ -261,11 +259,13 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
 }
 
 fn worker_lifecycle_source() -> proc_macro2::TokenStream {
+    let test_gate = test_worker_gate_source();
     quote! {
         fn worker_concurrency(name: &str) -> usize {
             env::var(name).ok().and_then(|value| value.parse().ok())
                 .filter(|value| (1..=64).contains(value)).unwrap_or(4)
         }
+        #test_gate
         struct JobWorkerObserver {
             health: Option<crate::ApplicationHealth>,
         }
@@ -297,7 +297,9 @@ fn worker_lifecycle_source() -> proc_macro2::TokenStream {
     }
 }
 
-fn persistence_source() -> proc_macro2::TokenStream {
+fn persistence_source(report: bool) -> proc_macro2::TokenStream {
+    let terminal_report =
+        report.then(|| quote! { || !crate::report::retryable_job_error(&job.kind, error) });
     quote! {
         async fn claim(
             database: &DatabaseConnection, worker_id: &str, lease_seconds: i64,
@@ -335,7 +337,7 @@ fn persistence_source() -> proc_macro2::TokenStream {
         async fn fail(
             database: &DatabaseConnection, worker_id: &str, job: &Job, error: &str,
         ) -> Result<(), JobError> {
-            let terminal = job.attempts >= job.max_attempts;
+            let terminal = job.attempts >= job.max_attempts #terminal_report;
             let status = if terminal { "dead" } else { "queued" };
             let exponent = u32::try_from((job.attempts - 1).clamp(0, 30)).unwrap_or(0);
             let delay = job.backoff_seconds.saturating_mul(1_i64 << exponent).min(3_600);

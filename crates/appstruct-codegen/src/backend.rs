@@ -15,6 +15,7 @@ mod query;
 mod realtime;
 mod report;
 mod runtime;
+mod scalar;
 mod startup;
 mod tenant;
 mod validation;
@@ -71,6 +72,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             rust_template(include_str!("../templates/backend/error.rs"))?,
             ArtifactKind::RustSource,
         ),
+        runtime::metrics_artifact()?,
         Artifact::text(
             "backend/src/entities/mod.rs",
             module_source(ir)?,
@@ -116,8 +118,13 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     Ok(artifacts)
 }
 
-fn embedded_runtime_artifacts() -> [Artifact; 6] {
+fn embedded_runtime_artifacts() -> [Artifact; 7] {
     [
+        Artifact::text(
+            "backend/runtime/src/bigint.rs",
+            embedded_crate_source(appstruct_runtime::__source::BIGINT),
+            ArtifactKind::RustSource,
+        ),
         Artifact::text(
             "backend/runtime/src/lib.rs",
             embedded_crate_source(appstruct_runtime::__source::LIB),
@@ -274,6 +281,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod file;
         mod jobs;
         mod mail;
+        mod metrics;
         mod openapi;
         mod operations;
         mod realtime;

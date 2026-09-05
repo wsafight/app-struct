@@ -4,6 +4,62 @@
   background: #f4f6f7;
   font-synthesis: none;
 }
+
+.aggregate-section {
+  min-width: 0;
+  margin: 24px 0;
+  padding-top: 20px;
+  border-top: 1px solid #d9e0e4;
+}
+.aggregate-section .section-heading,
+.aggregate-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.aggregate-section h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.aggregate-fields,
+.aggregate-row-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.aggregate-row {
+  position: relative;
+  min-width: 0;
+  border: 1px solid #d9e0e4;
+  border-radius: 4px;
+  padding: 16px;
+  margin: 0 0 16px;
+}
+.aggregate-row legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+.aggregate-row-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 16px;
+}
+.aggregate-row > .icon-button {
+  margin-top: 12px;
+}
+.aggregate-actions {
+  justify-content: flex-start;
+}
+.relation-pages {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+}
 * {
   box-sizing: border-box;
 }
@@ -213,11 +269,23 @@ a {
   font-weight: 700;
   text-transform: uppercase;
 }
-.report-status.succeeded { background: #dcefe8; color: #185c4f; }
-.report-status.failed { background: #f8dfdf; color: #8c2828; }
-.report-status.cancelled { background: #ececef; color: #565861; }
+.report-status.succeeded {
+  background: #dcefe8;
+  color: #185c4f;
+}
+.report-status.failed {
+  background: #f8dfdf;
+  color: #8c2828;
+}
+.report-status.cancelled {
+  background: #ececef;
+  color: #565861;
+}
 .report-status.rendering,
-.report-status.publishing { background: #e4edf7; color: #285b87; }
+.report-status.publishing {
+  background: #e4edf7;
+  color: #285b87;
+}
 .admin-jobs-table th:first-child,
 .admin-jobs-table td:first-child {
   width: 180px;
@@ -370,6 +438,7 @@ a {
 }
 .sidebar nav {
   display: grid;
+  align-content: start;
   gap: 3px;
   margin-top: 18px;
   flex: 1 1 auto;
@@ -625,10 +694,6 @@ a {
 .insights-table {
   max-width: 720px;
 }
-.selection-cell {
-  width: 40px;
-  text-align: center;
-}
 .list-controls {
   min-height: 48px;
   display: flex;
@@ -750,6 +815,9 @@ a {
   border-radius: 6px;
   overflow: hidden;
 }
+.table-frame {
+  position: relative;
+}
 .table-frame table {
   width: 100%;
   border-collapse: collapse;
@@ -770,6 +838,18 @@ a {
   background: #f8fafb;
   color: #57656b;
   font-weight: 600;
+}
+.table-frame .selection-cell {
+  width: 44px;
+  padding: 0 10px;
+  text-align: center;
+  text-overflow: clip;
+}
+.selection-cell input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  vertical-align: middle;
 }
 .sort-button {
   width: 100%;
@@ -870,6 +950,15 @@ a {
 .field textarea {
   resize: vertical;
 }
+.money-control {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.35fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.money-control input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
@@ -925,6 +1014,12 @@ a {
   color: #27343a;
   overflow-wrap: anywhere;
   font-size: 14px;
+}
+.semantic-value {
+  display: block;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .sr-only {
   position: absolute;
@@ -1474,7 +1569,9 @@ a {
   }
 }
 @media (max-width: 760px) {
-  .report-create-grid { grid-template-columns: 1fr; }
+  .report-create-grid {
+    grid-template-columns: 1fr;
+  }
   .shell {
     display: block;
   }

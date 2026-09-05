@@ -1,0 +1,37 @@
+version: 1
+app: { name: renderer-acceptance }
+database:
+  provider: postgres
+  dev: { mode: external, migration: auto }
+modules:
+  auth: { enabled: true, user_entity: User, registration: true, password_reset: false }
+  rbac: { roles: [sales, auditor, admin], default_role: sales }
+  tenant: { enabled: true }
+  audit: { enabled: true, reader_roles: [admin] }
+  jobs:
+    enabled: true
+    poll_interval_ms: 25
+    lease_seconds: 1
+    queues:
+      reports: { max_attempts: 3, backoff_seconds: 1 }
+  file:
+    enabled: true
+    provider: local
+    local_root: .appstruct/files
+    max_bytes: 10485760
+    allowed_content_types: [application/pdf]
+  report:
+    enabled: true
+    renderer: chromium
+    queue: reports
+    max_input_bytes: 262144
+    retention_days: 30
+    reader_roles: [auditor, admin]
+    templates:
+      acceptance:
+        version: 1
+        body: '<h1>Report acceptance</h1><p>{{ input.title }}</p>'
+        input_schema: '{"type":"object","required":["title"],"properties":{"title":{"type":"string","maxLength":100}},"additionalProperties":false}'
+includes:
+  - spec/order.yaml
+  - spec/identity.yaml

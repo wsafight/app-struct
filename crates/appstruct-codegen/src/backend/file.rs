@@ -160,6 +160,15 @@ fn state_source(
                 }
                 Ok((metadata, content))
             }
+            #[allow(dead_code)]
+            pub(crate) async fn discard_unpublished<C: ConnectionTrait>(&self, database: &C, object_key: &str) -> Result<(), FileError> {
+                validate_key(object_key)?;
+                let metadata = database.query_one_raw(Statement::from_sql_and_values(
+                    DbBackend::Postgres, "SELECT id FROM \"_appstruct_files\" WHERE object_key = $1", [object_key.to_owned().into()],
+                )).await?;
+                if metadata.is_none() { self.provider.delete(object_key).await?; }
+                Ok(())
+            }
             pub async fn delete(
                 &self, object_key: &str, tenant_id: Option<uuid::Uuid>,
             ) -> Result<(), FileError> {

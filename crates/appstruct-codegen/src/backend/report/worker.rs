@@ -2,8 +2,19 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 #[allow(clippy::too_many_lines)]
-pub(super) fn source() -> TokenStream {
+pub(super) fn source(renderer: appstruct_ir::ReportRendererIr) -> TokenStream {
+    let adapter = (renderer == appstruct_ir::ReportRendererIr::Chromium)
+        .then(|| quote! { #[cfg_attr(not(unix), allow(dead_code, unused_imports))] mod adapter; });
+    let render = match renderer {
+        appstruct_ir::ReportRendererIr::Capture => {
+            quote! { render_capture_pdf(work.id, &work.body, &input, &work.locale, &work.timezone, &work.paper, &work.orientation) }
+        }
+        appstruct_ir::ReportRendererIr::Chromium => quote! { adapter::render(&work, &input).await },
+    };
+    let lifecycle = super::lifecycle::source();
     quote! {
+        #adapter
+        #lifecycle
         #[derive(Clone)]
         pub(crate) struct ReportJobHandler {
             database: sea_orm::DatabaseConnection,
@@ -20,6 +31,11 @@ pub(super) fn source() -> TokenStream {
                     .map_err(|_| "REPORT_JOB_PAYLOAD_INVALID".to_owned())?;
                 let work = load_report_work(&self.database, job, payload.run_id).await?;
                 if matches!(work.stage.as_str(), "succeeded" | "cancelled") { return Ok(()); }
+                ensure_render_active(&self.database, job, work.id).await?;
+                let configured = REPORT_TEMPLATES.iter().any(|template| template.name == work.template
+                    && i32::try_from(template.version).ok() == Some(work.template_version)
+                    && template.artifact_digest == work.artifact_digest && template.body == work.body);
+                if !configured || work.renderer_version != REPORT_RENDERER_VERSION { return Err("REPORT_INVALID_TEMPLATE_ARTIFACT".into()); }
                 update_report_stage(&self.database, work.id, "rendering", 10, None).await?;
                 let snapshot = decrypt_snapshot(work.id, &work.snapshot_ciphertext)?;
                 if sha256_hex(&snapshot) != work.snapshot_digest {
@@ -27,28 +43,12 @@ pub(super) fn source() -> TokenStream {
                 }
                 let input: serde_json::Value = serde_json::from_slice(&snapshot)
                     .map_err(|_| "REPORT_SNAPSHOT_INVALID".to_owned())?;
-                let content = render_capture_pdf(
-                    &work.body, &input, &work.locale, &work.timezone,
-                    &work.paper, &work.orientation,
-                )?;
-                update_report_stage(&self.database, work.id, "publishing", 80, None).await?;
-                let tenant = work.tenant_id.map_or_else(|| "global".to_owned(), |id| id.to_string());
-                let object_key = format!("reports/{tenant}/{}.pdf", work.id);
-                let original_name = format!("{}-{}.pdf", work.template, work.id);
-                let metadata = match self.file.put(
-                    &object_key, &original_name, "application/pdf", &content, work.tenant_id,
-                ).await {
-                    Ok(metadata) => metadata,
-                    Err(_) => self.file.get(&object_key, work.tenant_id).await
-                        .map(|(metadata, _)| metadata)
-                        .map_err(|_| "REPORT_PUBLISH_FAILED".to_owned())?,
+                let content = tokio::select! {
+                    result = async { #render } => result?,
+                    error = wait_for_render_stop(&self.database, job, work.id) => return Err(error),
                 };
-                self.database.execute_raw(Statement::from_sql_and_values(
-                    DbBackend::Postgres,
-                    "UPDATE \"_appstruct_report_runs\" SET stage = 'succeeded', progress = 100, result_file_id = $2, result_object_key = $3, error_code = NULL, completed_at = CURRENT_TIMESTAMP WHERE id = $1 AND stage <> 'cancelled'",
-                    [work.id.into(), metadata.id.into(), object_key.into()],
-                )).await.map_err(|_| "REPORT_STATE_UPDATE_FAILED".to_owned())?;
-                Ok(())
+                if content.len() as u64 > REPORT_MAX_OUTPUT_BYTES { return Err("REPORT_RESOURCE_LIMIT".into()); }
+                publish_report(&self.database, &self.file, job, &work, &content).await
             }
         }
 
@@ -62,8 +62,8 @@ pub(super) fn source() -> TokenStream {
                 let result = self.render(job).await;
                 if let Err(code) = &result {
                     if let Ok(payload) = serde_json::from_value::<ReportJobPayload>(job.payload.clone()) {
-                        let stage = if job.attempts >= job.max_attempts { "failed" } else { "queued" };
-                        let _ = update_report_stage(&self.database, payload.run_id, stage, 0, Some(code)).await;
+                        let stage = if job.attempts >= job.max_attempts || !retryable_job_error(&job.kind, code) { "failed" } else { "queued" };
+                        let _ = update_report_failure(&self.database, job, payload.run_id, stage, code).await;
                     }
                 }
                 result.map_err(crate::JobHandlerError)
@@ -84,6 +84,9 @@ pub(super) fn source() -> TokenStream {
                     .map_err(|_| "REPORT_CLEANUP_ROW_INVALID".to_owned())?;
                 let object_key: Option<String> = row.try_get("", "result_object_key")
                     .map_err(|_| "REPORT_CLEANUP_ROW_INVALID".to_owned())?;
+                let tenant = tenant_id.map_or_else(|| "global".to_owned(), |id| id.to_string());
+                file.discard_unpublished(database, &format!("reports/{tenant}/{id}.pdf")).await
+                    .map_err(|_| "REPORT_CLEANUP_FILE_FAILED".to_owned())?;
                 if let Some(object_key) = object_key {
                     file.delete(&object_key, tenant_id).await
                         .map_err(|_| "REPORT_CLEANUP_FILE_FAILED".to_owned())?;
@@ -101,6 +104,9 @@ pub(super) fn source() -> TokenStream {
             id: uuid::Uuid,
             tenant_id: Option<uuid::Uuid>,
             template: String,
+            template_version: i32,
+            artifact_digest: String,
+            renderer_version: String,
             body: String,
             snapshot_ciphertext: String,
             snapshot_digest: String,
@@ -117,7 +123,7 @@ pub(super) fn source() -> TokenStream {
             let row = database.query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 concat!(
-                    "SELECT r.id, r.tenant_id, t.name AS template, t.body, r.snapshot_ciphertext, r.snapshot_digest, r.locale, r.timezone, r.paper::text AS paper, r.orientation::text AS orientation, r.stage::text AS stage ",
+                    "SELECT r.id, r.tenant_id, t.name AS template, t.version AS template_version, t.artifact_digest, t.renderer_version, t.body, r.snapshot_ciphertext, r.snapshot_digest, r.locale, r.timezone, r.paper::text AS paper, r.orientation::text AS orientation, r.stage::text AS stage ",
                     "FROM \"_appstruct_report_runs\" r JOIN \"_appstruct_report_templates\" t ON t.id = r.template_id WHERE r.id = $1 AND r.execution_job_id = $2 AND r.tenant_id IS NOT DISTINCT FROM $3"
                 ),
                 [run_id.into(), job.id.into(), job.tenant_id.into()],
@@ -127,6 +133,9 @@ pub(super) fn source() -> TokenStream {
                 id: row.try_get("", "id").map_err(|_| "REPORT_RUN_INVALID".to_owned())?,
                 tenant_id: row.try_get("", "tenant_id").map_err(|_| "REPORT_RUN_INVALID".to_owned())?,
                 template: row.try_get("", "template").map_err(|_| "REPORT_RUN_INVALID".to_owned())?,
+                template_version: row.try_get("", "template_version").map_err(|_| "REPORT_RUN_INVALID".to_owned())?,
+                artifact_digest: row.try_get("", "artifact_digest").map_err(|_| "REPORT_RUN_INVALID".to_owned())?,
+                renderer_version: row.try_get("", "renderer_version").map_err(|_| "REPORT_RUN_INVALID".to_owned())?,
                 body: row.try_get("", "body").map_err(|_| "REPORT_RUN_INVALID".to_owned())?,
                 snapshot_ciphertext: row.try_get("", "snapshot_ciphertext").map_err(|_| "REPORT_RUN_INVALID".to_owned())?,
                 snapshot_digest: row.try_get("", "snapshot_digest").map_err(|_| "REPORT_RUN_INVALID".to_owned())?,

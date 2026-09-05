@@ -11,6 +11,32 @@ pub(crate) fn validate_field_options(
     validate_numeric_bounds(field, field_type, diagnostics);
     validate_type_specific_options(field, field_type, diagnostics);
     validate_default(field, field_type, diagnostics);
+    if let Some(crate::surface::SurfaceFieldSemantic::Money {
+        fraction_digits, ..
+    }) = &field.ui_semantic
+    {
+        if !matches!(field_type, FieldTypeIr::Decimal) {
+            diagnostics.push(Diagnostic::error(
+                "AS2020",
+                "the money UI semantic is valid only for decimal fields",
+                field.span.clone(),
+            ));
+        }
+        if field.generated.is_some() {
+            diagnostics.push(Diagnostic::error(
+                "AS2020",
+                "the money UI semantic cannot be used on generated fields",
+                field.span.clone(),
+            ));
+        }
+        if fraction_digits.value > 6 {
+            diagnostics.push(Diagnostic::error(
+                "AS2020",
+                "money `fraction_digits` must be between 0 and 6",
+                fraction_digits.span.clone(),
+            ));
+        }
+    }
     if let Some(component) = &field.ui_component
         && !is_rust_type_name(&component.value)
     {

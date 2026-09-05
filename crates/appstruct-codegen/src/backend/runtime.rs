@@ -3,6 +3,14 @@ use appstruct_ir::AppIr;
 use proc_macro2::TokenStream;
 use quote::quote;
 
+pub(super) fn metrics_artifact() -> Result<crate::Artifact, CodegenError> {
+    Ok(crate::Artifact::text(
+        "backend/src/metrics.rs",
+        super::rust_template(include_str!("../../templates/backend/metrics.rs"))?,
+        crate::ArtifactKind::RustSource,
+    ))
+}
+
 pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, CodegenError> {
     let contract = contract_source();
     let application = application_source();
@@ -236,6 +244,7 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
                 .route("/health/live", get(liveness)).route("/health/ready", get(readiness))
                 .route("/metrics", get(metrics))
                 .route("/openapi.json", get(openapi)).layer(cors)
+                .layer(axum::middleware::from_fn(metrics::observe_http))
                 .layer(PropagateRequestIdLayer::x_request_id()).layer(TraceLayer::new_for_http())
                 .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
                 .with_state(AppState {
@@ -252,9 +261,7 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
         }
         async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
             let ready = u8::from(state.health.is_ready());
-            let body = format!(
-                "# HELP appstruct_health_ready Whether the application is ready to serve traffic.\n# TYPE appstruct_health_ready gauge\nappstruct_health_ready {ready}\n"
-            );
+            let body = metrics::render(ready);
             ([(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4")], body)
         }
         async fn openapi() -> impl IntoResponse {

@@ -4,6 +4,9 @@ use appstruct_ir::{AccessRuleIr, EntityIr, FieldIr};
 use proc_macro2::TokenStream;
 use quote::quote;
 
+#[cfg(test)]
+mod tests;
+
 pub(super) fn scope(
     entity: &EntityIr,
     module: &syn::Ident,
@@ -38,12 +41,18 @@ pub(super) fn related_scope(
     } else {
         TokenStream::new()
     };
+    let soft_delete_scope = entity.views.soft_delete.then(|| {
+        quote! {
+            relation_select = relation_select.filter(#module::Column::DeletedAt.is_null());
+        }
+    });
     Ok(quote! {
         let relation_access_scope = #condition;
         let relation_access_condition = relation_access_scope
             .ok_or_else(|| access_denied(&context))?;
         relation_select = relation_select.filter(relation_access_condition);
         #tenant_scope
+        #soft_delete_scope
     })
 }
 
@@ -56,8 +65,9 @@ pub(super) fn member_scope(
     let tenant_condition = tenant_condition(entity, module);
     let soft_delete_condition = soft_delete_condition(entity, module);
     Ok(quote! {
-        let access_condition = #condition
-            .ok_or_else(|| access_denied(&context))?
+        let access_scope = #condition;
+        let access_condition = Condition::all()
+            .add(access_scope.ok_or_else(|| access_denied(&context))?)
             #tenant_condition
             #soft_delete_condition;
     })

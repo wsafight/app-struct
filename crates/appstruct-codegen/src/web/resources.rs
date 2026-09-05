@@ -1,6 +1,7 @@
 use crate::generated_header;
 use appstruct_ir::{
-    AccessRuleIr, AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr, ValueFieldIr,
+    AccessRuleIr, AppIr, EntityIr, FieldIr, FieldSemanticIr, FieldTypeIr, GeneratedValueIr,
+    ValueFieldIr,
 };
 use std::fmt::Write;
 
@@ -50,7 +51,37 @@ fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
         .find(|field| field.primary_key)
         .map_or("id", |field| field.rust_name.as_str());
     let api = format!("{}Api", lower_camel(&entity.rust_name));
-    let workflow = workflow_source(ir, entity);
+    let mut workflow = workflow_source(ir, entity);
+    if let Some(parent) = ir.entities.iter().find(|parent| {
+        parent
+            .views
+            .aggregates
+            .iter()
+            .any(|aggregate| aggregate.child == entity.id)
+    }) {
+        writeln!(workflow, "  aggregateOwner: {:?},", parent.id.0).unwrap();
+    }
+    if !entity.views.aggregates.is_empty() {
+        let collections = entity.views.aggregates.iter().map(|aggregate| {
+            let child = ir.entities.iter().find(|child| child.id == aggregate.child).expect("validated child");
+            let relation = &child.fields.iter().find(|field| field.id == aggregate.relation).expect("validated relation").rust_name;
+            serde_json::json!({ "name": aggregate.name, "child": aggregate.child.0, "relation": relation, "maxItems": aggregate.max_items, "states": aggregate.states })
+        }).collect::<Vec<_>>();
+        writeln!(
+            workflow,
+            "  collections: {},",
+            serde_json::to_string(&collections).unwrap()
+        )
+        .unwrap();
+    }
+    if let Some(field) = entity
+        .views
+        .display_field
+        .as_ref()
+        .and_then(|id| entity.fields.iter().find(|field| field.id == *id))
+    {
+        writeln!(workflow, "  displayField: {:?},", field.rust_name).unwrap();
+    }
     let activity = activity_source(ir, entity);
     format!(
         "{{\n  id: {:?},\n  name: {:?},\n  eventPrefix: {:?},\n  label: {:?},\n  slug: {:?},\n  primaryKey: {:?},\n  softDelete: {},\n  access: {},\n  fields: [\n{}\n  ],\n{}{}  api: {} as unknown as ResourceApi,\n}}",
@@ -198,6 +229,21 @@ fn field_source(entity: &EntityIr, field: &FieldIr) -> String {
     }
     if let Some(component) = &field.ui_component {
         properties.push(format!("uiComponent: {component:?}"));
+    }
+    if let Some(FieldSemanticIr::Money {
+        currency_field,
+        fraction_digits,
+    }) = &field.ui_semantic
+    {
+        let currency = entity
+            .fields
+            .iter()
+            .find(|candidate| candidate.id == *currency_field)
+            .expect("IR validation guarantees a money currency field");
+        properties.push(format!(
+            "semantic: {{ kind: \"money\", currencyField: {:?}, fractionDigits: {fraction_digits} }}",
+            currency.rust_name,
+        ));
     }
     if let Some(access) = &field.read_access {
         properties.push(format!(

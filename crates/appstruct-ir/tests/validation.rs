@@ -1,4 +1,6 @@
-use appstruct_ir::{AccessRuleIr, EntityId, GeneratedValueIr, validate_app_ir};
+use appstruct_ir::{
+    AccessRuleIr, EntityId, FieldSemanticIr, FieldTypeIr, GeneratedValueIr, validate_app_ir,
+};
 
 #[test]
 fn aggregates_semantic_invariant_violations_in_stable_path_order() {
@@ -48,6 +50,51 @@ fn accepts_the_internal_revision_default() {
     revision.default = Some("1".to_owned());
 
     validate_app_ir(&ir).unwrap();
+}
+
+#[test]
+fn validates_money_ui_semantics_without_trusting_the_compiler() {
+    let mut ir: appstruct_ir::AppIr =
+        serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();
+    let entity = &mut ir.entities[0];
+    let currency_id = entity
+        .fields
+        .iter_mut()
+        .find(|field| field.api_name == "status")
+        .map(|field| {
+            field.ty = FieldTypeIr::Enum {
+                values: vec!["CNY".to_owned(), "USD".to_owned()],
+            };
+            field.default = Some("CNY".to_owned());
+            field.id.clone()
+        })
+        .unwrap();
+    let amount = entity
+        .fields
+        .iter_mut()
+        .find(|field| field.api_name == "name")
+        .unwrap();
+    amount.ty = FieldTypeIr::Decimal;
+    amount.capabilities.searchable = false;
+    amount.ui_semantic = Some(FieldSemanticIr::Money {
+        currency_field: currency_id,
+        fraction_digits: 2,
+    });
+    validate_app_ir(&ir).unwrap();
+
+    let amount = ir.entities[0]
+        .fields
+        .iter_mut()
+        .find(|field| field.api_name == "name")
+        .unwrap();
+    amount.ui_component = Some("MoneyEditor".to_owned());
+    let errors = validate_app_ir(&ir).unwrap_err();
+    assert!(
+        errors
+            .errors()
+            .iter()
+            .any(|error| error.path.ends_with("ui_semantic"))
+    );
 }
 
 #[test]

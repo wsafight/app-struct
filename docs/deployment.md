@@ -9,10 +9,13 @@ unmanaged: it connects to PostgreSQL but never plans, creates, validates, or app
 
 ## Build Artifacts
 
-Set the public API URL before building because Vite embeds `VITE_API_URL` in the Web bundle:
+Production Web builds default to the current origin. The generated nginx configuration proxies
+`/api/` to the API service. For a separate API origin, set `VITE_API_URL` before building because
+Vite embeds it in the Web bundle:
 
 ```bash
-export VITE_API_URL=https://api.example.com
+# Only for a separate API origin:
+# export VITE_API_URL=https://api.example.com
 appstruct check
 appstruct build
 appstruct generate --check
@@ -21,26 +24,46 @@ appstruct generate --check
 A successful build produces:
 
 ```text
-.appstruct/cache/backend-target/release/appstruct-generated-backend
+.appstruct/cache/backend-target/release/appstruct-generated-server
 generated/web/dist/
 migrations/
 .appstruct/schema.snapshot.json
 ```
 
-Official templates also include a production `Dockerfile`, a static Web image definition under
-`deploy/`, and `compose.production.yaml`. Run `appstruct build` before building these images:
+Legacy projects without `app/backend` produce `appstruct-generated-backend` instead.
+
+Official templates also include a production `Dockerfile`, a Web image under `deploy/`,
+`compose.production.yaml`, and `deploy/smoke.mjs`. Run `appstruct build` before building images;
+it prepares locked dependencies and the production Web bundle. The API Dockerfile compiles the
+same locked Rust sources inside a Linux build stage, so a macOS host binary is never copied into
+a Linux runtime image:
 
 ```bash
 cp .env.example .env.production
-# Set DATABASE_URL and production Auth/Mail/File variables in .env.production.
+# Set DATABASE_URL to an address reachable from the API container.
+# Auth apps also need APPSTRUCT_FRONTEND_URL and APPSTRUCT_ALLOWED_ORIGIN set to the public origin.
+# Set production Auth/Mail/File variables in .env.production.
 appstruct build
 docker compose -f compose.production.yaml build
-docker compose -f compose.production.yaml up -d
+# Run the migration release job described below before starting services.
+docker compose -f compose.production.yaml up -d --wait
+node deploy/smoke.mjs http://127.0.0.1:8080
 ```
 
-The production Compose file contains only the API and static Web services. It does not start
+The production Compose file contains only the API and Web services. It does not start
 PostgreSQL or run migrations. Execute `appstruct migrate status` and `appstruct migrate apply` from
 the matching release artifact before starting the new API image.
+
+The API runs as UID 10001 with a read-only root, a bounded temporary directory, and a persistent
+`appstruct-files` volume. PostgreSQL and `/metrics` stay internal. Web startup waits for API
+readiness. The published Web port defaults to `127.0.0.1:8080`; override `APPSTRUCT_WEB_BIND` and
+`APPSTRUCT_WEB_PORT` through the Compose environment when required. Terminate public HTTPS at the
+deployment edge. Secure Auth cookies require HTTPS, including when verifying login.
+
+nginx provides SPA fallback, uncached `index.html`, immutable hashed assets, a 16 MiB request limit,
+and unbuffered API responses for SSE. Missing assets and unknown API routes return 404. Update the
+proxy body limit alongside application File/CSV limits when changing those budgets. The API has
+a database-aware health check and 60 seconds to drain during Compose shutdown.
 
 Ship the backend binary and Web `dist/` directory as immutable artifacts. The release job that
 runs migrations also needs the matching AppStruct CLI, project root marker, migration files,
@@ -103,7 +126,8 @@ logs, and deployment-level timeouts. Serve the Web directory from a static host 
 route unknown application paths back to `index.html`.
 
 The generated backend exposes `/health/live` for process liveness, `/health/ready` for a database
-ping, and a Prometheus-compatible `/metrics` endpoint with the application readiness gauge.
+ping, and a Prometheus-compatible `/metrics` endpoint with readiness, bounded HTTP histograms and
+job attempt metrics. See [Metrics And Database Workloads](observability.md) for labels and queries.
 Successful responses include `X-Request-Id`; an incoming request ID is preserved and otherwise the
 backend creates one. Keep the old release available until readiness and a database-backed smoke
 journey both succeed.
@@ -133,3 +157,23 @@ checksum of a migration already recorded by a database.
 If the application fails after a compatible migration, route traffic back to the previous
 backend and Web artifacts. AppStruct does not provide automatic down migrations; incompatible
 database rollback requires a reviewed forward repair or a database restore.
+
+## First-Deployment Acceptance
+
+`node deploy/smoke.mjs <web-origin>` probes liveness, readiness, request IDs, OpenAPI, the Web shell,
+SPA fallback, asset 404s and the private metrics boundary. It performs no writes. Complete a login
+and an authorized CRUD journey using the application's expected roles before switching traffic.
+
+The repository automates a disposable minimal application's release build, migrations (including a
+second no-op apply), real production Compose images, desktop/mobile Web loading, same-origin API
+requests and revision-checked CRUD:
+
+```bash
+APPSTRUCT_E2E_DATABASE_URL=postgresql://localhost/appstruct_deployment_test \
+  bash scripts/run-deployment-e2e.sh
+```
+
+This command resets the dedicated test database's public schema. On hosts without Docker,
+`--native` checks the release binary and production bundle through a test proxy; it does not verify
+nginx, image compatibility, or container isolation. The Linux workflow runs the real containers
+and is a release prerequisite. Native checks passed locally; container checks require Linux CI.

@@ -173,7 +173,6 @@ fn kind(ty: &FieldTypeIr) -> &'static str {
     match ty {
         FieldTypeIr::Boolean => "boolean",
         FieldTypeIr::Integer => "integer",
-        FieldTypeIr::Bigint => "bigint",
         _ => "string",
     }
 }

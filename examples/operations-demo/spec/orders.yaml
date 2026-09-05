@@ -1,0 +1,152 @@
+domain: orders
+
+entities:
+  Order:
+    display_field: number
+    aggregates:
+      lines:
+        entity: OrderLine
+        relation: order
+        states: [draft, rejected]
+        max_items: 100
+    label: Orders
+    table: orders
+    tenant: true
+    audit: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      number:
+        type: string
+        required: true
+        max_length: 32
+        searchable: true
+        sortable: true
+      owner:
+        type: relation
+        target: User
+        required: true
+        filterable: true
+        on_delete: restrict
+      status:
+        type: enum
+        required: true
+        values: [draft, auditing, approved, rejected]
+        filterable: true
+        sortable: true
+      notes:
+        type: text
+        max_length: 2000
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    workflow:
+      field: status
+      initial: draft
+      transitions:
+        submit:
+          from: [draft, rejected]
+          to: auditing
+          access: { owner: owner }
+        approve:
+          from: [auditing]
+          to: approved
+          access: { role: auditor }
+        reject:
+          from: [auditing]
+          to: rejected
+          input: RejectOrderInput
+          access: { role: auditor }
+    access:
+      list:
+        any:
+          - { owner: owner }
+          - { role: auditor }
+          - { role: admin }
+      read:
+        any:
+          - { owner: owner }
+          - { role: auditor }
+          - { role: admin }
+      create: { role: operator }
+      update:
+        any:
+          - { owner: owner }
+          - { role: admin }
+      delete: { role: admin }
+
+  OrderLine:
+    label: Order lines
+    table: order_lines
+    tenant: true
+    audit: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      order:
+        type: relation
+        target: Order
+        required: true
+        filterable: true
+        on_delete: cascade
+      product:
+        type: relation
+        target: Product
+        required: true
+        filterable: true
+        on_delete: restrict
+      quantity:
+        type: integer
+        required: true
+        minimum: 1
+        sortable: true
+      unit_price:
+        type: decimal
+        required: true
+        minimum: 0
+        sortable: true
+        ui:
+          semantic: money
+          currency_field: currency
+          fraction_digits: 2
+      currency:
+        type: enum
+        required: true
+        values: [CNY, USD, EUR]
+        filterable: true
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list:
+        any:
+          - { role: operator }
+          - { role: auditor }
+          - { role: admin }
+      read:
+        any:
+          - { role: operator }
+          - { role: auditor }
+          - { role: admin }
+      create: { role: operator }
+      update:
+        any:
+          - { role: operator }
+          - { role: admin }
+      delete:
+        any:
+          - { role: operator }
+          - { role: admin }
+
+value_objects:
+  RejectOrderInput:
+    fields:
+      reason:
+        type: text
+        required: true

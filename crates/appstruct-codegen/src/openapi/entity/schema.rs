@@ -1,5 +1,5 @@
 use super::super::schema_ref;
-use appstruct_ir::{EntityIr, FieldIr, FieldTypeIr};
+use appstruct_ir::{EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
 use serde_json::{Map, Value, json};
 
 pub(super) fn add_schemas(schemas: &mut Map<String, Value>, entity: &EntityIr) {
@@ -99,7 +99,7 @@ fn entity_schema(entity: &EntityIr) -> Value {
     json!({ "type": "object", "properties": properties, "required": required })
 }
 
-fn input_schema(entity: &EntityIr, update: bool) -> Value {
+pub(super) fn input_schema(entity: &EntityIr, update: bool) -> Value {
     let fields = entity
         .fields
         .iter()
@@ -191,7 +191,9 @@ pub(super) fn field_schema(field: &FieldIr, response: bool) -> Value {
         }
         FieldTypeIr::String | FieldTypeIr::Text => json!({ "type": "string" }),
         FieldTypeIr::Integer => json!({ "type": "integer", "format": "int32" }),
-        FieldTypeIr::Bigint => json!({ "type": "integer", "format": "int64" }),
+        FieldTypeIr::Bigint => {
+            json!({ "type": "string", "format": "int64", "pattern": "^-?[0-9]+$", "description": "Signed 64-bit integer encoded as a decimal string." })
+        }
         FieldTypeIr::Decimal => json!({ "type": "string", "format": "decimal" }),
         FieldTypeIr::Boolean => json!({ "type": "boolean" }),
         FieldTypeIr::Date => json!({ "type": "string", "format": "date" }),
@@ -208,6 +210,9 @@ pub(super) fn field_schema(field: &FieldIr, response: bool) -> Value {
     if response && field.generated.is_some() {
         schema["readOnly"] = Value::Bool(true);
     }
+    if matches!(field.generated, Some(GeneratedValueIr::Revision)) {
+        schema = json!({ "type": "integer", "format": "int64", "readOnly": true });
+    }
     if let Some(access) = &field.read_access {
         schema["x-appstruct-read-access"] =
             serde_json::to_value(access).expect("access is serializable");
@@ -223,10 +228,18 @@ pub(super) fn field_schema(field: &FieldIr, response: bool) -> Value {
         schema["maxLength"] = json!(maximum);
     }
     if let Some(minimum) = &field.validation.minimum {
-        schema["minimum"] = serde_json::from_str(minimum).unwrap_or_else(|_| json!(0));
+        if matches!(field.ty, FieldTypeIr::Bigint | FieldTypeIr::Decimal) {
+            schema["x-appstruct-minimum"] = json!(minimum);
+        } else {
+            schema["minimum"] = serde_json::from_str(minimum).unwrap_or_else(|_| json!(0));
+        }
     }
     if let Some(maximum) = &field.validation.maximum {
-        schema["maximum"] = serde_json::from_str(maximum).unwrap_or_else(|_| json!(0));
+        if matches!(field.ty, FieldTypeIr::Bigint | FieldTypeIr::Decimal) {
+            schema["x-appstruct-maximum"] = json!(maximum);
+        } else {
+            schema["maximum"] = serde_json::from_str(maximum).unwrap_or_else(|_| json!(0));
+        }
     }
     schema
 }

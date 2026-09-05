@@ -1,5 +1,6 @@
 //! Stable contracts shared by generated `AppStruct` backends.
 
+pub mod bigint;
 mod lifecycle;
 mod origin;
 mod query;
@@ -16,6 +17,7 @@ use std::time::Duration;
 #[doc(hidden)]
 pub mod __source {
     pub const LIB: &str = include_str!("lib.rs");
+    pub const BIGINT: &str = include_str!("bigint.rs");
     pub const LIFECYCLE: &str = include_str!("lifecycle.rs");
     pub const ORIGIN: &str = include_str!("origin.rs");
     pub const QUERY: &str = include_str!("query.rs");

@@ -27,6 +27,10 @@ targets=(
   "$workspace/target/m6-e2e-mail"
   "$workspace/target/m6-e2e-saas"
   "$workspace/target/m6-e2e-tenant"
+  "$workspace/target/m6-e2e-operations"
+  "$workspace/target/m6-e2e-chromium-report"
+  "$workspace/target/m6-e2e-benchmark"
+  "$workspace/target/m6-e2e-deployment"
 )
 
 removed=0

@@ -4,6 +4,7 @@ use quote::quote;
 pub(super) fn source() -> TokenStream {
     quote! {
         fn render_capture_pdf(
+            run_id: uuid::Uuid,
             template: &str,
             input: &serde_json::Value,
             locale: &str,
@@ -11,6 +12,7 @@ pub(super) fn source() -> TokenStream {
             paper: &str,
             orientation: &str,
         ) -> Result<Vec<u8>, String> {
+            test_report_failure(run_id, input)?;
             let environment = minijinja::Environment::new();
             let rendered = environment.render_str(
                 template,
@@ -24,6 +26,42 @@ pub(super) fn source() -> TokenStream {
             ).map_err(|_| "REPORT_TEMPLATE_RENDER_FAILED".to_owned())?;
             Ok(minimal_pdf(&rendered))
         }
+
+        #[cfg(feature = "test-support")]
+        fn test_report_failure(
+            run_id: uuid::Uuid, input: &serde_json::Value,
+        ) -> Result<(), String> {
+            let Some(marker) = std::env::var_os("APPSTRUCT_TEST_REPORT_FAIL_ONCE") else {
+                return Ok(());
+            };
+            let marker = marker.to_string_lossy();
+            if !test_value_contains(input, &marker) { return Ok(()); }
+            static FAILED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<uuid::Uuid>>> =
+                std::sync::OnceLock::new();
+            let mut failed = FAILED.get_or_init(Default::default).lock()
+                .map_err(|_| "REPORT_TEST_SUPPORT_FAILED".to_owned())?;
+            if failed.insert(run_id) {
+                return Err("REPORT_TEST_INJECTED_FAILURE".to_owned());
+            }
+            Ok(())
+        }
+
+        #[cfg(feature = "test-support")]
+        fn test_value_contains(value: &serde_json::Value, marker: &str) -> bool {
+            match value {
+                serde_json::Value::String(value) => value == marker,
+                serde_json::Value::Array(values) =>
+                    values.iter().any(|value| test_value_contains(value, marker)),
+                serde_json::Value::Object(values) =>
+                    values.values().any(|value| test_value_contains(value, marker)),
+                _ => false,
+            }
+        }
+
+        #[cfg(not(feature = "test-support"))]
+        fn test_report_failure(
+            _run_id: uuid::Uuid, _input: &serde_json::Value,
+        ) -> Result<(), String> { Ok(()) }
 
         fn minimal_pdf(rendered: &str) -> Vec<u8> {
             let text = rendered.chars().take(20_000).map(|character| match character {

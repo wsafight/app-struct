@@ -9,5 +9,9 @@ This project was created from the AppStruct `dashboard` template.
 The API listens on `http://127.0.0.1:3000` and the dashboard on `http://127.0.0.1:5173` by default. Copy `.env.example` to `.env` only when overriding the managed development defaults.
 
 For a production image, create `.env.production`, run `appstruct build`, then use
-`docker compose -f compose.production.yaml up -d`. Apply reviewed migrations separately before
+`docker compose -f compose.production.yaml up --build -d --wait`. Apply reviewed migrations separately before
 starting the API image.
+
+Production Web uses a same-origin API proxy on port 8080. Set `APPSTRUCT_FRONTEND_URL` and
+`APPSTRUCT_ALLOWED_ORIGIN` to the public HTTPS origin for Auth applications. Verify the deployment
+with `node deploy/smoke.mjs <web-origin>` and an authorized CRUD journey.

@@ -102,7 +102,11 @@ fn formatted(artifact: &Artifact) -> bool {
     artifact.kind == ArtifactKind::TypeScript
         || matches!(
             artifact.relative_path.to_str(),
-            Some("web/src/app/App.tsx" | "web/src/app/Layout.tsx")
+            Some(
+                "web/src/app/App.tsx"
+                    | "web/src/app/Layout.tsx"
+                    | "web/src/pages/ResourceDetail.tsx"
+            )
         )
 }
 
@@ -150,6 +154,10 @@ mod tests {
         )));
         assert!(formatted(&artifact(
             "web/src/app/Layout.tsx",
+            ArtifactKind::Web,
+        )));
+        assert!(formatted(&artifact(
+            "web/src/pages/ResourceDetail.tsx",
             ArtifactKind::Web,
         )));
         assert!(!formatted(&artifact(

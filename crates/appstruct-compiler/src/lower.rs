@@ -27,7 +27,7 @@ use appstruct_ir::{
 use std::collections::BTreeSet;
 
 mod fields;
-use self::fields::{build_fields, revision_field, tenant_field};
+use self::fields::{build_fields, revision_field, tenant_field, validate_field_semantics};
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn build_ir(
@@ -98,6 +98,15 @@ pub(crate) fn build_ir(
         &root.app_name.span,
         &mut diagnostics,
     );
+    if let Err(errors) = appstruct_ir::validate_aggregates(&entities) {
+        diagnostics.extend(errors.errors().iter().map(|error| {
+            Diagnostic::error(
+                "AS2043",
+                format!("{}: {}", error.path, error.message),
+                root.app_name.span.clone(),
+            )
+        }));
+    }
     let resource_paths = entities
         .iter()
         .map(|entity| entity.table_name.clone())
@@ -217,6 +226,7 @@ fn lower_entities(
         let access = build_access(&entity, auth, diagnostics);
         let (mut fields, mut entity_relations) =
             build_fields(&entity, &entity_id, known_entities, auth, diagnostics);
+        validate_field_semantics(&entity, &fields, diagnostics);
         let revision_conflict = entity.fields.iter().find(|field| {
             field
                 .column
@@ -264,6 +274,7 @@ fn lower_entities(
             ));
         }
         let indexes = build_indexes(&entity, &entity_id, &fields, diagnostics);
+        let display_field = lower_display_field(&entity, &fields, diagnostics);
         seeds.extend(build_seeds(&entity, &entity_id, &fields, diagnostics));
         let workflow = lower_workflow(&entity, &fields, known_values, auth, diagnostics);
         relations.append(&mut entity_relations);
@@ -280,6 +291,8 @@ fn lower_entities(
                 indexes,
                 access,
                 views: EntityViewsIr {
+                    aggregates: entity.aggregates,
+                    display_field,
                     soft_delete: entity.soft_delete,
                 },
                 hooks: HooksIr::default(),
@@ -292,4 +305,35 @@ fn lower_entities(
     }
     seeds.sort_by(|left, right| left.id.cmp(&right.id));
     (entities, relations, seeds)
+}
+
+fn lower_display_field(
+    entity: &SurfaceEntity,
+    fields: &[appstruct_ir::FieldIr],
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<appstruct_ir::FieldId> {
+    let name = entity.display_field.as_ref()?;
+    match fields.iter().find(|field| field.api_name == name.value) {
+        Some(field)
+            if matches!(
+                field.ty,
+                FieldTypeIr::String
+                    | FieldTypeIr::Text
+                    | FieldTypeIr::Enum { .. }
+                    | FieldTypeIr::Uuid
+                    | FieldTypeIr::Integer
+                    | FieldTypeIr::Bigint
+            ) =>
+        {
+            Some(field.id.clone())
+        }
+        _ => {
+            diagnostics.push(Diagnostic::error(
+                "AS2042",
+                "display_field must reference a text, enum, UUID or integer field",
+                name.span.clone(),
+            ));
+            None
+        }
+    }
 }

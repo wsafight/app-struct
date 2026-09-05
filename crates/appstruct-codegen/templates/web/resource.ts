@@ -7,6 +7,8 @@ import type {
   BulkUpdateRequest,
   CursorListQuery,
   CursorListResponse,
+  CollectionBatch,
+  CollectionResponse,
   ListQuery,
   ListResponse,
   WorkflowCapabilities,
@@ -91,6 +93,8 @@ export function canAccessResource(
   actor: AccessActor | null,
   record?: ResourceRecord,
 ): boolean {
+  if (resource.aggregateOwner && !["list", "read"].includes(operation))
+    return false;
   return canAccessRule(resource.access[operation], actor, record);
 }
 
@@ -116,6 +120,21 @@ export function useVisibleResources(
 }
 
 export interface ResourceApi {
+  collection?(
+    id: string,
+    name: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<CollectionResponse>;
+  saveCollection?(
+    id: string,
+    name: string,
+    revision: number,
+    input: CollectionBatch,
+  ): Promise<CollectionResponse>;
+  lookup?(
+    ids: string[],
+    options?: { signal?: AbortSignal },
+  ): Promise<ResourceRecord[]>;
   list(
     query?: ListQuery,
     options?: { signal?: AbortSignal },
@@ -166,6 +185,12 @@ export type FieldKind =
   | "enum"
   | "relation";
 
+export type FieldSemantic = {
+  kind: "money";
+  currencyField: string;
+  fractionDigits: number;
+};
+
 export interface FieldDefinition {
   name: string;
   label: string;
@@ -183,6 +208,18 @@ export interface FieldDefinition {
   minimum?: string;
   maximum?: string;
   uiComponent?: keyof AppStructRegistry["fields"];
+  semantic?: FieldSemantic;
+}
+
+export function isSemanticCompanion(
+  field: FieldDefinition,
+  fields: FieldDefinition[],
+): boolean {
+  return fields.some(
+    (candidate) =>
+      candidate.semantic?.kind === "money" &&
+      candidate.semantic.currencyField === field.name,
+  );
 }
 
 export interface WorkflowInputFieldDefinition {
@@ -216,6 +253,9 @@ export interface ActivityDefinition {
 }
 
 export interface ResourceDefinition {
+  aggregateOwner?: string;
+  collections?: CollectionDefinition[];
+  displayField?: string;
   id: string;
   name: string;
   eventPrefix: string;
@@ -228,6 +268,14 @@ export interface ResourceDefinition {
   workflow?: WorkflowDefinition;
   activity?: ActivityDefinition;
   api: ResourceApi;
+}
+
+export interface CollectionDefinition {
+  name: string;
+  child: string;
+  relation: string;
+  maxItems: number;
+  states: string[];
 }
 
 export function fieldErrors(error: unknown): Record<string, string> {

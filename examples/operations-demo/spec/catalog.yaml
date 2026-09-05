@@ -1,0 +1,177 @@
+domain: catalog
+
+entities:
+  Product:
+    label: Products
+    table: products
+    tenant: true
+    audit: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      sku:
+        type: string
+        required: true
+        max_length: 48
+        searchable: true
+        sortable: true
+      name:
+        type: string
+        required: true
+        max_length: 160
+        searchable: true
+        sortable: true
+      unit:
+        type: enum
+        required: true
+        values: [each, box, kilogram]
+        filterable: true
+      active:
+        type: boolean
+        default: true
+        filterable: true
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create:
+        any:
+          - { role: operator }
+          - { role: admin }
+      update:
+        any:
+          - { role: operator }
+          - { role: admin }
+      delete: { role: admin }
+
+  SupplierOffer:
+    label: Supplier offers
+    table: supplier_offers
+    tenant: true
+    audit: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      product:
+        type: relation
+        target: Product
+        required: true
+        filterable: true
+        on_delete: restrict
+      supplier:
+        type: relation
+        target: User
+        required: true
+        filterable: true
+        on_delete: restrict
+      supplier_sku:
+        type: string
+        required: true
+        max_length: 64
+        searchable: true
+      unit_price:
+        type: decimal
+        required: true
+        minimum: 0
+        sortable: true
+        ui:
+          semantic: money
+          currency_field: currency
+          fraction_digits: 2
+      currency:
+        type: enum
+        required: true
+        values: [CNY, USD, EUR]
+        filterable: true
+      minimum_quantity:
+        type: integer
+        required: true
+        minimum: 1
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list:
+        any:
+          - { owner: supplier }
+          - { role: operator }
+          - { role: auditor }
+          - { role: admin }
+      read:
+        any:
+          - { owner: supplier }
+          - { role: operator }
+          - { role: auditor }
+          - { role: admin }
+      create: { role: supplier }
+      update:
+        any:
+          - { owner: supplier }
+          - { role: admin }
+      delete:
+        any:
+          - { owner: supplier }
+          - { role: admin }
+
+  Inventory:
+    label: Inventory
+    table: inventory
+    tenant: true
+    audit: true
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      product:
+        type: relation
+        target: Product
+        required: true
+        filterable: true
+        on_delete: restrict
+      location:
+        type: string
+        required: true
+        max_length: 80
+        searchable: true
+      quantity_on_hand:
+        type: integer
+        required: true
+        minimum: 0
+        sortable: true
+      reorder_level:
+        type: integer
+        required: true
+        minimum: 0
+      updated_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list:
+        any:
+          - { role: operator }
+          - { role: auditor }
+          - { role: admin }
+      read:
+        any:
+          - { role: operator }
+          - { role: auditor }
+          - { role: admin }
+      create:
+        any:
+          - { role: operator }
+          - { role: admin }
+      update:
+        any:
+          - { role: operator }
+          - { role: admin }
+      delete: { role: admin }

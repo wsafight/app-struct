@@ -4,6 +4,12 @@ import { resourceQueryKeys } from "./query";
 import type { ResourceDefinition, ResourceRecord } from "./resource";
 import { useCanAccess } from "./resource";
 
+export {
+  useResourceFormController,
+  type ResourceFormControllerOptions,
+} from "./form-controller";
+export { useResourceUrlController } from "./url-controller";
+
 export interface ResourceListControllerOptions {
   cacheKey: string;
   query: ListQuery;
@@ -21,10 +27,13 @@ export function useResourceListController(
   const canList = useCanAccess(resource, "list");
   const queryClient = useQueryClient();
   const listQuery = useQuery({
-    queryKey: resourceQueryKeys.list(
-      resource.id,
-      `${options.trashMode ? "trash" : "active"}:${options.cacheKey}`,
-    ),
+    queryKey: [
+      ...resourceQueryKeys.list(
+        resource.id,
+        `${options.trashMode ? "trash" : "active"}:${options.cacheKey}`,
+      ),
+      options.query,
+    ],
     queryFn: async ({ signal }) => {
       if (options.trashMode) {
         const response = await resource.api.trash?.(

@@ -1,0 +1,31 @@
+services:
+  api:
+    environment:
+      APPSTRUCT_REPORT_RENDERER_SOCKET: /run/appstruct-renderer/renderer.sock
+    volumes:
+      - report-socket:/run/appstruct-renderer:ro
+    depends_on:
+      report-renderer:
+        condition: service_healthy
+  report-renderer:
+    build:
+      context: ./generated/report-renderer
+    network_mode: none
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./generated/report-renderer/seccomp.json
+    pids_limit: 128
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1
+    shm_size: 64m
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    volumes:
+      - report-socket:/run/appstruct-renderer
+    restart: unless-stopped
+volumes:
+  report-socket:

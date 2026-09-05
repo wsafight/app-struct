@@ -50,7 +50,16 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
                             "read": { "role": "admin" },
                             "write": { "authenticated": true }
                         }
-                    }
+                    },
+                    "amount": {
+                        "type": "decimal",
+                        "ui": {
+                            "semantic": "money",
+                            "currency_field": "currency",
+                            "fraction_digits": 2
+                        }
+                    },
+                    "currency": { "type": "enum", "values": ["CNY", "USD"] }
                 },
                 "seeds": {
                     "demo": { "id": "00000000-0000-0000-0000-000000000001", "email": "demo@example.com" }
@@ -117,4 +126,19 @@ fn app_spec_schema_rejects_unknown_keys_and_invalid_access() {
         "includes": []
     });
     assert!(!validator.is_valid(&invalid_migration));
+
+    let invalid_semantic = json!({
+        "domain": "project",
+        "entities": {
+            "Project": {
+                "fields": {
+                    "amount": {
+                        "type": "decimal",
+                        "ui": { "semantic": "money", "component": "MoneyInput" }
+                    }
+                }
+            }
+        }
+    });
+    assert!(!validator.is_valid(&invalid_semantic));
 }

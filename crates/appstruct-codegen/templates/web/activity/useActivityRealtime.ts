@@ -42,8 +42,7 @@ export function useActivityRealtime(
       `${resource.eventPrefix}.updated`,
       `${resource.eventPrefix}.deleted`,
       ...(resource.workflow?.transitions.map(
-        (transition) =>
-          `${resource.eventPrefix}.workflow.${transition.name}`,
+        (transition) => `${resource.eventPrefix}.workflow.${transition.name}`,
       ) ?? []),
       "resync",
     ];

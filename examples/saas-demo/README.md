@@ -21,5 +21,9 @@ never put secrets in `appstruct.yaml`. The preset includes an Admin operations o
 is not part of preset version 1.
 
 For a production image, create `.env.production`, run `appstruct build`, and use
-`docker compose -f compose.production.yaml up -d`. Apply reviewed migrations separately before
+`docker compose -f compose.production.yaml up --build -d --wait`. Apply reviewed migrations separately before
 starting the API image.
+
+Production Web uses a same-origin API proxy on port 8080. Set `APPSTRUCT_FRONTEND_URL` and
+`APPSTRUCT_ALLOWED_ORIGIN` to the public HTTPS origin. Compose persists local files in a named
+volume. Run `node deploy/smoke.mjs <web-origin>`, then verify login and tenant-scoped CRUD over HTTPS.

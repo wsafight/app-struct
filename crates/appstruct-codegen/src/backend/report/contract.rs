@@ -4,8 +4,10 @@ use quote::quote;
 
 pub(super) fn source(ir: &AppIr) -> TokenStream {
     let max_input_bytes = ir.report.max_input_bytes;
+    let max_output_bytes = ir.file.max_bytes.min(50 * 1024 * 1024);
     let retention_days = ir.report.retention_days;
     let queue = &ir.report.queue;
+    let renderer_version = ir.report.renderer.version();
     let reader_roles = &ir.report.reader_roles;
     let templates = ir.report.templates.iter().map(|template| {
         let name = &template.name;
@@ -25,8 +27,9 @@ pub(super) fn source(ir: &AppIr) -> TokenStream {
     quote! {
         const REPORT_QUEUE: &str = #queue;
         const REPORT_MAX_INPUT_BYTES: u64 = #max_input_bytes;
+        const REPORT_MAX_OUTPUT_BYTES: u64 = #max_output_bytes;
         const REPORT_RETENTION_DAYS: u32 = #retention_days;
-        const REPORT_RENDERER_VERSION: &str = "capture-v1";
+        const REPORT_RENDERER_VERSION: &str = #renderer_version;
 
         #[derive(Clone, Copy)]
         struct ReportTemplateConfig {

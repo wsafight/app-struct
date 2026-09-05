@@ -102,7 +102,7 @@ impl ApiError {
             Self::ReportIdempotencyRequired => ("report_idempotency_required", "A valid Idempotency-Key is required".to_owned()),
             Self::ReportIdempotencyConflict => ("report_idempotency_conflict", "The idempotency key was already used for another request".to_owned()),
             Self::ReportTemplateMismatch => ("report_template_mismatch", "The registered report template does not match this build".to_owned()),
-            Self::ReportCancellationConflict => ("report_cancellation_conflict", "Only a queued report can be cancelled".to_owned()),
+            Self::ReportCancellationConflict => ("report_cancellation_conflict", "The report can no longer be cancelled".to_owned()),
             Self::ReportNotReady => ("report_not_ready", "The report result is not ready".to_owned()),
             Self::ReportConfiguration => ("report_configuration", "Report snapshot encryption is not configured".to_owned()),
             Self::UnknownActivityResource => ("unknown_activity_resource", "The activity resource does not exist".to_owned()),
@@ -235,7 +235,7 @@ impl IntoResponse for ApiError {
             Self::ReportCancellationConflict => (
                 StatusCode::CONFLICT,
                 "REPORT_CANCELLATION_CONFLICT",
-                "Only a queued report can be cancelled".to_owned(),
+                "The report can no longer be cancelled".to_owned(),
                 vec![],
             ),
             Self::ReportNotReady => (

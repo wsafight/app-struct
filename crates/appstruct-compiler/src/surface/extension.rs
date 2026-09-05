@@ -1,9 +1,9 @@
 use super::access::decode_rule;
 use super::value::{
     ensure_known_keys, expect_mapping, expect_sequence, expect_string, optional_bool,
-    optional_string, required,
+    optional_string, optional_u64, required,
 };
-use super::{Located, SurfaceAccessRule};
+use super::{Located, SurfaceAccessRule, SurfaceFieldSemantic, SurfaceFieldUi};
 use crate::yaml::{MappingEntry, Node};
 use appstruct_ir::{Diagnostic, SourceSpan};
 use std::collections::BTreeMap;
@@ -96,11 +96,51 @@ fn collect_definitions<T>(
     }
 }
 
-pub(super) fn decode_ui_component(node: &Node) -> Result<Located<String>, Diagnostic> {
+pub(super) fn decode_field_ui(node: &Node) -> Result<SurfaceFieldUi, Diagnostic> {
     let mapping = expect_mapping(node, "field `ui`")?;
-    ensure_known_keys(mapping, &["component"], "field `ui`")?;
-    let component = required(mapping, "component", &node.span)?;
-    expect_string(&component.value, "field `ui.component`")
+    ensure_known_keys(
+        mapping,
+        &["component", "semantic", "currency_field", "fraction_digits"],
+        "field `ui`",
+    )?;
+    let component = optional_string(mapping, "component", "field `ui.component`")?;
+    let semantic = optional_string(mapping, "semantic", "field `ui.semantic`")?;
+    match (component, semantic) {
+        (Some(component), None)
+            if !mapping.contains_key("currency_field")
+                && !mapping.contains_key("fraction_digits") =>
+        {
+            Ok(SurfaceFieldUi {
+                component: Some(component),
+                semantic: None,
+            })
+        }
+        (None, Some(semantic)) if semantic.value == "money" => {
+            let currency = required(mapping, "currency_field", &node.span)?;
+            let currency_field = expect_string(&currency.value, "field `ui.currency_field`")?;
+            let fraction_digits = optional_u64(mapping, "fraction_digits")?.unwrap_or(Located {
+                value: 2,
+                span: semantic.span,
+            });
+            Ok(SurfaceFieldUi {
+                component: None,
+                semantic: Some(SurfaceFieldSemantic::Money {
+                    currency_field,
+                    fraction_digits,
+                }),
+            })
+        }
+        (None, Some(semantic)) => Err(Diagnostic::error(
+            "AS1007",
+            format!("unsupported field UI semantic `{}`", semantic.value),
+            semantic.span,
+        )),
+        _ => Err(Diagnostic::error(
+            "AS1007",
+            "field `ui` must declare exactly one of `component` or `semantic`",
+            node.span.clone(),
+        )),
+    }
 }
 
 fn decode_value_object(name: &str, entry: &MappingEntry) -> Result<SurfaceValueObject, Diagnostic> {

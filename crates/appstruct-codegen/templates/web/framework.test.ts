@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { ApiError, requestHeaders, tenantApi } from "./generated/client";
+import { ApiError, requestHeaders } from "./generated/client";
 import { validateResourceSearch } from "./navigation";
 import {
   buildResourceFilterQuery,
   supportsRange,
 } from "./pages/ResourceFilters";
 import { supportsInlineEdit } from "./pages/resource-list/InlineEditor";
-import { formatValue } from "./pages/resource-list/ResourceTable";
+import {
+  formatFieldValue,
+  formatValue,
+} from "./pages/resource-list/ResourceTable";
 import { aggregateMetricOptions } from "./pages/resource-list/ResourceInsights";
 import { parseLocalSavedViews } from "./pages/resource-list/SavedViews";
 import {
@@ -95,6 +98,56 @@ describe("list view columns", () => {
     expect(
       resolveVisibleFields(fields, "removed").map((item) => item.name),
     ).toEqual(["id", "title", "status"]);
+  });
+
+  it("hides money currency companions by default but preserves explicit selection", () => {
+    const moneyFields = [
+      field({ name: "id", kind: "uuid" }),
+      field({
+        name: "amount",
+        kind: "decimal",
+        semantic: {
+          kind: "money",
+          currencyField: "currency",
+          fractionDigits: 2,
+        },
+      }),
+      field({ name: "currency", kind: "enum", values: ["CNY", "USD"] }),
+    ];
+    expect(defaultVisibleFieldNames(moneyFields)).toEqual(["id", "amount"]);
+    expect(
+      resolveVisibleFields(moneyFields, "amount,currency").map(
+        (item) => item.name,
+      ),
+    ).toEqual(["amount", "currency"]);
+  });
+});
+
+describe("business field formatting", () => {
+  const amount = field({
+    name: "amount",
+    kind: "decimal",
+    semantic: {
+      kind: "money",
+      currencyField: "currency",
+      fractionDigits: 2,
+    },
+  });
+
+  it("formats money with its companion currency and stable precision", () => {
+    const formatted = formatFieldValue(
+      { amount: "1234.5", currency: "CNY" },
+      amount,
+    );
+    expect(formatted).toContain("CNY");
+    expect(formatted).toContain("1,234.50");
+    expect(formatFieldValue({ amount: null, currency: "CNY" }, amount)).toBe(
+      "-",
+    );
+  });
+
+  it("keeps paired semantic values out of scalar inline editing", () => {
+    expect(supportsInlineEdit(amount)).toBe(false);
   });
 });
 
@@ -188,9 +241,6 @@ describe("requestHeaders", () => {
     });
     try {
       expect(requestHeaders().has("X-AppStruct-Tenant")).toBe(false);
-      expect(tenantApi.current()).toBeUndefined();
-      expect(() => tenantApi.select("tenant-1")).not.toThrow();
-      expect(() => tenantApi.clear()).not.toThrow();
     } finally {
       if (descriptor) Object.defineProperty(window, "localStorage", descriptor);
       else delete (window as { localStorage?: Storage }).localStorage;

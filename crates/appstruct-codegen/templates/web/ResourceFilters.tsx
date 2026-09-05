@@ -1,7 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type InputHTMLAttributes, useEffect, useState } from "react";
+import {
+  inputType,
+  toApiValue,
+  toFormValue,
+  valueError,
+} from "../field-values";
+import { supportsRange } from "../url-controller";
+export { buildResourceFilterQuery, supportsRange } from "../url-controller";
 import { resourceQueryKeys } from "../query";
+import { recordLabel } from "../relations";
 import type { FieldDefinition, ResourceDefinition } from "../resource";
 import { canAccessResource, errorMessage, useResourceActor } from "../resource";
 
@@ -29,35 +38,6 @@ export function ResourceFilters({
   ));
 }
 
-export function buildResourceFilterQuery(
-  fields: FieldDefinition[],
-  searchParams: URLSearchParams,
-) {
-  return {
-    filters: Object.fromEntries(
-      fields.map((field) => [
-        field.name,
-        searchParams.get(`filter[${field.name}]`) ?? "",
-      ]),
-    ),
-    range_filters: Object.fromEntries(
-      fields.filter(supportsRange).map((field) => [
-        field.name,
-        {
-          gte: searchParams.get(`filter[${field.name}][gte]`) ?? "",
-          lte: searchParams.get(`filter[${field.name}][lte]`) ?? "",
-        },
-      ]),
-    ),
-  };
-}
-
-export function supportsRange(field: FieldDefinition): boolean {
-  return ["integer", "bigint", "decimal", "date", "datetime"].includes(
-    field.kind,
-  );
-}
-
 function FilterControl({
   field,
   resources,
@@ -74,7 +54,7 @@ function FilterControl({
             return (
               <DebouncedFilterInput
                 key={operator}
-                type={filterInputType(field.kind)}
+                type={inputType(field.kind)}
                 aria-label={`${field.label} ${operator === "gte" ? "from" : "to"}`}
                 placeholder={operator === "gte" ? "From" : "To"}
                 value={filterDisplayValue(
@@ -84,7 +64,11 @@ function FilterControl({
                 onValueChange={(value) =>
                   updateParam(name, filterApiValue(value, field.kind), true)
                 }
-                step={field.kind === "decimal" ? "any" : undefined}
+                step={
+                  field.kind === "datetime" || field.kind === "decimal"
+                    ? "any"
+                    : undefined
+                }
               />
             );
           })}
@@ -200,10 +184,6 @@ function RelationFilter({
     queryFn: ({ signal }) => target!.api.get(value, { signal }),
     enabled: canLoad && Boolean(value),
   });
-  const labelField = target?.fields.find(
-    (item) =>
-      !item.primaryKey && (item.kind === "string" || item.kind === "text"),
-  );
   const loadError = optionsQuery.error ? errorMessage(optionsQuery.error) : "";
   const pages = Math.max(
     1,
@@ -246,7 +226,7 @@ function RelationFilter({
           const optionValue = String(record[target?.primaryKey ?? "id"]);
           return (
             <option key={optionValue} value={optionValue}>
-              {String(record[labelField?.name ?? target?.primaryKey ?? "id"])}
+              {target ? recordLabel(target, record) : String(record.id)}
             </option>
           );
         })}
@@ -283,12 +263,6 @@ function RelationFilter({
   );
 }
 
-function filterInputType(kind: FieldDefinition["kind"]): string {
-  if (kind === "date") return "date";
-  if (kind === "datetime") return "datetime-local";
-  return "number";
-}
-
 function useDebouncedValue<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -302,7 +276,14 @@ function filterDisplayValue(
   value: string,
   kind: FieldDefinition["kind"],
 ): string {
-  return kind === "datetime" ? value.slice(0, 16) : value;
+  return String(
+    toFormValue(value || undefined, {
+      name: "filter",
+      label: "Filter",
+      kind,
+      required: false,
+    }),
+  );
 }
 
 function filterApiValue(
@@ -310,5 +291,8 @@ function filterApiValue(
   kind: FieldDefinition["kind"],
 ): string | undefined {
   if (!value) return undefined;
-  return kind === "datetime" ? new Date(value).toISOString() : value;
+  const field = { name: "filter", label: "Filter", kind, required: false };
+  return valueError(value, field)
+    ? undefined
+    : String(toApiValue(value, field));
 }

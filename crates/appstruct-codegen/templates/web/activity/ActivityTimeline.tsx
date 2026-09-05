@@ -134,7 +134,11 @@ export function ActivityTimeline({
           rows={3}
         />
         <div className="activity-composer-actions">
-          <span className={commentBytes > config.maxCommentBytes ? "limit-error" : ""}>
+          <span
+            className={
+              commentBytes > config.maxCommentBytes ? "limit-error" : ""
+            }
+          >
             {commentBytes}/{config.maxCommentBytes} bytes
           </span>
           {config.attachments && (
@@ -301,7 +305,8 @@ function formatEvent(event: string | null): string {
 function fileInputValue(file: File): Promise<ActivityAttachmentInput> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("The attachment could not be read"));
+    reader.onerror = () =>
+      reject(new Error("The attachment could not be read"));
     reader.onload = () => {
       const result = String(reader.result ?? "");
       const separator = result.indexOf(",");

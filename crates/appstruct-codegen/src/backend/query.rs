@@ -26,16 +26,6 @@ pub(super) fn list_support(
     let filter_validation = filter_validation(&filter_keys);
     let search = search_rule(entity, module)?;
     let sorts = sort_rules(entity, module)?;
-    let searchable = entity
-        .fields
-        .iter()
-        .any(|field| field.capabilities.searchable);
-    let column_trait = (!filters.is_empty()
-        || !relation_filters.is_empty()
-        || !sorts.is_empty()
-        || searchable
-        || entity.views.soft_delete)
-        .then(|| quote! { ColumnTrait as _, });
     let primary_field = primary_key(entity)?;
     let primary = column_ident(primary_field)?;
     let cursor_value = parsed_value(primary_field, &quote! { raw_cursor.as_str() });
@@ -60,7 +50,7 @@ pub(super) fn list_support(
             ListMeta, ListQuery, ListResponse, MAX_LIST_PAGE, decode_cursor, encode_cursor,
             list_page_is_valid,
         };
-        use sea_orm::{#column_trait #query_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
+        use sea_orm::{#query_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
         #handler
     })
 }
