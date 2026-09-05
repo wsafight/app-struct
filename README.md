@@ -73,7 +73,8 @@ appstruct db pull --schema public --output spec/imported.yaml
 
 The command reads `DATABASE_URL`, never changes the database or root `includes`, and refuses to
 overwrite the output. Review unsupported-shape warnings and add explicit entity access rules before
-including the draft in `appstruct.yaml`.
+including the draft in `appstruct.yaml`. Use `--check` in CI to fail when an existing draft is stale,
+or `--diff` to print the live schema changes without writing the file.
 
 Generated list endpoints offer offset pagination with totals and primary-key cursor pagination for
 large result sets. A filterable relation can traverse one hop to target fields that are also marked
@@ -154,7 +155,7 @@ appstruct migrate plan|dev|lint|apply|status
 appstruct dev [--api-port <port>] [--web-port <port>]
 appstruct build
 appstruct doctor [--format text|json]
-appstruct db pull [--schema <name>] [--output <project-relative-path>]
+appstruct db pull [--schema <name>] [--output <project-relative-path>] [--check | --diff]
 appstruct auth bootstrap-admin --email <address>
 appstruct preset show [--expanded]
 appstruct update

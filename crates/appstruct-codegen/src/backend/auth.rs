@@ -20,6 +20,14 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         ),
         generated("backend/src/auth/mod.rs", template("auth/mod.rs")?),
         generated("backend/src/auth/admin.rs", template("auth/admin.rs")?),
+        generated(
+            "backend/src/auth/admin_schedules.rs",
+            template("auth/admin_schedules.rs")?,
+        ),
+        generated(
+            "backend/src/auth/admin_storage.rs",
+            template("auth/admin_storage.rs")?,
+        ),
         generated("backend/src/auth/session.rs", template("auth/session.rs")?),
         generated(
             "backend/src/auth/handlers.rs",
@@ -37,6 +45,10 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         generated(
             "backend/src/auth/recovery.rs",
             template("auth/recovery.rs")?,
+        ),
+        generated(
+            "backend/src/auth/saved_views.rs",
+            template("auth/saved_views.rs")?,
         ),
     ])
 }
@@ -71,6 +83,7 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
     let file = ir.file.enabled;
     let tenant = ir.tenant.enabled;
     let audit = ir.audit.enabled;
+    let resources = ir.entities.iter().map(|entity| entity.id.0.as_str());
     let default_role = ir
         .auth
         .default_role
@@ -90,6 +103,7 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub const FILE_ENABLED: bool = #file;
         pub const TENANT_ENABLED: bool = #tenant;
         pub const AUDIT_ENABLED: bool = #audit;
+        pub const SAVED_VIEW_RESOURCES: &[&str] = &[#(#resources),*];
         pub const DEFAULT_ROLE: &str = #default_role;
         pub const USER_TABLE: &str = #user_table;
         pub const USER_ID_COLUMN: &str = #user_id_column;
@@ -141,11 +155,18 @@ fn template(name: &str) -> Result<String, CodegenError> {
     let source = match name {
         "auth/mod.rs" => include_str!("../../templates/backend/auth/mod.rs"),
         "auth/admin.rs" => include_str!("../../templates/backend/auth/admin.rs"),
+        "auth/admin_schedules.rs" => {
+            include_str!("../../templates/backend/auth/admin_schedules.rs")
+        }
+        "auth/admin_storage.rs" => {
+            include_str!("../../templates/backend/auth/admin_storage.rs")
+        }
         "auth/session.rs" => include_str!("../../templates/backend/auth/session.rs"),
         "auth/handlers.rs" => include_str!("../../templates/backend/auth/handlers.rs"),
         "auth/admin_webhooks.rs" => include_str!("../../templates/backend/auth/admin_webhooks.rs"),
         "auth/mail.rs" => include_str!("../../templates/backend/auth/mail.rs"),
         "auth/recovery.rs" => include_str!("../../templates/backend/auth/recovery.rs"),
+        "auth/saved_views.rs" => include_str!("../../templates/backend/auth/saved_views.rs"),
         _ => unreachable!(),
     };
     super::rust_template(source)

@@ -3,6 +3,7 @@ use appstruct_ir::{AppIr, OnDeleteIr};
 use super::{ColumnSchema, DatabaseType, ForeignKeySchema, TableSchema};
 
 mod capture;
+mod saved_views;
 
 pub(super) fn tables() -> Vec<TableSchema> {
     vec![
@@ -13,6 +14,7 @@ pub(super) fn tables() -> Vec<TableSchema> {
         oauth_accounts(),
         api_tokens(),
         login_attempts(),
+        saved_views::table_schema(),
         capture::table_schema(),
     ]
 }
@@ -311,6 +313,10 @@ fn unique_column(id: &str, name: &str, data_type: DatabaseType) -> ColumnSchema 
     column
 }
 
+pub(super) fn unique_constraints() -> Vec<super::UniqueConstraintSchema> {
+    saved_views::unique_constraints()
+}
+
 pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {
     let user = ir
         .entities
@@ -323,7 +329,7 @@ pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {
         .find(|field| field.primary_key)
         .expect("compiler validated auth user key");
 
-    vec![
+    let mut foreign_keys = vec![
         foreign_key(
             "account_user",
             "accounts",
@@ -366,7 +372,9 @@ pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {
             "_appstruct_auth_accounts",
             "user_id",
         ),
-    ]
+    ];
+    foreign_keys.extend(saved_views::foreign_keys(ir));
+    foreign_keys
 }
 
 fn foreign_key(

@@ -1,5 +1,6 @@
 use crate::surface::{SurfaceJobQueue, SurfaceJobs};
 use appstruct_ir::{Diagnostic, JobQueueIr, JobScheduleIr, JobsIr, SourceSpan};
+use std::str::FromStr;
 
 pub(crate) fn lower_jobs(
     jobs: &SurfaceJobs,
@@ -114,14 +115,14 @@ fn lower_schedule(
                 .map_or(schedule.kind.span.clone(), |value| value.span.clone()),
         ));
     }
-    let interval_seconds = cron_interval(&schedule.cron.value).unwrap_or_else(|| {
+    let interval_seconds = schedule_interval(&schedule.cron.value);
+    if interval_seconds.is_none() && calendar_schedule(&schedule.cron.value).is_none() {
         diagnostics.push(Diagnostic::error(
             "AS3057",
-            "interval schedule must be `@every Ns` or a five-field fixed-minute compatibility expression",
+            "schedule must be `@every <number>[s|m|h]` or a valid five-field Cron expression",
             schedule.cron.span.clone(),
         ));
-        60
-    });
+    }
     JobScheduleIr {
         name: schedule.name.value.clone(),
         cron: schedule.cron.value.clone(),
@@ -132,29 +133,27 @@ fn lower_schedule(
     }
 }
 
-fn cron_interval(value: &str) -> Option<u64> {
-    if let Some(seconds) = value
-        .strip_prefix("@every ")
-        .and_then(|value| value.strip_suffix('s'))
-    {
-        return seconds
-            .parse::<u64>()
-            .ok()
-            .filter(|seconds| (1..=86_400).contains(seconds));
-    }
+fn schedule_interval(value: &str) -> Option<u64> {
+    let value = value.strip_prefix("@every ")?;
+    let (amount, multiplier) = match value.as_bytes().last().copied()? {
+        b's' => (&value[..value.len() - 1], 1),
+        b'm' => (&value[..value.len() - 1], 60),
+        b'h' => (&value[..value.len() - 1], 3_600),
+        _ => return None,
+    };
+    amount
+        .parse::<u64>()
+        .ok()
+        .and_then(|amount| amount.checked_mul(multiplier))
+        .filter(|seconds| (1..=86_400).contains(seconds))
+}
+
+fn calendar_schedule(value: &str) -> Option<cron::Schedule> {
     let fields = value.split_whitespace().collect::<Vec<_>>();
-    if fields.len() != 5 || fields[1..].iter().any(|field| *field != "*") {
+    if fields.len() != 5 {
         return None;
     }
-    let minute = fields[0];
-    if minute == "*" {
-        return Some(60);
-    }
-    minute
-        .strip_prefix("*/")
-        .and_then(|value| value.parse::<u64>().ok())
-        .filter(|minutes| (1..=1_440).contains(minutes))
-        .map(|minutes| minutes * 60)
+    cron::Schedule::from_str(&format!("0 {value} *")).ok()
 }
 
 fn lower_queue(queue: &SurfaceJobQueue, diagnostics: &mut Vec<Diagnostic>) -> JobQueueIr {

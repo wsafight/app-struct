@@ -87,9 +87,24 @@ pub(super) fn audit_source() -> String {
   occurred_at: string;
 }
 
+export interface AuditListQuery extends Pick<ListQuery, "page" | "page_size"> {
+  entity?: string;
+  record_id?: string;
+}
+
 export const auditApi = {
-  list: (query: Pick<ListQuery, "page" | "page_size"> = {}, options: RequestOptions = {}) =>
-    request<ListResponse<AuditEvent>>(listPath("/api/audit/events", query), options),
+  list: (query: AuditListQuery = {}, options: RequestOptions = {}) => {
+    const params = new URLSearchParams();
+    if (query.page) params.set("page", String(query.page));
+    if (query.page_size) params.set("page_size", String(query.page_size));
+    if (query.entity) params.set("entity", query.entity);
+    if (query.record_id) params.set("record_id", query.record_id);
+    const search = params.toString();
+    return request<ListResponse<AuditEvent>>(
+      search ? `/api/audit/events?${search}` : "/api/audit/events",
+      options,
+    );
+  },
 };
 "#
     .to_owned()

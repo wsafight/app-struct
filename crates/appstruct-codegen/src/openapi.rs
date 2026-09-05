@@ -129,10 +129,13 @@ fn error_schema() -> Value {
     })
 }
 mod admin;
+mod admin_schedules;
+mod admin_storage;
 mod audit;
 mod auth;
 mod bulk;
 mod entity;
 mod extension;
 mod realtime;
+mod saved_views;
 mod tenant;

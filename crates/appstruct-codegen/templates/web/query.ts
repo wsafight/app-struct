@@ -37,6 +37,8 @@ export const resourceQueryKeys = {
     [...resourceQueryKeys.details(resourceId), id] as const,
   options: (resourceId: string, query = "") =>
     [...resourceQueryKeys.all(resourceId), "options", query] as const,
+  aggregate: (resourceId: string, query: string) =>
+    [...resourceQueryKeys.all(resourceId), "aggregate", query] as const,
 };
 
 export const appQueryKeys = {
@@ -47,8 +49,8 @@ export const appQueryKeys = {
     invitations: (organizationId: string) =>
       ["tenant", organizationId, "invitations"] as const,
   },
-  audit: (page: number, pageSize: number) =>
-    ["audit", { page, pageSize }] as const,
+  audit: (page: number, pageSize: number, entity = "", recordId = "") =>
+    ["audit", { page, pageSize, entity, recordId }] as const,
   tokens: ["auth", "tokens"] as const,
   admin: {
     all: ["admin"] as const,
@@ -57,7 +59,14 @@ export const appQueryKeys = {
       ["admin", "users", { page, pageSize }] as const,
     jobs: (status: string, page: number, pageSize: number) =>
       ["admin", "jobs", { status, page, pageSize }] as const,
+    schedules: ["admin", "schedules"] as const,
     webhooks: (status: string, page: number, pageSize: number) =>
       ["admin", "webhooks", { status, page, pageSize }] as const,
+    mail: (search: string, page: number, pageSize: number) =>
+      ["admin", "mail", { search, page, pageSize }] as const,
+    mailDetail: (id: string) => ["admin", "mail", id] as const,
+    files: (search: string, page: number, pageSize: number) =>
+      ["admin", "files", { search, page, pageSize }] as const,
+    fileDetail: (id: string) => ["admin", "files", id] as const,
   },
 };

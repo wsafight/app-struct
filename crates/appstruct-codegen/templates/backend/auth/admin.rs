@@ -42,7 +42,11 @@ struct AdminUser {
 }
 
 #[derive(Serialize)]
-struct AdminListMeta { page: u64, page_size: u64, total: u64 }
+pub(super) struct AdminListMeta {
+    pub(super) page: u64,
+    pub(super) page_size: u64,
+    pub(super) total: u64,
+}
 
 #[derive(Serialize)]
 struct AdminUserList { data: Vec<AdminUser>, meta: AdminListMeta }
@@ -169,7 +173,9 @@ async fn list_admin_jobs(
     Ok(Json(AdminJobList { data, meta: AdminListMeta { page, page_size, total: u64::try_from(total).unwrap_or(0) } }))
 }
 
-fn admin_pagination(page: Option<u64>, page_size: Option<u64>) -> Result<(u64, u64, u64), ApiError> {
+pub(super) fn admin_pagination(
+    page: Option<u64>, page_size: Option<u64>,
+) -> Result<(u64, u64, u64), ApiError> {
     let page = page.unwrap_or(1);
     let page_size = page_size.unwrap_or(25);
     if !(1..=10_000).contains(&page) || !(1..=100).contains(&page_size) {
@@ -227,12 +233,16 @@ async fn replay_admin_job(
     Ok((StatusCode::CREATED, Json(job)))
 }
 
-async fn require_admin(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+pub(super) async fn require_admin(
+    state: &AppState, headers: &HeaderMap,
+) -> Result<(), ApiError> {
     let actor = state.auth.actor(&state.database, headers).await?.ok_or(ApiError::Unauthorized)?;
     if actor.has_role("admin") { Ok(()) } else { Err(ApiError::Forbidden) }
 }
 
-async fn require_admin_mutation(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+pub(super) async fn require_admin_mutation(
+    state: &AppState, headers: &HeaderMap,
+) -> Result<(), ApiError> {
     let actor = state.auth.actor_for_mutation(&state.database, headers).await?
         .ok_or(ApiError::Unauthorized)?;
     if actor.has_role("admin") { Ok(()) } else { Err(ApiError::Forbidden) }

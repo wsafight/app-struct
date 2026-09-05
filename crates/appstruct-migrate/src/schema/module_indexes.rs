@@ -24,8 +24,8 @@ pub(super) fn indexes(ir: &AppIr) -> Vec<IndexSchema> {
     indexes
 }
 
-fn auth() -> [IndexSchema; 5] {
-    [
+fn auth() -> Vec<IndexSchema> {
+    vec![
         index(
             "appstruct::auth::auth_accounts_created",
             "_appstruct_auth_accounts",
@@ -54,6 +54,18 @@ fn auth() -> [IndexSchema; 5] {
             "appstruct::auth::auth_email_verifications_user",
             "_appstruct_auth_email_verifications",
             &["user_id", "used_at"],
+            None,
+        ),
+        index(
+            "appstruct::auth::saved_views_owner",
+            "_appstruct_saved_views",
+            &["owner_id", "scope_key", "resource", "updated_at", "id"],
+            None,
+        ),
+        index(
+            "appstruct::auth::saved_views_team",
+            "_appstruct_saved_views",
+            &["tenant_id", "resource", "visibility", "updated_at", "id"],
             None,
         ),
     ]

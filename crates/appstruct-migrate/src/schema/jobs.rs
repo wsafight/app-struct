@@ -46,23 +46,24 @@ pub(super) fn tables() -> Vec<TableSchema> {
                 column("id", DatabaseType::Uuid, false, true, false),
                 column("name", DatabaseType::Text, false, false, true),
                 column("cron", DatabaseType::Text, false, false, false),
-                column(
-                    "interval_seconds",
-                    DatabaseType::Bigint,
-                    false,
-                    false,
-                    false,
-                ),
+                column("interval_seconds", DatabaseType::Bigint, true, false, false),
                 column("queue", DatabaseType::Text, false, false, false),
                 column("kind", DatabaseType::Text, false, false, false),
                 column("payload", DatabaseType::Json, false, false, false),
                 column("enabled", DatabaseType::Boolean, false, false, false),
+                column_with_default("paused", DatabaseType::Boolean, "false"),
                 column("next_run_at", DatabaseType::Datetime, false, false, false),
                 column("last_run_at", DatabaseType::Datetime, true, false, false),
                 column("created_at", DatabaseType::Datetime, false, false, false),
             ],
         },
     ]
+}
+
+fn column_with_default(name: &str, data_type: DatabaseType, default: &str) -> ColumnSchema {
+    let mut column = column(name, data_type, false, false, false);
+    column.default = Some(default.to_owned());
+    column
 }
 
 pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {

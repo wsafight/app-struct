@@ -114,6 +114,101 @@ schedule_state="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -F '|' -v ON_ERROR_STOP
   "SELECT COUNT(*), BOOL_AND(run_at < CURRENT_TIMESTAMP), (SELECT next_run_at > CURRENT_TIMESTAMP FROM \"_appstruct_job_schedules\" WHERE name = 'cleanup') FROM \"_appstruct_jobs\" WHERE kind = 'maintenance.cleanup'")"
 [[ "$schedule_state" == "$((schedule_jobs_before + 1))|t|t" ]]
 
+curl --fail --silent --show-error -b "$jar" \
+  "$api/api/admin/schedules" >"$temporary_root/schedules.json"
+schedule_id="$(jq -er '.data[] | select(.name == "cleanup") | .id' \
+  "$temporary_root/schedules.json")"
+jq -e --arg id "$schedule_id" '
+  [.data[] | select(.id == $id and .cron == "*/15 * * * *" and
+    .enabled == true and .paused == false)] | length == 1
+' "$temporary_root/schedules.json" >/dev/null
+curl --fail --silent --show-error -b "$jar" -H "X-CSRF-Token: $csrf" -X POST \
+  "$api/api/admin/schedules/$schedule_id/pause" >"$temporary_root/schedule-paused.json"
+jq -e '.paused == true' "$temporary_root/schedule-paused.json" >/dev/null
+paused_jobs_before="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
+  "SELECT COUNT(*) FROM \"_appstruct_jobs\" WHERE kind = 'maintenance.cleanup'")"
+psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+  "UPDATE \"_appstruct_job_schedules\" SET next_run_at = CURRENT_TIMESTAMP - INTERVAL '1 hour' WHERE id = '$schedule_id'" \
+  >/dev/null
+sleep 0.2
+paused_jobs_after="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
+  "SELECT COUNT(*) FROM \"_appstruct_jobs\" WHERE kind = 'maintenance.cleanup'")"
+[[ "$paused_jobs_after" == "$paused_jobs_before" ]]
+curl --fail --silent --show-error -b "$jar" -H "X-CSRF-Token: $csrf" -X POST \
+  "$api/api/admin/schedules/$schedule_id/resume" >"$temporary_root/schedule-resumed.json"
+jq -e '.paused == false' "$temporary_root/schedule-resumed.json" >/dev/null
+for ((attempt = 0; attempt < 100; attempt += 1)); do
+  resumed_jobs="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
+    "SELECT COUNT(*) FROM \"_appstruct_jobs\" WHERE kind = 'maintenance.cleanup'")"
+  [[ "$resumed_jobs" == "$((paused_jobs_before + 1))" ]] && break
+  sleep 0.05
+done
+[[ "$resumed_jobs" == "$((paused_jobs_before + 1))" ]]
+curl --fail --silent --show-error -b "$jar" -H "X-CSRF-Token: $csrf" -X POST \
+  "$api/api/admin/schedules/$schedule_id/trigger" >"$temporary_root/schedule-triggered.json"
+triggered_job="$(jq -er '.job_id' "$temporary_root/schedule-triggered.json")"
+[[ "$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
+  "SELECT COUNT(*) FROM \"_appstruct_jobs\" WHERE id = '$triggered_job' AND kind = 'maintenance.cleanup'")" == "1" ]]
+
+curl --fail --silent --show-error -b "$jar" \
+  -H "Content-Type: application/json" -H "X-CSRF-Token: $csrf" \
+  -H "X-AppStruct-Tenant: $tenant" \
+  -d '{"resource":"app::Project","name":"My projects","query":"page_size=50","visibility":"private"}' \
+  "$api/api/saved-views" >"$temporary_root/private-view.json"
+private_view="$(jq -er '.id' "$temporary_root/private-view.json")"
+jq -e '.revision == 1 and .owned == true and .visibility == "private"' \
+  "$temporary_root/private-view.json" >/dev/null
+curl --fail --silent --show-error -b "$jar" \
+  -H "Content-Type: application/json" -H "X-CSRF-Token: $csrf" \
+  -H "X-AppStruct-Tenant: $tenant" \
+  -d '{"resource":"app::Project","name":"Team projects","query":"sort=-created_at","visibility":"team"}' \
+  "$api/api/saved-views" >"$temporary_root/team-view.json"
+team_view="$(jq -er '.id' "$temporary_root/team-view.json")"
+curl --fail --silent --show-error -b "$jar" -H "X-AppStruct-Tenant: $tenant" \
+  "$api/api/saved-views?resource=app%3A%3AProject" >"$temporary_root/owned-views.json"
+jq -e '.data | length == 2 and all(.[]; .owned == true)' \
+  "$temporary_root/owned-views.json" >/dev/null
+curl --fail --silent --show-error -b "$jar" -X PATCH \
+  -H "Content-Type: application/json" -H "X-CSRF-Token: $csrf" \
+  -H "X-AppStruct-Tenant: $tenant" -H 'If-Match: "rev-1"' \
+  -d '{"name":"My projects","query":"page_size=100","visibility":"private"}' \
+  "$api/api/saved-views/$private_view" >"$temporary_root/private-view-updated.json"
+jq -e '.revision == 2 and .query == "page_size=100"' \
+  "$temporary_root/private-view-updated.json" >/dev/null
+stale_status="$(curl --silent --show-error -o "$temporary_root/private-view-stale.json" \
+  -w '%{http_code}' -b "$jar" -X PATCH \
+  -H "Content-Type: application/json" -H "X-CSRF-Token: $csrf" \
+  -H "X-AppStruct-Tenant: $tenant" -H 'If-Match: "rev-1"' \
+  -d '{"name":"My projects","query":"page_size=25","visibility":"private"}' \
+  "$api/api/saved-views/$private_view")"
+[[ "$stale_status" == "412" ]]
+jq -e '.error.code == "CONCURRENT_MODIFICATION"' \
+  "$temporary_root/private-view-stale.json" >/dev/null
+
+second_jar="$temporary_root/shared.cookies"
+curl --fail --silent --show-error -c "$second_jar" -b "$second_jar" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"shared@example.com","password":"correct-horse-battery"}' \
+  "$api/api/auth/register" >"$temporary_root/shared-user.json"
+second_user="$(jq -er '.user.id' "$temporary_root/shared-user.json")"
+second_csrf="$(awk '$6 == "appstruct_csrf" { print $7 }' "$second_jar")"
+psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+  "INSERT INTO \"_appstruct_tenant_memberships\" (organization_id, user_id, role, created_at) VALUES ('$tenant', '$second_user', 'member', CURRENT_TIMESTAMP)" \
+  >/dev/null
+curl --fail --silent --show-error -b "$second_jar" -H "X-AppStruct-Tenant: $tenant" \
+  "$api/api/saved-views?resource=app%3A%3AProject" >"$temporary_root/shared-views.json"
+jq -e --arg id "$team_view" '
+  .data == [(.data[0])] and .data[0].id == $id and
+  .data[0].visibility == "team" and .data[0].owned == false
+' "$temporary_root/shared-views.json" >/dev/null
+foreign_update_status="$(curl --silent --show-error -o "$temporary_root/shared-update.json" \
+  -w '%{http_code}' -b "$second_jar" -X PATCH \
+  -H "Content-Type: application/json" -H "X-CSRF-Token: $second_csrf" \
+  -H "X-AppStruct-Tenant: $tenant" -H 'If-Match: "rev-1"' \
+  -d '{"name":"Team projects","query":"page_size=100","visibility":"team"}' \
+  "$api/api/saved-views/$team_view")"
+[[ "$foreign_update_status" == "404" ]]
+
 assert_realtime_status() {
   local expected="$1" path="$2" output="$3" status
   status="$(curl --silent --show-error -o "$output" -w '%{http_code}' -b "$jar" "$secondary_api$path")"

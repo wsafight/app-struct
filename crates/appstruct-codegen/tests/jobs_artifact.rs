@@ -31,6 +31,8 @@ fn assert_database_contracts(artifacts: &[Artifact]) {
     let sql = artifact_text(artifacts, "database/0001_initial.sql");
     assert!(sql.contains("_appstruct_jobs"));
     assert!(sql.contains("_appstruct_job_schedules"));
+    assert!(sql.contains("\"paused\" BOOLEAN NOT NULL DEFAULT false"));
+    assert!(sql.contains("\"interval_seconds\" BIGINT"));
     assert!(sql.contains("_appstruct_webhook_deliveries"));
     assert!(sql.contains("_appstruct_realtime_presence"));
     assert!(sql.contains("_appstruct_realtime_events"));
@@ -47,8 +49,13 @@ fn assert_backend_contracts(artifacts: &[Artifact]) {
     assert!(jobs.contains("schedule_due"));
     assert!(jobs.contains("SET enabled = FALSE WHERE enabled"));
     assert!(jobs.contains("SET enabled = TRUE WHERE name = $1"));
-    assert!(jobs.contains("next_run_at = CURRENT_TIMESTAMP +"));
+    assert!(jobs.contains("cron::Schedule"));
+    assert!(jobs.contains("next_schedule_run"));
+    assert!(jobs.contains("CURRENT_TIMESTAMP AS scheduler_now"));
+    assert!(jobs.contains("AND NOT paused"));
+    assert!(jobs.contains("IS NOT DISTINCT FROM EXCLUDED.interval_seconds"));
     assert!(jobs.contains("enqueue(\n            &transaction"));
+    assert!(artifact_text(artifacts, "backend/Cargo.toml").contains("cron = \"=0.15.0\""));
     let webhooks = artifact_text(artifacts, "backend/src/webhooks.rs");
     assert!(webhooks.contains("x-appstruct-signature"));
     assert!(webhooks.contains("Hmac::<Sha256>"));
@@ -98,10 +105,20 @@ fn assert_interface_contracts(artifacts: &[Artifact]) {
     assert!(admin.contains("/api/admin/jobs/{id}/retry"));
     assert!(admin.contains("Only dead jobs can be retried"));
     assert!(admin.contains("Only succeeded or dead jobs can be replayed"));
+    let schedules_admin = artifact_text(artifacts, "backend/src/auth/admin_schedules.rs");
+    assert!(schedules_admin.contains("/api/admin/schedules/{id}/pause"));
+    assert!(schedules_admin.contains("trigger_schedule"));
     let client = artifact_text(artifacts, "web/src/generated/client.ts");
     assert!(client.contains("listJobs"));
     assert!(client.contains("retryJob"));
     assert!(client.contains("replayJob"));
+    assert!(client.contains("listSchedules"));
+    assert!(client.contains("pauseSchedule"));
+    assert!(client.contains("triggerSchedule"));
+    assert!(
+        artifact_text(artifacts, "web/src/auth/AdminSchedulesPage.tsx")
+            .contains("AdminSchedulesPage")
+    );
     assert!(client.contains("subscribeRealtime"));
     let realtime_hook = artifact_text(artifacts, "web/src/realtime/useRealtimeResource.ts");
     assert!(realtime_hook.contains("import { subscribeRealtime }"));
@@ -118,6 +135,9 @@ fn assert_interface_contracts(artifacts: &[Artifact]) {
     assert!(openapi["paths"]["/api/admin/jobs"]["get"].is_object());
     assert!(openapi["paths"]["/api/admin/jobs/{id}/retry"]["post"].is_object());
     assert!(openapi["paths"]["/api/admin/jobs/{id}/replay"]["post"].is_object());
+    assert!(openapi["paths"]["/api/admin/schedules"]["get"].is_object());
+    assert!(openapi["paths"]["/api/admin/schedules/{id}/pause"]["post"].is_object());
+    assert!(openapi["paths"]["/api/admin/schedules/{id}/trigger"]["post"].is_object());
     assert!(openapi["paths"]["/api/realtime/events"]["get"].is_object());
     assert!(openapi["paths"]["/api/realtime/presence"]["get"].is_object());
     assert!(openapi["paths"]["/api/realtime/locks"]["post"].is_object());

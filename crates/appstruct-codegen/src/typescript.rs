@@ -3,6 +3,7 @@ mod bulk;
 mod entity;
 mod modules;
 mod realtime;
+mod saved_views;
 use crate::{Artifact, ArtifactKind, generated_header};
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, OperationTypeIr, ValueObjectIr};
 use modules::{audit_source, tenant_source, tenant_storage_source};
@@ -19,6 +20,7 @@ fn client_source(ir: &AppIr) -> String {
         generated_header("//"),
         runtime_source(),
         tenant_storage_source().to_owned(),
+        saved_views::source(ir),
     ];
     if ir.auth.enabled {
         sections.push(auth::source(ir));

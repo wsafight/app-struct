@@ -124,6 +124,11 @@ fn resource_lists_publish_saved_view_controls() {
     assert!(saved_views.contains("appstruct.saved-views"));
     assert!(saved_views.contains("copyViewLink"));
     assert!(saved_views.contains("Saved views"));
+    assert!(saved_views.contains("savedViewsApi"));
+    assert!(saved_views.contains("Team shared"));
+    let client = artifact_text(&artifacts, "web/src/generated/client.ts");
+    assert!(client.contains("savedViewFeatures"));
+    assert!(client.contains("server: false"));
 }
 
 #[test]
@@ -266,7 +271,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 78);
+    assert_eq!(artifacts.len(), 85);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -277,12 +282,18 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(sql.contains("_appstruct_auth_email_verifications"));
     assert!(sql.contains("_appstruct_auth_api_tokens"));
     assert!(sql.contains("_appstruct_auth_login_attempts"));
+    assert!(sql.contains("_appstruct_saved_views"));
+    assert!(sql.contains("UNIQUE (\"owner_id\", \"scope_key\", \"resource\", \"name\")"));
     let project_api = artifact_text(&artifacts, "backend/src/api/project.rs");
     assert!(project_api.contains("actor.has_role(\"admin\")"));
     assert!(project_api.contains("Column::OwnerId.eq(actor.id)"));
     assert!(artifact_text(&artifacts, "backend/src/auth/handlers.rs").contains("Argon2"));
     assert!(artifact_text(&artifacts, "backend/src/auth/recovery.rs").contains("verify_email"));
     assert!(artifact_text(&artifacts, "backend/src/auth/admin.rs").contains("admin_overview"));
+    let saved_views = artifact_text(&artifacts, "backend/src/auth/saved_views.rs");
+    assert!(saved_views.contains("/api/saved-views"));
+    assert!(saved_views.contains("visibility = 'team'"));
+    assert!(saved_views.contains("PreconditionRequired"));
     let admin = artifact_text(&artifacts, "backend/src/auth/admin.rs");
     assert!(admin.contains("page_size"));
     assert!(admin.contains("OFFSET $2"));
@@ -390,10 +401,15 @@ fn admin_surface_is_wired_for_auth_and_audit_without_tenant() {
     assert!(client.contains("adminFeatures"));
     assert!(client.contains("listUsers"));
     assert!(client.contains("revokeUserSessions"));
+    assert!(client.contains("server: true"));
+    assert!(client.contains("team: false"));
+    assert!(client.contains("savedViewsApi"));
     let openapi: Value =
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
     assert!(openapi["paths"]["/api/admin/users"]["get"].is_object());
     assert!(openapi["paths"]["/api/admin/users/{id}/revoke-sessions"]["post"].is_object());
+    assert!(openapi["paths"]["/api/saved-views"]["post"].is_object());
+    assert!(openapi["paths"]["/api/saved-views/{id}"]["patch"].is_object());
 }
 
 #[test]
@@ -535,7 +551,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 68);
+    assert_eq!(artifacts.len(), 70);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")

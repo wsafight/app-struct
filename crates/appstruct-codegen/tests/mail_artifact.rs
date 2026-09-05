@@ -33,6 +33,15 @@ fn mail_contract_generates_a_compilable_backend() {
     let manifest = artifact_text(&artifacts, "backend/Cargo.toml");
     assert!(manifest.contains("minijinja = \"=2.12.0\""));
     assert!(!manifest.contains("reqwest"));
+    let admin = artifact_text(&artifacts, "backend/src/auth/admin_storage.rs");
+    assert!(admin.contains("/api/admin/mail"));
+    assert!(admin.contains("get_mail_delivery"));
+    let admin_pages = artifact_text(&artifacts, "web/src/auth/AdminStoragePages.tsx");
+    assert!(admin_pages.contains("AdminMailDetailPage"));
+    let openapi: serde_json::Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    assert!(openapi["paths"]["/api/admin/mail"]["get"].is_object());
+    assert!(openapi["paths"]["/api/admin/mail/{id}"]["get"].is_object());
 
     let manifest_path = temporary.path().join("generated/backend/Cargo.toml");
     assert_rustfmt(&manifest_path);

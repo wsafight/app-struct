@@ -96,6 +96,23 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
     } else {
         include_str!("../templates/web/realtime/useRealtimeResourceDisabled.ts")
     };
+    let resource_detail = include_str!("../templates/web/ResourceDetail.tsx")
+        .replace(
+            "__AUDIT_IMPORT__",
+            if ir.audit.enabled {
+                "import { RecordHistory } from \"../audit/RecordHistory\";"
+            } else {
+                ""
+            },
+        )
+        .replace(
+            "__RECORD_HISTORY__",
+            if ir.audit.enabled {
+                "          {id && <RecordHistory entity={resource.id} recordId={id} />}"
+            } else {
+                ""
+            },
+        );
     vec![
         (
             "web/src/pages/ResourceFilters.tsx",
@@ -110,12 +127,20 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             include_str!("../templates/web/pages/resource-list/ResourceTable.tsx").to_owned(),
         ),
         (
+            "web/src/pages/resource-list/ResourceInsights.tsx",
+            include_str!("../templates/web/pages/resource-list/ResourceInsights.tsx").to_owned(),
+        ),
+        (
             "web/src/pages/resource-list/InlineEditor.tsx",
             include_str!("../templates/web/pages/resource-list/InlineEditor.tsx").to_owned(),
         ),
         (
             "web/src/pages/resource-list/SavedViews.tsx",
             include_str!("../templates/web/pages/resource-list/SavedViews.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/ViewOptions.tsx",
+            include_str!("../templates/web/pages/resource-list/ViewOptions.tsx").to_owned(),
         ),
         (
             "web/src/pages/resource-list/useCsvTransfer.ts",
@@ -125,10 +150,7 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             "web/src/pages/ResourceForm.tsx",
             include_str!("../templates/web/ResourceForm.tsx").to_owned(),
         ),
-        (
-            "web/src/pages/ResourceDetail.tsx",
-            include_str!("../templates/web/ResourceDetail.tsx").to_owned(),
-        ),
+        ("web/src/pages/ResourceDetail.tsx", resource_detail),
         (
             "web/src/realtime/useRealtimeResource.ts",
             realtime_resource.to_owned(),
@@ -162,6 +184,16 @@ fn extend_module_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
                 with_app_title(include_str!("../templates/web/auth/AuthPages.tsx"), &title),
                 ArtifactKind::Web,
             ),
+            Artifact::text(
+                "web/src/auth/AdminStoragePages.tsx",
+                include_str!("../templates/web/auth/AdminStoragePages.tsx"),
+                ArtifactKind::Web,
+            ),
+            Artifact::text(
+                "web/src/auth/AdminSchedulesPage.tsx",
+                include_str!("../templates/web/auth/AdminSchedulesPage.tsx"),
+                ArtifactKind::Web,
+            ),
         ]);
     }
     if ir.tenant.enabled {
@@ -172,11 +204,18 @@ fn extend_module_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
         ));
     }
     if ir.audit.enabled {
-        artifacts.push(Artifact::text(
-            "web/src/audit/AuditPage.tsx",
-            include_str!("../templates/web/audit/AuditPage.tsx"),
-            ArtifactKind::Web,
-        ));
+        artifacts.extend([
+            Artifact::text(
+                "web/src/audit/AuditPage.tsx",
+                include_str!("../templates/web/audit/AuditPage.tsx"),
+                ArtifactKind::Web,
+            ),
+            Artifact::text(
+                "web/src/audit/RecordHistory.tsx",
+                include_str!("../templates/web/audit/RecordHistory.tsx"),
+                ArtifactKind::Web,
+            ),
+        ]);
     }
 }
 

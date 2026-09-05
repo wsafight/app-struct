@@ -24,8 +24,28 @@ fn lowers_jobs_settings_and_sorted_queues() {
     assert_eq!(jobs.queues[0].max_attempts, 2);
     assert_eq!(jobs.queues[1].backoff_seconds, 2);
     assert_eq!(jobs.schedules[0].name, "cleanup");
-    assert_eq!(jobs.schedules[0].interval_seconds, 900);
+    assert_eq!(jobs.schedules[0].interval_seconds, None);
     assert_eq!(jobs.schedules[0].kind, "maintenance.cleanup");
+}
+
+#[test]
+fn jobs_accepts_interval_units_and_calendar_cron() {
+    for (expression, interval) in [
+        ("@every 30s", Some(30)),
+        ("@every 15m", Some(900)),
+        ("@every 2h", Some(7_200)),
+        ("0 9 * * 1-5", None),
+        ("15 8 1,15 * *", None),
+    ] {
+        let temporary = copied_fixture();
+        replace(
+            &temporary.path().join("appstruct.yaml"),
+            "*/15 * * * *",
+            expression,
+        );
+        let jobs = compile_project(temporary.path()).unwrap().jobs;
+        assert_eq!(jobs.schedules[0].interval_seconds, interval, "{expression}");
+    }
 }
 
 #[test]

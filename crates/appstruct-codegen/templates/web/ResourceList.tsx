@@ -28,9 +28,15 @@ import {
 import { useRealtimeResource } from "../realtime/useRealtimeResource";
 import { buildResourceFilterQuery, ResourceFilters } from "./ResourceFilters";
 import { BulkToolbar, useBulkActions } from "./resource-list/BulkActions";
+import { ResourceInsights } from "./resource-list/ResourceInsights";
 import { ResourceTable } from "./resource-list/ResourceTable";
 import { SavedViews } from "./resource-list/SavedViews";
 import { useCsvTransfer } from "./resource-list/useCsvTransfer";
+import {
+  defaultVisibleFieldNames,
+  resolveVisibleFields,
+  ViewOptions,
+} from "./resource-list/ViewOptions";
 
 export { formatValue } from "./resource-list/ResourceTable";
 
@@ -57,16 +63,18 @@ export function ResourceList({
   const page = boundedInteger(searchParams.get("page"), 1, 10_000, 1);
   const pageSize = boundedInteger(searchParams.get("page_size"), 1, 100, 25);
   const sort = searchParams.get("sort") ?? "";
-  const visibleFields = useMemo(
+  const listFields = useMemo(
     () =>
-      resource.fields
-        .filter(
-          (field) =>
-            field.kind !== "json" &&
-            canAccessRule(field.readAccess ?? { mode: "public" }, actor),
-        )
-        .slice(0, 6),
+      resource.fields.filter(
+        (field) =>
+          field.kind !== "json" &&
+          canAccessRule(field.readAccess ?? { mode: "public" }, actor),
+      ),
     [actor, resource],
+  );
+  const visibleFields = useMemo(
+    () => resolveVisibleFields(listFields, searchParams.get("columns")),
+    [listFields, searchParams],
   );
   const filterFields = useMemo(
     () =>
@@ -129,6 +137,14 @@ export function ResourceList({
     const next =
       sort === field ? `-${field}` : sort === `-${field}` ? undefined : field;
     updateParam("sort", next);
+  }
+
+  function changeColumns(names: string[]) {
+    const defaults = defaultVisibleFieldNames(listFields);
+    updateParam(
+      "columns",
+      names.join(",") === defaults.join(",") ? undefined : names.join(","),
+    );
   }
 
   async function runChange(operation: () => Promise<void>): Promise<boolean> {
@@ -304,6 +320,23 @@ export function ResourceList({
         actorId={actor?.id}
         onError={setActionError}
       />
+      <ViewOptions
+        fields={listFields}
+        visibleFieldNames={visibleFields.map((field) => field.name)}
+        pageSize={pageSize}
+        onColumnsChange={changeColumns}
+        onPageSizeChange={(value) => updateParam("page_size", String(value))}
+      />
+      {!trashMode && (
+        <ResourceInsights
+          resource={resource}
+          fields={filterFields}
+          query={{
+            q: searchParams.get("q") ?? undefined,
+            ...buildResourceFilterQuery(filterFields, searchParams),
+          }}
+        />
+      )}
       <BulkToolbar actions={bulk} trashMode={trashMode} busy={busy} />
       {error && (
         <div className="alert" role="alert">

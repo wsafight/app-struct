@@ -16,6 +16,7 @@ appstruct-contracts.workspace = true
 appstruct-ir.workspace = true
 appstruct-module-sdk.workspace = true
 base64.workspace = true
+cron.workspace = true
 minijinja.workspace = true
 saphyr-parser.workspace = true
 serde.workspace = true

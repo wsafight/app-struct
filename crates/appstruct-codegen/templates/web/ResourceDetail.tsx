@@ -4,6 +4,7 @@ import { Link, useParams } from "../navigation";
 import type { ResourceDefinition } from "../resource";
 import { canAccessRule, errorMessage, useResourceActor } from "../resource";
 import { formatValue } from "./ResourceList";
+__AUDIT_IMPORT__
 
 export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
   const { id } = useParams();
@@ -47,18 +48,21 @@ export function ResourceDetail({ resource }: { resource: ResourceDefinition }) {
         </div>
       )}
       {record && (
-        <dl className="detail-grid">
-          {resource.fields
-            .filter((field) =>
-              canAccessRule(field.readAccess ?? { mode: "public" }, actor),
-            )
-            .map((field) => (
-              <div key={field.name}>
-                <dt>{field.label}</dt>
-                <dd>{formatValue(record[field.name])}</dd>
-              </div>
-            ))}
-        </dl>
+        <>
+          <dl className="detail-grid">
+            {resource.fields
+              .filter((field) =>
+                canAccessRule(field.readAccess ?? { mode: "public" }, actor),
+              )
+              .map((field) => (
+                <div key={field.name}>
+                  <dt>{field.label}</dt>
+                  <dd>{formatValue(record[field.name])}</dd>
+                </div>
+              ))}
+          </dl>
+__RECORD_HISTORY__
+        </>
       )}
     </main>
   );

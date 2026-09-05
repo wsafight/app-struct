@@ -70,7 +70,8 @@ pub struct JobQueueIr {
 pub struct JobScheduleIr {
     pub name: String,
     pub cron: String,
-    pub interval_seconds: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval_seconds: Option<u64>,
     pub queue: String,
     pub kind: String,
     pub payload: String,

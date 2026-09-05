@@ -7,6 +7,12 @@ import {
 } from "./pages/ResourceFilters";
 import { supportsInlineEdit } from "./pages/resource-list/InlineEditor";
 import { formatValue } from "./pages/resource-list/ResourceTable";
+import { aggregateMetricOptions } from "./pages/resource-list/ResourceInsights";
+import { parseLocalSavedViews } from "./pages/resource-list/SavedViews";
+import {
+  defaultVisibleFieldNames,
+  resolveVisibleFields,
+} from "./pages/resource-list/ViewOptions";
 import { appQueryKeys, resourceQueryKeys, shouldRetryQuery } from "./query";
 import {
   canAccessResource,
@@ -26,6 +32,7 @@ describe("validateResourceSearch", () => {
         sort: "-created_at",
         q: "quarterly report",
         trash: 1,
+        columns: "id,status,created_at",
         "filter[status]": "open",
         "filter[created_at][gte]": "2026-01-01",
       }),
@@ -35,6 +42,7 @@ describe("validateResourceSearch", () => {
       sort: "-created_at",
       q: "quarterly report",
       trash: "1",
+      columns: "id,status,created_at",
       "filter[status]": "open",
       "filter[created_at][gte]": "2026-01-01",
     });
@@ -49,6 +57,7 @@ describe("validateResourceSearch", () => {
         q: "",
         trash: "true",
         unknown: "value",
+        columns: "id,status,<script>",
         "filter[status]": "",
         "filter[]": "value",
         "filter[broken": "value",
@@ -65,6 +74,62 @@ describe("validateResourceSearch", () => {
     expect(
       validateResourceSearch({ page: "1.5", page_size: Number.NaN }),
     ).toEqual({});
+  });
+});
+
+describe("list view columns", () => {
+  const fields = [
+    field({ name: "id", kind: "uuid" }),
+    field({ name: "title", kind: "string" }),
+    field({ name: "status", kind: "enum" }),
+  ];
+
+  it("uses stable defaults and preserves the declared field order", () => {
+    expect(defaultVisibleFieldNames(fields)).toEqual(["id", "title", "status"]);
+    expect(
+      resolveVisibleFields(fields, "status,id").map((item) => item.name),
+    ).toEqual(["id", "status"]);
+  });
+
+  it("falls back when a saved selection no longer matches the resource", () => {
+    expect(
+      resolveVisibleFields(fields, "removed").map((item) => item.name),
+    ).toEqual(["id", "title", "status"]);
+  });
+});
+
+describe("browser saved views", () => {
+  it("ignores malformed local storage payloads", () => {
+    expect(parseLocalSavedViews("not-json")).toEqual([]);
+    expect(parseLocalSavedViews('{"id":"not-an-array"}')).toEqual([]);
+    expect(
+      parseLocalSavedViews(
+        JSON.stringify([
+          { id: "valid", name: "My view", query: "page_size=50" },
+          { id: "missing-query", name: "Broken" },
+          null,
+        ]),
+      ),
+    ).toEqual([{ id: "valid", name: "My view", query: "page_size=50" }]);
+  });
+});
+
+describe("aggregate metrics", () => {
+  it("offers only operations supported by each field kind", () => {
+    const options = aggregateMetricOptions([
+      field({ name: "amount", label: "Amount", kind: "decimal" }),
+      field({ name: "status", label: "Status", kind: "enum" }),
+      field({ name: "enabled", label: "Enabled", kind: "boolean" }),
+    ]).map((option) => option.value);
+    expect(options).toEqual([
+      "count",
+      "sum:amount",
+      "avg:amount",
+      "min:amount",
+      "max:amount",
+      "min:status",
+      "max:status",
+    ]);
   });
 });
 

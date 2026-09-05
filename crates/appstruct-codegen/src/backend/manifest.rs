@@ -33,6 +33,9 @@ pub(super) fn cargo(ir: &AppIr) -> String {
     if ir.auth.enabled {
         manifest.push_str(concat!("argon2 = \"=0.5.3\"\n", "rand = \"=0.9.2\"\n",));
     }
+    if ir.jobs.enabled {
+        manifest.push_str("cron = \"=0.15.0\"\n");
+    }
     if ir.auth.oauth_enabled || (ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend) {
         manifest.push_str("reqwest = { version = \"=0.13.4\", default-features = false, features = [\"json\", \"form\", \"rustls\"] }\n");
     }

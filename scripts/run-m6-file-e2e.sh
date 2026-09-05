@@ -23,7 +23,21 @@ curl --fail --silent --show-error -c "$jar" -b "$jar" \
   >"$temporary_root/tenant.json"
 tenant="$(jq -er '.id' "$temporary_root/tenant.json")"
 
-APPSTRUCT_FILE_ROOT="$storage" DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" TENANT_ID="$tenant" \
-  cargo run --quiet --manifest-path "$project/app/file-e2e/Cargo.toml"
+file_id="$(APPSTRUCT_FILE_ROOT="$storage" DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
+  TENANT_ID="$tenant" cargo run --quiet --manifest-path "$project/app/file-e2e/Cargo.toml")"
+curl --fail --silent --show-error -b "$jar" \
+  "$api/api/admin/files?search=summary&page=1&page_size=10" \
+  >"$temporary_root/admin-files.json"
+jq -e --arg id "$file_id" --arg tenant "$tenant" '
+  .meta == {page: 1, page_size: 10, total: 1} and .total_bytes > 0 and
+  (.data | length) == 1 and .data[0].id == $id and
+  .data[0].object_key == "reports/summary.json" and .data[0].tenant_id == $tenant
+' "$temporary_root/admin-files.json" >/dev/null
+curl --fail --silent --show-error -b "$jar" \
+  "$api/api/admin/files/$file_id" >"$temporary_root/admin-file-detail.json"
+jq -e '
+  .original_name == "summary.json" and .content_type == "application/json" and
+  (.checksum | test("^[0-9a-f]{64}$")) and (has("content") | not)
+' "$temporary_root/admin-file-detail.json" >/dev/null
 m6_typecheck_web
-echo "File PostgreSQL and local object-storage E2E passed"
+echo "File PostgreSQL, local object-storage, and admin E2E passed"

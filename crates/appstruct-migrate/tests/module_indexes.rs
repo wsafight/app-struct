@@ -37,6 +37,18 @@ const JOBS_MODULE_INDEXES: &[ExpectedIndex<'_>] = &[
         None,
     ),
     (
+        "appstruct::auth::saved_views_owner",
+        "_appstruct_saved_views",
+        &["owner_id", "scope_key", "resource", "updated_at", "id"],
+        None,
+    ),
+    (
+        "appstruct::auth::saved_views_team",
+        "_appstruct_saved_views",
+        &["tenant_id", "resource", "visibility", "updated_at", "id"],
+        None,
+    ),
+    (
         "appstruct::tenant::tenant_memberships_user",
         "_appstruct_tenant_memberships",
         &["user_id", "organization_id"],

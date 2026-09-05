@@ -1,6 +1,7 @@
 use appstruct_migrate::inspect_database_schema;
 use clap::Subcommand;
 use serde::Serialize;
+use similar::TextDiff;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
@@ -17,7 +18,20 @@ pub(crate) enum DbCommand {
         /// Project-relative destination for the generated domain draft.
         #[arg(long, default_value = "spec/imported.yaml")]
         output: PathBuf,
+        /// Verify that an existing draft matches the live schema without writing.
+        #[arg(long, conflicts_with = "diff")]
+        check: bool,
+        /// Print a unified diff against an existing draft without writing.
+        #[arg(long, conflicts_with = "check")]
+        diff: bool,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PullMode {
+    Create,
+    Check,
+    Diff,
 }
 
 #[derive(Serialize)]
@@ -30,13 +44,42 @@ struct PullResult<'path> {
     warnings: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct PullComparisonResult<'path> {
+    command: &'static str,
+    action: &'static str,
+    schema: String,
+    output: &'path Path,
+    entity_count: usize,
+    warnings: Vec<String>,
+    current: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diff: Option<String>,
+}
+
 pub(crate) fn run(project: &Path, command: &DbCommand) -> ExitCode {
     match command {
-        DbCommand::Pull { schema, output } => pull(project, schema, output),
+        DbCommand::Pull {
+            schema,
+            output,
+            check,
+            diff,
+        } => pull(
+            project,
+            schema,
+            output,
+            if *check {
+                PullMode::Check
+            } else if *diff {
+                PullMode::Diff
+            } else {
+                PullMode::Create
+            },
+        ),
     }
 }
 
-fn pull(project: &Path, schema: &str, output: &Path) -> ExitCode {
+fn pull(project: &Path, schema: &str, output: &Path, mode: PullMode) -> ExitCode {
     if let Err(message) = validate_schema_name(schema) {
         return crate::report::fail(
             "AS6301",
@@ -45,7 +88,7 @@ fn pull(project: &Path, schema: &str, output: &Path) -> ExitCode {
             crate::report::ExitClass::Usage,
         );
     }
-    let output_path = match resolve_output(project, output) {
+    let output_path = match resolve_output(project, output, mode) {
         Ok(path) => path,
         Err(error) => {
             return crate::report::fail(
@@ -87,6 +130,9 @@ fn pull(project: &Path, schema: &str, output: &Path) -> ExitCode {
         }
     };
     let draft = render::render(&inspection);
+    if mode != PullMode::Create {
+        return compare_draft(project, &output_path, inspection.name, draft, mode);
+    }
     if let Some(parent) = output_path.parent()
         && let Err(error) = fs::create_dir_all(parent)
     {
@@ -119,6 +165,67 @@ fn pull(project: &Path, schema: &str, output: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn compare_draft(
+    project: &Path,
+    output_path: &Path,
+    schema: String,
+    draft: render::Draft,
+    mode: PullMode,
+) -> ExitCode {
+    let existing = match fs::read_to_string(output_path) {
+        Ok(existing) => existing,
+        Err(error) => return read_error(output_path, &error),
+    };
+    let current = existing == draft.source;
+    let relative = output_path.strip_prefix(project).unwrap_or(output_path);
+    if mode == PullMode::Check && !current {
+        return crate::report::fail(
+            "AS6308",
+            crate::report::ErrorCategory::Validation,
+            format!(
+                "App Spec draft `{}` differs from PostgreSQL schema `{schema}`",
+                relative.display()
+            ),
+            crate::report::ExitClass::Validation,
+        );
+    }
+    let diff = (mode == PullMode::Diff && !current)
+        .then(|| render_diff(relative, &existing, &draft.source));
+    if crate::report::is_json() {
+        crate::report::success(&PullComparisonResult {
+            command: "db",
+            action: if mode == PullMode::Check {
+                "check"
+            } else {
+                "diff"
+            },
+            schema,
+            output: relative,
+            entity_count: draft.entity_count,
+            warnings: draft.warnings,
+            current,
+            diff,
+        });
+    } else {
+        for warning in &draft.warnings {
+            crate::report::warning("AS6306", crate::report::ErrorCategory::Database, warning);
+        }
+        if let Some(diff) = diff {
+            print!("{diff}");
+        } else {
+            println!("App Spec draft {} is current", relative.display());
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+fn render_diff(path: &Path, existing: &str, expected: &str) -> String {
+    TextDiff::from_lines(existing, expected)
+        .unified_diff()
+        .header(&path.display().to_string(), "live PostgreSQL schema")
+        .to_string()
+}
+
 fn validate_schema_name(schema: &str) -> Result<(), String> {
     if schema.is_empty() || schema.trim() != schema {
         return Err(
@@ -133,7 +240,7 @@ fn validate_schema_name(schema: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn resolve_output(project: &Path, output: &Path) -> std::io::Result<PathBuf> {
+fn resolve_output(project: &Path, output: &Path, mode: PullMode) -> std::io::Result<PathBuf> {
     if output.is_absolute()
         || output
             .components()
@@ -176,11 +283,36 @@ fn resolve_output(project: &Path, output: &Path) -> std::io::Result<PathBuf> {
             Err(error) => return Err(error),
         }
     }
-    if fs::symlink_metadata(&path).is_ok() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            format!("db pull output `{}` already exists", path.display()),
-        ));
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            return Err(crate::transaction::invalid(format!(
+                "db pull output `{}` must be a regular file",
+                path.display()
+            )));
+        }
+        Ok(_) if mode == PullMode::Create => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("db pull output `{}` already exists", path.display()),
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && mode != PullMode::Create => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "db pull {} requires existing output `{}`",
+                    if mode == PullMode::Check {
+                        "--check"
+                    } else {
+                        "--diff"
+                    },
+                    path.display()
+                ),
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
     }
     Ok(path)
 }
@@ -194,76 +326,14 @@ fn write_error(path: &Path, error: &std::io::Error) -> ExitCode {
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn output_paths_are_project_relative_and_never_overwritten() {
-        let project = tempfile::tempdir().unwrap();
-        assert!(resolve_output(project.path(), Path::new("spec/imported.yaml")).is_ok());
-        assert!(resolve_output(project.path(), Path::new("../outside.yaml")).is_err());
-        assert!(resolve_output(project.path(), Path::new("spec/imported.json")).is_err());
-        fs::create_dir(project.path().join("spec")).unwrap();
-        fs::write(project.path().join("spec/imported.yaml"), "keep\n").unwrap();
-        assert!(resolve_output(project.path(), Path::new("spec/imported.yaml")).is_err());
-    }
-
-    #[test]
-    fn schema_names_reject_ambiguous_values() {
-        assert!(validate_schema_name("public").is_ok());
-        assert!(validate_schema_name("").is_err());
-        assert!(validate_schema_name(" public").is_err());
-        assert!(validate_schema_name(&"x".repeat(64)).is_err());
-        assert!(validate_schema_name("pub\nlic").is_err());
-    }
-
-    #[test]
-    fn resolve_output_rejects_symlinked_and_file_parents() {
-        let project = tempfile::tempdir().unwrap();
-        fs::write(project.path().join("file.yaml"), "x\n").unwrap();
-        assert!(resolve_output(project.path(), Path::new("/tmp/imported.yaml")).is_err());
-        fs::write(project.path().join("not-a-dir"), "x\n").unwrap();
-        assert!(resolve_output(project.path(), Path::new("not-a-dir/imported.yaml")).is_err());
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink("not-a-dir", project.path().join("link-dir")).unwrap();
-            assert!(resolve_output(project.path(), Path::new("link-dir/imported.yaml")).is_err());
-        }
-    }
-
-    #[test]
-    fn pull_rejects_invalid_schema_names_and_output_paths() {
-        let project = tempfile::tempdir().unwrap();
-        assert_ne!(
-            run(
-                project.path(),
-                &DbCommand::Pull {
-                    schema: String::new(),
-                    output: PathBuf::from("spec/imported.yaml"),
-                },
-            ),
-            ExitCode::SUCCESS
-        );
-        assert_ne!(
-            run(
-                project.path(),
-                &DbCommand::Pull {
-                    schema: "public".to_owned(),
-                    output: PathBuf::from("../outside.yaml"),
-                },
-            ),
-            ExitCode::SUCCESS
-        );
-        assert_ne!(
-            run(
-                project.path(),
-                &DbCommand::Pull {
-                    schema: "public".to_owned(),
-                    output: PathBuf::from("spec/imported.yaml"),
-                },
-            ),
-            ExitCode::SUCCESS
-        );
-    }
+fn read_error(path: &Path, error: &std::io::Error) -> ExitCode {
+    crate::report::fail(
+        "AS6309",
+        crate::report::ErrorCategory::Transaction,
+        format!("cannot read App Spec draft `{}`: {error}", path.display()),
+        crate::report::ExitClass::Environment,
+    )
 }
+
+#[cfg(test)]
+mod tests;

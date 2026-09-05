@@ -68,6 +68,15 @@ fn assert_provider(
         provider == FileProviderIr::S3
     );
     assert!(manifest.contains("infer = \"=0.19.0\""));
+    let admin = artifact_text(&artifacts, "backend/src/auth/admin_storage.rs");
+    assert!(admin.contains("/api/admin/files"));
+    assert!(admin.contains("total_bytes"));
+    let admin_pages = artifact_text(&artifacts, "web/src/auth/AdminStoragePages.tsx");
+    assert!(admin_pages.contains("AdminFileDetailPage"));
+    let openapi: serde_json::Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    assert!(openapi["paths"]["/api/admin/files"]["get"].is_object());
+    assert!(openapi["paths"]["/api/admin/files/{id}"]["get"].is_object());
 
     let manifest = root.join("generated/backend/Cargo.toml");
     assert_rustfmt(&manifest);

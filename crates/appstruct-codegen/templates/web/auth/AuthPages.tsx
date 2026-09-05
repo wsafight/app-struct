@@ -565,9 +565,12 @@ export function AdminPage() {
         <Link to="/admin/users">Users</Link>
         <Link to="/tokens">API tokens</Link>
         {adminFeatures.jobs && <Link to="/admin/jobs">Jobs</Link>}
+        {adminFeatures.jobs && <Link to="/admin/schedules">Schedules</Link>}
         {adminFeatures.webhooks && (
           <Link to="/admin/webhooks">Webhook deliveries</Link>
         )}
+        {adminFeatures.mail && <Link to="/admin/mail">Mail deliveries</Link>}
+        {adminFeatures.file && <Link to="/admin/files">Files</Link>}
         {adminFeatures.tenant && <Link to="/organization">Organization</Link>}
         {adminFeatures.audit && <Link to="/audit">Audit log</Link>}
       </nav>

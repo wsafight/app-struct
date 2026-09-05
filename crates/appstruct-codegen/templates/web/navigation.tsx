@@ -150,6 +150,7 @@ export interface ResourceSearch {
   page_size?: number;
   sort?: string;
   q?: string;
+  columns?: string;
   trash?: "1";
   [key: string]: string | number | undefined;
 }
@@ -166,6 +167,12 @@ export function validateResourceSearch(
     if (typeof search[key] === "string" && search[key])
       result[key] = search[key];
   }
+  if (
+    typeof search.columns === "string" &&
+    search.columns.length <= 2_000 &&
+    /^\w+(?:,\w+)*$/.test(search.columns)
+  )
+    result.columns = search.columns;
   if (search.trash === "1" || search.trash === 1) result.trash = "1";
   for (const [key, value] of Object.entries(search)) {
     if (

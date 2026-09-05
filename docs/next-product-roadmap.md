@@ -76,7 +76,7 @@ remains out of scope.
 
 - [x] Bulk update/delete and CSV import/export.
 - [x] Browser-private saved list views and shareable URL query snapshots.
-- [ ] Server-backed private and team-shared saved views.
+- [x] Server-backed private and team-shared saved views.
 - [x] Soft delete, trash, restore, and audit-backed history display.
 - [x] Revision-safe inline scalar editing and field-level audit snapshot diffs.
 - [x] Organization invitations.
@@ -109,22 +109,21 @@ The next data and Web runtime slice must settle its public contracts before impl
 2. Sorted cursor tokens bind the ordered sort specification and typed key values, define null
    ordering, and always include the primary key as the final tie-breaker. A cursor from a different
    filter or sort contract must be rejected.
-3. Server-backed saved views record an owner, resource, versioned query state, and `private` or
-   tenant-scoped `team` visibility. Team write/delete permissions and behavior outside tenant mode
-   must be explicit rather than inferred by the browser.
+3. Server-backed saved views record an owner, resource, revision-guarded query state, and `private`
+   or tenant-scoped `team` visibility. Team views are creator-writable and organization-readable;
+   outside tenant mode only private and browser-local views are available.
 4. The headless controller becomes complete only when it owns URL query parsing plus form
    validation, field errors, revision conflicts, and unsaved-change state. Generated pages and
    custom pages must consume the same controller contract.
 
-Until these contracts are implemented, cursor mode remains primary-key ordered, saved views remain
-browser-private, and custom forms continue to own their form and URL state.
+Cursor mode remains primary-key ordered, and custom forms continue to own their form and URL state.
 
 ## 4. First Slice: `appstruct db pull`
 
 ### 4.1 Command contract
 
 ```text
-appstruct db pull [--schema public] [--output spec/imported.yaml]
+appstruct db pull [--schema public] [--output spec/imported.yaml] [--check | --diff]
 ```
 
 The command:
@@ -135,6 +134,7 @@ The command:
 - connects with the same TLS policy as migration commands;
 - performs only PostgreSQL catalog reads;
 - writes a deterministic domain Spec draft;
+- compares an existing draft without writing when `--check` or `--diff` is selected;
 - refuses absolute output paths, parent traversal, symlinks, and existing destinations;
 - does not change `appstruct.yaml`, `includes`, migrations, snapshots, locks, or generated files.
 

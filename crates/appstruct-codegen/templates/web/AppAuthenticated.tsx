@@ -20,6 +20,11 @@ const AdminPage = lazy(() => import("../auth/AuthPages").then(({ AdminPage: comp
 const AdminUsersPage = lazy(() => import("../auth/AuthPages").then(({ AdminUsersPage: component }) => ({ default: component })));
 const AdminJobsPage = lazy(() => import("../auth/AuthPages").then(({ AdminJobsPage: component }) => ({ default: component })));
 const AdminWebhooksPage = lazy(() => import("../auth/AuthPages").then(({ AdminWebhooksPage: component }) => ({ default: component })));
+const AdminSchedulesPage = lazy(() => import("../auth/AdminSchedulesPage").then(({ AdminSchedulesPage: component }) => ({ default: component })));
+const AdminMailPage = lazy(() => import("../auth/AdminStoragePages").then(({ AdminMailPage: component }) => ({ default: component })));
+const AdminMailDetailPage = lazy(() => import("../auth/AdminStoragePages").then(({ AdminMailDetailPage: component }) => ({ default: component })));
+const AdminFilesPage = lazy(() => import("../auth/AdminStoragePages").then(({ AdminFilesPage: component }) => ({ default: component })));
+const AdminFileDetailPage = lazy(() => import("../auth/AdminStoragePages").then(({ AdminFileDetailPage: component }) => ({ default: component })));
 
 export function App({ registry }: { registry?: AppStructRegistry }) {
   const [router] = useState(() => createRuntimeRouter(AuthRoot, appRoutes(registry)));
@@ -69,6 +74,11 @@ __ORGANIZATION_ROUTE__
     { path: "/admin/users", component: AdminUsersPage },
     { path: "/admin/jobs", component: AdminJobsPage },
     { path: "/admin/webhooks", component: AdminWebhooksPage },
+    { path: "/admin/schedules", component: AdminSchedulesPage },
+    { path: "/admin/mail", component: AdminMailPage },
+    { path: "/admin/mail/$id", component: AdminMailDetailPage },
+    { path: "/admin/files", component: AdminFilesPage },
+    { path: "/admin/files/$id", component: AdminFileDetailPage },
   ];
 }
 

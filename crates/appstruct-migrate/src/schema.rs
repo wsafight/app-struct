@@ -138,7 +138,7 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
                 .collect(),
         })
         .collect::<Vec<_>>();
-    let unique_constraints = ir
+    let mut unique_constraints = ir
         .entities
         .iter()
         .filter(|entity| entity.tenant_scoped)
@@ -154,6 +154,7 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         .collect::<Vec<_>>();
     if ir.auth.enabled {
         tables.extend(auth::tables());
+        unique_constraints.extend(auth::unique_constraints());
         foreign_keys.extend(auth::foreign_keys(ir));
     }
     if ir.tenant.enabled {

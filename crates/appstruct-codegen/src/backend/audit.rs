@@ -24,6 +24,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     } else {
         global_load()
     };
+    let record = record_source();
     render(quote! {
         use crate::{ApiError, AppState, RequestContext};
         use appstruct_runtime::{MAX_LIST_PAGE, list_page_is_valid};
@@ -31,40 +32,19 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         use sea_orm::{ConnectionTrait, DbBackend, Statement};
         use serde::{Deserialize, Serialize};
 
-        pub async fn record<C, T>(
-            database: &C,
-            context: &RequestContext<'_>,
-            entity: &str,
-            record_id: String,
-            operation: &str,
-            before: Option<&T>,
-            after: Option<&T>,
-        ) -> Result<(), ApiError>
-        where
-            C: ConnectionTrait,
-            T: Serialize,
-        {
-            let before = before.map(serde_json::to_value).transpose().map_err(|_| ApiError::Internal)?;
-            let after = after.map(serde_json::to_value).transpose().map_err(|_| ApiError::Internal)?;
-            let actor_id = context.actor().map(|actor| actor.id);
-            database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_audit_events\" (id, entity, record_id, operation, actor_id, tenant_id, before, after, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)",
-                [
-                    uuid::Uuid::now_v7().into(), entity.to_owned().into(), record_id.into(),
-                    operation.to_owned().into(), actor_id.into(), context.tenant().into(),
-                    before.into(), after.into(),
-                ],
-            )).await?;
-            Ok(())
-        }
+        #record
 
         pub fn router() -> Router<AppState> {
             Router::new().route("/api/audit/events", get(list))
         }
 
         #[derive(Debug, Default, Deserialize)]
-        struct ListQuery { page: Option<u64>, page_size: Option<u64> }
+        struct ListQuery {
+            page: Option<u64>,
+            page_size: Option<u64>,
+            entity: Option<String>,
+            record_id: Option<String>,
+        }
 
         #[derive(Debug, Serialize)]
         struct AuditEvent {
@@ -100,6 +80,13 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                     format!("`page` must be between 1 and {MAX_LIST_PAGE} and `page_size` must be between 1 and 100")
                 ));
             }
+            for (name, value) in [("entity", query.entity.as_deref()), ("record_id", query.record_id.as_deref())] {
+                if value.is_some_and(|value| value.is_empty() || value.len() > 255) {
+                    return Err(ApiError::InvalidQuery(format!(
+                        "`{name}` must contain between 1 and 255 bytes"
+                    )));
+                }
+            }
             let offset = (page - 1).checked_mul(page_size)
                 .ok_or_else(|| ApiError::InvalidQuery("pagination is too large".to_owned()))?;
             #load
@@ -123,34 +110,67 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     })
 }
 
+fn record_source() -> proc_macro2::TokenStream {
+    quote! {
+        pub async fn record<C, T>(
+            database: &C,
+            context: &RequestContext<'_>,
+            entity: &str,
+            record_id: String,
+            operation: &str,
+            before: Option<&T>,
+            after: Option<&T>,
+        ) -> Result<(), ApiError>
+        where
+            C: ConnectionTrait,
+            T: Serialize,
+        {
+            let before = before.map(serde_json::to_value).transpose().map_err(|_| ApiError::Internal)?;
+            let after = after.map(serde_json::to_value).transpose().map_err(|_| ApiError::Internal)?;
+            let actor_id = context.actor().map(|actor| actor.id);
+            database.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "INSERT INTO \"_appstruct_audit_events\" (id, entity, record_id, operation, actor_id, tenant_id, before, after, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)",
+                [
+                    uuid::Uuid::now_v7().into(), entity.to_owned().into(), record_id.into(),
+                    operation.to_owned().into(), actor_id.into(), context.tenant().into(),
+                    before.into(), after.into(),
+                ],
+            )).await?;
+            Ok(())
+        }
+    }
+}
+
 fn tenant_load() -> proc_macro2::TokenStream {
     quote! {
         let tenant = context.require_tenant()?;
         let count = state.database.query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "SELECT COUNT(*) AS total FROM \"_appstruct_audit_events\" WHERE tenant_id = $1",
-            [tenant.into()],
+            "SELECT COUNT(*) AS total FROM \"_appstruct_audit_events\" WHERE tenant_id = $1 AND ($2::text IS NULL OR entity = $2) AND ($3::text IS NULL OR record_id = $3)",
+            [tenant.into(), query.entity.clone().into(), query.record_id.clone().into()],
         )).await?.ok_or(ApiError::Internal)?;
         let total: i64 = count.try_get("", "total")?;
         let rows = state.database.query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "SELECT id, entity, record_id, operation, actor_id, tenant_id, before, after, occurred_at FROM \"_appstruct_audit_events\" WHERE tenant_id = $1 ORDER BY occurred_at DESC, id DESC LIMIT $2 OFFSET $3",
-            [tenant.into(), i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
+            "SELECT id, entity, record_id, operation, actor_id, tenant_id, before, after, occurred_at FROM \"_appstruct_audit_events\" WHERE tenant_id = $1 AND ($2::text IS NULL OR entity = $2) AND ($3::text IS NULL OR record_id = $3) ORDER BY occurred_at DESC, id DESC LIMIT $4 OFFSET $5",
+            [tenant.into(), query.entity.clone().into(), query.record_id.clone().into(), i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
         )).await?;
     }
 }
 
 fn global_load() -> proc_macro2::TokenStream {
     quote! {
-        let count = state.database.query_one_raw(Statement::from_string(
+        let count = state.database.query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "SELECT COUNT(*) AS total FROM \"_appstruct_audit_events\"".to_owned(),
+            "SELECT COUNT(*) AS total FROM \"_appstruct_audit_events\" WHERE ($1::text IS NULL OR entity = $1) AND ($2::text IS NULL OR record_id = $2)",
+            [query.entity.clone().into(), query.record_id.clone().into()],
         )).await?.ok_or(ApiError::Internal)?;
         let total: i64 = count.try_get("", "total")?;
         let rows = state.database.query_all_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "SELECT id, entity, record_id, operation, actor_id, tenant_id, before, after, occurred_at FROM \"_appstruct_audit_events\" ORDER BY occurred_at DESC, id DESC LIMIT $1 OFFSET $2",
-            [i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
+            "SELECT id, entity, record_id, operation, actor_id, tenant_id, before, after, occurred_at FROM \"_appstruct_audit_events\" WHERE ($1::text IS NULL OR entity = $1) AND ($2::text IS NULL OR record_id = $2) ORDER BY occurred_at DESC, id DESC LIMIT $3 OFFSET $4",
+            [query.entity.clone().into(), query.record_id.clone().into(), i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
         )).await?;
     }
 }

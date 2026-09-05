@@ -99,5 +99,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         context.get_file("documents/hello.txt").await,
         Err(FileError::Database(_))
     ));
+    let admin_metadata = context
+        .put_file(
+            "reports/summary.json",
+            "summary.json",
+            "application/json",
+            br#"{"status":"ready"}"#,
+        )
+        .await?;
+    println!("{}", admin_metadata.id);
     Ok(())
 }
