@@ -20,6 +20,7 @@ export function useActivityRealtime(
       recordId,
     });
     const seen = new Set<string>();
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const refresh = (event: Event) => {
       const eventId = (event as MessageEvent<string>).lastEventId;
       if (eventId && seen.has(eventId)) return;
@@ -30,9 +31,13 @@ export function useActivityRealtime(
           if (oldest) seen.delete(oldest);
         }
       }
-      void queryClient.invalidateQueries({
-        queryKey: appQueryKeys.activity(resource.slug, recordId),
-      });
+      if (refreshTimer !== undefined) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined;
+        void queryClient.invalidateQueries({
+          queryKey: appQueryKeys.activity(resource.slug, recordId),
+        });
+      }, 50);
     };
     const events = [
       "activity.comment.created",
@@ -47,6 +52,9 @@ export function useActivityRealtime(
       "resync",
     ];
     for (const event of events) source.addEventListener(event, refresh);
-    return () => source.close();
+    return () => {
+      source.close();
+      if (refreshTimer !== undefined) clearTimeout(refreshTimer);
+    };
   }, [enabled, queryClient, recordId, resource]);
 }

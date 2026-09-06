@@ -43,24 +43,29 @@ APPSTRUCT_E2E_DATABASE_URL=postgresql://localhost/appstruct_benchmark_test \
   bash scripts/run-postgres-benchmark.sh
 ```
 
-The default dataset has 10,000 rows per tenant and two tenants. The runner checks field access and
+The default dataset has 25,000 rows per tenant and two tenants. The runner checks field access and
 tenant isolation, then measures offset lists, cursor lists, aggregate count, individual reads and
-audited create/update/soft-delete journeys. Each phase warms up five times, then runs 150 operations
-with eight concurrent clients. CRUD latency is for the entire three-request journey. Responses
-are validated, so an authorization error or incorrect row count fails even when latency is low.
-It also verifies that varying resource IDs and unmatched URLs do not create metric label sets.
+audited create/update/soft-delete journeys at 1, 8 and 24 concurrent clients. Each phase warms up
+five times and runs 200 operations. A final 15-second mixed phase combines reads, cursor lists,
+counts and audited writes at the highest concurrency. CRUD latency is for the entire three-request
+journey. Responses are validated, so an authorization error or incorrect row count fails even when
+latency is low. It also verifies that varying resource IDs and unmatched URLs do not create metric
+label sets.
 
 Results are written to `output/benchmarks/postgres-api.json` with p50/p95/p99/max latency,
 throughput, error rates, runtime/host details and workload configuration. A sibling `.prom` file
-contains the metrics snapshot. PostgreSQL CI uploads both. Errors fail the run; the default p95
-budget is 2,000 ms for every phase.
+contains the metrics snapshot. PostgreSQL CI uploads both. Errors fail the run. Release-mode p95
+budgets are 500 ms for query/read phases, 750 ms for mixed sustained load and 1,000 ms for the
+three-request audited CRUD journey; debug-mode defaults are twice those values.
 
 Overrides: `APPSTRUCT_BENCH_ROWS` (per tenant, at most 1,000,000), `APPSTRUCT_BENCH_ITERATIONS`
-(at most 10,000), `APPSTRUCT_BENCH_CONCURRENCY` (at most 64), `APPSTRUCT_BENCH_P95_MS` and
-`APPSTRUCT_BENCH_OUTPUT`. API/Web ports use the existing `APPSTRUCT_E2E_API_PORT` and
-`APPSTRUCT_E2E_WEB_PORT` overrides.
+(at most 10,000), comma-separated `APPSTRUCT_BENCH_CONCURRENCIES` (each at most 64),
+`APPSTRUCT_BENCH_MIXED_SECONDS`, `APPSTRUCT_BENCH_P95_MS`, `APPSTRUCT_BENCH_PROFILE`
+(`release` by default or `debug`) and `APPSTRUCT_BENCH_OUTPUT`. The singular
+`APPSTRUCT_BENCH_CONCURRENCY` remains accepted as a one-tier shorthand. API/Web ports use the
+existing `APPSTRUCT_E2E_API_PORT` and `APPSTRUCT_E2E_WEB_PORT` overrides.
 
-This is a bounded, closed-loop regression workload against a **debug backend**, not a production
-capacity estimate. Compare results on the same host, PostgreSQL version, dataset and build profile.
-It does not model open-loop arrivals, connection pool exhaustion, production storage or network
-latency. Use release binaries and deployment-representative traffic for capacity planning.
+This is a bounded, closed-loop regression workload against a release backend by default, not a
+production capacity estimate. Compare results on the same host, PostgreSQL version, dataset and
+build profile. It does not model open-loop arrivals, connection pool exhaustion, production
+storage or network latency. Use deployment-representative traffic for capacity planning.

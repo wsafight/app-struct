@@ -81,6 +81,9 @@ enum Command {
         /// Verify generated files are current without writing them.
         #[arg(long)]
         check: bool,
+        /// Report compiler, planner, formatter, and output timings.
+        #[arg(long)]
+        timings: bool,
     },
     /// Plan or accept database schema migrations.
     Migrate {
@@ -171,7 +174,9 @@ fn run(cli: Cli) -> ExitCode {
         Command::Dev { api_port, web_port } => development::run(&project, api_port, web_port),
         Command::Db { command } => db::run(&project, &command),
         Command::Check { deny_warnings } => run_check(&project, cli.format, deny_warnings),
-        Command::Generate { check } => generation::run(&project, check),
+        Command::Generate { check, timings } => {
+            generation::run_with_timings(&project, check, timings)
+        }
         Command::Migrate { command } => migration::run(&project, command),
         Command::Module { command } => module_registry::run(&project, &command),
         Command::Preset { command } => preset::run(&project, &command),

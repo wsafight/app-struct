@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { PDFDocument } from "pdf-lib";
-import { digest, render, validate } from "./render.mjs";
+import { closeRenderer, createRenderer, digest, render, validate } from "./render.mjs";
+
+after(closeRenderer);
 
 export function request(html, overrides = {}) {
   return { protocol: 1, request_id: randomUUID(), run_id: randomUUID(), tenant_id: randomUUID(), renderer: "chromium-v1", template: "acceptance", template_version: 1,
@@ -63,4 +65,17 @@ test("cancellation and deadlines terminate browser work", { timeout: 30_000 }, a
 test("rejects documents beyond the page budget", { timeout: 30_000 }, async () => {
   const html = Array.from({ length: 101 }, (_, index) => `<div style="break-before:page">${index}</div>`).join("");
   await assert.rejects(render(request(html), new AbortController().signal), /REPORT_RESOURCE_LIMIT/);
+});
+
+test("reuses Chromium and recycles it at the configured request limit", { timeout: 45_000 }, async () => {
+  const renderer = createRenderer({ recycleAfter: 2 });
+  try {
+    await renderer.render(request("<p>first</p>"), new AbortController().signal);
+    await renderer.render(request("<p>second</p>"), new AbortController().signal);
+    assert.deepEqual(renderer.stats(), { launches: 1, uses: 2 });
+    await renderer.render(request("<p>third</p>"), new AbortController().signal);
+    assert.deepEqual(renderer.stats(), { launches: 2, uses: 1 });
+  } finally {
+    await renderer.close();
+  }
 });

@@ -24,7 +24,11 @@ The backend connects through `APPSTRUCT_REPORT_RENDERER_SOCKET`. A private Unix 
 or File provider access. Its container has no network, a read-only root, dropped capabilities,
 no-new-privileges, Chromium sandboxing, 512 MiB memory without swap, 128 Linux tasks, one CPU and
 128 MiB temporary storage. One browser request runs at a time; busy requests receive a retryable
-adapter-unavailable error. Scale with additional backend/renderer pairs.
+adapter-unavailable error. Chromium is prewarmed and reused with a fresh isolated BrowserContext
+for every report, then recycled after 100 reports by default. Set
+`APPSTRUCT_RENDERER_RECYCLE_AFTER` to a value from 1 through 1000 to trade startup cost for tighter
+process recycling. Browser crashes and render timeouts force immediate recycling. Scale sustained
+throughput with additional backend/renderer pairs.
 
 Templates are shipped in the App Spec and matched against the generated artifact/version before
 rendering. MiniJinja HTML escaping and a fuel limit apply. Inputs cannot supply HTML templates.

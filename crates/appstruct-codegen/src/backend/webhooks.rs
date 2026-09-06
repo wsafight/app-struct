@@ -20,6 +20,7 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
 fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let endpoints = endpoint_source(ir);
     let poll_interval = ir.webhooks.poll_interval_ms;
+    let max_idle_ms = poll_interval.saturating_mul(32).min(5_000);
     let connect_timeout = ir.webhooks.connect_timeout_ms;
     let read_timeout = ir.webhooks.read_timeout_ms;
     let request_timeout = ir.webhooks.request_timeout_ms;
@@ -176,15 +177,23 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                         for worker in workers {
                             let mut lane_receiver = receiver.clone();
                             tasks.spawn(async move {
+                                let base_delay = Duration::from_millis(#poll_interval);
+                                let max_delay = Duration::from_millis(#max_idle_ms);
+                                let mut idle_delay = base_delay;
                                 loop {
                                     if *lane_receiver.borrow() { break; }
                                     match worker.run_once().await {
-                                        Ok(true) => continue,
+                                        Ok(true) => {
+                                            idle_delay = base_delay;
+                                            continue;
+                                        }
                                         Ok(false) => {}
                                         Err(error) => tracing::error!(%error, "webhook worker iteration failed"),
                                     }
+                                    let sleep_for = idle_delay;
+                                    idle_delay = idle_delay.saturating_mul(2).min(max_delay);
                                     tokio::select! {
-                                        () = tokio::time::sleep(Duration::from_millis(#poll_interval)) => {}
+                                        () = tokio::time::sleep(sleep_for) => {}
                                         result = lane_receiver.changed() => if result.is_err() { break; }
                                     }
                                 }

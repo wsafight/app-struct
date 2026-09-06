@@ -21,10 +21,15 @@ export function useRealtimeResource({
   useEffect(() => {
     if (!enabled) return;
     const source = subscribeRealtime({ resource: resourceSlug });
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => {
-      void queryClient.invalidateQueries({
-        queryKey: resourceQueryKeys.all(resourceId),
-      });
+      if (refreshTimer !== undefined) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined;
+        void queryClient.invalidateQueries({
+          queryKey: resourceQueryKeys.all(resourceId),
+        });
+      }, 50);
     };
     const events = [
       `${eventPrefix}.created`,
@@ -33,6 +38,9 @@ export function useRealtimeResource({
       "resync",
     ];
     for (const event of events) source.addEventListener(event, refresh);
-    return () => source.close();
+    return () => {
+      source.close();
+      if (refreshTimer !== undefined) clearTimeout(refreshTimer);
+    };
   }, [enabled, eventPrefix, queryClient, resourceId, resourceSlug]);
 }

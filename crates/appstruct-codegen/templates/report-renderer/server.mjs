@@ -1,6 +1,6 @@
 import net from "node:net";
 import { chmod, lstat, unlink } from "node:fs/promises";
-import { MAX_REQUEST, render } from "./render.mjs";
+import { MAX_REQUEST, createRenderer } from "./render.mjs";
 
 const path = process.env.APPSTRUCT_RENDERER_SOCKET ?? "/run/appstruct-renderer/renderer.sock";
 try {
@@ -9,6 +9,8 @@ try {
   await unlink(path);
 } catch (error) { if (error.code !== "ENOENT") throw error; }
 let active = false;
+const renderer = createRenderer();
+await renderer.start();
 const sockets = new Set();
 const server = net.createServer((socket) => {
   sockets.add(socket);
@@ -44,7 +46,7 @@ const server = net.createServer((socket) => {
     };
     if (active) { send({ code: "REPORT_ADAPTER_UNAVAILABLE" }); return; }
     active = true;
-    render(request, abort.signal).then((result) => send({ code: "OK", ...result }), (error) => {
+    renderer.render(request, abort.signal).then((result) => send({ code: "OK", ...result }), (error) => {
       const allowed = new Set(["REPORT_INVALID_TEMPLATE_ARTIFACT", "REPORT_BLOCKED_RESOURCE", "REPORT_RESOURCE_LIMIT", "REPORT_RENDER_TIMEOUT", "REPORT_CANCELLED", "REPORT_INVALID_OUTPUT"]);
       send({ code: allowed.has(error.message) ? error.message : "REPORT_BROWSER_CRASH" });
     }).finally(() => { active = false; });
@@ -55,5 +57,5 @@ await new Promise((resolve, reject) => { server.once("error", reject); server.li
 await chmod(path, 0o660);
 for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => {
   for (const socket of sockets) socket.destroy();
-  server.close(() => { void unlink(path).finally(() => process.exit(0)); });
+  server.close(() => { void renderer.close().then(() => unlink(path)).finally(() => process.exit(0)); });
 });

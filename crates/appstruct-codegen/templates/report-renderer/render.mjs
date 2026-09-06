@@ -6,6 +6,7 @@ import { validateResources } from "./resources.mjs";
 export const MAX_REQUEST = 4 * 1024 * 1024;
 const MAX_HTML = 2 * 1024 * 1024;
 const MAX_PDF = 50 * 1024 * 1024;
+const DEFAULT_RECYCLE_AFTER = 100;
 export const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const fail = (code) => { throw new Error(code); };
 
@@ -22,22 +23,64 @@ export function validate(request) {
   validateResources(request.html);
 }
 
-export async function render(request, signal) {
-  validate(request);
+export function createRenderer({ recycleAfter = rendererRecycleAfter() } = {}) {
+  if (!Number.isSafeInteger(recycleAfter) || recycleAfter < 1 || recycleAfter > 1_000) {
+    throw new Error("APPSTRUCT_RENDERER_RECYCLE_AFTER must be between 1 and 1000");
+  }
   let browser;
+  let uses = 0;
+  let launches = 0;
+  async function close() {
+    const current = browser;
+    browser = undefined;
+    uses = 0;
+    await current?.close().catch(() => {});
+  }
+  async function start(deadlineMs = Date.now() + 10_000) {
+    if (browser?.isConnected() && uses < recycleAfter) return browser;
+    await close();
+    browser = await chromium.launch({
+      chromiumSandbox: true,
+      headless: true,
+      timeout: Math.max(1, Math.min(10_000, deadlineMs - Date.now())),
+      args: ["--disable-dev-shm-usage"],
+    });
+    launches += 1;
+    return browser;
+  }
+  async function render(request, signal) {
+    validate(request);
+    const current = await start(request.deadline_ms);
+    uses += 1;
+    try {
+      return await renderWithBrowser(current, request, signal);
+    } catch (error) {
+      if (!current.isConnected() || error.message === "REPORT_RENDER_TIMEOUT") await close();
+      throw error;
+    }
+  }
+  return { start, render, close, stats: () => ({ launches, uses }) };
+}
+
+const defaultRenderer = createRenderer();
+export const render = (request, signal) => defaultRenderer.render(request, signal);
+export const closeRenderer = () => defaultRenderer.close();
+
+async function renderWithBrowser(browser, request, signal) {
+  let context;
   let timer;
   let abort;
   let finished = false;
   const cancelled = new Promise((_, reject) => {
-    abort = () => { finished = true; reject(new Error("REPORT_CANCELLED")); void browser?.close(); };
+    abort = () => { finished = true; reject(new Error("REPORT_CANCELLED")); void context?.close(); };
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
-    timer = setTimeout(() => { finished = true; reject(new Error("REPORT_RENDER_TIMEOUT")); void browser?.close(); }, Math.min(30_000, request.deadline_ms - Date.now()));
+    timer = setTimeout(() => { finished = true; reject(new Error("REPORT_RENDER_TIMEOUT")); void context?.close(); }, Math.min(30_000, request.deadline_ms - Date.now()));
   });
   const operation = async () => {
-    browser = await chromium.launch({ chromiumSandbox: true, headless: true, timeout: Math.max(1, Math.min(10_000, request.deadline_ms - Date.now())), args: ["--disable-dev-shm-usage"] });
-    if (finished) { await browser.close(); fail("REPORT_CANCELLED"); }
-    const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block", acceptDownloads: false, locale: request.locale, timezoneId: request.timezone });
+    if (finished) fail(signal.aborted ? "REPORT_CANCELLED" : "REPORT_RENDER_TIMEOUT");
+    context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block", acceptDownloads: false, locale: request.locale, timezoneId: request.timezone });
+    if (finished) { await context.close(); fail(signal.aborted ? "REPORT_CANCELLED" : "REPORT_RENDER_TIMEOUT"); }
     let blocked = false;
     await context.route("**/*", (route) => { blocked = true; return route.abort("blockedbyclient"); });
     const page = await context.newPage();
@@ -61,7 +104,13 @@ export async function render(request, signal) {
     finished = true;
     clearTimeout(timer);
     signal.removeEventListener("abort", abort);
-    await browser?.close();
+    await context?.close().catch(() => {});
     await work.catch(() => {});
   }
+}
+
+function rendererRecycleAfter() {
+  const raw = process.env.APPSTRUCT_RENDERER_RECYCLE_AFTER;
+  if (raw === undefined || raw === "") return DEFAULT_RECYCLE_AFTER;
+  return Number(raw);
 }

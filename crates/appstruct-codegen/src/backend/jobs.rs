@@ -9,6 +9,7 @@ mod lease;
 mod metrics;
 mod schedule;
 mod test_support;
+mod timing;
 
 use disabled::disabled_source;
 use test_support::{test_worker_gate_source, test_worker_gate_wait};
@@ -166,7 +167,7 @@ fn enqueue_source() -> proc_macro2::TokenStream {
 }
 
 fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::TokenStream {
-    let lease_seconds = i64::try_from(lease_seconds).unwrap_or(30);
+    let (lease_seconds, max_idle_ms) = timing::worker_values(poll_interval_ms, lease_seconds);
     let gate_wait = test_worker_gate_wait(poll_interval_ms);
     let lifecycle = worker_lifecycle_source();
     let lease = lease::methods(lease_seconds);
@@ -221,27 +222,37 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
                     if let Err(error) = ensure_schedules(&workers[0].database).await {
                         tracing::error!(%error, "job schedule registration failed");
                     }
-                    let mut tasks = tokio::task::JoinSet::new();
-                    for (index, worker) in workers.into_iter().enumerate() {
-                        let mut lane_receiver = receiver.clone();
-                        tasks.spawn(async move {
-                            loop {
-                                if *lane_receiver.borrow() { break; }
-                                #gate_wait
-                                if index == 0 {
-                                    if let Err(error) = schedule_due(&worker.database).await {
-                                        tracing::error!(%error, "job schedule iteration failed");
+                        let mut tasks = tokio::task::JoinSet::new();
+                        for (index, worker) in workers.into_iter().enumerate() {
+                            let mut lane_receiver = receiver.clone();
+                            tasks.spawn(async move {
+                                let base_delay = Duration::from_millis(#poll_interval_ms);
+                                let max_delay = Duration::from_millis(#max_idle_ms);
+                                let mut idle_delay = base_delay;
+                                let mut next_schedule_check = tokio::time::Instant::now();
+                                loop {
+                                    if *lane_receiver.borrow() { break; }
+                                    #gate_wait
+                                    if index == 0 && tokio::time::Instant::now() >= next_schedule_check {
+                                        if let Err(error) = schedule_due(&worker.database).await {
+                                            tracing::error!(%error, "job schedule iteration failed");
+                                        }
+                                        next_schedule_check = tokio::time::Instant::now() + base_delay;
                                     }
-                                }
-                                match worker.run_once().await {
-                                    Ok(true) => continue,
-                                    Ok(false) => {}
-                                    Err(error) => tracing::error!(%error, "job worker iteration failed"),
-                                }
-                                tokio::select! {
-                                    () = tokio::time::sleep(Duration::from_millis(#poll_interval_ms)) => {}
-                                    result = lane_receiver.changed() => if result.is_err() { break; }
-                                }
+                                    match worker.run_once().await {
+                                        Ok(true) => {
+                                            idle_delay = base_delay;
+                                            continue;
+                                        }
+                                        Ok(false) => {}
+                                        Err(error) => tracing::error!(%error, "job worker iteration failed"),
+                                    }
+                                    let sleep_for = idle_delay;
+                                    idle_delay = idle_delay.saturating_mul(2).min(max_delay);
+                                    tokio::select! {
+                                        () = tokio::time::sleep(sleep_for) => {}
+                                        result = lane_receiver.changed() => if result.is_err() { break; }
+                                    }
                             }
                         });
                     }

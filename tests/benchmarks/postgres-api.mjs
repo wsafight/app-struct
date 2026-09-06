@@ -12,10 +12,24 @@ function option(name, fallback, maximum) {
   assert(Number.isInteger(value) && value > 0 && value <= maximum, `Invalid ${name}`);
   return value;
 }
-const rows = option("APPSTRUCT_BENCH_ROWS", 10000, 1000000);
-const iterations = option("APPSTRUCT_BENCH_ITERATIONS", 150, 10000);
-const concurrency = option("APPSTRUCT_BENCH_CONCURRENCY", 8, 64);
-const budget = option("APPSTRUCT_BENCH_P95_MS", 2000, 60000);
+function concurrencyTiers() {
+  const source = process.env.APPSTRUCT_BENCH_CONCURRENCIES
+    ?? process.env.APPSTRUCT_BENCH_CONCURRENCY
+    ?? "1,8,24";
+  const tiers = [...new Set(source.split(",").map(Number))];
+  assert(tiers.length > 0 && tiers.length <= 8, "Invalid APPSTRUCT_BENCH_CONCURRENCIES");
+  assert(tiers.every((value) => Number.isInteger(value) && value > 0 && value <= 64),
+    "Invalid APPSTRUCT_BENCH_CONCURRENCIES");
+  return tiers;
+}
+const profile = process.env.APPSTRUCT_BENCH_PROFILE ?? "release";
+assert(["debug", "release"].includes(profile), "Invalid APPSTRUCT_BENCH_PROFILE");
+const rows = option("APPSTRUCT_BENCH_ROWS", 25000, 1000000);
+const iterations = option("APPSTRUCT_BENCH_ITERATIONS", 200, 10000);
+const concurrencies = concurrencyTiers();
+const mixedSeconds = option("APPSTRUCT_BENCH_MIXED_SECONDS", 15, 300);
+const budgetOverride = process.env.APPSTRUCT_BENCH_P95_MS === undefined
+  ? undefined : option("APPSTRUCT_BENCH_P95_MS", 1, 60000);
 const cookies = new Map();
 let csrf;
 async function request(path, init = {}) {
@@ -76,7 +90,12 @@ await otherTenant.arrayBuffer();
 
 const phases = [];
 function quantile(values, fraction) { return values[Math.max(0, Math.ceil(values.length * fraction) - 1)] ?? 0; }
-async function phase(name, operation) {
+function latencyBudget(name) {
+  if (budgetOverride !== undefined) return budgetOverride;
+  const releaseBudget = name === "audited_crud" ? 1000 : name === "mixed_sustained" ? 750 : 500;
+  return profile === "release" ? releaseBudget : releaseBudget * 2;
+}
+async function phase(name, concurrency, operation) {
   for (let i = 0; i < 5; i++) await operation(-i - 1);
   const durations = [];
   const errors = [];
@@ -91,38 +110,61 @@ async function phase(name, operation) {
     }
   }));
   const elapsed = performance.now() - started;
-  durations.sort((a, b) => a - b);
-  phases.push({ name, operations: iterations, errors: errors.length,
-    error_examples: [...new Set(errors)].slice(0, 3), error_rate: errors.length / iterations,
-    operations_per_second: iterations / (elapsed / 1000),
-    p50_ms: quantile(durations, 0.5), p95_ms: quantile(durations, 0.95),
-    p99_ms: quantile(durations, 0.99), max_ms: durations.at(-1) });
-  console.log(`${name}: ${phases.at(-1).p95_ms.toFixed(1)} ms p95, ${errors.length}/${iterations} errors`);
+  recordPhase(name, concurrency, durations, errors, elapsed, iterations);
 }
-await phase("offset_list", async (i) => {
+async function sustainedPhase(name, concurrency, seconds, operation) {
+  for (let i = 0; i < 5; i++) await operation(-i - 1);
+  const durations = [];
+  const errors = [];
+  let next = 0;
+  const started = performance.now();
+  const deadline = started + seconds * 1000;
+  await Promise.all(Array.from({ length: concurrency }, async () => {
+    while (performance.now() < deadline) {
+      const iteration = next++;
+      const start = performance.now();
+      try { await operation(iteration); } catch (error) { errors.push(String(error.message)); }
+      durations.push(performance.now() - start);
+    }
+  }));
+  const elapsed = performance.now() - started;
+  assert(durations.length >= concurrency, "Sustained phase completed too few operations");
+  recordPhase(name, concurrency, durations, errors, elapsed, durations.length);
+}
+function recordPhase(name, concurrency, durations, errors, elapsed, operations) {
+  durations.sort((a, b) => a - b);
+  phases.push({ name, concurrency, operations, errors: errors.length,
+    error_examples: [...new Set(errors)].slice(0, 3), error_rate: errors.length / operations,
+    operations_per_second: operations / (elapsed / 1000),
+    p50_ms: quantile(durations, 0.5), p95_ms: quantile(durations, 0.95),
+    p99_ms: quantile(durations, 0.99), max_ms: durations.at(-1),
+    p95_budget_ms: latencyBudget(name) });
+  console.log(`${name} c${concurrency}: ${phases.at(-1).p95_ms.toFixed(1)} ms p95, ${errors.length}/${operations} errors`);
+}
+const offsetList = async (i) => {
   const page = 1 + Math.abs(i) % Math.max(1, Math.ceil(rows / 25));
   const data = await json(`/api/entries/?page_size=25&page=${page}&sort=code`, { headers });
   assert.equal(data.meta.total, rows);
   assert(data.data.every((entry) => entry.tenant_id === alpha));
-});
+};
 const cursorPage = await json("/api/entries/?limit=25", { headers });
-await phase("cursor_list", async () => {
+const cursorList = async () => {
   const params = new URLSearchParams({ limit: "25" });
   if (cursorPage.meta.next_cursor) params.set("cursor", cursorPage.meta.next_cursor);
   const data = await json(`/api/entries/?${params}`, { headers });
   assert(data.data.length > 0 && data.data.every((entry) => entry.tenant_id === alpha));
-});
-await phase("aggregate_count", async () => {
+};
+const aggregateCount = async () => {
   const data = await json("/api/entries/_aggregate?metrics=count", { headers });
   assert.equal(data.data[0].count, rows);
-});
-await phase("read", async () => {
+};
+const read = async () => {
   const data = await json(`/api/entries/${sample.id}`, { headers });
   assert.equal(data.secret, "restricted-alpha");
-});
-await phase("audited_crud", async (i) => {
+};
+const auditedCrud = (prefix) => async (i) => {
   const record = await json("/api/entries/", { headers, method: "POST",
-    body: JSON.stringify({ code: `write-${i}`, title: "Benchmark write", secret: "write" }) });
+    body: JSON.stringify({ code: `${prefix}-${i}`, title: "Benchmark write", secret: "write" }) });
   const changed = await json(`/api/entries/${record.id}`, { method: "PATCH",
     headers: { ...headers, "If-Match": `"rev-${record.revision}"` }, body: JSON.stringify({ title: "Updated" }) });
   assert.equal(changed.title, "Updated");
@@ -130,6 +172,25 @@ await phase("audited_crud", async (i) => {
     headers: { ...headers, "If-Match": `"rev-${changed.revision}"` } });
   assert(deleted.ok);
   await deleted.arrayBuffer();
+};
+for (const concurrency of concurrencies) {
+  await phase("offset_list", concurrency, offsetList);
+  await phase("cursor_list", concurrency, cursorList);
+  await phase("aggregate_count", concurrency, aggregateCount);
+  await phase("read", concurrency, read);
+  await phase("audited_crud", concurrency, auditedCrud(`write-c${concurrency}`));
+}
+const mixedCrud = auditedCrud("mixed-write");
+await sustainedPhase("mixed_sustained", Math.max(...concurrencies), mixedSeconds, async (i) => {
+  switch (Math.abs(i) % 10) {
+    case 0: return mixedCrud(i);
+    case 1:
+    case 2: return aggregateCount();
+    case 3:
+    case 4:
+    case 5: return cursorList();
+    default: return read();
+  }
 });
 
 for (let i = 0; i < 100; i++) {
@@ -147,10 +208,12 @@ assert(!metrics.includes(alpha) && !metrics.includes(sample.id) && !metrics.incl
 const distinctLabels = metrics.split("\n").filter((line) => line.startsWith("appstruct_http_request_duration_seconds_count{"));
 assert(distinctLabels.length < 30, "Request IDs must not create distinct metric labels");
 await mkdir(dirname(output), { recursive: true });
-await writeFile(output, `${JSON.stringify({ schema_version: 1, generated_at: new Date().toISOString(),
-  environment: { platform: platform(), arch: arch(), cpu: cpus()[0]?.model, node: process.version, postgres: postgresVersion, build_profile: "debug" },
-  workload: { rows_per_tenant: rows, tenants: 2, concurrency, iterations, warmup_per_phase: 5 },
-  p95_budget_ms: budget, metrics_label_sets: distinctLabels.length, phases }, null, 2)}\n`);
+await writeFile(output, `${JSON.stringify({ schema_version: 2, generated_at: new Date().toISOString(),
+  environment: { platform: platform(), arch: arch(), cpu: cpus()[0]?.model, node: process.version, postgres: postgresVersion, build_profile: profile },
+  workload: { rows_per_tenant: rows, tenants: 2, concurrency_tiers: concurrencies, iterations_per_phase: iterations,
+    mixed_sustained_seconds: mixedSeconds, warmup_per_phase: 5 },
+  metrics_label_sets: distinctLabels.length, phases }, null, 2)}\n`);
 await writeFile(`${output}.prom`, metrics);
-assert(phases.every((result) => result.errors === 0 && result.p95_ms <= budget), "Workload failed its correctness or latency budget");
+assert(phases.every((result) => result.errors === 0 && result.p95_ms <= result.p95_budget_ms),
+  "Workload failed its correctness or latency budget");
 console.log(`PostgreSQL API benchmark passed; results: ${output}`);

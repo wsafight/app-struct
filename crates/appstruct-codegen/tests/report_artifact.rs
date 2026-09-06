@@ -102,6 +102,10 @@ fn chromium_adapter_is_packaged_and_generated_backend_compiles() {
     assert!(
         artifact_text(&artifacts, "backend/src/report/adapter.rs").contains("validate_response")
     );
+    let renderer = artifact_text(&artifacts, "report-renderer/render.mjs");
+    assert!(renderer.contains("createRenderer"));
+    assert!(renderer.contains("APPSTRUCT_RENDERER_RECYCLE_AFTER"));
+    assert!(renderer.contains("browser.newContext"));
     let temporary = tempfile::tempdir().unwrap();
     for artifact in artifacts {
         let destination = temporary

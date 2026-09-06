@@ -88,6 +88,10 @@ fn assert_backend_contracts(artifacts: &[Artifact]) {
     assert!(jobs.contains("SupervisedTaskHandle::spawn"));
     assert!(jobs.contains("APPSTRUCT_JOB_CONCURRENCY"));
     assert!(jobs.contains("tokio::task::JoinSet"));
+    assert!(jobs.contains("let mut idle_delay = base_delay"));
+    assert!(jobs.contains("let max_delay"));
+    assert!(jobs.contains("saturating_mul"));
+    assert!(jobs.contains("next_schedule_check"));
     assert!(!jobs.contains("WorkerExitGuard"));
     assert!(jobs.contains("pub async fn shutdown"));
     assert!(jobs.contains("pub fn for_kind"));
@@ -95,7 +99,14 @@ fn assert_backend_contracts(artifacts: &[Artifact]) {
     assert!(jobs.contains("impl JobHandler for MailJobHandler"));
     assert!(webhooks.contains("APPSTRUCT_WEBHOOK_CONCURRENCY"));
     assert!(webhooks.contains("tokio::task::JoinSet"));
+    assert!(webhooks.contains("let mut idle_delay = base_delay"));
+    assert!(webhooks.contains("let max_delay"));
+    assert!(webhooks.contains("saturating_mul"));
     assert!(webhooks.contains("client: self.client.clone()"));
+    assert!(realtime.contains("last_cleanup.elapsed() >= Duration::from_secs(60)"));
+    assert!(realtime.contains("let mut idle_delay = base_delay"));
+    assert!(realtime.contains("let max_delay"));
+    assert!(realtime.contains("saturating_mul"));
     let session = artifact_text(artifacts, "backend/src/auth/session.rs");
     assert!(session.contains("value.starts_with(\"Bearer \")"));
 }

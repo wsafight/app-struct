@@ -315,6 +315,45 @@ fn generation_is_byte_deterministic_across_project_directories() {
     assert_directories_equal(&first.join("generated"), &second.join("generated"));
 }
 
+#[test]
+fn generation_reuses_persistent_format_caches_after_an_incremental_change() {
+    let project = temporary_project("m2-project");
+    let initial = run(&project, &["generate", "--timings", "--format", "json"]);
+    assert!(
+        initial.status.success(),
+        "{}",
+        String::from_utf8_lossy(&initial.stderr)
+    );
+
+    let spec_path = project.join("spec/project.yaml");
+    let spec = fs::read_to_string(&spec_path).unwrap();
+    fs::write(
+        &spec_path,
+        spec.replacen(
+            "      created_at:\n",
+            "      notes:\n        type: text\n      created_at:\n",
+            1,
+        ),
+    )
+    .unwrap();
+    let incremental = run(&project, &["generate", "--timings", "--format", "json"]);
+    assert!(
+        incremental.status.success(),
+        "{}",
+        String::from_utf8_lossy(&incremental.stderr)
+    );
+    let report: Value = serde_json::from_slice(&incremental.stdout).unwrap();
+    let rustfmt = &report["result"]["timings"]["codegen"]["rustfmt"];
+    let prettier = &report["result"]["timings"]["web_format"];
+
+    assert!(rustfmt["persistent_hits"].as_u64().unwrap() > 0);
+    assert!(rustfmt["misses"].as_u64().unwrap() > 0);
+    assert!(prettier["persistent_hits"].as_u64().unwrap() > 0);
+    assert!(prettier["misses"].as_u64().unwrap() > 0);
+    assert!(project.join(".appstruct/cache/rustfmt-v1").is_dir());
+    assert!(project.join(".appstruct/cache/web-format-v1").is_dir());
+}
+
 fn temporary_project(fixture: &str) -> PathBuf {
     let source = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/fixtures")

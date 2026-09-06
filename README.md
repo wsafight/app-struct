@@ -150,7 +150,7 @@ as an operations preview with Jobs recovery controls; Billing is not part of pre
 appstruct new <name> --template minimal|dashboard|saas
 appstruct schema
 appstruct check [--deny-warnings] [--format text|json]
-appstruct generate [--check]
+appstruct generate [--check] [--timings]
 appstruct migrate plan|dev|lint|apply|status
 appstruct dev [--api-port <port>] [--web-port <port>]
 appstruct build
@@ -160,6 +160,11 @@ appstruct auth bootstrap-admin --email <address>
 appstruct preset show [--expanded]
 appstruct update
 ```
+
+Generation keeps content-addressed rustfmt and Prettier results under `.appstruct/cache/`, so a
+changed App Spec only reformats affected artifacts. Run `appstruct generate --timings` to inspect
+compiler, planner, formatter, cache-hit, and output costs; JSON output includes the same data under
+`result.timings`.
 
 `migrate plan` is read-only. `migrate dev --accept` creates and optionally applies only
 non-destructive online migrations. Production deployment uses `migrate status` followed by

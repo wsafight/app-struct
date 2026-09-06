@@ -148,7 +148,10 @@ fn fanout() -> TokenStream {
     quote! {
         async fn fanout_events(inner: std::sync::Weak<RealtimeInner>) {
             let mut sequence = None;
-            let mut idle_iterations = 0_u16;
+            let base_delay = Duration::from_millis(100);
+            let max_delay = Duration::from_secs(2);
+            let mut idle_delay = base_delay;
+            let mut last_cleanup = tokio::time::Instant::now();
             loop {
                 let Some(inner) = inner.upgrade() else { break };
                 let Some(database) = inner.database.clone() else { break };
@@ -172,17 +175,22 @@ fn fanout() -> TokenStream {
                             sequence = Some(next_sequence);
                             if event_source != source_id { let _ = sender.send(event); }
                         }
-                        if count == 256 { continue; }
+                        if count > 0 {
+                            idle_delay = base_delay;
+                            if count == 256 { continue; }
+                        }
                     }
                     Err(error) => tracing::warn!(?error, "realtime fan-out poll failed"),
                 }
-                idle_iterations = idle_iterations.wrapping_add(1);
-                if idle_iterations % 600 == 0 {
+                if last_cleanup.elapsed() >= Duration::from_secs(60) {
                     let _ = database.execute_unprepared(
                         "DELETE FROM \"_appstruct_realtime_events\" WHERE occurred_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes'",
                     ).await;
+                    last_cleanup = tokio::time::Instant::now();
                 }
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                let sleep_for = idle_delay;
+                idle_delay = idle_delay.saturating_mul(2).min(max_delay);
+                tokio::time::sleep(sleep_for).await;
             }
         }
 
