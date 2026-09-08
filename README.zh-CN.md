@@ -252,8 +252,8 @@ scripts/run-template-build.sh
 ```
 
 需要 PostgreSQL 的浏览器测试使用独立测试数据库，并通过对应的 `scripts/run-*-e2e.sh` 脚本
-执行。CI 与发布流程会在 Node 24 和 25 上检查生成 Web 的生产依赖、格式、测试、类型和构建，
-并在构建发布二进制前运行完整 PostgreSQL E2E 矩阵。
+执行。GitHub Actions 只构建并部署文档站点；模板、质量和 PostgreSQL 检查都在本地运行。
+`scripts/run-template-build.sh` 会检查生成 Web 的生产依赖、格式、测试、类型和构建。
 
 专用生成后端、覆盖率和打包 target 会占用较多空间。`scripts/clean-test-artifacts.sh` 仅清理这些
 可丢弃目录；传入 `--all` 时才会通过 `cargo clean` 清理整个 workspace 构建缓存。

@@ -7,7 +7,7 @@ npm ci
 npm run dev
 ```
 
-开发服务器监听 `http://127.0.0.1:4321`。生产校验会运行类型检查、静态构建、Pagefind 索引和内部链接检查：
+开发服务器监听 `http://127.0.0.1:4321`。类型检查、Playwright 测试和链接检查都在本地运行。GitHub Actions 只构建静态站点并部署 GitHub Pages：
 
 ```bash
 npm run check
@@ -16,4 +16,4 @@ npx playwright install chromium
 npm test
 ```
 
-`DOCS_SITE` 覆盖规范站点 origin，`DOCS_BASE` 覆盖部署路径。未设置这些变量时，GitHub Actions 会根据 `GITHUB_REPOSITORY` 推导 GitHub Pages 路径。
+`DOCS_SITE` 覆盖规范站点 origin，`DOCS_BASE` 覆盖部署路径。未设置这些变量时，Pages 工作流会根据 `GITHUB_REPOSITORY` 推导路径。

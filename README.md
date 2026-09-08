@@ -275,10 +275,10 @@ APPSTRUCT_E2E_DATABASE_URL='postgresql://user:password@127.0.0.1/appstruct_opera
   scripts/run-operations-e2e.sh
 ```
 
-The CI and release workflows run `scripts/run-template-build.sh` on Node 24 and 25 for the minimal,
-dashboard and SaaS templates. It verifies production dependency advisories, generated Web formatting, tests,
-TypeScript types, and the Vite production bundle without requiring a database. Releases also run
-the complete PostgreSQL E2E matrix before building binaries.
+GitHub Actions only builds and deploys the documentation site. Run template, quality, and
+PostgreSQL gates locally. `scripts/run-template-build.sh` checks the minimal, dashboard and SaaS
+templates: production dependency advisories, generated Web formatting, tests, TypeScript types, and
+the Vite production bundle, without requiring a database.
 
 Generated backends include bounded HTTP and job metrics. A two-tenant PostgreSQL workload measures
 list, cursor, aggregate, read and audited CRUD latency; see [observability](docs/observability.md).

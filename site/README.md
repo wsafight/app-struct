@@ -10,8 +10,8 @@ npm ci
 npm run dev
 ```
 
-The development server listens on `http://127.0.0.1:4321`. Production validation runs type checks,
-the static build, Pagefind indexing, and internal link checks:
+The development server listens on `http://127.0.0.1:4321`. Type checks, Playwright tests, and
+link checks stay local. GitHub Actions only builds the static site and deploys GitHub Pages:
 
 ```bash
 npm run check
@@ -21,6 +21,6 @@ npm test
 ```
 
 `DOCS_SITE` overrides the canonical origin and `DOCS_BASE` overrides the deployment path. Without
-those variables, GitHub Actions derives the project Pages path from `GITHUB_REPOSITORY`.
+those variables, the Pages workflow derives the project path from `GITHUB_REPOSITORY`.
 
 中文说明见 [README.zh-CN.md](README.zh-CN.md)。

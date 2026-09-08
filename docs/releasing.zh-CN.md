@@ -66,11 +66,11 @@ appstruct-codegen
 appstruct-cli
 ```
 
-对每个包使用 `cargo publish -p <package> --locked`。二进制包名是 `appstruct-cli`，安装后的可执行文件是 `appstruct`。发布不由二进制发布 workflow 自动化，因此源码标签不能消费 crates.io 凭据。
+对每个包使用 `cargo publish -p <package> --locked`。二进制包名是 `appstruct-cli`，安装后的可执行文件是 `appstruct`。crates.io 发布仍由维护者手动执行，因此源码标签不能消费仓库凭据。
 
 ## 发布二进制
 
-创建并推送 `v<workspace-version>` 标签。`.github/workflows/release.yml` 首先运行依赖 advisory 检查、格式化、严格 Clippy、工作区测试、Node 24 和 25 上的生成 Web 构建，以及完整的 PostgreSQL E2E 矩阵。然后构建这些归档：
+GitHub Actions 只部署文档站点。请在本地完成发布：运行预检、`scripts/run-template-build.sh` 和 PostgreSQL E2E 矩阵，然后创建并推送 `v<workspace-version>` 标签，把这些归档附加到 GitHub release：
 
 ```text
 x86_64-unknown-linux-gnu
@@ -82,4 +82,4 @@ x86_64-apple-darwin
 x86_64-pc-windows-msvc
 ```
 
-Linux 和 macOS 发布是 `.tar.gz` 归档；Windows 是包含 `appstruct.exe` 的 `.zip` 归档。每个归档还包含根 README，并有同级 `.sha256` 文件。workflow 会拒绝版本与 Cargo 元数据不匹配的标签，并且仅在所有质量、模板和 E2E 作业成功后上传产物。在宣布之前，检查已创建的 GitHub release 并测试一次全新安装。
+Linux 和 macOS 发布是 `.tar.gz` 归档；Windows 是包含 `appstruct.exe` 的 `.zip` 归档。每个归档还包含根 README，并有同级 `.sha256` 文件。标签版本必须与 Cargo 元数据一致。在宣布之前，检查已创建的 GitHub release 并测试一次全新安装。

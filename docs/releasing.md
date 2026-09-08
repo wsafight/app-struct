@@ -80,14 +80,14 @@ appstruct-cli
 ```
 
 Use `cargo publish -p <package> --locked` for each package. The binary package name is
-`appstruct-cli`, while the installed executable is `appstruct`. Publishing is not automated by the
-binary release workflow so a source tag cannot consume crates.io credentials.
+`appstruct-cli`, while the installed executable is `appstruct`. Crates.io publishing stays a
+manual maintainer action so a source tag cannot consume registry credentials.
 
 ## Publish Binaries
 
-Create and push a `v<workspace-version>` tag. `.github/workflows/release.yml` first runs dependency
-advisory checks, formatting, strict Clippy, workspace tests, generated Web builds on Node 24 and 25,
-and the complete PostgreSQL E2E matrix. It then builds these archives:
+GitHub Actions only deploys the documentation site. Cut a release locally: run the preflight
+checks, `scripts/run-template-build.sh`, and the PostgreSQL E2E matrix, then create and push a
+`v<workspace-version>` tag and attach these archives to the GitHub release:
 
 ```text
 x86_64-unknown-linux-gnu
@@ -100,7 +100,6 @@ x86_64-pc-windows-msvc
 ```
 
 Linux and macOS releases are `.tar.gz` archives; Windows is a `.zip` archive containing
-`appstruct.exe`. Each archive also contains the root README and has a sibling `.sha256` file. The
-workflow rejects a tag whose version does not match Cargo metadata and uploads artifacts only after
-all quality, template, and E2E jobs succeed. Inspect the created GitHub release and test one fresh
-installation before announcing it.
+`appstruct.exe`. Each archive also contains the root README and has a sibling `.sha256` file.
+Reject a tag whose version does not match Cargo metadata. Inspect the created GitHub release and
+test one fresh installation before announcing it.
