@@ -1,0 +1,28 @@
+---
+import BrandMark from './BrandMark.astro';
+import T from './T.astro';
+import {href} from '../catalog';
+import {githubRepo, ui} from '../i18n';
+const homeHref = href();
+---
+<footer class="site-footer">
+  <div class="section-inner footer-layout">
+    <div class="footer-brand">
+      <div class="footer-signature"><BrandMark size={30} /><strong>AppStruct</strong></div>
+      <p><T en="A configuration-driven Rust full-stack application generator." zh="配置驱动的 Rust 全栈应用生成器。" /></p>
+      <p class="footer-legal">© 2026 AppStruct contributors · MIT OR Apache-2.0 · v0.1.0</p>
+    </div>
+    <nav class="footer-nav" aria-label={ui.en.footerNav} data-i18n-aria="footerNav">
+      <a href={`${homeHref}#compiler`}><T en={ui.en.compiler} zh={ui.zh.compiler} /></a>
+      <a href={`${homeHref}#runtime`}><T en={ui.en.runtime} zh={ui.zh.runtime} /></a>
+      <a href={`${homeHref}#modules`}><T en={ui.en.modules} zh={ui.zh.modules} /></a>
+      <a href={`${homeHref}#delivery`}><T en={ui.en.delivery} zh={ui.zh.delivery} /></a>
+    </nav>
+    <nav class="footer-nav" aria-label="Resources">
+      <a href={href('docs')}><T en={ui.en.docs} zh={ui.zh.docs} /></a>
+      <a href={href('start/overview')}><T en={ui.en.quickStart} zh={ui.zh.quickStart} /></a>
+      <a href={href('project/roadmap')}><T en="Roadmap" zh="路线图" /></a>
+      <a href={githubRepo} target="_blank" rel="noopener noreferrer">GitHub</a>
+    </nav>
+  </div>
+</footer>

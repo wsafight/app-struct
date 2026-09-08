@@ -1,0 +1,18 @@
+---
+import Base from '../layouts/Base.astro';
+import BracketLink from '../components/BracketLink.astro';
+import T from '../components/T.astro';
+import {href} from '../catalog';
+import {pagesMeta} from '../i18n';
+import '../styles/home.css';
+---
+<Base title={pagesMeta.notFound.title.en} titleZh={pagesMeta.notFound.title.zh} description={pagesMeta.notFound.description.en} descriptionZh={pagesMeta.notFound.description.zh}>
+  <main id="main-content" class="not-found">
+    <div class="section-inner">
+      <p class="eyebrow">404 / NOT IN THE GRAPH</p>
+      <h1><T en="This route was not generated" zh="这条路由没有被生成" /></h1>
+      <p><T en="The page is missing, or the documentation path has changed." zh="请求的页面不存在，或文档路径已经变更。" /></p>
+      <BracketLink href={href()}><T en="Back to AppStruct" zh="返回 AppStruct" /></BracketLink>
+    </div>
+  </main>
+</Base>

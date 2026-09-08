@@ -1,0 +1,13 @@
+---
+import T from './T.astro';
+import {ui} from '../i18n';
+const pagefindUrl = `${import.meta.env.BASE_URL}pagefind/pagefind.js`;
+---
+<dialog class="search-dialog" id="search-dialog" aria-labelledby="search-title" data-pagefind-url={pagefindUrl}>
+  <form class="search-panel" method="dialog" data-search-root>
+    <h2 id="search-title" class="visually-hidden"><T en={ui.en.searchDocs} zh={ui.zh.searchDocs} /></h2>
+    <input type="search" name="q" placeholder={ui.en.searchDocs} aria-label={ui.en.searchDocs} data-search-input data-i18n-aria="searchDocs" data-i18n-placeholder="searchDocs" autocomplete="off" />
+    <div class="search-results" data-search-results></div>
+    <p class="search-empty" data-search-empty hidden><T en={ui.en.searchEmpty} zh={ui.zh.searchEmpty} /></p>
+  </form>
+</dialog>

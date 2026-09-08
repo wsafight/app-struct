@@ -20,3 +20,13 @@
 /playwright-report/
 /test-results/
 **/node_modules/
+
+# Documentation site build output.
+/site/.astro/
+/site/.generated/
+/site/dist/
+/site/previews/
+/site/public/source/
+/site/public/version.json
+/site/test-results/
+/site/playwright-report/

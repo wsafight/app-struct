@@ -1,0 +1,37 @@
+---
+import {getCollection} from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import DocSidebar from '../../components/DocSidebar.astro';
+import T from '../../components/T.astro';
+import {groupedPages, href, pages} from '../../catalog';
+import {pagesMeta} from '../../i18n';
+import '../../styles/docs.css';
+const docsEn = await getCollection('docsEn');
+const docsZh = await getCollection('docsZh');
+for (const page of pages) {
+  if (!docsEn.some(entry => entry.id === page.slug) || !docsZh.some(entry => entry.id === page.slug)) throw new Error(`Missing documentation entry for ${page.source}`);
+}
+---
+<Base title={pagesMeta.docs.title.en} titleZh={pagesMeta.docs.title.zh} description={pagesMeta.docs.description.en} descriptionZh={pagesMeta.docs.description.zh}>
+  <main id="main-content" class="docs-shell docs-index-shell" data-pagefind-ignore>
+    <DocSidebar />
+    <article class="docs-main">
+      <p class="docs-kicker">AppStruct / <T en="Documentation" zh="文档" /></p>
+      <h1><T en="Build from one source of truth" zh="从单一事实来源构建应用" /></h1>
+      <p class="docs-lead"><T en="Start with the overview, then follow the contracts for data, modules, generated UI, delivery, and production operations." zh="从概览开始，再按主题阅读数据、模块、生成 UI、交付与生产运维契约。" /></p>
+      <div class="docs-index">
+        {groupedPages.map(group => (
+          <section>
+            <h2>{group.number} / <T en={group.label.en} zh={group.label.zh} /></h2>
+            {group.pages.map(page => (
+              <a href={href(page.slug)}>
+                <strong><T en={page.title.en} zh={page.title.zh} /></strong>
+                <p><T en={page.description.en} zh={page.description.zh} /></p>
+              </a>
+            ))}
+          </section>
+        ))}
+      </div>
+    </article>
+  </main>
+</Base>

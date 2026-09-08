@@ -1,0 +1,30 @@
+{
+  "name": "appstruct-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "node scripts/prepare.mjs && astro dev --host 127.0.0.1",
+    "check": "node scripts/prepare.mjs && astro check",
+    "build": "node scripts/prepare.mjs && astro build && pagefind --site dist && node scripts/check-links.mjs",
+    "preview": "astro preview --host 127.0.0.1",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "3.7.3",
+    "@lucide/astro": "1.41.0",
+    "astro": "7.3.1",
+    "remark": "15.0.1",
+    "unist-util-visit": "5.1.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@playwright/test": "1.63.0",
+    "cheerio": "1.2.0",
+    "pagefind": "1.5.2",
+    "typescript": "5.9.3"
+  }
+}

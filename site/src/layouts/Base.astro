@@ -1,0 +1,55 @@
+---
+import '../styles/global.css';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import SearchDialog from '../components/SearchDialog.astro';
+interface Props { title: string; titleZh?: string; description: string; descriptionZh?: string; home?: boolean; }
+const {title, titleZh = title, description, descriptionZh = description, home = false} = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const english = new URL(Astro.url.pathname, Astro.site); english.searchParams.set('lang', 'en');
+const chinese = new URL(Astro.url.pathname, Astro.site); chinese.searchParams.set('lang', 'zh');
+---
+<!doctype html>
+<html lang="en" data-lang="en" data-theme="dark" data-title-en={title} data-title-zh={titleZh} data-desc-en={description} data-desc-zh={descriptionZh}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#101311" />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang="en" href={english} />
+    <link rel="alternate" hreflang="zh-CN" href={chinese} />
+    <link rel="alternate" hreflang="x-default" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content="AppStruct" />
+    <script is:inline>
+      (() => {
+        const query = new URLSearchParams(location.search).get('lang');
+        const lang = query === 'zh' || query === 'en' ? query : (localStorage.getItem('appstruct-lang') === 'zh' ? 'zh' : 'en');
+        if (query === 'zh' || query === 'en') localStorage.setItem('appstruct-lang', query);
+        const root = document.documentElement;
+        root.dataset.lang = lang;
+        root.lang = lang === 'zh' ? 'zh-CN' : 'en';
+        const title = root.getAttribute(lang === 'zh' ? 'data-title-zh' : 'data-title-en');
+        const description = root.getAttribute(lang === 'zh' ? 'data-desc-zh' : 'data-desc-en');
+        if (title) document.title = title;
+        const meta = document.querySelector('meta[name="description"]');
+        if (meta && description) meta.setAttribute('content', description);
+        const stored = localStorage.getItem('appstruct-theme');
+        root.dataset.theme = stored === 'light' || stored === 'dark' ? stored : (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      })();
+    </script>
+  </head>
+  <body class={home ? 'home' : 'docs-body'}>
+    <Header home={home} />
+    <SearchDialog />
+    <slot />
+    <Footer />
+    <script>import '../scripts/site.ts';</script>
+  </body>
+</html>

@@ -173,30 +173,66 @@ non-null changes without writing files; use `--deny-warnings` in CI to enforce o
 
 ## Documentation
 
+Each guide below has an English source and a Simplified Chinese translation
+(`*.zh-CN.md`). The static site in `site/` renders both languages; from the workspace
+root run `npm run site:dev`.
+
+### Start here
+
 - [Installation](docs/installation.md)
 - [Upgrading](docs/upgrading.md)
+
+### Build and delivery
+
 - [Deployment](docs/deployment.md)
+- [Releasing](docs/releasing.md)
+- [Migration lint](docs/migration-lint.md)
+- [Module registry](docs/module-registry.md)
+- [Delivery optimization](docs/optimization-progress.md)
+
+### Data modeling
+
 - [Generated resource queries](docs/data-querying.md)
 - [Lossless scalar values and datetime controls](docs/scalar-values.md)
-- [Headless Web controllers](docs/headless-controller.md)
 - [Schema indexes](docs/schema-indexes.md)
 - [Seed data](docs/seeding.md)
-- [Interval schedules](docs/schedules.md)
-- [Signed webhooks](docs/webhooks.md)
-- [Realtime events, presence, and edit leases](docs/realtime.md)
+- [Aggregate line items](docs/aggregate-line-items-rfc.md)
+- [Relation display](docs/relation-display.md)
+- [Soft delete and history](docs/soft-delete.md)
+- [Saved views](docs/saved-views.md)
+
+### Application design
+
+- [Headless Web controllers](docs/headless-controller.md)
+- [Business UI semantics](docs/business-ui-semantics.md)
+- [Bulk operations](docs/bulk-operations.md)
 - [Entity workflows](docs/workflows.md)
 - [Reports](docs/reports.md)
 - [Record activity](docs/activity.md)
-- [Business UI semantics](docs/business-ui-semantics.md)
-- [Saved views](docs/saved-views.md)
+
+### Platform modules
+
+- [Email verification](docs/email-verification.md)
+- [Organization invitations](docs/organization-invitations.md)
+- [OAuth and OIDC](docs/oauth-oidc.md)
+- [Personal API tokens](docs/personal-api-tokens.md)
+- [Realtime events, presence, and edit leases](docs/realtime.md)
+- [Interval schedules](docs/schedules.md)
+- [Signed webhooks](docs/webhooks.md)
+
+### Operations
+
 - [Operations Admin console](docs/admin-console.md)
-- [Operations Demo findings](docs/operations-demo-findings.md)
-- [Aggregate line items RFC](docs/aggregate-line-items-rfc.md)
+- [Metrics and database workloads](docs/observability.md)
+- [Chromium report renderer](docs/report-renderer.md)
 - [Production report renderer adapter RFC](docs/report-renderer-adapter-rfc.md)
-- [Releasing](docs/releasing.md)
+- [Operations Demo findings](docs/operations-demo-findings.md)
+
+### Project records
+
 - [Next product roadmap](docs/next-product-roadmap.md)
-- [Product requirements](PRODUCT.md)
-- [Technical design](TECHNICAL_DESIGN.md)
+- [Product requirements](PRODUCT.en.md)
+- [Technical design](TECHNICAL_DESIGN.en.md)
 
 The `references/` directory contains local research material and is intentionally excluded
 from version control and product commits.

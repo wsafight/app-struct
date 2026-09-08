@@ -2,7 +2,11 @@
   "name": "appstruct-workspace",
   "private": true,
   "scripts": {
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "site:dev": "npm --prefix site run dev",
+    "site:check": "npm --prefix site run check",
+    "site:build": "npm --prefix site run build",
+    "site:test": "npm --prefix site test"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

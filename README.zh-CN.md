@@ -161,12 +161,12 @@ Web 运行时采用固定且现代的 React 19 + TypeScript + Vite 基线，并�
 appstruct new <name> --template minimal|dashboard|saas
 appstruct schema
 appstruct check [--deny-warnings] [--format text|json]
-appstruct generate [--check]
+appstruct generate [--check] [--timings]
 appstruct migrate plan|dev|lint|apply|status
 appstruct dev [--api-port <port>] [--web-port <port>]
 appstruct build
 appstruct doctor [--format text|json]
-appstruct db pull [--schema <name>] [--output <project-relative-path>]
+appstruct db pull [--schema <name>] [--output <project-relative-path>] [--check | --diff]
 appstruct auth bootstrap-admin --email <address>
 appstruct preset show [--expanded]
 appstruct update
@@ -178,16 +178,63 @@ appstruct update
 
 ## 文档索引
 
-- [安装](docs/installation.md)
-- [部署](docs/deployment.md)
-- [升级](docs/upgrading.md)
-- [数据查询](docs/data-querying.md)
-- [Schema 索引](docs/schema-indexes.md)
-- [Seed 数据](docs/seeding.md)
-- [迁移检查](docs/migration-lint.md)
-- [发布流程](docs/releasing.md)
-- [产品路线图](docs/next-product-roadmap.md)
-- [产品需求](PRODUCT.md)
+下列指南均提供英文原文和简体中文译文（`*.zh-CN.md`）。`site/` 中的静态站点会同时渲染两种语言；在仓库根目录运行 `npm run site:dev`。
+
+### 开始使用
+
+- [安装](docs/installation.zh-CN.md)
+- [升级](docs/upgrading.zh-CN.md)
+
+### 构建与交付
+
+- [部署](docs/deployment.zh-CN.md)
+- [发布 AppStruct](docs/releasing.zh-CN.md)
+- [迁移检查](docs/migration-lint.zh-CN.md)
+- [模块注册表](docs/module-registry.zh-CN.md)
+- [交付优化](docs/optimization-progress.zh-CN.md)
+
+### 数据建模
+
+- [资源查询](docs/data-querying.zh-CN.md)
+- [标量值](docs/scalar-values.zh-CN.md)
+- [Schema 索引](docs/schema-indexes.zh-CN.md)
+- [Seed 数据](docs/seeding.zh-CN.md)
+- [聚合明细行](docs/aggregate-line-items-rfc.zh-CN.md)
+- [关系展示](docs/relation-display.zh-CN.md)
+- [软删除与历史](docs/soft-delete.zh-CN.md)
+- [保存视图](docs/saved-views.zh-CN.md)
+
+### 应用设计
+
+- [无头控制器](docs/headless-controller.zh-CN.md)
+- [业务 UI 语义](docs/business-ui-semantics.zh-CN.md)
+- [批量操作](docs/bulk-operations.zh-CN.md)
+- [实体工作流](docs/workflows.zh-CN.md)
+- [报表](docs/reports.zh-CN.md)
+- [记录动态](docs/activity.zh-CN.md)
+
+### 平台模块
+
+- [邮箱验证](docs/email-verification.zh-CN.md)
+- [组织邀请](docs/organization-invitations.zh-CN.md)
+- [OAuth 与 OIDC](docs/oauth-oidc.zh-CN.md)
+- [个人 API Token](docs/personal-api-tokens.zh-CN.md)
+- [实时事件与在线状态](docs/realtime.zh-CN.md)
+- [定时任务](docs/schedules.zh-CN.md)
+- [签名 Webhook](docs/webhooks.zh-CN.md)
+
+### 生产运维
+
+- [运维控制台](docs/admin-console.zh-CN.md)
+- [指标与数据库负载](docs/observability.zh-CN.md)
+- [Chromium 报表渲染器](docs/report-renderer.zh-CN.md)
+- [报表渲染适配器 RFC](docs/report-renderer-adapter-rfc.zh-CN.md)
+- [运维示例结论](docs/operations-demo-findings.zh-CN.md)
+
+### 项目记录
+
+- [产品路线图](docs/next-product-roadmap.zh-CN.md)
+- [产品基线](PRODUCT.md)
 - [技术设计](TECHNICAL_DESIGN.md)
 
 `references/` 是仅供本地研究使用的外部资料目录，已通过 `.gitignore` 排除，不属于产品提交。

@@ -1,0 +1,208 @@
+---
+import ArrowRight from '@lucide/astro/icons/arrow-right';
+import Box from '@lucide/astro/icons/box';
+import Database from '@lucide/astro/icons/database';
+import FileCode2 from '@lucide/astro/icons/file-code';
+import Gauge from '@lucide/astro/icons/gauge';
+import Layers3 from '@lucide/astro/icons/layers';
+import LockKeyhole from '@lucide/astro/icons/lock-keyhole';
+import Radio from '@lucide/astro/icons/radio';
+import RefreshCw from '@lucide/astro/icons/refresh-cw';
+import ShieldCheck from '@lucide/astro/icons/shield-check';
+import TerminalSquare from '@lucide/astro/icons/square-terminal';
+import Webhook from '@lucide/astro/icons/webhook';
+import Base from '../layouts/Base.astro';
+import BracketLink from '../components/BracketLink.astro';
+import T from '../components/T.astro';
+import {href} from '../catalog';
+import {pagesMeta} from '../i18n';
+import '../styles/home.css';
+
+const startHref = href('start/overview');
+const docsHref = href('docs');
+---
+<Base title={pagesMeta.home.title.en} titleZh={pagesMeta.home.title.zh} description={pagesMeta.home.description.en} descriptionZh={pagesMeta.home.description.zh} home>
+  <main id="main-content">
+    <section class="hero" id="top">
+      <div class="hero-graph" aria-hidden="true">
+        <div class="graph-axis graph-axis-x"></div>
+        <div class="graph-axis graph-axis-y"></div>
+        <div class="graph-node graph-spec"><FileCode2 size={16} /><span>APP SPEC</span></div>
+        <div class="graph-node graph-core"><span>IR</span><i></i></div>
+        <div class="graph-node graph-db"><Database size={16} /><span>POSTGRES</span></div>
+        <div class="graph-node graph-api"><TerminalSquare size={16} /><span>AXUM API</span></div>
+        <div class="graph-node graph-web"><Layers3 size={16} /><span>REACT WEB</span></div>
+        <div class="graph-line line-spec"></div>
+        <div class="graph-line line-db"></div>
+        <div class="graph-line line-api"></div>
+        <div class="graph-line line-web"></div>
+        <span class="graph-status">VALIDATED / DETERMINISTIC / EXTENSIBLE</span>
+      </div>
+      <div class="hero-inner section-inner">
+        <div class="hero-copy-block">
+          <p class="eyebrow"><T en="Configuration in. Production system out." zh="输入配置，生成生产系统。" /></p>
+          <h1>AppStruct</h1>
+          <p class="hero-statement"><T en="Compile one application spec into a type-safe Rust stack." zh="把一份应用规格，编译成类型安全的 Rust 全栈系统。" /></p>
+        </div>
+        <div class="hero-bottom">
+          <div class="hero-cta">
+            <BracketLink href={startHref}><T en="Build your first app" zh="构建第一个应用" /></BracketLink>
+            <a class="text-link" href={docsHref}><T en="Read the contracts" zh="阅读完整契约" /></a>
+          </div>
+          <p><T en="YAML becomes a typed IR, PostgreSQL migrations, an Axum backend, OpenAPI, a TypeScript client, and a React operations interface. Custom Rust and TypeScript stay yours." zh="YAML 被编译为类型化 IR、PostgreSQL 迁移、Axum 后端、OpenAPI、TypeScript 客户端与 React 管理界面；自定义 Rust 和 TypeScript 始终由你掌控。" /></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="compiler-section light-section" id="compiler">
+      <div class="section-inner">
+        <div class="section-heading split-heading">
+          <div>
+            <p class="eyebrow"><T en="01 / The application compiler" zh="01 / 应用编译器" /></p>
+            <h2><T en="Describe intent.<br>Compile the structure." zh="描述业务意图。<br>编译系统结构。" /></h2>
+          </div>
+          <p class="section-lede"><T en="Every generator consumes the same normalized IR. Schema, permissions, API contracts, and UI behavior do not drift into separate interpretations." zh="所有生成器消费同一份规范化 IR。Schema、权限、API 契约和 UI 行为不会各自解释、逐渐漂移。" /></p>
+        </div>
+        <div class="capability-panels">
+          <article class="capability-panel is-active">
+            <button class="capability-trigger" type="button">
+              <span>01</span><strong><T en="Validated intent" zh="可校验意图" /></strong>
+            </button>
+            <p><T en="References, access rules, field options, workflows, and module contracts fail early with source-aware diagnostics." zh="引用、访问规则、字段选项、工作流和模块契约会以源码定位诊断提前失败。" /></p>
+          </article>
+          <article class="capability-panel">
+            <button class="capability-trigger" type="button">
+              <span>02</span><strong><T en="One typed IR" zh="单一类型化 IR" /></strong>
+            </button>
+            <p><T en="The database, backend, OpenAPI, client, and UI manifest are planned from one stable intermediate representation." zh="数据库、后端、OpenAPI、客户端和 UI Manifest 都从同一份稳定中间表示规划。" /></p>
+          </article>
+          <article class="capability-panel">
+            <button class="capability-trigger" type="button">
+              <span>03</span><strong><T en="Owned generation" zh="受控生成" /></strong>
+            </button>
+            <p><T en="Content-addressed manifests protect generated files and keep user-owned Rust and React extensions outside the rewrite boundary." zh="内容寻址清单保护生成文件，并让用户维护的 Rust 与 React 扩展留在重写边界之外。" /></p>
+          </article>
+          <article class="capability-panel">
+            <button class="capability-trigger" type="button">
+              <span>04</span><strong><T en="Reviewable change" zh="可审查变更" /></strong>
+            </button>
+            <p><T en="Schema diffs classify destructive and locking work before migration files or production data can change." zh="Schema Diff 会在迁移文件或生产数据变更前识别破坏性与锁表操作。" /></p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="spec-section dark-section">
+      <div class="section-inner spec-layout">
+        <div class="section-heading">
+          <p class="eyebrow"><T en="02 / App Spec to artifacts" zh="02 / 从 App Spec 到产物" /></p>
+          <h2><T en="A small declaration.<br>A complete contract." zh="简洁的声明。<br>完整的契约。" /></h2>
+          <p class="section-lede"><T en="Start with an entity and its policy. Add modules only when the product needs them. The same spec keeps every layer aligned." zh="从实体及其策略开始，只在产品需要时加入模块。同一份规格持续对齐每一层。" /></p>
+        </div>
+        <div class="code-workbench">
+          <div class="workbench-tabs"><span class="is-current">spec/work.yaml</span><span>appstruct.yaml</span></div>
+          <pre><code><span class="code-key">entities</span>:
+  <span class="code-name">Project</span>:
+    <span class="code-key">tenant</span>: <span class="code-value">true</span>
+    <span class="code-key">audit</span>: <span class="code-value">true</span>
+    <span class="code-key">fields</span>:
+      <span class="code-name">name</span>: &#123; <span class="code-key">type</span>: string, <span class="code-key">required</span>: <span class="code-value">true</span> &#125;
+      <span class="code-name">status</span>:
+        <span class="code-key">type</span>: enum
+        <span class="code-key">values</span>: [planned, active, done]
+    <span class="code-key">access</span>:
+      <span class="code-key">read</span>: [member, admin]
+      <span class="code-key">write</span>: [admin]</code></pre>
+          <div class="build-log">
+            <span><i class="status-ok"></i>check</span>
+            <span><i class="status-ok"></i>typed IR v11</span>
+            <span><i class="status-ok"></i>7 artifacts</span>
+            <strong>518 ms</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="runtime-section light-section" id="runtime">
+      <div class="section-inner runtime-layout">
+        <div class="runtime-copy">
+          <p class="eyebrow"><T en="03 / Generated operations UI" zh="03 / 生成的业务管理界面" /></p>
+          <h2><T en="Useful on the first run.<br>Extensible on the hundredth." zh="首次运行即可使用。<br>长期迭代仍可扩展。" /></h2>
+          <ul class="feature-list">
+            <li><strong><T en="Access stays server-side" zh="权限以后端为准" /></strong><span><T en="Actor, tenant, field, and record policy are applied before data reaches the interface." zh="Actor、租户、字段与记录 Policy 都在数据到达界面前执行。" /></span></li>
+            <li><strong><T en="Dense business semantics" zh="紧凑的业务语义" /></strong><span><T en="Lists, filters, forms, relationships, workflows, bulk work, and activity share one resource contract." zh="列表、筛选、表单、关系、工作流、批量操作和动态共享同一资源契约。" /></span></li>
+            <li><strong><T en="Typed exits for custom work" zh="为自定义业务保留类型化出口" /></strong><span><T en="Commands, queries, Rust handlers, and React registry entries extend the generated baseline without editing it." zh="Command、Query、Rust Handler 与 React Registry 在不修改生成物的前提下扩展基线。" /></span></li>
+          </ul>
+        </div>
+        <div class="app-preview" aria-label="Generated AppStruct operations interface preview">
+          <div class="preview-topbar"><span class="preview-mark"><span class="preview-brand-dot"></span>AS</span><span>Northstar Ops</span><div><i></i><i></i><i></i></div></div>
+          <div class="preview-body">
+            <aside><strong>OPERATIONS</strong><span class="active">Overview</span><span>Projects</span><span>Tasks</span><span>Audit</span><span>Jobs</span></aside>
+            <div class="preview-main">
+              <div class="preview-title"><div><small>Workspace</small><strong>Projects</strong></div><button type="button">+ New project</button></div>
+              <div class="preview-metrics"><span><small>ACTIVE</small><strong>18</strong></span><span><small>DUE THIS WEEK</small><strong>7</strong></span><span><small>AT RISK</small><strong class="risk">2</strong></span></div>
+              <div class="preview-toolbar"><span>Search projects</span><b>All statuses</b><b>Owner</b></div>
+              <div class="preview-table">
+                <div class="preview-row table-head"><span>PROJECT</span><span>STATUS</span><span>OWNER</span><span>UPDATED</span></div>
+                <div class="preview-row"><span><i class="row-dot green"></i>Atlas migration</span><span><em class="active-status">Active</em></span><span>M. Chen</span><span>12 min</span></div>
+                <div class="preview-row"><span><i class="row-dot amber"></i>Partner portal</span><span><em>Planned</em></span><span>A. Shah</span><span>2 hr</span></div>
+                <div class="preview-row"><span><i class="row-dot green"></i>Billing audit</span><span><em class="active-status">Active</em></span><span>L. Wang</span><span>Yesterday</span></div>
+                <div class="preview-row"><span><i class="row-dot red"></i>Q4 reporting</span><span><em class="blocked-status">Blocked</em></span><span>S. Ito</span><span>Aug 28</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="modules-section dark-section" id="modules">
+      <div class="section-inner">
+        <div class="section-heading split-heading">
+          <div>
+            <p class="eyebrow"><T en="04 / Platform modules" zh="04 / 平台模块" /></p>
+            <h2><T en="Infrastructure that agrees<br>with your domain." zh="与业务模型保持一致的<br>平台能力。" /></h2>
+          </div>
+          <p class="section-lede"><T en="Capabilities enter the same compiler graph, migration plan, runtime lifecycle, OpenAPI contract, and generated interface." zh="平台能力进入同一份编译图、迁移计划、运行时生命周期、OpenAPI 契约与生成界面。" /></p>
+        </div>
+        <div class="module-grid">
+          <article><ShieldCheck size={21} /><strong><T en="Auth + RBAC" zh="认证 + RBAC" /></strong><span><T en="Sessions, CSRF, roles, field access" zh="会话、CSRF、角色、字段权限" /></span></article>
+          <article><Layers3 size={21} /><strong><T en="Tenant" zh="租户" /></strong><span><T en="Memberships, invites, isolation" zh="成员关系、邀请、数据隔离" /></span></article>
+          <article><RefreshCw size={21} /><strong><T en="Jobs" zh="后台任务" /></strong><span><T en="Durable work, retry, replay" zh="持久任务、重试、重放" /></span></article>
+          <article><Webhook size={21} /><strong><T en="Webhooks" zh="Webhook" /></strong><span><T en="Signed delivery and outbox" zh="签名投递与 Outbox" /></span></article>
+          <article><Radio size={21} /><strong><T en="Realtime" zh="实时能力" /></strong><span><T en="SSE, presence, edit leases" zh="SSE、在线状态、编辑租约" /></span></article>
+          <article><Box size={21} /><strong><T en="Files + Mail" zh="文件 + 邮件" /></strong><span><T en="Provider boundaries, local capture" zh="Provider 边界、本地捕获" /></span></article>
+          <article><Gauge size={21} /><strong><T en="Admin" zh="运维控制台" /></strong><span><T en="Health, queues, recovery" zh="健康、队列、恢复操作" /></span></article>
+          <article><LockKeyhole size={21} /><strong><T en="Audit" zh="审计" /></strong><span><T en="Transactional snapshots and activity" zh="事务化快照与记录动态" /></span></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="delivery-section light-section" id="delivery">
+      <div class="section-inner delivery-layout">
+        <div>
+          <p class="eyebrow"><T en="05 / Development to production" zh="05 / 从开发到生产" /></p>
+          <h2><T en="Explicit where<br>it matters." zh="关键环节，<br>保持显式。" /></h2>
+        </div>
+        <ol class="delivery-steps">
+          <li><span>01</span><div><strong><T en="Develop as one system" zh="把开发环境作为一个系统" /></strong><p><T en="One command coordinates PostgreSQL, generation, the Rust API, and Vite, then cleans up the complete process tree." zh="一条命令协调 PostgreSQL、生成、Rust API 与 Vite，并完整清理进程树。" /></p></div></li>
+          <li><span>02</span><div><strong><T en="Review the database plan" zh="审查数据库计划" /></strong><p><T en="Plan and lint are read-only. Risky changes stop before SQL is accepted or applied." zh="Plan 与 Lint 保持只读；高风险变更在 SQL 被接受或应用前停止。" /></p></div></li>
+          <li><span>03</span><div><strong><T en="Ship immutable artifacts" zh="交付不可变产物" /></strong><p><T en="Production startup never migrates implicitly. Status and apply run as a dedicated release job." zh="生产启动永不隐式迁移；Status 与 Apply 在独立发布任务中执行。" /></p></div></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="final-cta dark-section">
+      <div class="section-inner final-layout">
+        <div>
+          <p class="eyebrow">APPSTRUCT / TECHNICAL PREVIEW / 0.1.0</p>
+          <h2><T en="Define the business.<br>Generate the baseline." zh="定义业务。<br>生成可靠基线。" /></h2>
+        </div>
+        <div class="final-action">
+          <p><T en="Build the CLI from the pinned workspace, create a dashboard project, and keep the hard parts in typed extension code." zh="从固定工具链构建 CLI，创建 Dashboard 项目，并把复杂业务保留在类型化扩展代码中。" /></p>
+          <BracketLink href={startHref}><T en="Open the quick start" zh="打开快速开始" /> <ArrowRight size={15} /></BracketLink>
+          <span>Rust 1.98 · PostgreSQL 17 · React 19 · Node 24</span>
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>

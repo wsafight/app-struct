@@ -1,0 +1,51 @@
+---
+import {getCollection, render, type CollectionEntry} from 'astro:content';
+import Base from '../layouts/Base.astro';
+import DocSidebar from '../components/DocSidebar.astro';
+import TableOfContents from '../components/TableOfContents.astro';
+import T from '../components/T.astro';
+import {groups, href, neighbors, pages, type DocPage} from '../catalog';
+import '../styles/docs.css';
+
+export async function getStaticPaths() {
+  const docsEn = await getCollection('docsEn');
+  const docsZh = await getCollection('docsZh');
+  return pages.map(page => {
+    const entryEn = docsEn.find(item => item.id === page.slug);
+    const entryZh = docsZh.find(item => item.id === page.slug);
+    if (!entryEn || !entryZh) throw new Error(`Missing documentation entry for ${page.source}`);
+    return {params: {slug: page.slug}, props: {page, entryEn, entryZh}};
+  });
+}
+
+interface Props { page: DocPage; entryEn: CollectionEntry<'docsEn'>; entryZh: CollectionEntry<'docsZh'>; }
+const {page, entryEn, entryZh} = Astro.props;
+const {Content: ContentEn, headings: headingsEn} = await render(entryEn);
+const {Content: ContentZh, headings: headingsZh} = await render(entryZh);
+const group = groups.find(item => item.id === page.group);
+const {previous, next} = neighbors(page.slug);
+const sourceHrefEn = `${import.meta.env.BASE_URL}source/${page.source}`;
+const sourceHrefZh = `${import.meta.env.BASE_URL}source/${page.translation || page.source}`;
+---
+<Base title={`${page.title.en} - AppStruct`} titleZh={`${page.title.zh} - AppStruct`} description={page.description.en} descriptionZh={page.description.zh}>
+  <main id="main-content" class="docs-shell">
+    <DocSidebar current={page.slug} />
+    <article class="docs-main" data-pagefind-body data-pagefind-meta={`title:${page.title.en}`}>
+      <p class="docs-kicker">{group?.number} / {group && <T en={group.label.en} zh={group.label.zh} />}</p>
+      <h1><T en={page.title.en} zh={page.title.zh} /></h1>
+      <p class="docs-lead"><T en={page.description.en} zh={page.description.zh} /></p>
+      <a class="docs-source i18n-en" href={sourceHrefEn}>View source · {page.source}</a>
+      <a class="docs-source i18n-zh" href={sourceHrefZh}>查看原文 · {page.translation || page.source}</a>
+      <div class="prose i18n-en"><ContentEn /></div>
+      <div class="prose i18n-zh"><ContentZh /></div>
+      <nav class="docs-pager" aria-label="Adjacent pages" data-i18n-aria="pager">
+        {previous ? <a href={href(previous.slug)}><span><T en="Previous" zh="上一篇" /></span><strong><T en={previous.title.en} zh={previous.title.zh} /></strong></a> : <span></span>}
+        {next ? <a href={href(next.slug)}><span><T en="Next" zh="下一篇" /></span><strong><T en={next.title.en} zh={next.title.zh} /></strong></a> : <span></span>}
+      </nav>
+    </article>
+    <div class="docs-toc-stack">
+      <TableOfContents headings={headingsEn} lang="en" />
+      <TableOfContents headings={headingsZh} lang="zh" />
+    </div>
+  </main>
+</Base>
