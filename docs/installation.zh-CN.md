@@ -2,6 +2,14 @@
 
 AppStruct 可以从源码检出安装。发布自动化会打包带校验和的 macOS/Linux/Windows 归档以及版本固定的安装器。技术预览阶段不假定已有公开发布；在标签及其资源发布之前，请使用源码安装。
 
+本页用于安装 CLI 并创建第一个项目。应用已经存在时看 [升级](upgrading.zh-CN.md)；发布不可变产物时看 [部署](deployment.zh-CN.md)。
+
+## 选择路径
+
+1. **源码安装 CLI** — 技术预览阶段的默认方式。
+2. **已发布安装器** — 仅在 GitHub Release 提供带校验和的归档之后使用。
+3. **第一个应用** — `minimal` 连接你已有的 PostgreSQL；`dashboard` 和 `saas` 可通过 Docker Compose 托管数据库。
+
 ## 环境要求
 
 | 依赖 | 所需版本 | 用途 |
@@ -171,3 +179,9 @@ appstruct check --deny-warnings
 - 已应用的迁移校验和或实时 PostgreSQL schema 发生漂移。
 
 运行 `appstruct migrate status` 查看迁移历史和漂移详情。AppStruct 不会自动修复校验和、脏历史或 catalog 漂移。
+
+## 下一步
+
+- [升级](upgrading.zh-CN.md)：同步升级 CLI、生成代码和数据库
+- [部署](deployment.zh-CN.md)：构建不可变产物并显式执行 migrate apply
+- [迁移检查](migration-lint.zh-CN.md)：接受 Schema 变更前的只读风险检查

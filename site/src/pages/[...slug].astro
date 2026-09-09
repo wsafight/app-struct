@@ -5,6 +5,7 @@ import DocSidebar from '../components/DocSidebar.astro';
 import TableOfContents from '../components/TableOfContents.astro';
 import T from '../components/T.astro';
 import {groups, href, neighbors, pages, type DocPage} from '../catalog';
+import {ui} from '../i18n';
 import '../styles/docs.css';
 
 export async function getStaticPaths() {
@@ -26,10 +27,23 @@ const group = groups.find(item => item.id === page.group);
 const {previous, next} = neighbors(page.slug);
 const sourceHrefEn = `${import.meta.env.BASE_URL}source/${page.source}`;
 const sourceHrefZh = `${import.meta.env.BASE_URL}source/${page.translation || page.source}`;
+const outline = (headings: typeof headingsEn) => headings.filter(heading => heading.depth === 2 || heading.depth === 3);
+const hasToc = outline(headingsEn).length > 0 || outline(headingsZh).length > 0;
 ---
 <Base title={`${page.title.en} - AppStruct`} titleZh={`${page.title.zh} - AppStruct`} description={page.description.en} descriptionZh={page.description.zh}>
   <main id="main-content" class="docs-shell">
-    <DocSidebar current={page.slug} />
+    <div class="docs-chrome">
+      <DocSidebar current={page.slug} />
+      {hasToc && (
+        <div class="docs-toc-stack">
+          <details class="docs-outline">
+            <summary><T en={ui.en.toc} zh={ui.zh.toc} /></summary>
+            <TableOfContents headings={headingsEn} lang="en" />
+            <TableOfContents headings={headingsZh} lang="zh" />
+          </details>
+        </div>
+      )}
+    </div>
     <article class="docs-main" data-pagefind-body data-pagefind-meta={`title:${page.title.en}`}>
       <p class="docs-kicker">{group?.number} / {group && <T en={group.label.en} zh={group.label.zh} />}</p>
       <h1><T en={page.title.en} zh={page.title.zh} /></h1>
@@ -43,9 +57,5 @@ const sourceHrefZh = `${import.meta.env.BASE_URL}source/${page.translation || pa
         {next ? <a href={href(next.slug)}><span><T en="Next" zh="下一篇" /></span><strong><T en={next.title.en} zh={next.title.zh} /></strong></a> : <span></span>}
       </nav>
     </article>
-    <div class="docs-toc-stack">
-      <TableOfContents headings={headingsEn} lang="en" />
-      <TableOfContents headings={headingsZh} lang="zh" />
-    </div>
   </main>
 </Base>

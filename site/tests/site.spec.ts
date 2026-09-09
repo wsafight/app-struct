@@ -29,10 +29,26 @@ test('navigation opens the documentation catalog', async ({page}, info) => {
 test('documentation renders source, contents, and adjacent pages', async ({page}, info) => {
   await page.goto(overview);
   await expect(page.getByRole('heading', {level: 1, name: 'Overview and quick start'})).toBeVisible();
-  await expect(page.getByText('AppStruct is a configuration-driven Rust full-stack application generator.')).toBeVisible();
+  await expect(page.locator('.prose.i18n-en p').first()).toContainText('AppStruct is a configuration-driven Rust full-stack application generator.');
+  await expect(page.locator('.prose.i18n-en').getByRole('link', {name: '简体中文'})).toHaveCount(0);
   await expect(page.getByRole('link', {name: /View source/})).toBeVisible();
-  if (info.project.name !== 'mobile') await expect(page.getByRole('navigation', {name: 'On this page'}).first()).toBeVisible();
+  if (info.project.name !== 'mobile') {
+    await expect(page.getByRole('navigation', {name: 'On this page'}).first()).toBeVisible();
+    await expect(page.locator('.prose.i18n-en h2 .heading-anchor').first()).toBeAttached();
+  } else {
+    await expect(page.locator('.docs-nav-panel summary')).toBeVisible();
+    await expect(page.getByRole('navigation', {name: 'Documentation'}).getByRole('link', {name: 'Installation'})).toBeHidden();
+    await page.locator('.docs-nav-panel summary').click();
+    await expect(page.getByRole('navigation', {name: 'Documentation'}).getByRole('link', {name: 'Installation'})).toBeVisible();
+  }
   await expect(page.getByRole('navigation', {name: 'Adjacent pages'}).getByRole('link', {name: /Installation/})).toBeVisible();
+});
+
+test('documentation header stays available while reading', async ({page}) => {
+  await page.goto(overview);
+  await page.evaluate(() => window.scrollTo(0, 1400));
+  await expect(page.locator('#site-header')).not.toHaveClass(/is-hidden/);
+  await expect(page.getByRole('button', {name: 'Search'})).toBeVisible();
 });
 
 test('search finds documentation by title', async ({page}) => {
@@ -40,7 +56,7 @@ test('search finds documentation by title', async ({page}) => {
   await page.getByRole('button', {name: 'Search'}).click();
   const dialog = page.getByRole('dialog', {name: 'Search docs'});
   await dialog.getByRole('searchbox', {name: 'Search docs'}).fill('Migration lint');
-  await expect(dialog.getByRole('link', {name: /Migration lint/})).toBeVisible();
+  await expect(dialog.locator('a[href*="/delivery/migration-lint/"]')).toBeVisible();
 });
 
 test('theme and language controls persist preferences', async ({page}) => {

@@ -2,7 +2,7 @@
 
 Generated resource collection endpoints support offset pagination for table-style navigation and
 cursor pagination for stable traversal of large result sets. Search and declared filters work in
-both modes.
+both modes. Use this page for the request, response, OpenAPI, and TypeScript client contracts.
 
 ## Offset pagination
 
@@ -148,3 +148,9 @@ api_key:
     read: { role: admin }
     write: { role: admin }
 ```
+
+## See also
+
+- [Scalar values](scalar-values.md) for bigint, decimal, and datetime JSON
+- [Saved views](saved-views.md) to persist list query state
+- [Relation display](relation-display.md) for batched lookup labels

@@ -1,7 +1,9 @@
 # Personal API Tokens
 
 Auth-enabled applications expose personal bearer tokens for scripts and automation. A token is
-created with a display name and an optional lifetime from 1 to 3650 days:
+created with a display name and an optional lifetime from 1 to 3650 days.
+
+## API
 
 - `GET /api/auth/tokens` lists the current user's token metadata.
 - `POST /api/auth/tokens` creates a token and returns its plaintext exactly once.
@@ -13,3 +15,8 @@ and successful bearer requests update `last_used_at`. Token management uses the 
 CSRF protections; bearer-authenticated requests do not require a session cookie. The web runtime
 adds an API tokens page with copy-once creation and revoke controls, while OpenAPI publishes both
 cookie and bearer security schemes.
+
+## See also
+
+- [OAuth and OIDC](oauth-oidc.md) for interactive external sign-in
+- [Signed webhooks](webhooks.md) for outbound signed events

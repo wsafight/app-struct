@@ -1,7 +1,10 @@
 # Deployment
 
 AppStruct produces a standalone Rust API binary, static Web assets, and explicit PostgreSQL
-migrations. The CLI does not provision production infrastructure or automatically migrate a
+migrations. Read this page when a project already runs locally and you need an immutable release:
+build artifacts, runtime configuration, migrate apply as its own step, and rollback.
+
+The CLI does not provision production infrastructure or automatically migrate a
 database when the API starts.
 
 `database.dev.migration` only controls `appstruct dev`. Production backend startup is always
@@ -177,3 +180,9 @@ This command resets the dedicated test database's public schema. On hosts withou
 `--native` checks the release binary and production bundle through a test proxy; it does not verify
 nginx, image compatibility, or container isolation. The Linux workflow runs the real containers
 and is a release prerequisite. Native checks passed locally; container checks require Linux CI.
+
+## See also
+
+- [Installation](installation.md) for the CLI used in the release
+- [Upgrading](upgrading.md) before changing generated code and schema together
+- [Migration lint](migration-lint.md) before `migrate apply`

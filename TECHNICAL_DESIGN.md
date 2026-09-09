@@ -5,6 +5,8 @@
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
 
+本文是架构记录。日常使用请从 [概览](README.zh-CN.md) 开始。
+
 ## 1. 文档目标
 
 本文档定义 AppStruct 的首版技术架构、核心协议、代码边界和交付顺序，用于指导实现和评审。重点解决以下问题：

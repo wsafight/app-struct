@@ -5,6 +5,9 @@
 > Product type: configuration-driven Rust full-stack application generation framework<br>
 > Document scope: product positioning, user experience, feature boundaries, MVP, and acceptance criteria
 
+This is the product baseline, not a getting-started guide. To build an application, start with the
+[overview](README.md).
+
 ## 0. Current Implementation Baseline
 
 As of 2026-08-30, the repository has completed M0 through M6, and after M1 it completed a modular refactor of the generator and compiler:

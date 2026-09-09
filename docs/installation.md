@@ -4,6 +4,17 @@ AppStruct can be installed from a source checkout. Release automation packages c
 macOS/Linux/Windows archives and version-pinned installers. No public release is assumed to exist
 during the technical preview; use source installation until a tag and its assets are published.
 
+Read this page to install the CLI and create the first project. Use
+[Upgrading](upgrading.md) after the app already exists, and [Deployment](deployment.md) when
+shipping an immutable release.
+
+## Choose a path
+
+1. **Source CLI** — required during the technical preview.
+2. **Published release** — only after a GitHub release publishes checksummed archives.
+3. **First app** — `minimal` talks to PostgreSQL you already run; `dashboard` and `saas` can
+   start managed PostgreSQL through Docker Compose.
+
 ## Requirements
 
 | Dependency | Required version | Used for |
@@ -214,3 +225,9 @@ Common failures are:
 
 Run `appstruct migrate status` for migration history and drift details. AppStruct does not
 repair checksum, dirty-history, or catalog drift automatically.
+
+## See also
+
+- [Upgrading](upgrading.md) for lockstep CLI, generated code, and database changes
+- [Deployment](deployment.md) for immutable artifacts and explicit migrate apply
+- [Migration lint](migration-lint.md) before accepting a schema change

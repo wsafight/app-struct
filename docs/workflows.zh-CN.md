@@ -1,6 +1,6 @@
 # 实体工作流
 
-Workflow v1 把一个必填枚举字段变成服务端管理的状态机。编译器会把该字段从普通创建、更新、批量更新和 CSV 导入输入中移除；创建写入声明的初始状态，之后的变更通过转换端点进行。
+Workflow v1 把一个必填枚举字段变成服务端管理的状态机。当记录必须按命名状态流转、且每个转换有独立权限时使用本页；普通动作应继续用 Command。编译器会把该字段从普通创建、更新、批量更新和 CSV 导入输入中移除；创建写入声明的初始状态，之后的变更通过转换端点进行。
 
 ```yaml
 entities:
@@ -47,3 +47,9 @@ entities:
 ## V1 边界
 
 Workflow v1 支持每个实体一个受管理的工作流字段。它不实现 BPMN、任意脚本、请求幂等键、sagas 或分布式多聚合工作流。重复提交由当前状态和修订检查解决。对不是状态转换的操作使用普通 Commands。
+
+## 下一步
+
+- [批量操作](bulk-operations.zh-CN.md)：工作流字段不会进入批量与 CSV 输入
+- [记录动态](activity.zh-CN.md)：`workflow.<action>` 历史
+- [签名 Webhook](webhooks.zh-CN.md)：`<entity_event_prefix>.workflow.<action>`

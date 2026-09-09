@@ -9,3 +9,8 @@
 - Auth 响应包含 `email_verified`，客户端可以据此展示当前状态。
 
 生成的 React 应用提供 `/verify-email?token=...`，以及请求新邮件的客户端方法。无效、过期或已使用的 Token 返回 `400 INVALID_EMAIL_VERIFICATION_TOKEN`。邮件投递使用现有 Auth Mail Sender，并在账户/Token 写入后尽力发送；部署应只在开发环境配置 capture，生产环境使用 SMTP。
+
+## 下一步
+
+- [组织邀请](organization-invitations.zh-CN.md)：租户成员邀请链接
+- [OAuth 与 OIDC](oauth-oidc.zh-CN.md)：从外部身份登录时

@@ -5,6 +5,8 @@
 > Product document: [`PRODUCT.en.md`](PRODUCT.en.md)<br>
 > Target versions: Technical Preview through MVP
 
+This is the architecture record. For day-to-day usage, start with the [overview](README.md).
+
 ## 1. Document Goals
 
 This document defines AppStruct's first-version technical architecture, core protocols, code boundaries, and delivery order. It guides implementation and review. It focuses on:

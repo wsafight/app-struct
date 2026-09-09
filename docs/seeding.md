@@ -1,6 +1,7 @@
 # Seed Data
 
-Entity seed rows are named mappings in the domain spec:
+Named seed rows live in the domain spec and become reviewable, idempotent SQL in generated
+migrations. Use them for bootstrap accounts and reference data that should travel with the schema.
 
 ```yaml
 entities:
@@ -21,8 +22,15 @@ all non-nullable fields without a default. Scalar values are checked against int
 boolean, and enum field types during compilation. Seed rows are compiled into the IR and database
 schema snapshot, so changing or removing a row is visible in `migrate plan`.
 
+## Migrations
+
 Initial migrations and safe development migrations render seed rows as deterministic SQL with
 `ON CONFLICT DO NOTHING`, making retries idempotent. Seed inserts run before foreign-key
 constraints are added in an initial migration, allowing parent and child rows to be declared in
 separate entities. Removing or changing an existing seed is treated as a destructive data change
 and requires a manually reviewed migration.
+
+## See also
+
+- [Schema indexes](schema-indexes.md) for other snapshot-owned database objects
+- [Migration lint](migration-lint.md) when a seed change is destructive

@@ -1,6 +1,8 @@
 # 部署
 
-AppStruct 产出独立的 Rust API 二进制、静态 Web 资源和显式 PostgreSQL 迁移。CLI 不会配置生产基础设施，也不会在 API 启动时自动迁移数据库。
+AppStruct 产出独立的 Rust API 二进制、静态 Web 资源和显式 PostgreSQL 迁移。本地已经能跑起来之后，用本页做不可变发布：构建产物、运行时配置、把 migrate apply 作为独立步骤，以及回滚。
+
+CLI 不会配置生产基础设施，也不会在 API 启动时自动迁移数据库。
 
 `database.dev.migration` 只控制 `appstruct dev`。生产后端启动始终是 unmanaged：它会连接 PostgreSQL，但从不规划、创建、校验或应用迁移。
 
@@ -123,3 +125,9 @@ APPSTRUCT_E2E_DATABASE_URL=postgresql://localhost/appstruct_deployment_test \
 ```
 
 此命令会重置专用测试数据库的 public schema。在没有 Docker 的主机上，`--native` 通过测试代理检查发布二进制和生产包；它不验证 nginx、镜像兼容性或容器隔离。Linux workflow 运行真实容器，是发布前置条件。原生检查已在本地通过；容器检查需要 Linux CI。
+
+## 下一步
+
+- [安装](installation.zh-CN.md)：发布流程使用的 CLI
+- [升级](upgrading.zh-CN.md)：同时变更生成代码和 schema 之前
+- [迁移检查](migration-lint.zh-CN.md)：`migrate apply` 之前

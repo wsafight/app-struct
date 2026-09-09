@@ -1,8 +1,9 @@
 # Organization Invitations
 
 When the Tenant module is enabled, organization owners can invite existing Auth users to join
-their current organization. Invitations are scoped by the `X-AppStruct-Tenant` header and are
-available through the generated API and React tenant page.
+their current organization. Use this instead of sharing passwords or minting personal API tokens
+for membership. Invitations are scoped by the `X-AppStruct-Tenant` header and are available
+through the generated API and React tenant page.
 
 ## API
 
@@ -23,3 +24,8 @@ return an error without revealing organization membership.
 The web runtime exposes an Organization page from the tenant switcher. Owners can send and revoke
 invitations and see pending or accepted status. An invitation link opens the acceptance page; after
 acceptance the new organization is selected locally.
+
+## See also
+
+- [Email verification](email-verification.md) for account email proof
+- [Personal API tokens](personal-api-tokens.md) for automation credentials, not membership

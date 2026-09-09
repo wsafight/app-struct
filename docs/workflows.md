@@ -1,8 +1,10 @@
 # Entity Workflows
 
-Workflow v1 turns one required enum field into a server-managed state machine. The compiler removes
-that field from normal create, update, bulk update, and CSV import inputs; create writes the declared
-initial state and later changes go through transition endpoints.
+Workflow v1 turns one required enum field into a server-managed state machine. Use it when a
+record must move through named states with per-transition access, not when the action is an
+ordinary Command. The compiler removes that field from normal create, update, bulk update, and
+CSV import inputs; create writes the declared initial state and later changes go through
+transition endpoints.
 
 ```yaml
 entities:
@@ -67,3 +69,9 @@ Workflow v1 supports one managed workflow field per entity. It does not implemen
 scripts, request idempotency keys, sagas, or distributed multi-aggregate workflows. A repeated
 submission is resolved by the current-state and revision checks. Use ordinary Commands for actions
 that are not state transitions.
+
+## See also
+
+- [Bulk operations](bulk-operations.md) — workflow fields stay out of bulk and CSV inputs
+- [Record activity](activity.md) for `workflow.<action>` history
+- [Signed webhooks](webhooks.md) for `<entity_event_prefix>.workflow.<action>`

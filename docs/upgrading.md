@@ -4,6 +4,9 @@ AppStruct technical-preview releases use lockstep versions for the CLI, compiler
 runtime, official templates, and modules. Treat an upgrade as a source, generated-code, and
 database change that must pass the same review as an application release.
 
+Use this page after [Installation](installation.md), when an existing project must move to a newer
+CLI. Database verification stays explicit: `appstruct update` never connects to PostgreSQL.
+
 ## Project Upgrade Procedure
 
 1. Commit or otherwise back up `appstruct.yaml`, `appstruct.lock`, `spec/`, `app/`,
@@ -100,3 +103,9 @@ a reverse migration during an incident.
 Keep the previous backend binary and Web artifact until the new release passes health and
 user-journey checks. A generated backend should not start against migration history from a newer
 incompatible release.
+
+## See also
+
+- [Installation](installation.md) to replace the CLI binary
+- [Deployment](deployment.md) for production migrate status / apply
+- [Migration lint](migration-lint.md) when the upgrade plan is destructive

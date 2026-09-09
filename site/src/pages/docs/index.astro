@@ -14,7 +14,9 @@ for (const page of pages) {
 ---
 <Base title={pagesMeta.docs.title.en} titleZh={pagesMeta.docs.title.zh} description={pagesMeta.docs.description.en} descriptionZh={pagesMeta.docs.description.zh}>
   <main id="main-content" class="docs-shell docs-index-shell" data-pagefind-ignore>
-    <DocSidebar />
+    <div class="docs-chrome">
+      <DocSidebar />
+    </div>
     <article class="docs-main">
       <p class="docs-kicker">AppStruct / <T en="Documentation" zh="文档" /></p>
       <h1><T en="Build from one source of truth" zh="从单一事实来源构建应用" /></h1>

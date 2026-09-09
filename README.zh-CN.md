@@ -110,6 +110,18 @@ appstruct auth bootstrap-admin --email admin@example.com
 `appstruct.lock` 必须提交，其中包含预设摘要和精确的模块版本。使用
 `appstruct preset show --expanded` 查看应用覆盖后的最终配置。
 
+## 从现有 schema 导入
+
+从已有 PostgreSQL schema 生成仅供审阅的 App Spec 草稿：
+
+```bash
+appstruct db pull --schema public --output spec/imported.yaml
+```
+
+该命令读取 `DATABASE_URL`，不会修改数据库或根配置中的 `includes`，也拒绝覆盖已有输出。先
+处理不支持形态的警告并补上实体访问规则，再把草稿纳入 `appstruct.yaml`。CI 中可用
+`--check`；`--diff` 只打印线上变更，不写文件。
+
 ## 开发迁移策略
 
 在项目的 `appstruct.yaml` 中显式声明开发数据库归属和迁移行为：
@@ -178,7 +190,9 @@ appstruct update
 
 ## 文档索引
 
-下列指南均提供英文原文和简体中文译文（`*.zh-CN.md`）。`site/` 中的静态站点会同时渲染两种语言；在仓库根目录运行 `npm run site:dev`。
+下列指南均提供英文原文和简体中文译文（`*.zh-CN.md`）。从安装与快速开始读起，再按要用的
+能力打开对应契约。`site/` 中的静态站点会同时渲染两种语言；在仓库根目录运行
+`npm run site:dev`。
 
 ### 开始使用
 

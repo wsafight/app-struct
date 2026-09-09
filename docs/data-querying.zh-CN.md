@@ -1,6 +1,6 @@
 # 生成的资源查询
 
-生成的资源集合端点支持用于表格式导航的偏移分页，以及用于稳定遍历大型结果集的游标分页。搜索和已声明的过滤器在两种模式下都可用。
+生成的资源集合端点支持用于表格式导航的偏移分页，以及用于稳定遍历大型结果集的游标分页。搜索和已声明的过滤器在两种模式下都可用。本页给出请求、响应、OpenAPI 和 TypeScript 客户端契约。
 
 ## 偏移分页
 
@@ -114,3 +114,9 @@ api_key:
     read: { role: admin }
     write: { role: admin }
 ```
+
+## 下一步
+
+- [标量值](scalar-values.zh-CN.md)：bigint、decimal 与日期时间的 JSON 表示
+- [保存视图](saved-views.zh-CN.md)：持久化列表查询状态
+- [关系展示](relation-display.zh-CN.md)：批量 lookup 标签

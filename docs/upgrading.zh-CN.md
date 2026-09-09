@@ -2,6 +2,8 @@
 
 AppStruct 技术预览发布对 CLI、编译器、生成运行时、官方模板和模块使用同步版本。应将升级视为源码、生成代码和数据库的变更，必须通过与应用发布相同的审阅。
 
+应用已经按 [安装](installation.zh-CN.md) 跑起来之后，用本页把项目迁到更新的 CLI。数据库校验始终是显式步骤：`appstruct update` 不会连接 PostgreSQL。
+
 ## 项目升级流程
 
 1. 提交或以其他方式备份 `appstruct.yaml`、`appstruct.lock`、`spec/`、`app/`、`migrations/` 以及 `.appstruct/schema.snapshot.json`。
@@ -70,3 +72,9 @@ appstruct migrate status
 此模式用于 schema 兼容的前向修复。当现有行需要回填时，先做应用数据迁移，再做约束修复。如果旧二进制无法在已变更的 schema 上运行，请停止流量并从已测试的数据库备份还原，而不是在事故中临时编写反向迁移。
 
 在新发布通过健康检查和用户旅程检查之前，保留先前的后端二进制和 Web 产物。生成的后端不应针对来自更新且不兼容发布的迁移历史启动。
+
+## 下一步
+
+- [安装](installation.zh-CN.md)：替换 CLI 二进制
+- [部署](deployment.zh-CN.md)：生产环境的 migrate status / apply
+- [迁移检查](migration-lint.zh-CN.md)：升级计划含破坏性变更时先做只读检查

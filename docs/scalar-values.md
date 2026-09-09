@@ -1,5 +1,10 @@
 # Scalar Values
 
+JSON, OpenAPI, and TypeScript keep large numbers as decimal strings so values stay lossless across
+the generated stack. PostgreSQL columns and Rust types remain native integers.
+
+## Bigint and decimal
+
 Business `bigint` fields use decimal strings in JSON, OpenAPI and TypeScript. PostgreSQL columns
 and Rust values remain signed 64-bit integers. This includes entity fields, value objects,
 Workflow inputs and bigint aggregate/group values. Decimal values and aggregates are also strings.
@@ -15,9 +20,16 @@ The shared Web field-value API preserves these strings across forms, inline edit
 dialogs. Numeric bounds use exact decimal comparisons. Monetary formatting never converts amounts
 to a JavaScript Number. JSON fields remain arbitrary JSON and do not infer types for nested values.
 
+## Datetime
+
 Datetime API values identify UTC instants. Generated controls display browser-local calendar time,
 including seconds and up to PostgreSQL's six fractional digits, and convert edited values back to
 UTC. Unchanged values retain their original instant, including the later occurrence of a repeated
 daylight-saving hour. Newly entered ambiguous local times use the browser's earlier occurrence;
 invalid calendar dates and times in a daylight-saving gap are rejected. Date-only fields have no
 timezone conversion.
+
+## See also
+
+- [Resource queries](data-querying.md) for filters, aggregates, and group-by
+- [Business UI semantics](business-ui-semantics.md) for money display

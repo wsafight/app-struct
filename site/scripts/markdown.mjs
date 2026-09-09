@@ -33,8 +33,19 @@ export function resolveLink(url, file) {
   return `${base}/source/${target.split('/').map(encodeURIComponent).join('/')}${suffix}`;
 }
 
+function nodeText(node) {
+  if (node.type === 'text') return node.value || '';
+  return (node.children || []).map(nodeText).join('');
+}
+
+function isRepoLanguageSwitcher(node) {
+  if (node.type !== 'paragraph') return false;
+  return /^\s*(english|en)\s*\|\s*(简体中文|中文|chinese)\s*$/i.test(nodeText(node));
+}
+
 export function docsMarkdown() {
   return (tree, file) => {
+    tree.children = tree.children.filter(node => !isRepoLanguageSwitcher(node));
     const firstHeading = tree.children.findIndex(node => node.type === 'heading');
     if (firstHeading >= 0 && tree.children[firstHeading].depth === 1) tree.children.splice(firstHeading, 1);
     visit(tree, node => {

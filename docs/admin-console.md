@@ -1,9 +1,10 @@
 # Operations Administration Console
 
 Auth-enabled projects include an `/admin` page and a matching `GET /api/admin/overview` endpoint.
-The endpoint is restricted to actors with the configured `admin` role and reports live counts for
-users, sessions, organizations, invitations, queued/dead Jobs, Mail deliveries, Files, and Audit
-events.
+Use it to inspect health, queues, and deliveries, and to run guarded recovery actions. This is an
+operator surface, not a second application UI. The endpoint is restricted to actors with the
+configured `admin` role and reports live counts for users, sessions, organizations, invitations,
+queued/dead Jobs, Mail deliveries, Files, and Audit events.
 
 Counters for disabled modules remain zero and do not query tables that were not installed. The page
 links to the detailed users, API token, organization, audit, Jobs, schedules, mail delivery, and file

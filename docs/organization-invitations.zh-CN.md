@@ -1,6 +1,6 @@
 # 组织邀请
 
-启用 Tenant 模块后，组织所有者可以邀请已有 Auth 用户加入当前组织。邀请由 `X-AppStruct-Tenant` 头限定范围，并通过生成的 API 和 React 租户页面提供。
+启用 Tenant 模块后，组织所有者可以邀请已有 Auth 用户加入当前组织。用邀请代替共享密码或把个人 API Token 当作成员关系。邀请由 `X-AppStruct-Tenant` 头限定范围，并通过生成的 API 和 React 租户页面提供。
 
 ## API
 
@@ -12,3 +12,8 @@
 所有管理操作都需要已认证的组织所有者、CSRF 校验和有效的租户成员关系。邀请 Token 是随机不透明值；`_appstruct_tenant_invitations` 中只存储 SHA-256 哈希。过期、已撤销、已接受或邮箱不匹配的链接会返回错误，且不泄露组织成员关系。
 
 Web 运行时从租户切换器暴露 Organization 页面。所有者可以发送和撤销邀请，并查看待处理或已接受状态。邀请链接打开接受页面；接受后会在本地选中新组织。
+
+## 下一步
+
+- [邮箱验证](email-verification.zh-CN.md)：账户邮箱证明
+- [个人 API Token](personal-api-tokens.zh-CN.md)：自动化凭据，不是成员关系

@@ -1,6 +1,6 @@
 # 远程模块注册表
 
-远程模块需要先通过 CLI 显式安装，之后由编译器离线消费：
+远程模块需要先通过 CLI 显式安装，之后由编译器离线消费。本页说明 lockfile、摘要和信任钉扎；它不是公开的模块市场。
 
 ```bash
 appstruct module install vendor/analytics@1.2.3 \

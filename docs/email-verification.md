@@ -17,3 +17,8 @@ The generated React app provides `/verify-email?token=...` and a client method f
 message. Invalid, expired, or already-used tokens return `400 INVALID_EMAIL_VERIFICATION_TOKEN`.
 Mail delivery uses the existing Auth Mail Sender and remains best-effort after the account/token
 write; deployments should configure capture only for development and SMTP in production.
+
+## See also
+
+- [Organization invitations](organization-invitations.md) for tenant membership links
+- [OAuth and OIDC](oauth-oidc.md) when sign-in comes from an external identity

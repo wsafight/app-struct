@@ -8,7 +8,8 @@ export const ui = {
     search: 'Search', searchDocs: 'Search docs', searchEmpty: 'No matching documentation.',
     theme: 'Toggle theme', menuOpen: 'Open menu', menuClose: 'Close menu', lang: 'Switch to Chinese',
     copy: 'Copy', copied: 'Copied', compiler: 'Compiler', runtime: 'Runtime', modules: 'Modules',
-    delivery: 'Delivery', docs: 'Docs', quickStart: 'Quick start', github: 'GitHub',
+    delivery: 'Delivery', docs: 'Docs', browseDocs: 'Browse docs', linkHeading: 'Link to this section',
+    quickStart: 'Quick start', github: 'GitHub',
   },
   zh: {
     skip: '跳到主要内容', home: 'AppStruct 首页', primaryNav: '主要导航', mobileNav: '移动端导航',
@@ -16,7 +17,8 @@ export const ui = {
     previous: '上一篇', next: '下一篇', search: '搜索', searchDocs: '搜索文档',
     searchEmpty: '没有匹配的文档。', theme: '切换主题', menuOpen: '打开菜单', menuClose: '关闭菜单',
     lang: 'Switch to English', copy: '复制', copied: '已复制', compiler: '编译器', runtime: '运行时',
-    modules: '模块', delivery: '交付', docs: '文档', quickStart: '快速开始', github: 'GitHub',
+    modules: '模块', delivery: '交付', docs: '文档', browseDocs: '浏览文档', linkHeading: '链到本节',
+    quickStart: '快速开始', github: 'GitHub',
   },
 } as const;
 

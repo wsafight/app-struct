@@ -1,6 +1,7 @@
 # Remote Module Registry
 
-Remote modules are installed explicitly with the CLI and then consumed offline by the compiler:
+Remote modules are installed explicitly with the CLI and then consumed offline by the compiler.
+Use this page for lockfile, digest, and trust pinning; it is not a public marketplace.
 
 ```bash
 appstruct module install vendor/analytics@1.2.3 \
