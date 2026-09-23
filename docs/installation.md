@@ -94,9 +94,9 @@ shasum -a 256 -c install.sh.sha256
 bash install.sh --version <version>
 ```
 
-It chooses the native macOS archive or static Linux musl archive, verifies the archive SHA-256 and
+It chooses the native macOS archive or Linux glibc archive, verifies the archive SHA-256 and
 installs into `$HOME/.local/bin`. Use `--bin-dir` for another directory, `--target` to select a
-published glibc archive, or `--archive-dir` for archives and checksums already downloaded locally.
+published target, or `--archive-dir` for archives and checksums already downloaded locally.
 No root access is needed, and PATH is not modified. Downloads use HTTPS. Installation streams only
 the expected binary entry and atomically replaces an existing binary after verification succeeds.
 A checksum or extraction failure preserves the installed version. Checksums establish download
@@ -128,8 +128,8 @@ Linux users may use `sha256sum -c` instead. Do not install an archive when its c
 After the crates are published, `cargo install appstruct-cli --version <version> --locked` is the
 registry equivalent; source and binary release versions remain lockstep.
 
-Release tags publish glibc and static musl archives for Linux x86-64/ARM64, native archives for
-Apple Silicon and Intel macOS, and an x86-64 Windows `.zip`. On Windows, verify and expand it from
+Release tags prepare Linux glibc archives for x86-64/ARM64, native archives for Apple Silicon and
+Intel macOS, and an x86-64 Windows `.zip`. On Windows, verify and expand it from
 PowerShell:
 
 ```powershell
@@ -144,7 +144,12 @@ Expand-Archive $archive -DestinationPath .
 Run `appstruct init` in a terminal to enter a project name and select `minimal`, `dashboard`, or
 `saas`. The command creates the selected template and prints the next `cd` and `appstruct dev`
 command. Use `appstruct init <name> --template <template>` when running without a terminal or
-requesting JSON output. `appstruct new` remains available for existing scripts.
+requesting JSON output. Choose `--database-mode external|managed` and optional `--api-port` and
+`--web-port` independently of the template. In the interactive flow these are prompted; in scripts,
+omitted values use the template's database mode and ports 3000/5173. The ports are saved in the
+project's ignored `.env` and used by `appstruct dev`; CLI port flags override them. Authentication
+and tenant capabilities currently follow the template. `appstruct new` remains available for
+existing scripts.
 
 ## Start With External PostgreSQL
 

@@ -68,18 +68,18 @@ appstruct-cli
 
 对每个包使用 `cargo publish -p <package> --locked`。二进制包名是 `appstruct-cli`，安装后的可执行文件是 `appstruct`。crates.io 发布仍由维护者手动执行，因此源码标签不能消费仓库凭据。
 
-## 发布二进制
+## 准备二进制发布
 
-GitHub Actions 只部署文档站点。请在本地完成发布：运行预检、`scripts/run-template-build.sh` 和 PostgreSQL E2E 矩阵，然后创建并推送 `v<workspace-version>` 标签，把这些归档附加到 GitHub release：
+先运行预检、`scripts/run-template-build.sh` 和 PostgreSQL E2E 矩阵，再创建并推送
+`v<workspace-version>` 标签。标签会触发 Release 工作流：它构建下列原生目标、运行安装器测试、
+校验版本，并创建包含归档、校验和及版本固定安装器的 GitHub 草稿 Release：
 
 ```text
 x86_64-unknown-linux-gnu
 aarch64-unknown-linux-gnu
-x86_64-unknown-linux-musl
-aarch64-unknown-linux-musl
 aarch64-apple-darwin
 x86_64-apple-darwin
 x86_64-pc-windows-msvc
 ```
 
-Linux 和 macOS 发布是 `.tar.gz` 归档；Windows 是包含 `appstruct.exe` 的 `.zip` 归档。每个归档还包含根 README，并有同级 `.sha256` 文件。标签版本必须与 Cargo 元数据一致。在宣布之前，检查已创建的 GitHub release 并测试一次全新安装。
+Linux 和 macOS 发布是 `.tar.gz` 归档；Windows 是包含 `appstruct.exe` 的 `.zip` 归档。每个归档还包含根 README，并有同级 `.sha256` 文件。工作流会拒绝与 Cargo 元数据版本不一致的标签，并且不会自动公开 Release。请检查全部五种归档、安装器校验和及一次全新安装，再手动发布草稿。当前 Linux 二进制面向 glibc；musl 和 Alpine 尚不在此发布矩阵中。

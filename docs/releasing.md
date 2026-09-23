@@ -83,17 +83,16 @@ Use `cargo publish -p <package> --locked` for each package. The binary package n
 `appstruct-cli`, while the installed executable is `appstruct`. Crates.io publishing stays a
 manual maintainer action so a source tag cannot consume registry credentials.
 
-## Publish Binaries
+## Prepare A Binary Release
 
-GitHub Actions only deploys the documentation site. Cut a release locally: run the preflight
-checks, `scripts/run-template-build.sh`, and the PostgreSQL E2E matrix, then create and push a
-`v<workspace-version>` tag and attach these archives to the GitHub release:
+Run the preflight checks, `scripts/run-template-build.sh`, and the PostgreSQL E2E matrix before
+creating and pushing a `v<workspace-version>` tag. The tag triggers the Release workflow, which
+builds and installer-tests these native targets, checks their versions, and creates a draft GitHub
+release with archives, checksums, and pinned installers:
 
 ```text
 x86_64-unknown-linux-gnu
 aarch64-unknown-linux-gnu
-x86_64-unknown-linux-musl
-aarch64-unknown-linux-musl
 aarch64-apple-darwin
 x86_64-apple-darwin
 x86_64-pc-windows-msvc
@@ -101,5 +100,7 @@ x86_64-pc-windows-msvc
 
 Linux and macOS releases are `.tar.gz` archives; Windows is a `.zip` archive containing
 `appstruct.exe`. Each archive also contains the root README and has a sibling `.sha256` file.
-Reject a tag whose version does not match Cargo metadata. Inspect the created GitHub release and
-test one fresh installation before announcing it.
+The workflow rejects a tag whose version does not match Cargo metadata. Inspect all five platform archives,
+verify the installer checksums, and test one fresh installation before publishing the draft. The
+workflow never makes a release public automatically. Linux binaries currently target glibc;
+musl and Alpine are not part of this release matrix.

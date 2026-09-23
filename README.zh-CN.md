@@ -67,7 +67,8 @@ VS Code 和 Dev Containers 扩展，但不需要预装 Rust、Node.js 或 Postgr
 
 在终端运行 `appstruct init`，依次输入项目名并选择模板。脚本可使用
 `appstruct init <name> --template minimal|dashboard|saas`，也可沿用下面的 `appstruct new`
-示例。创建成功后 CLI 会提示下一步的 `cd` 和 `appstruct dev` 命令。
+示例。`init` 还支持 `--database-mode external|managed`、`--api-port` 和 `--web-port`；
+端口会保存在项目中被忽略的 `.env`。认证和租户能力目前随模板确定。创建成功后 CLI 会提示下一步命令。
 
 ### 使用已有 PostgreSQL
 
@@ -192,7 +193,7 @@ Web 运行时采用固定且现代的 React 19 + TypeScript + Vite 基线，并�
 ## 常用命令
 
 ```text
-appstruct init [<name>] [--template minimal|dashboard|saas]
+appstruct init [<name>] [--template minimal|dashboard|saas] [--database-mode external|managed] [--api-port <port>] [--web-port <port>]
 appstruct new <name> --template minimal|dashboard|saas
 appstruct schema
 appstruct check [--deny-warnings] [--format text|json]
@@ -289,7 +290,8 @@ scripts/run-template-build.sh
 ```
 
 需要 PostgreSQL 的浏览器测试使用独立测试数据库，并通过对应的 `scripts/run-*-e2e.sh` 脚本
-执行。GitHub Actions 只构建并部署文档站点；模板、质量和 PostgreSQL 检查都在本地运行。
+执行。GitHub Actions 部署文档站点并验证带标签的发布构建；创建标签前仍需在本地运行模板与
+PostgreSQL 检查。
 `scripts/run-template-build.sh` 会检查生成 Web 的生产依赖、格式、测试、类型和构建。
 
 专用生成后端、覆盖率和打包 target 会占用较多空间。`scripts/clean-test-artifacts.sh` 仅清理这些

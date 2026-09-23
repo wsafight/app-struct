@@ -6,7 +6,7 @@ app:
 database:
   provider: postgres
   dev:
-    mode: managed
+    mode: __APPSTRUCT_DATABASE_MODE__
 
 preset:
   name: appstruct/saas

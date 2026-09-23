@@ -1,14 +1,19 @@
 use clap::ValueEnum;
 use std::fs;
 use std::io;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 mod init;
+mod mode;
 mod name;
+mod paths;
 pub(crate) use init::run as init;
+pub(crate) use mode::DatabaseMode;
+use paths::{cd_command, invalid, validate_relative_path};
 
 const PROJECT_NAME_MARKER: &str = "__APPSTRUCT_PROJECT_NAME__";
+const DATABASE_MODE_MARKER: &str = "__APPSTRUCT_DATABASE_MODE__";
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub(crate) enum ProjectTemplate {
@@ -23,7 +28,7 @@ struct TemplateFile {
 }
 
 pub(crate) fn run(parent: &Path, name: &str, template: ProjectTemplate) -> ExitCode {
-    run_with_command(parent, name, template, "new")
+    run_with_command(parent, name, template, "new", None)
 }
 
 fn run_with_command(
@@ -31,20 +36,29 @@ fn run_with_command(
     name: &str,
     template: ProjectTemplate,
     command: &str,
+    settings: Option<init::InitSettings>,
 ) -> ExitCode {
-    match create(parent, name, template) {
+    match create(parent, name, template, settings) {
         Ok(destination) => {
             if crate::report::is_json() {
-                crate::report::success(&serde_json::json!({
+                let mut result = serde_json::json!({
                     "command": command,
                     "name": name,
                     "template": template.name(),
                     "path": destination,
-                }));
+                });
+                if let Some(settings) = settings {
+                    result["database_mode"] = serde_json::json!(settings.database_mode.name());
+                    result["api_port"] = serde_json::json!(settings.api_port);
+                    result["web_port"] = serde_json::json!(settings.web_port);
+                }
+                crate::report::success(&result);
             } else {
                 println!("Created AppStruct project at {}", destination.display());
                 println!("Next: {}", cd_command(&destination));
-                if matches!(template, ProjectTemplate::Minimal) {
+                if settings.map_or(template.database_mode(), |value| value.database_mode)
+                    == DatabaseMode::External
+                {
                     println!("Set DATABASE_URL in .env, then run appstruct migrate dev --accept");
                 }
                 println!("Then: appstruct dev");
@@ -70,23 +84,12 @@ fn run_with_command(
     }
 }
 
-#[cfg(not(windows))]
-fn cd_command(destination: &Path) -> String {
-    format!(
-        "cd '{}'",
-        destination.display().to_string().replace('\'', "'\\''")
-    )
-}
-
-#[cfg(windows)]
-fn cd_command(destination: &Path) -> String {
-    format!(
-        "Set-Location -LiteralPath '{}'",
-        destination.display().to_string().replace('\'', "''")
-    )
-}
-
-fn create(parent: &Path, name: &str, template: ProjectTemplate) -> io::Result<PathBuf> {
+fn create(
+    parent: &Path,
+    name: &str,
+    template: ProjectTemplate,
+    settings: Option<init::InitSettings>,
+) -> io::Result<PathBuf> {
     name::validate_name(name)?;
     if !parent.is_dir() {
         return Err(io::Error::new(
@@ -108,7 +111,10 @@ fn create(parent: &Path, name: &str, template: ProjectTemplate) -> io::Result<Pa
             format!("staging directory `{}` already exists", staging.display()),
         ));
     }
-    if let Err(error) = write_template(&staging, name, template, template_files(template)) {
+    let mode = settings.map_or(template.database_mode(), |value| value.database_mode);
+    let result = write_template(&staging, name, template, mode, template_files(template))
+        .and_then(|()| settings.map_or(Ok(()), |value| value.apply(&staging, name, template)));
+    if let Err(error) = result {
         let _ = fs::remove_dir_all(&staging);
         return Err(error);
     }
@@ -133,6 +139,7 @@ fn write_template(
     root: &Path,
     name: &str,
     template: ProjectTemplate,
+    mode: DatabaseMode,
     files: &[TemplateFile],
 ) -> io::Result<()> {
     fs::create_dir(root)?;
@@ -144,7 +151,12 @@ fn write_template(
             .parent()
             .ok_or_else(|| invalid("template file has no parent"))?;
         fs::create_dir_all(parent)?;
-        fs::write(destination, file.content.replace(PROJECT_NAME_MARKER, name))?;
+        fs::write(
+            destination,
+            file.content
+                .replace(PROJECT_NAME_MARKER, name)
+                .replace(DATABASE_MODE_MARKER, mode.name()),
+        )?;
     }
     let lock = appstruct_compiler::project_lock(template.name(), template.preset())
         .ok_or_else(|| invalid("template selects an unsupported preset"))?;
@@ -153,6 +165,13 @@ fn write_template(
 }
 
 impl ProjectTemplate {
+    const fn database_mode(self) -> DatabaseMode {
+        match self {
+            Self::Minimal => DatabaseMode::External,
+            Self::Dashboard | Self::Saas => DatabaseMode::Managed,
+        }
+    }
+
     const fn name(self) -> &'static str {
         match self {
             Self::Minimal => "minimal",
@@ -167,21 +186,6 @@ impl ProjectTemplate {
             Self::Minimal | Self::Dashboard => None,
         }
     }
-}
-
-fn validate_relative_path(path: &Path) -> io::Result<()> {
-    if path.as_os_str().is_empty()
-        || path.is_absolute()
-        || path
-            .components()
-            .any(|component| !matches!(component, Component::Normal(_)))
-    {
-        return Err(invalid(format!(
-            "unsafe template path `{}`",
-            path.display()
-        )));
-    }
-    Ok(())
 }
 
 fn template_files(template: ProjectTemplate) -> &'static [TemplateFile] {
@@ -384,7 +388,3 @@ const SAAS_FILES: &[TemplateFile] = &[
         content: include_str!("../templates/saas/spec/work.yaml"),
     },
 ];
-
-fn invalid(message: impl Into<String>) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, message.into())
-}

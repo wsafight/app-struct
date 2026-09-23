@@ -7,10 +7,9 @@ version="${version#appstruct }"
 target="$(rustc -vV | awk '/^host: / {print $2}')"
 temporary="$(mktemp -d "${TMPDIR:-/tmp}/appstruct-local-archive.XXXXXX")"
 trap 'rm -r "$temporary"' EXIT
+bash "$workspace/scripts/package-release.sh" "$version" "$target" "$binary" "$temporary"
 stem="appstruct-$version-$target"
-mkdir "$temporary/$stem"
-cp "$binary" "$temporary/$stem/appstruct"
-cp "$workspace/README.md" "$workspace/LICENSE-MIT" "$workspace/LICENSE-APACHE" "$temporary/$stem/"
-tar -C "$temporary" -czf "$temporary/$stem.tar.gz" "$stem"
-(cd "$temporary" && shasum -a 256 "$stem.tar.gz" >"$stem.tar.gz.sha256")
+for member in appstruct README.md LICENSE-MIT LICENSE-APACHE; do
+  tar -tzf "$temporary/$stem.tar.gz" "$stem/$member" >/dev/null
+done
 bash "$workspace/scripts/test-installer.sh" "$temporary" "$version" "$target"

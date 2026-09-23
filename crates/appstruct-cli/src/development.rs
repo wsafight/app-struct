@@ -9,6 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 mod build_cache;
+mod ports;
 mod process;
 mod watch;
 
@@ -18,15 +19,23 @@ use watch::{ProjectChanges, ProjectWatcher};
 const MANAGED_DATABASE_URL: &str =
     "postgresql://appstruct:appstruct-dev@127.0.0.1:5432/appstruct?sslmode=disable";
 
-pub(crate) fn run(project: &Path, api_port: u16, web_port: u16) -> ExitCode {
-    if api_port == 0 || web_port == 0 || api_port == web_port {
-        return crate::report::fail(
-            "AS6005",
-            crate::report::ErrorCategory::Development,
-            "API and web ports must be non-zero and different",
-            crate::report::ExitClass::Usage,
-        );
-    }
+pub(crate) fn run(project: &Path, api_port: Option<u16>, web_port: Option<u16>) -> ExitCode {
+    let (api_port, web_port) = match ports::resolve(project, api_port, web_port) {
+        Ok(ports) => ports,
+        Err(error) => {
+            let exit = if error.kind() == io::ErrorKind::InvalidInput {
+                crate::report::ExitClass::Usage
+            } else {
+                crate::report::ExitClass::Environment
+            };
+            return crate::report::fail(
+                "AS6005",
+                crate::report::ErrorCategory::Development,
+                error.to_string(),
+                exit,
+            );
+        }
+    };
     let stopping = Arc::new(AtomicBool::new(false));
     let signal = Arc::clone(&stopping);
     if let Err(error) = ctrlc::set_handler(move || signal.store(true, Ordering::SeqCst)) {

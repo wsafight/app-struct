@@ -57,6 +57,15 @@ enum Command {
         /// Optional template; when omitted, prompt in a terminal.
         #[arg(long, value_enum)]
         template: Option<project_new::ProjectTemplate>,
+        /// Development database mode; defaults to the selected template.
+        #[arg(long, value_enum)]
+        database_mode: Option<project_new::DatabaseMode>,
+        /// API port saved as a project-local development default.
+        #[arg(long)]
+        api_port: Option<u16>,
+        /// Web port saved as a project-local development default.
+        #[arg(long)]
+        web_port: Option<u16>,
     },
     /// Build validated backend and web production artifacts.
     Build,
@@ -69,10 +78,10 @@ enum Command {
     Doctor {},
     /// Start PostgreSQL coordination, the API, and the Vite development server.
     Dev {
-        #[arg(long, default_value_t = 3000)]
-        api_port: u16,
-        #[arg(long, default_value_t = 5173)]
-        web_port: u16,
+        #[arg(long)]
+        api_port: Option<u16>,
+        #[arg(long)]
+        web_port: Option<u16>,
     },
     /// Inspect an existing PostgreSQL database.
     Db {
@@ -145,7 +154,14 @@ fn run(cli: Cli) -> ExitCode {
         };
         return project_new::run(&parent, name, *template);
     }
-    if let Command::Init { name, template } = &cli.command {
+    if let Command::Init {
+        name,
+        template,
+        database_mode,
+        api_port,
+        web_port,
+    } = &cli.command
+    {
         let parent = match cli.project {
             Some(ref path) => path.clone(),
             None => match env::current_dir() {
@@ -160,7 +176,14 @@ fn run(cli: Cli) -> ExitCode {
                 }
             },
         };
-        return project_new::init(&parent, name.as_deref(), *template);
+        return project_new::init(
+            &parent,
+            name.as_deref(),
+            *template,
+            *database_mode,
+            *api_port,
+            *web_port,
+        );
     }
     if matches!(&cli.command, Command::Schema) {
         return schema::run();

@@ -3,8 +3,8 @@ use super::*;
 #[test]
 fn rejects_invalid_ports_before_project_access() {
     let missing = Path::new("/path/that/does/not/exist");
-    assert_eq!(run(missing, 0, 5173), ExitCode::from(2));
-    assert_eq!(run(missing, 3000, 3000), ExitCode::from(2));
+    assert_eq!(run(missing, Some(0), Some(5173)), ExitCode::from(2));
+    assert_eq!(run(missing, Some(3000), Some(3000)), ExitCode::from(2));
 }
 
 #[test]
@@ -55,8 +55,8 @@ fn prepare_stops_immediately_when_signaled() {
 #[test]
 fn run_reports_missing_projects_after_installing_the_signal_handler() {
     let missing = Path::new("/missing-appstruct-project");
-    assert_ne!(run(missing, 3000, 5173), ExitCode::SUCCESS);
-    assert_ne!(run(missing, 3001, 5174), ExitCode::SUCCESS);
+    assert_ne!(run(missing, Some(3000), Some(5173)), ExitCode::SUCCESS);
+    assert_ne!(run(missing, Some(3001), Some(5174)), ExitCode::SUCCESS);
 }
 
 #[test]

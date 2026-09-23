@@ -75,7 +75,9 @@ For a local installation, pick one template. `minimal` uses a database you alrea
 
 Run `appstruct init` in a terminal to choose a project name and template. For scripts, pass both
 inputs with `appstruct init <name> --template minimal|dashboard|saas`, or use `appstruct new` as
-shown below. Project creation prints the next `cd` and `appstruct dev` command.
+shown below. `init` also accepts `--database-mode external|managed`, `--api-port`, and
+`--web-port`; the ports are saved in the project's ignored `.env`. Authentication and tenant
+capabilities currently follow the selected template. Project creation prints the next commands.
 
 ### Existing PostgreSQL
 
@@ -190,7 +192,7 @@ Other contracts live in dedicated guides:
 ## Commands
 
 ```text
-appstruct init [<name>] [--template minimal|dashboard|saas]
+appstruct init [<name>] [--template minimal|dashboard|saas] [--database-mode external|managed] [--api-port <port>] [--web-port <port>]
 appstruct new <name> --template minimal|dashboard|saas
 appstruct schema
 appstruct check [--deny-warnings] [--format text|json]
@@ -287,9 +289,9 @@ scripts/run-template-build.sh
 ```
 
 PostgreSQL browser tests use dedicated databases and the matching `scripts/run-*-e2e.sh` scripts.
-GitHub Actions only builds and deploys the documentation site; run template, quality, and
-PostgreSQL gates locally. `scripts/run-template-build.sh` checks generated Web production
-dependencies, formatting, tests, types, and the Vite bundle.
+GitHub Actions deploys the documentation site and validates tagged release builds; run template
+and PostgreSQL gates locally before tagging. `scripts/run-template-build.sh` checks generated Web
+production dependencies, formatting, tests, types, and the Vite bundle.
 
 `scripts/clean-test-artifacts.sh` removes disposable generated-backend, coverage, and package
 targets. Pass `--all` to run `cargo clean` on the whole workspace.

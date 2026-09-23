@@ -83,7 +83,7 @@ shasum -a 256 -c install.sh.sha256
 bash install.sh --version <version>
 ```
 
-它会选择原生 macOS 归档或静态 Linux musl 归档，校验归档的 SHA-256，并安装到 `$HOME/.local/bin`。使用 `--bin-dir` 指定其他目录，`--target` 选择已发布的 glibc 归档，或 `--archive-dir` 使用已本地下载的归档和校验和。不需要 root 权限，也不会修改 PATH。下载使用 HTTPS。安装只流式写入预期的二进制条目，并在校验成功后原子替换已有二进制。校验和或解压失败会保留已安装版本。校验和用于确认下载完整性；信任来源仍是发布账号和 HTTPS。
+它会选择原生 macOS 归档或 Linux glibc 归档，校验归档的 SHA-256，并安装到 `$HOME/.local/bin`。使用 `--bin-dir` 指定其他目录，`--target` 选择其他已发布目标，或 `--archive-dir` 使用已本地下载的归档和校验和。不需要 root 权限，也不会修改 PATH。下载使用 HTTPS。安装只流式写入预期的二进制条目，并在校验成功后原子替换已有二进制。校验和或解压失败会保留已安装版本。校验和用于确认下载完整性；信任来源仍是发布账号和 HTTPS。
 
 在 x64 Windows 上，从同一发布下载并审阅 `install.ps1` 及其校验和：
 
@@ -105,7 +105,7 @@ install -m 0755 appstruct-<version>-<target>/appstruct "$HOME/.local/bin/appstru
 
 Linux 用户可以使用 `sha256sum -c`。校验和失败时不要安装归档。crates 发布后，`cargo install appstruct-cli --version <version> --locked` 是 registry 等价方式；源码与二进制发布版本保持同步。
 
-发布标签会为 Linux x86-64/ARM64 提供 glibc 和静态 musl 归档，为 Apple Silicon 和 Intel macOS 提供原生归档，以及 x86-64 Windows `.zip`。在 Windows 上，从 PowerShell 校验并解压：
+发布标签会为 Linux x86-64/ARM64 准备 glibc 归档，为 Apple Silicon 和 Intel macOS 准备原生归档，以及 x86-64 Windows `.zip`。在 Windows 上，从 PowerShell 校验并解压：
 
 ```powershell
 $archive = "appstruct-<version>-x86_64-pc-windows-msvc.zip"
@@ -119,7 +119,10 @@ Expand-Archive $archive -DestinationPath .
 在终端运行 `appstruct init`，输入项目名并选择 `minimal`、`dashboard` 或 `saas`。
 命令会创建对应模板，并提示下一步的 `cd` 和 `appstruct dev`。无终端或使用 JSON 输出时，
 请传入完整参数 `appstruct init <name> --template <template>`。现有脚本仍可使用
-`appstruct new`。
+`appstruct new`。数据库模式可通过 `--database-mode external|managed` 独立选择，
+API/Web 端口可通过 `--api-port`、`--web-port` 设置；交互流程会询问这些选项。
+脚本中未指定时使用模板默认数据库模式和 3000/5173 端口。端口保存在项目中被忽略的 `.env`，
+`appstruct dev` 会读取它们，命令行端口参数仍可覆盖。认证和租户能力目前随模板确定。
 
 ## 使用外部 PostgreSQL 开始
 

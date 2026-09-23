@@ -236,7 +236,126 @@ fn init_creates_a_project_without_interactive_prompts_when_arguments_are_complet
     assert_eq!(report["ok"], true);
     assert_eq!(report["result"]["command"], "init");
     assert_eq!(report["result"]["template"], "minimal");
+    assert_eq!(report["result"]["database_mode"], "external");
+    assert_eq!(report["result"]["api_port"], 3000);
     assert!(temporary.path().join("init-app/appstruct.yaml").is_file());
+    assert_eq!(
+        fs::read_to_string(temporary.path().join("init-app/.env")).unwrap(),
+        "APPSTRUCT_API_PORT=3000\nAPPSTRUCT_WEB_PORT=5173\n"
+    );
+}
+
+#[test]
+fn init_configures_database_mode_and_ports_without_changing_new_defaults() {
+    let temporary = tempfile::tempdir().unwrap();
+    let managed = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .current_dir(temporary.path())
+        .args([
+            "init",
+            "managed-notes",
+            "--template",
+            "minimal",
+            "--database-mode",
+            "managed",
+            "--api-port",
+            "3100",
+            "--web-port",
+            "5200",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        managed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&managed.stderr)
+    );
+    let report: Value = serde_json::from_slice(&managed.stdout).unwrap();
+    assert_eq!(report["result"]["database_mode"], "managed");
+    assert_eq!(report["result"]["web_port"], 5200);
+    let managed_root = temporary.path().join("managed-notes");
+    assert!(managed_root.join("compose.yaml").is_file());
+    assert_eq!(
+        fs::read_to_string(managed_root.join(".env")).unwrap(),
+        "APPSTRUCT_API_PORT=3100\nAPPSTRUCT_WEB_PORT=5200\n"
+    );
+    assert!(
+        fs::read_to_string(managed_root.join("appstruct.yaml"))
+            .unwrap()
+            .contains("mode: managed")
+    );
+    let managed_example = fs::read_to_string(managed_root.join(".env.example")).unwrap();
+    assert!(managed_example.contains("/appstruct?"));
+    assert!(!managed_example.contains("APPSTRUCT_AUTH_MAIL_MODE"));
+    assert!(run(&managed_root, &["check"]).status.success());
+
+    let external = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .current_dir(temporary.path())
+        .args([
+            "init",
+            "external-dashboard",
+            "--template",
+            "dashboard",
+            "--database-mode",
+            "external",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        external.status.success(),
+        "{}",
+        String::from_utf8_lossy(&external.stderr)
+    );
+    let external_root = temporary.path().join("external-dashboard");
+    assert!(!external_root.join("compose.yaml").exists());
+    assert!(
+        fs::read_to_string(external_root.join("appstruct.yaml"))
+            .unwrap()
+            .contains("mode: external")
+    );
+    let external_example = fs::read_to_string(external_root.join(".env.example")).unwrap();
+    assert!(external_example.contains("/external-dashboard?"));
+    assert!(!external_example.contains("/appstruct?"));
+    assert!(run(&external_root, &["check"]).status.success());
+
+    let saas = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .current_dir(temporary.path())
+        .args([
+            "init",
+            "custom-saas",
+            "--template",
+            "saas",
+            "--web-port",
+            "5201",
+        ])
+        .output()
+        .unwrap();
+    assert!(saas.status.success());
+    let saas_example =
+        fs::read_to_string(temporary.path().join("custom-saas/.env.example")).unwrap();
+    assert!(saas_example.contains("APPSTRUCT_ALLOWED_ORIGIN=http://127.0.0.1:5201"));
+}
+
+#[test]
+fn init_rejects_conflicting_ports_without_creating_a_project() {
+    let temporary = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .current_dir(temporary.path())
+        .args([
+            "init",
+            "bad-ports",
+            "--template",
+            "minimal",
+            "--api-port",
+            "3000",
+            "--web-port",
+            "3000",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(!temporary.path().join("bad-ports").exists());
 }
 
 #[test]

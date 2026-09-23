@@ -23,8 +23,8 @@ if [[ -z "$target" ]]; then
   case "$(uname -s):$(uname -m)" in
     Darwin:arm64) target=aarch64-apple-darwin ;;
     Darwin:x86_64) target=x86_64-apple-darwin ;;
-    Linux:aarch64|Linux:arm64) target=aarch64-unknown-linux-musl ;;
-    Linux:x86_64) target=x86_64-unknown-linux-musl ;;
+    Linux:aarch64|Linux:arm64) target=aarch64-unknown-linux-gnu ;;
+    Linux:x86_64) target=x86_64-unknown-linux-gnu ;;
     *) echo 'Unsupported platform; use a published archive or build from source' >&2; exit 2 ;;
   esac
 fi
