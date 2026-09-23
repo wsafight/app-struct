@@ -10,12 +10,14 @@ shipping an immutable release.
 
 ## Choose a path
 
-1. **Source CLI** — required during the technical preview.
-2. **Published release** — only after a GitHub release publishes checksummed archives.
-3. **First app** — `minimal` talks to PostgreSQL you already run; `dashboard` and `saas` can
-   start managed PostgreSQL through Docker Compose.
+1. **Dev Container** — recommended first run; builds the source CLI and starts PostgreSQL.
+2. **Local source CLI** — install the toolchain on the host when a container is unsuitable.
+3. **Published release** — only after a GitHub release publishes checksummed archives.
 
 ## Requirements
+
+The Dev Container needs Docker and VS Code with Dev Containers on the host. The tools below are
+provided inside the container; install them on the host only for the local source path.
 
 | Dependency | Required version | Used for |
 | --- | --- | --- |
@@ -27,6 +29,27 @@ shipping an immutable release.
 
 The root `rust-toolchain.toml` and every generated project pin Rust 1.98.0. This was the
 local latest Rust version used for the current implementation baseline.
+
+## Recommended First Run: Dev Container
+
+Install Docker and the VS Code Dev Containers extension, open this repository in VS Code, and
+choose **Reopen in Container**. The container provides Rust 1.98.0, Node.js 24, pnpm 11.25.0,
+and a PostgreSQL 17 service. It builds `appstruct` during container setup.
+
+In the container terminal, run:
+
+```bash
+appstruct init notes --template minimal
+cd notes
+appstruct migrate dev --accept
+appstruct doctor
+appstruct dev
+```
+
+The container sets `DATABASE_URL` for this example; no `.env` edit is needed. Wait for
+`AppStruct development environment is ready`, then open forwarded port 5173 and create a Note.
+Port 3000 is forwarded for the API. Run these commands from the repository root; the example
+project is created in `notes/`.
 
 ## Install The CLI
 
@@ -115,6 +138,13 @@ $expected = (Get-Content "$archive.sha256").Split()[0]
 if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw "checksum mismatch" }
 Expand-Archive $archive -DestinationPath .
 ```
+
+## Create A Project Interactively
+
+Run `appstruct init` in a terminal to enter a project name and select `minimal`, `dashboard`, or
+`saas`. The command creates the selected template and prints the next `cd` and `appstruct dev`
+command. Use `appstruct init <name> --template <template>` when running without a terminal or
+requesting JSON output. `appstruct new` remains available for existing scripts.
 
 ## Start With External PostgreSQL
 

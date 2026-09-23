@@ -4,6 +4,10 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
 
+mod init;
+mod name;
+pub(crate) use init::run as init;
+
 const PROJECT_NAME_MARKER: &str = "__APPSTRUCT_PROJECT_NAME__";
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -19,18 +23,31 @@ struct TemplateFile {
 }
 
 pub(crate) fn run(parent: &Path, name: &str, template: ProjectTemplate) -> ExitCode {
+    run_with_command(parent, name, template, "new")
+}
+
+fn run_with_command(
+    parent: &Path,
+    name: &str,
+    template: ProjectTemplate,
+    command: &str,
+) -> ExitCode {
     match create(parent, name, template) {
         Ok(destination) => {
             if crate::report::is_json() {
                 crate::report::success(&serde_json::json!({
-                    "command": "new",
+                    "command": command,
                     "name": name,
                     "template": template.name(),
                     "path": destination,
                 }));
             } else {
                 println!("Created AppStruct project at {}", destination.display());
-                println!("Next: cd {name} && appstruct dev");
+                println!("Next: {}", cd_command(&destination));
+                if matches!(template, ProjectTemplate::Minimal) {
+                    println!("Set DATABASE_URL in .env, then run appstruct migrate dev --accept");
+                }
+                println!("Then: appstruct dev");
             }
             ExitCode::SUCCESS
         }
@@ -53,8 +70,24 @@ pub(crate) fn run(parent: &Path, name: &str, template: ProjectTemplate) -> ExitC
     }
 }
 
+#[cfg(not(windows))]
+fn cd_command(destination: &Path) -> String {
+    format!(
+        "cd '{}'",
+        destination.display().to_string().replace('\'', "'\\''")
+    )
+}
+
+#[cfg(windows)]
+fn cd_command(destination: &Path) -> String {
+    format!(
+        "Set-Location -LiteralPath '{}'",
+        destination.display().to_string().replace('\'', "''")
+    )
+}
+
 fn create(parent: &Path, name: &str, template: ProjectTemplate) -> io::Result<PathBuf> {
-    validate_name(name)?;
+    name::validate_name(name)?;
     if !parent.is_dir() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -133,30 +166,6 @@ impl ProjectTemplate {
             Self::Saas => Some(("appstruct/saas", 1)),
             Self::Minimal | Self::Dashboard => None,
         }
-    }
-}
-
-fn validate_name(name: &str) -> io::Result<()> {
-    let valid = !name.is_empty()
-        && name.len() <= 64
-        && name
-            .bytes()
-            .next()
-            .is_some_and(|byte| byte.is_ascii_lowercase())
-        && name
-            .bytes()
-            .last()
-            .is_some_and(|byte| byte.is_ascii_alphanumeric())
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
-    if valid {
-        Ok(())
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "project name must be 1-64 lowercase ASCII letters, digits, or hyphens, starting with a letter",
-        ))
     }
 }
 
@@ -378,17 +387,4 @@ const SAAS_FILES: &[TemplateFile] = &[
 
 fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_unsafe_project_names() {
-        for name in ["", "../demo", "Demo", "demo_name", "demo-"] {
-            assert!(validate_name(name).is_err(), "accepted {name:?}");
-        }
-        assert!(validate_name("project-42").is_ok());
-    }
 }

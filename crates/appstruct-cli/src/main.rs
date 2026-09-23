@@ -50,6 +50,14 @@ enum Command {
         #[arg(long, value_enum, default_value_t = project_new::ProjectTemplate::Dashboard)]
         template: project_new::ProjectTemplate,
     },
+    /// Interactively create a new `AppStruct` project.
+    Init {
+        /// Optional project name; when omitted, prompt in a terminal.
+        name: Option<String>,
+        /// Optional template; when omitted, prompt in a terminal.
+        #[arg(long, value_enum)]
+        template: Option<project_new::ProjectTemplate>,
+    },
     /// Build validated backend and web production artifacts.
     Build,
     /// Manage authentication accounts.
@@ -137,6 +145,23 @@ fn run(cli: Cli) -> ExitCode {
         };
         return project_new::run(&parent, name, *template);
     }
+    if let Command::Init { name, template } = &cli.command {
+        let parent = match cli.project {
+            Some(ref path) => path.clone(),
+            None => match env::current_dir() {
+                Ok(path) => path,
+                Err(error) => {
+                    return report::fail(
+                        "AS6001",
+                        report::ErrorCategory::Project,
+                        format!("cannot read current directory: {error}"),
+                        report::ExitClass::Environment,
+                    );
+                }
+            },
+        };
+        return project_new::init(&parent, name.as_deref(), *template);
+    }
     if matches!(&cli.command, Command::Schema) {
         return schema::run();
     }
@@ -168,7 +193,7 @@ fn run(cli: Cli) -> ExitCode {
     };
 
     match cli.command {
-        Command::New { .. } | Command::Schema => unreachable!(),
+        Command::New { .. } | Command::Init { .. } | Command::Schema => unreachable!(),
         Command::Auth { command } => auth_admin::run(&project, &command),
         Command::Build => build::run(&project),
         Command::Doctor {} => doctor::run(&project, cli.format == report::OutputFormat::Json),

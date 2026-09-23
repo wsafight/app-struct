@@ -10,6 +10,7 @@ const REQUIRED_PNPM: &str = "11.25.0";
 struct DoctorReport {
     healthy: bool,
     checks: Vec<DoctorCheck>,
+    next_step: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -53,7 +54,12 @@ pub(crate) fn run(project: &Path, json: bool) -> ExitCode {
         DatabaseDevMode::External => external_checks(project, &environment),
     });
     let healthy = checks.iter().all(|check| check.ok);
-    let report = DoctorReport { healthy, checks };
+    let next_step = next_step(&checks);
+    let report = DoctorReport {
+        healthy,
+        checks,
+        next_step,
+    };
     if json {
         println!(
             "{}",
@@ -161,6 +167,29 @@ fn file_check(path: impl AsRef<Path>, name: &str) -> DoctorCheck {
     }
 }
 
+fn next_step(checks: &[DoctorCheck]) -> &'static str {
+    match checks.iter().find(|check| !check.ok) {
+        None => "Run appstruct dev to start the application.",
+        Some(check) => match check.name.as_str() {
+            "rustc" | "cargo" | "rustfmt" | "clippy" => {
+                "Run rustup toolchain install 1.98.0 --component clippy,rustfmt, then appstruct doctor."
+            }
+            "pnpm" => "Install pnpm 11.25.0, then run appstruct doctor.",
+            "compose.yaml" => {
+                "Restore compose.yaml from the selected template, then run appstruct doctor."
+            }
+            "docker" => {
+                "Start Docker and verify docker compose version, then run appstruct doctor."
+            }
+            "PostgreSQL" if check.detail.contains("DATABASE_URL is not configured") => {
+                "Set DATABASE_URL in .env, then run appstruct migrate dev --accept."
+            }
+            "PostgreSQL" => "Check DATABASE_URL and PostgreSQL, then run appstruct migrate status.",
+            _ => "Resolve the failed check, then run appstruct doctor.",
+        },
+    }
+}
+
 fn render_text(report: &DoctorReport) {
     println!("AppStruct doctor:");
     for check in &report.checks {
@@ -170,6 +199,7 @@ fn render_text(report: &DoctorReport) {
             println!("  help: {help}");
         }
     }
+    println!("Next: {}", report.next_step);
 }
 
 #[cfg(test)]
@@ -241,6 +271,22 @@ mod tests {
                 detail: "missing".to_owned(),
                 help: Some("install pnpm".to_owned()),
             }],
+            next_step: "Install pnpm 11.25.0, then run appstruct doctor.",
         });
+    }
+
+    #[test]
+    fn next_step_uses_first_failed_check_or_starts_dev() {
+        assert_eq!(
+            next_step(&[]),
+            "Run appstruct dev to start the application."
+        );
+        let checks = vec![DoctorCheck {
+            name: "PostgreSQL".to_owned(),
+            ok: false,
+            detail: "DATABASE_URL is not configured".to_owned(),
+            help: None,
+        }];
+        assert!(next_step(&checks).contains("appstruct migrate dev --accept"));
     }
 }

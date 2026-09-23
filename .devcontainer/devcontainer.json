@@ -1,0 +1,26 @@
+{
+  "name": "AppStruct",
+  "dockerComposeFile": "compose.yaml",
+  "service": "workspace",
+  "workspaceFolder": "/workspaces/app-struct",
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "24"
+    }
+  },
+  "postCreateCommand": "npm install --global --prefix \"$HOME/.local\" pnpm@11.25.0 && cargo build --locked -p appstruct-cli",
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/home/vscode/.local/bin:${containerWorkspaceFolder}/target/debug"
+  },
+  "forwardPorts": [3000, 5173],
+  "portsAttributes": {
+    "3000": {
+      "label": "AppStruct API"
+    },
+    "5173": {
+      "label": "AppStruct Web",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}

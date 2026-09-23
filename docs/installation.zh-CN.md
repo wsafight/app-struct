@@ -6,11 +6,14 @@ AppStruct 可以从源码检出安装。发布自动化会打包带校验和的 
 
 ## 选择路径
 
-1. **源码安装 CLI** — 技术预览阶段的默认方式。
-2. **已发布安装器** — 仅在 GitHub Release 提供带校验和的归档之后使用。
-3. **第一个应用** — `minimal` 连接你已有的 PostgreSQL；`dashboard` 和 `saas` 可通过 Docker Compose 托管数据库。
+1. **Dev Container** — 推荐的首次运行路径，在容器内构建源码 CLI 并启动 PostgreSQL。
+2. **本地源码安装 CLI** — 不使用容器时，在主机安装工具链。
+3. **已发布安装器** — 仅在 GitHub Release 提供带校验和的归档之后使用。
 
 ## 环境要求
+
+使用 Dev Container 时，主机需要 Docker、VS Code 和 Dev Containers 扩展。下列工具由容器提供；
+仅在本地源码安装路径中需要在主机自行安装。
 
 | 依赖 | 所需版本 | 用途 |
 | --- | --- | --- |
@@ -21,6 +24,26 @@ AppStruct 可以从源码检出安装。发布自动化会打包带校验和的 
 | Docker Compose | 当前版本，可选 | 仅用于 `database.dev.mode: managed` |
 
 仓库根目录的 `rust-toolchain.toml` 以及每个生成的项目都会固定 Rust 1.98.0。这是当前实现基线所使用的本地最新 Rust 版本。
+
+## 推荐首次运行路径：Dev Container
+
+安装 Docker 和 VS Code 的 Dev Containers 扩展，在 VS Code 中打开本仓库并选择
+**Reopen in Container**。容器提供 Rust 1.98.0、Node.js 24、pnpm 11.25.0 和 PostgreSQL 17，
+并在创建时构建 `appstruct`。
+
+在容器终端中运行：
+
+```bash
+appstruct init notes --template minimal
+cd notes
+appstruct migrate dev --accept
+appstruct doctor
+appstruct dev
+```
+
+容器已为此示例设置 `DATABASE_URL`，无需编辑 `.env`。看到
+`AppStruct development environment is ready` 后，打开转发的 5173 端口并创建一条 Note。
+API 使用转发的 3000 端口。请从仓库根目录执行命令；示例项目位于 `notes/`。
 
 ## 安装 CLI
 
@@ -90,6 +113,13 @@ $expected = (Get-Content "$archive.sha256").Split()[0]
 if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw "checksum mismatch" }
 Expand-Archive $archive -DestinationPath .
 ```
+
+## 交互式创建项目
+
+在终端运行 `appstruct init`，输入项目名并选择 `minimal`、`dashboard` 或 `saas`。
+命令会创建对应模板，并提示下一步的 `cd` 和 `appstruct dev`。无终端或使用 JSON 输出时，
+请传入完整参数 `appstruct init <name> --template <template>`。现有脚本仍可使用
+`appstruct new`。
 
 ## 使用外部 PostgreSQL 开始
 

@@ -1,0 +1,29 @@
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/rust:1-bookworm
+    command: sleep infinity
+    init: true
+    volumes:
+      - ..:/workspaces/app-struct:cached
+    environment:
+      DATABASE_URL: postgresql://appstruct:appstruct-dev@postgres:5432/notes?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: notes
+      POSTGRES_USER: appstruct
+      POSTGRES_PASSWORD: appstruct-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appstruct -d notes"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - appstruct-dev-postgres:/var/lib/postgresql/data
+
+volumes:
+  appstruct-dev-postgres:

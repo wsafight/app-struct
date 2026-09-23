@@ -15,6 +15,10 @@ of scope for preset version 1.
 
 ## Requirements
 
+The Dev Container first run requires Docker and VS Code with Dev Containers on the host. The
+versions below are supplied inside the container; install them locally only when using the
+non-container path.
+
 | Dependency | Version | Used for |
 | --- | --- | --- |
 | Rust | 1.98.0 with rustfmt and Clippy | CLI and generated backend |
@@ -50,8 +54,28 @@ Keep `--locked` so Cargo uses the committed workspace `Cargo.lock`.
 
 ## Quick start
 
-Pick one template. `minimal` uses a database you already run; `dashboard` and `saas` can start
-managed PostgreSQL through Docker Compose.
+The recommended first run uses the included Dev Container. Open this repository in VS Code with
+the Dev Containers extension, then choose **Reopen in Container**. The container builds the CLI and
+starts PostgreSQL; after setup finishes, run:
+
+```bash
+appstruct init notes --template minimal
+cd notes
+appstruct migrate dev --accept
+appstruct doctor
+appstruct dev
+```
+
+Open the forwarded Web port 5173 and create a Note. The API uses forwarded port 3000. This path
+requires Docker and VS Code with Dev Containers on the host, but no host Rust, Node.js, or
+PostgreSQL installation. See [Installation](docs/installation.md) for details.
+
+For a local installation, pick one template. `minimal` uses a database you already run;
+`dashboard` and `saas` can start managed PostgreSQL through Docker Compose.
+
+Run `appstruct init` in a terminal to choose a project name and template. For scripts, pass both
+inputs with `appstruct init <name> --template minimal|dashboard|saas`, or use `appstruct new` as
+shown below. Project creation prints the next `cd` and `appstruct dev` command.
 
 ### Existing PostgreSQL
 
@@ -166,6 +190,7 @@ Other contracts live in dedicated guides:
 ## Commands
 
 ```text
+appstruct init [<name>] [--template minimal|dashboard|saas]
 appstruct new <name> --template minimal|dashboard|saas
 appstruct schema
 appstruct check [--deny-warnings] [--format text|json]

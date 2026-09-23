@@ -212,6 +212,82 @@ fn new_creates_valid_official_projects_without_overwrite() {
 }
 
 #[test]
+fn init_creates_a_project_without_interactive_prompts_when_arguments_are_complete() {
+    let temporary = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .current_dir(temporary.path())
+        .args([
+            "init",
+            "init-app",
+            "--template",
+            "minimal",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["result"]["command"], "init");
+    assert_eq!(report["result"]["template"], "minimal");
+    assert!(temporary.path().join("init-app/appstruct.yaml").is_file());
+}
+
+#[test]
+fn init_without_arguments_fails_closed_when_stdin_is_not_a_terminal() {
+    let temporary = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .current_dir(temporary.path())
+        .args(["init"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("AS6003"));
+    assert!(!temporary.path().join("appstruct.yaml").exists());
+}
+
+#[test]
+fn init_json_requires_all_inputs() {
+    let temporary = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .current_dir(temporary.path())
+        .args(["init", "json-app", "--format", "json"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["error"]["code"], "AS6003");
+    assert!(!temporary.path().join("json-app").exists());
+}
+
+#[test]
+fn project_creation_prints_template_specific_first_run_steps() {
+    let temporary = tempfile::tempdir().unwrap();
+    let minimal = run_new(temporary.path(), "notes-next", "minimal");
+    assert!(minimal.status.success());
+    let minimal_output = String::from_utf8_lossy(&minimal.stdout);
+    assert!(minimal_output.contains(&temporary.path().join("notes-next").display().to_string()));
+    assert!(minimal_output.contains("Set DATABASE_URL in .env"));
+    assert!(minimal_output.contains("appstruct migrate dev --accept"));
+
+    let dashboard = run_new(temporary.path(), "dashboard-next", "dashboard");
+    assert!(dashboard.status.success());
+    let dashboard_output = String::from_utf8_lossy(&dashboard.stdout);
+    assert!(dashboard_output.contains("Then: appstruct dev"));
+    assert!(!dashboard_output.contains("DATABASE_URL"));
+}
+
+#[test]
 fn doctor_json_reports_missing_external_database_configuration() {
     let project = temporary_project("m2-project");
     let output = run(&project, &["doctor", "--format", "json"]);
@@ -219,6 +295,11 @@ fn doctor_json_reports_missing_external_database_configuration() {
     assert!(output.stderr.is_empty());
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["healthy"], false);
+    assert!(
+        report["next_step"]
+            .as_str()
+            .is_some_and(|step| !step.is_empty())
+    );
     assert!(report["checks"].as_array().unwrap().iter().any(|check| {
         check["name"] == "PostgreSQL"
             && check["detail"]

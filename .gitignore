@@ -2,6 +2,9 @@
 /references/PROJECT_REFERENCES.md
 /references/*/
 
+# Local product planning notes.
+/docs/product-roadmap.zh-CN.md
+
 # Local build output and compiler caches.
 .DS_Store
 /target/

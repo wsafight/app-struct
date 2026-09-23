@@ -13,6 +13,9 @@ Admin 运维概览和受保护的 Jobs 重试/重放操作；Billing 不在预�
 
 ## 环境要求
 
+使用 Dev Container 首次运行时，主机需要 Docker、VS Code 和 Dev Containers 扩展。
+下列工具由容器提供；仅在本地安装路径中需要自行安装。
+
 | 依赖 | 版本 | 用途 |
 | --- | --- | --- |
 | Rust | 1.98.0，带 rustfmt 和 Clippy | CLI 和生成的后端 |
@@ -46,6 +49,25 @@ appstruct --version
 不把 `cargo install --path crates/appstruct-cli` 作为可复现安装方式。
 
 ## 快速开始
+
+推荐先使用仓库自带的 Dev Container。在安装了 Dev Containers 扩展的 VS Code 中打开仓库，
+选择 **Reopen in Container**。容器会构建 CLI 并启动 PostgreSQL；初始化完成后运行：
+
+```bash
+appstruct init notes --template minimal
+cd notes
+appstruct migrate dev --accept
+appstruct doctor
+appstruct dev
+```
+
+打开转发的 Web 端口 5173，创建一条 Note；API 使用转发的端口 3000。主机需要 Docker、
+VS Code 和 Dev Containers 扩展，但不需要预装 Rust、Node.js 或 PostgreSQL。
+详情见[安装指南](docs/installation.zh-CN.md)。
+
+在终端运行 `appstruct init`，依次输入项目名并选择模板。脚本可使用
+`appstruct init <name> --template minimal|dashboard|saas`，也可沿用下面的 `appstruct new`
+示例。创建成功后 CLI 会提示下一步的 `cd` 和 `appstruct dev` 命令。
 
 ### 使用已有 PostgreSQL
 
@@ -170,6 +192,7 @@ Web 运行时采用固定且现代的 React 19 + TypeScript + Vite 基线，并�
 ## 常用命令
 
 ```text
+appstruct init [<name>] [--template minimal|dashboard|saas]
 appstruct new <name> --template minimal|dashboard|saas
 appstruct schema
 appstruct check [--deny-warnings] [--format text|json]
