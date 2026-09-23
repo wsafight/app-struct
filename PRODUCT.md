@@ -60,7 +60,7 @@ ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新�
 
 M5 交付文档已提供源码与校验后二进制安装、external/managed PostgreSQL 首次运行、事务化 `appstruct update`、生产 Artifact、运行时变量、迁移顺序、健康验证和回滚边界。数据库 down migration 仍未实现，升级后的数据库风险继续由显式 `migrate plan/status` 和人工审查控制。
 
-M5 质量门禁已固化。两个独立项目的完整 `generated/` 树逐字节比较；后端 Entity/API Artifact 按可用 CPU 并行规划但最终统一排序，实测 10 实体 IR 编译 70 ms、编译加生成 518 ms，100 实体编译加生成 7774 ms，分别低于 500/1000/10000 ms 预算。Playwright 1.62.1 由根 pnpm lock 固定，external PostgreSQL 17.10 E2E 从 dashboard Template 启动，覆盖 liveness/readiness、`X-Request-Id` 生成与透传、注册、owner Project 创建与编辑、退出重登录和数据保持；1440x900 dashboard 与 390x844 登录页截图无重叠或水平溢出。启动冷构建期间的 SIGINT 也验证了 Cargo 子进程、临时项目和端口全部回收。
+M5 质量门禁已固化。两个独立项目的完整 `generated/` 树逐字节比较；后端 Entity/API Artifact 按可用 CPU 并行规划但最终统一排序，实测 10 实体 IR 编译 70 ms、编译加生成 518 ms，100 实体编译加生成 7774 ms，分别低于 500/1000/10000 ms 预算。Playwright 1.63.0 由根 pnpm lock 固定，external PostgreSQL 17.10 E2E 从 dashboard Template 启动，覆盖 liveness/readiness、`X-Request-Id` 生成与透传、注册、owner Project 创建与编辑、退出重登录和数据保持；1440x900 dashboard 与 390x844 登录页截图无重叠或水平溢出。启动冷构建期间的 SIGINT 也验证了 Cargo 子进程、临时项目和端口全部回收。
 
 M6 SaaS Template 门禁从 CLI 创建真实 `saas` 项目并切换到专用 external PostgreSQL，验证 Preset lock、五个模块数据表、迁移、生成 Web TypeScript、注册、组织选择、Project/Task 写入、Audit 事件和跨租户空结果。Playwright 对 1440x900 Audit 页面和 390x844 Project 页面截图，移动表格保持在视口内并使用局部横向滚动。`examples/saas-demo` 与 CLI 模板逐文件字节比对，防止示例漂移。
 

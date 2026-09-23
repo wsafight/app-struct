@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/playwright:v1.62.1-noble
+FROM mcr.microsoft.com/playwright:v1.63.0-noble
 USER root
 RUN apt-get update && apt-get install --no-install-recommends -y fonts-noto-cjk fonts-noto-core \
     && rm -rf /var/lib/apt/lists/* \

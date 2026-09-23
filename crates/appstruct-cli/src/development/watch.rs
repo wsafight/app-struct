@@ -1,3 +1,4 @@
+use crate::fingerprint;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -279,7 +280,7 @@ fn fingerprint(project: &Path, files: &[&str], directories: &[&str]) -> io::Resu
             hash.update(b"symlink\0");
             hash.update(fs::read_link(path)?.as_os_str().as_encoded_bytes());
         } else {
-            hash.update(fs::read(path)?);
+            hash.update(fingerprint::digest(&path)?);
         }
         hash.update([0]);
     }

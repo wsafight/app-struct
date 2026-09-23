@@ -6,18 +6,18 @@ collections and rewrites repository-relative links for the deployed site. Englis
 source Markdown; Chinese pages use the matching `*.zh-CN.md` translation.
 
 ```bash
-npm ci
-npm run dev
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
 The development server listens on `http://127.0.0.1:4321`. Type checks, Playwright tests, and
 link checks stay local. GitHub Actions only builds the static site and deploys GitHub Pages:
 
 ```bash
-npm run check
-npm run build
-npx playwright install chromium
-npm test
+pnpm run check
+pnpm run build
+pnpm exec playwright install chromium
+pnpm test
 ```
 
 `DOCS_SITE` overrides the canonical origin and `DOCS_BASE` overrides the deployment path. Without

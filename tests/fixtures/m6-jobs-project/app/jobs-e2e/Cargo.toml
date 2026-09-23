@@ -6,9 +6,9 @@ publish = false
 
 [dependencies]
 appstruct-generated-backend = { path = "../../generated/backend" }
-async-trait = "=0.1.89"
+async-trait = "=0.1.92"
 chrono = "=0.4.45"
 sea-orm = { version = "=2.0.2", default-features = false, features = ["runtime-tokio-rustls", "sqlx-postgres", "with-uuid"] }
 serde_json = "=1.0.151"
 tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread", "time"] }
-uuid = "=1.25.0"
+uuid = "=1.26.1"

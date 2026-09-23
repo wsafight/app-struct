@@ -57,6 +57,8 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     let project_api = artifact_text(artifacts, "backend/src/api/project.rs");
     assert!(project_api.contains("cursor pagination cannot be combined"));
     assert!(project_api.contains("like_contains_pattern"));
+    assert!(project_api.contains("search_term_is_valid"));
+    assert!(project_api.contains("MAX_SEARCH_CHARS"));
     assert!(project_api.contains("LikeExpr::new(pattern.clone())"));
     assert!(project_api.contains("list_page_is_valid"));
     assert!(project_api.contains("MAX_LIST_PAGE"));
@@ -94,6 +96,11 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
             "missing query parameter {name}"
         );
     }
+    let search_parameter = task_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "q")
+        .expect("search query parameter");
+    assert_eq!(search_parameter["schema"]["maxLength"], 200);
     assert!(
         !task_parameters
             .iter()

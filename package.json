@@ -3,14 +3,14 @@
   "private": true,
   "scripts": {
     "test:e2e": "playwright test",
-    "site:dev": "npm --prefix site run dev",
-    "site:check": "npm --prefix site run check",
-    "site:build": "npm --prefix site run build",
-    "site:test": "npm --prefix site test"
+    "site:dev": "pnpm --dir site run dev",
+    "site:check": "pnpm --dir site run check",
+    "site:build": "pnpm --dir site run build",
+    "site:test": "pnpm --dir site test"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
-    "@playwright/test": "1.62.1"
+    "@playwright/test": "1.63.0"
   },
   "engines": {
     "node": ">=24.0.0"

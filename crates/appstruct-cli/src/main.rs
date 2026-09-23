@@ -12,6 +12,7 @@ mod db;
 mod development;
 mod doctor;
 mod environment;
+mod fingerprint;
 mod generation;
 mod migration;
 mod module_registry;

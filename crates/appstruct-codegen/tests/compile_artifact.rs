@@ -580,7 +580,7 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     assert!(backend.contains("pub async fn connect_database"));
     assert!(backend.contains("ConnectOptions"));
     assert!(backend.contains("APPSTRUCT_DB_MAX_CONNECTIONS"));
-    assert!(artifact_text(artifacts, "backend/Cargo.toml").contains("tinyvec = \"=1.12.0\""));
+    assert!(artifact_text(artifacts, "backend/Cargo.toml").contains("tinyvec = \"=1.13.3\""));
     let auth = artifact_text(artifacts, "backend/src/auth.rs");
     assert!(auth.contains("CorsLayer::permissive()"));
     assert!(auth.contains("APPSTRUCT_ENV"));

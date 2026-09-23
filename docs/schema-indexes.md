@@ -23,6 +23,23 @@ entity. `unique: true` creates a unique index; `where` creates a partial index a
 trusted SQL predicate after compiler validation. Predicates cannot contain semicolons or SQL line
 comments. Index names are optional; omitted names are generated from the entity and field list.
 
+## Search indexes
+
+`searchable: true` uses a substring `LIKE` query (`%term%`). A regular B-tree index will not speed
+up that pattern on a large table. For high-cardinality or frequently searched fields, install
+PostgreSQL's `pg_trgm` extension and create a GIN index in a reviewed manual migration:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX users_name_search_idx
+  ON users USING GIN (name gin_trgm_ops);
+```
+
+Declare a matching `indexes` entry in the App Spec and keep the field `searchable`. Replace the
+generated B-tree statement with this reviewed operator-owned migration. AppStruct's schema catalog
+compares indexed columns, uniqueness, and predicate, while intentionally ignoring the access method
+and operator class, so the GIN index remains covered by drift checks.
+
 ## Migrations
 
 Index definitions are included in database snapshots and generated initial migrations. Adding an

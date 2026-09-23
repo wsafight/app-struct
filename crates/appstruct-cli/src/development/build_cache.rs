@@ -1,9 +1,10 @@
 use crate::cache::{CacheKey, command_identity};
 use crate::environment::{CacheEnvironment, ProjectEnvironment};
+use crate::fingerprint;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::fs::{self, File};
-use std::io::{self, Read};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -133,15 +134,7 @@ fn files_fingerprint(files: &[PathBuf]) -> io::Result<String> {
     let mut hasher = Sha256::new();
     for path in files {
         hasher.update(path.to_string_lossy().as_bytes());
-        let mut file = File::open(path)?;
-        let mut buffer = [0_u8; 8 * 1024];
-        loop {
-            let read = file.read(&mut buffer)?;
-            if read == 0 {
-                break;
-            }
-            hasher.update(&buffer[..read]);
-        }
+        hasher.update(fingerprint::digest(&path)?);
     }
     Ok(format!("sha256:{:x}", hasher.finalize()))
 }

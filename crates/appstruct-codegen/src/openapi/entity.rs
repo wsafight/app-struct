@@ -227,7 +227,7 @@ fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
             &json!({ "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }),
         ),
         query_parameter("sort", &json!({ "type": "string" })),
-        query_parameter("q", &json!({ "type": "string" })),
+        query_parameter("q", &json!({ "type": "string", "maxLength": 200 })),
     ];
     for field in entity
         .fields

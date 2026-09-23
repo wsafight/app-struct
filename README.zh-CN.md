@@ -192,7 +192,7 @@ appstruct update
 
 下列指南均提供英文原文和简体中文译文（`*.zh-CN.md`）。从安装与快速开始读起，再按要用的
 能力打开对应契约。`site/` 中的静态站点会同时渲染两种语言；在仓库根目录运行
-`npm run site:dev`。
+`pnpm run site:dev`。
 
 ### 开始使用
 

@@ -188,7 +188,7 @@ reports destructive, locking, and unsafe non-null changes; use `--deny-warnings`
 ## Documentation
 
 Each guide has an English source and a Simplified Chinese translation (`*.zh-CN.md`). The static
-site in `site/` renders both languages; from the workspace root run `npm run site:dev`.
+site in `site/` renders both languages; from the workspace root run `pnpm run site:dev`.
 
 ### Start here
 

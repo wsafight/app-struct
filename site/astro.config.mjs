@@ -11,7 +11,7 @@ export default defineConfig({
     shikiConfig: {
       theme: 'github-dark-default',
       wrap: false,
-      langAlias: {rhai: 'javascript', rns: 'text'},
+      langAlias: {promql: 'text', rhai: 'javascript', rns: 'text'},
     },
   },
 });

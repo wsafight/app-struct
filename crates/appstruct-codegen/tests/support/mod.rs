@@ -128,7 +128,7 @@ edition = "2024"
 
 [dependencies]
 appstruct-generated-backend = {{ package = {generated_package:?}, path = "../generated/backend" }}
-async-trait = "0.1.89"
+async-trait = "0.1.92"
 "#
     )
 }

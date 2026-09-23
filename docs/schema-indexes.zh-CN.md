@@ -19,6 +19,18 @@ entities:
 
 `fields` 按 PostgreSQL 索引顺序列出，且必须引用同一实体上已声明的字段。`unique: true` 创建唯一索引；`where` 创建部分索引，并在编译器校验后作为受信任的 SQL 谓词处理。谓词不能包含分号或 SQL 行注释。索引名可选；省略时由实体和字段列表生成。
 
+## 搜索索引
+
+`searchable: true` 使用包含匹配的 `LIKE` 查询（`%term%`）。普通 B-tree 索引无法有效加速大表上的这种模式。对于高基数或高频搜索字段，请安装 PostgreSQL 的 `pg_trgm` 扩展，并在经过审查的手工迁移中创建 GIN 索引：
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX users_name_search_idx
+  ON users USING GIN (name gin_trgm_ops);
+```
+
+在 App Spec 中声明匹配的 `indexes` 项，并保留字段的 `searchable`。将生成的 B-tree 语句替换为这条经过审查、由运维负责的迁移。AppStruct 的 schema catalog 会比较索引字段、唯一性和 predicate，但有意忽略访问方法和 operator class，因此该 GIN 索引仍会参与 drift 检查。
+
 ## 迁移
 
 索引定义会进入数据库快照和生成的初始迁移。向现有表添加索引被归类为非破坏性但可能锁表，因此 `migrate dev` 在接受该迁移前需要显式审查。删除或更改索引是破坏性操作，永远不会自动生成。迁移状态也会把缺失或意外的索引报告为 Schema 漂移。

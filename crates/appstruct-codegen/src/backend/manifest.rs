@@ -12,20 +12,20 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         "test-support = []\n\n",
         "[dependencies]\n",
         "appstruct-runtime = { path = \"runtime\" }\n",
-        "async-trait = \"=0.1.89\"\n",
+        "async-trait = \"=0.1.92\"\n",
         "axum = \"=0.8.9\"\n",
-        "base64 = \"=0.22.1\"\n",
+        "base64 = \"=0.23.1\"\n",
         "chrono = { version = \"=0.4.45\", features = [\"serde\"] }\n",
         "rust_decimal = { version = \"=1.42.1\", features = [\"serde-with-str\"] }\n",
         "sea-orm = { version = \"=2.0.2\", default-features = false, features = [\"macros\", \"runtime-tokio-rustls\", \"sqlx-postgres\", \"with-chrono\", \"with-json\", \"with-rust_decimal\", \"with-uuid\"] }\n",
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
         "serde_json = \"=1.0.151\"\n",
-        "tinyvec = \"=1.12.0\"\n",
+        "tinyvec = \"=1.13.3\"\n",
         "tokio = { version = \"=1.53.1\", features = [\"io-util\", \"macros\", \"net\", \"rt-multi-thread\", \"signal\", \"sync\", \"time\"] }\n",
         "tower-http = { version = \"=0.7.0\", features = [\"cors\", \"request-id\", \"trace\"] }\n",
         "tracing = \"=0.1.44\"\n",
         "tracing-subscriber = { version = \"=0.3.22\", features = [\"env-filter\", \"fmt\"] }\n",
-        "uuid = { version = \"=1.25.0\", features = [\"serde\", \"v7\"] }\n",
+        "uuid = { version = \"=1.26.1\", features = [\"serde\", \"v7\"] }\n",
     )
     .to_owned();
     if ir.auth.enabled || ir.mail.enabled {
@@ -40,7 +40,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         manifest.push_str("cron = \"=0.15.0\"\n");
     }
     if ir.auth.oauth_enabled || (ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend) {
-        manifest.push_str("reqwest = { version = \"=0.13.4\", default-features = false, features = [\"json\", \"form\", \"rustls\"] }\n");
+        manifest.push_str("reqwest = { version = \"=0.13.5\", default-features = false, features = [\"json\", \"form\", \"rustls\"] }\n");
     }
     if ir.auth.enabled || ir.file.enabled {
         manifest.push_str("sha2 = \"=0.10.9\"\n");
@@ -80,7 +80,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         && !ir.auth.oauth_enabled
         && !(ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend)
     {
-        manifest.push_str("reqwest = { version = \"=0.13.4\", default-features = false, features = [\"rustls\"] }\n");
+        manifest.push_str("reqwest = { version = \"=0.13.5\", default-features = false, features = [\"rustls\"] }\n");
     }
     manifest
 }
@@ -94,12 +94,12 @@ pub(super) fn runtime_cargo() -> &'static str {
         "rust-version = \"1.98\"\n\n",
         "[dependencies]\n",
         "appstruct-contracts = { path = \"../contracts\" }\n",
-        "async-trait = \"=0.1.89\"\n",
-        "base64 = \"=0.22.1\"\n",
+        "async-trait = \"=0.1.92\"\n",
+        "base64 = \"=0.23.1\"\n",
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
         "serde_json = \"=1.0.151\"\n",
         "tokio = { version = \"=1.53.1\", features = [\"rt\", \"time\"] }\n",
-        "uuid = { version = \"=1.25.0\", features = [\"serde\", \"v7\"] }\n",
+        "uuid = { version = \"=1.26.1\", features = [\"serde\", \"v7\"] }\n",
     )
 }
 
@@ -124,7 +124,7 @@ pub(super) fn server_cargo() -> &'static str {
         "appstruct-app-backend = { path = \"../../app/backend\" }\n",
         "appstruct-generated-backend = { path = \"../backend\" }\n",
         "sea-orm = { version = \"=2.0.2\", default-features = false, features = [\"runtime-tokio-rustls\", \"sqlx-postgres\"] }\n",
-        "tinyvec = \"=1.12.0\"\n",
+        "tinyvec = \"=1.13.3\"\n",
         "tokio = { version = \"=1.53.1\", features = [\"macros\", \"net\", \"rt-multi-thread\"] }\n",
         "tracing = \"=0.1.44\"\n",
         "tracing-subscriber = { version = \"=0.3.22\", features = [\"env-filter\", \"fmt\"] }\n",
