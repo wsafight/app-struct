@@ -25,7 +25,8 @@ OpenAPI, generated clients, and any future protocol adapter retain identical aut
 
 ### 2.1 Existing database onboarding
 
-The read-only `appstruct db pull` workflow now derives a reviewable App Spec draft from PostgreSQL.
+The `appstruct db pull` workflow now derives a reviewable App Spec draft from PostgreSQL. `--review`
+presents fields and relations table by table, confirms selected tables, and shows warnings before writing.
 The remaining gap is migration from real-world schemas: composite keys and cross-schema relations
 still require manual modeling. Domains are imported as their base scalar with a constraint warning;
 arrays, generated columns, and unsupported types are omitted with warnings rather than emitted as
@@ -95,7 +96,7 @@ remains out of scope.
 - [x] Remote module registry lifecycle (`install`, `update`, `verify`, `uninstall`, and `list`) with
   `appstruct.modules.lock`, signature verification, offline cache validation, and compatibility checks.
 - Deployment adapters and environment promotion without a mandatory hosted control plane.
-- Billing and subscription operations.
+- Billing and subscription operations (the current `appstruct capabilities` report lists Stripe as planned).
 - Visual schema, permission, page, and migration editor that produces reviewable App Spec diffs.
 - Project-local agent instructions and a policy-governed MCP adapter.
 
@@ -123,7 +124,7 @@ Cursor mode remains primary-key ordered, and custom forms continue to own their 
 ### 4.1 Command contract
 
 ```text
-appstruct db pull [--schema public] [--output spec/imported.yaml] [--check | --diff]
+appstruct db pull [--schema public] [--output spec/imported.yaml] [--review | --check | --diff]
 ```
 
 The command:

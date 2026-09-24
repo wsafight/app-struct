@@ -8,6 +8,7 @@ use std::process::ExitCode;
 mod auth_admin;
 mod build;
 mod cache;
+mod capabilities;
 mod db;
 mod development;
 mod doctor;
@@ -44,6 +45,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Show the Auth and Billing provider support matrix.
+    Capabilities,
     /// Create a new `AppStruct` project from an official template.
     New {
         name: String,
@@ -185,7 +188,10 @@ fn run(cli: Cli) -> ExitCode {
             *web_port,
         );
     }
-    if matches!(&cli.command, Command::Schema) {
+    if matches!(&cli.command, Command::Schema | Command::Capabilities) {
+        if matches!(&cli.command, Command::Capabilities) {
+            return capabilities::run();
+        }
         return schema::run();
     }
     let start = match cli.project {
@@ -216,7 +222,9 @@ fn run(cli: Cli) -> ExitCode {
     };
 
     match cli.command {
-        Command::New { .. } | Command::Init { .. } | Command::Schema => unreachable!(),
+        Command::New { .. } | Command::Init { .. } | Command::Schema | Command::Capabilities => {
+            unreachable!()
+        }
         Command::Auth { command } => auth_admin::run(&project, &command),
         Command::Build => build::run(&project),
         Command::Doctor {} => doctor::run(&project, cli.format == report::OutputFormat::Json),

@@ -103,7 +103,13 @@
         "enabled": { "type": "boolean" },
         "user_entity": { "$ref": "#/$defs/typeName" },
         "registration": { "type": "boolean" },
-        "password_reset": { "type": "boolean" }
+        "password_reset": { "type": "boolean" },
+        "oauth": { "type": "boolean" },
+        "providers": {
+          "type": "array",
+          "items": { "enum": ["oidc", "google", "github"] },
+          "uniqueItems": true
+        }
       },
       "additionalProperties": false
     },

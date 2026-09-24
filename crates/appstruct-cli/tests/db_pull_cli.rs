@@ -20,6 +20,21 @@ fn database_pull_requires_database_url_without_creating_a_draft() {
 }
 
 #[test]
+fn database_pull_review_requires_a_terminal_before_connecting() {
+    let project = copied_fixture("m2-project");
+    let output = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .arg("--project")
+        .arg(project.path())
+        .args(["db", "pull", "--review"])
+        .env_remove("DATABASE_URL")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("AS6310"));
+    assert!(!project.path().join("spec/imported.yaml").exists());
+}
+
+#[test]
 fn database_pull_introspects_postgres_when_configured() {
     let Ok(database_url) = std::env::var("APPSTRUCT_E2E_DATABASE_URL") else {
         return;

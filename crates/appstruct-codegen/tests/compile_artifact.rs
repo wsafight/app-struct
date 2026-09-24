@@ -419,15 +419,16 @@ fn oauth_enabled_auth_publishes_oidc_contracts() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let mut ir = compile_project(&fixture).unwrap();
     ir.auth.oauth_enabled = true;
+    ir.auth.oauth_providers = vec!["oidc".to_owned()];
     let artifacts = plan(&ir).unwrap();
     let sql = artifact_text(&artifacts, "database/0001_initial.sql");
     assert!(sql.contains("_appstruct_auth_oauth_accounts"));
     let oauth = artifact_text(&artifacts, "backend/src/auth/oauth.rs");
     assert!(oauth.contains("start_oidc"));
     assert!(oauth.contains("get(\"email_verified\")"));
-    assert!(oauth.contains("!= Some(true)"));
-    assert!(oauth.contains("find_or_create_oauth_user(&state, subject, &email)"));
-    assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("startOidc"));
+    assert!(oauth.contains("== Some(true)"));
+    assert!(oauth.contains("find_or_create_oauth_user(&state, provider, &subject, &email)"));
+    assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("startOAuth"));
     let openapi: Value =
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
     assert!(openapi["paths"]["/api/auth/oauth/oidc/start"]["get"].is_object());
@@ -441,6 +442,28 @@ fn oauth_enabled_auth_publishes_oidc_contracts() {
         "{}",
         String::from_utf8_lossy(&checked.stderr)
     );
+}
+
+#[test]
+fn configured_social_providers_publish_only_their_routes_and_buttons() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+    let mut ir = compile_project(&fixture).unwrap();
+    ir.auth.oauth_enabled = true;
+    ir.auth.oauth_providers = vec!["github".to_owned(), "google".to_owned()];
+    let artifacts = plan(&ir).unwrap();
+    let oauth = artifact_text(&artifacts, "backend/src/auth/oauth.rs");
+    assert!(oauth.contains("APPSTRUCT_GOOGLE"));
+    assert!(oauth.contains("APPSTRUCT_GITHUB"));
+    assert!(oauth.contains("/api/auth/oauth/google/start"));
+    assert!(oauth.contains("/api/auth/oauth/github/start"));
+    let client = artifact_text(&artifacts, "web/src/generated/client.ts");
+    assert!(client.contains("oauthProviders: [\"github\", \"google\"]"));
+    assert!(client.contains("startOAuth"));
+    let openapi: Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    assert!(openapi["paths"]["/api/auth/oauth/google/start"]["get"].is_object());
+    assert!(openapi["paths"]["/api/auth/oauth/github/start"]["get"].is_object());
+    assert!(openapi["paths"]["/api/auth/oauth/oidc/start"].is_null());
 }
 
 #[test]

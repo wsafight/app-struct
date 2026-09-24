@@ -95,6 +95,30 @@ fn lowers_field_read_and_write_access_rules() {
     ));
 }
 
+#[test]
+fn lowers_configured_social_providers_and_rejects_unknown_provider() {
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("appstruct.yaml"),
+        "    password_reset: true\n",
+        "    password_reset: true\n    providers: [google, github]\n",
+    );
+    let ir = compile_project(temporary.path()).unwrap();
+    assert_eq!(
+        ir.auth.oauth_providers,
+        vec!["github".to_owned(), "google".to_owned()]
+    );
+    assert!(ir.auth.oauth_enabled);
+
+    let invalid = copied_fixture();
+    replace(
+        &invalid.path().join("appstruct.yaml"),
+        "    password_reset: true\n",
+        "    password_reset: true\n    providers: [linkedin]\n",
+    );
+    assert_diagnostic(invalid.path(), "AS3027");
+}
+
 fn copied_fixture() -> tempfile::TempDir {
     let temporary = tempfile::tempdir().unwrap();
     fs::create_dir(temporary.path().join("spec")).unwrap();

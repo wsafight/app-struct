@@ -195,13 +195,14 @@ Other contracts live in dedicated guides:
 appstruct init [<name>] [--template minimal|dashboard|saas] [--database-mode external|managed] [--api-port <port>] [--web-port <port>]
 appstruct new <name> --template minimal|dashboard|saas
 appstruct schema
+appstruct capabilities [--format text|json]
 appstruct check [--deny-warnings] [--format text|json]
 appstruct generate [--check] [--timings]
 appstruct migrate plan|dev|lint|apply|status
 appstruct dev [--api-port <port>] [--web-port <port>]
 appstruct build
 appstruct doctor [--format text|json]
-appstruct db pull [--schema <name>] [--output <project-relative-path>] [--check | --diff]
+appstruct db pull [--schema <name>] [--output <project-relative-path>] [--review | --check | --diff]
 appstruct auth bootstrap-admin --email <address>
 appstruct preset show [--expanded]
 appstruct update

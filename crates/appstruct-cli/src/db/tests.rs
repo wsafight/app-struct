@@ -125,6 +125,7 @@ fn pull_rejects_invalid_schema_names_and_output_paths() {
                     output: PathBuf::from(output),
                     check: false,
                     diff: false,
+                    review: false,
                 },
             ),
             ExitCode::SUCCESS

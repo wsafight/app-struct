@@ -20,7 +20,7 @@ GraphQL、额外数据库、运行时加载的 Rust 插件以及面向 CMS 的�
 
 ### 2.1 现有数据库接入
 
-只读的 `appstruct db pull` 工作流现在可以从 PostgreSQL 派生可审阅的 App Spec 草稿。剩余缺口是从真实世界 schema 迁移：复合键和跨 schema 关系仍需手工建模。Domains 会作为其基础标量导入并带约束警告；数组、生成列和不支持的类型会被省略并给出警告，而不是发出运行时不兼容的字段。访问规则无法从数据库元数据推断。
+`appstruct db pull` 工作流现在可以从 PostgreSQL 派生可审阅的 App Spec 草稿；`--review` 会在终端中逐表展示字段和关系、确认导入表并在写入前列出警告。剩余缺口是从真实世界 schema 迁移：复合键和跨 schema 关系仍需手工建模。Domains 会作为其基础标量导入并带约束警告；数组、生成列和不支持的类型会被省略并给出警告，而不是发出运行时不兼容的字段。访问规则无法从数据库元数据推断。
 
 ### 2.2 数据访问与报表
 
@@ -72,7 +72,7 @@ Jobs outbox 是 schedules、数据库变更事件、签名 webhooks、重放以�
 
 - [x] 远程模块 registry 生命周期（`install`、`update`、`verify`、`uninstall` 和 `list`），带 `appstruct.modules.lock`、签名校验、离线缓存校验和兼容性检查。
 - 部署适配器和环境晋升，无需强制托管控制面。
-- Billing 和订阅操作。
+- Billing 和订阅操作（当前 `appstruct capabilities` 仅列出 Stripe planned）。
 - 产出可审阅 App Spec 差异的可视化 schema、权限、页面和迁移编辑器。
 - 项目本地的 agent 指令以及受策略约束的 MCP 适配器。
 
@@ -92,7 +92,7 @@ Jobs outbox 是 schedules、数据库变更事件、签名 webhooks、重放以�
 ### 4.1 命令契约
 
 ```text
-appstruct db pull [--schema public] [--output spec/imported.yaml] [--check | --diff]
+appstruct db pull [--schema public] [--output spec/imported.yaml] [--review | --check | --diff]
 ```
 
 该命令：

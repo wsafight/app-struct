@@ -40,7 +40,7 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         generated("backend/src/auth/mail.rs", template("auth/mail.rs")?),
         generated(
             "backend/src/auth/oauth.rs",
-            oauth_template(ir.auth.oauth_enabled)?,
+            oauth_template(&ir.auth.oauth_providers)?,
         ),
         generated(
             "backend/src/auth/recovery.rs",
@@ -172,11 +172,19 @@ fn template(name: &str) -> Result<String, CodegenError> {
     super::rust_template(source)
 }
 
-fn oauth_template(enabled: bool) -> Result<String, CodegenError> {
-    let source = if enabled {
-        include_str!("../../templates/backend/auth/oauth.rs")
-    } else {
+fn oauth_template(providers: &[String]) -> Result<String, CodegenError> {
+    let source = if providers.is_empty() {
         include_str!("../../templates/backend/auth/oauth_disabled.rs")
+    } else {
+        include_str!("../../templates/backend/auth/oauth.rs")
     };
-    super::rust_template(source)
+    let provider_list = providers
+        .iter()
+        .map(|provider| format!("\"{provider}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    super::rust_template(&source.replace(
+        "const ENABLED_PROVIDERS: &[&str] = &[];",
+        &format!("const ENABLED_PROVIDERS: &[&str] = &[{provider_list}];"),
+    ))
 }

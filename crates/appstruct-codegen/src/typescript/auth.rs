@@ -188,6 +188,13 @@ fn api_source(ir: &AppIr) -> String {
     let registration = ir.auth.registration_enabled;
     let password_reset = ir.auth.password_reset_enabled;
     let oauth = ir.auth.oauth_enabled;
+    let oauth_providers = ir
+        .auth
+        .oauth_providers
+        .iter()
+        .map(|provider| format!("\"{provider}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
     let tenant = ir.tenant.enabled;
     let audit = ir.audit.enabled;
     let jobs = ir.jobs.enabled;
@@ -195,7 +202,7 @@ fn api_source(ir: &AppIr) -> String {
     let mail = ir.mail.enabled;
     let file = ir.file.enabled;
     format!(
-        r#"export const authFeatures = {{ registration: {registration}, passwordReset: {password_reset}, emailVerification: true, oauth: {oauth} }} as const;
+        r#"export const authFeatures = {{ registration: {registration}, passwordReset: {password_reset}, emailVerification: true, oauth: {oauth}, oauthProviders: [{oauth_providers}] }} as const;
 export const adminFeatures = {{ tenant: {tenant}, audit: {audit}, jobs: {jobs}, webhooks: {webhooks}, mail: {mail}, file: {file} }} as const;
 
 export const authApi = {{
@@ -222,7 +229,7 @@ export const authApi = {{
     request<void>("/api/auth/password/reset", {{ method: "POST", body: JSON.stringify({{ token, password }}) }}),
   requestEmailVerification: () => request<void>("/api/auth/email/request", {{ method: "POST" }}),
   verifyEmail: (token: string) => request<void>("/api/auth/email/verify", {{ method: "POST", body: JSON.stringify({{ token }}) }}),
-  startOidc: () => {{ window.location.assign(`${{API_BASE}}/api/auth/oauth/oidc/start`); }},
+  startOAuth: (provider: string) => {{ window.location.assign(`/api/auth/oauth/${{provider}}/start`); }},
   listApiTokens: (options: RequestOptions = {{}}) => request<ApiToken[]>("/api/auth/tokens", options),
   createApiToken: (name: string, expiresInDays?: number) => request<CreatedApiToken>("/api/auth/tokens", {{ method: "POST", body: JSON.stringify({{ name, expires_in_days: expiresInDays }}) }}),
   revokeApiToken: (id: string) => request<void>(`/api/auth/tokens/${{id}}`, {{ method: "DELETE" }}),

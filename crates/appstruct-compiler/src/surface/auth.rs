@@ -36,6 +36,7 @@ fn decode_auth(entry: Option<&MappingEntry>) -> Result<SurfaceAuth, Diagnostic> 
             "registration",
             "password_reset",
             "oauth",
+            "providers",
         ],
         "`modules.auth`",
     )?;
@@ -54,6 +55,16 @@ fn decode_auth(entry: Option<&MappingEntry>) -> Result<SurfaceAuth, Diagnostic> 
             "`modules.auth.password_reset`",
         )?,
         oauth_enabled: optional_bool(auth.get("oauth"), "`modules.auth.oauth`")?,
+        oauth_providers: auth
+            .get("providers")
+            .map(|value| {
+                expect_sequence(&value.value, "`modules.auth.providers`")?
+                    .iter()
+                    .map(|provider| expect_string(provider, "OAuth provider"))
+                    .collect()
+            })
+            .transpose()?
+            .unwrap_or_default(),
         ..SurfaceAuth::default()
     })
 }

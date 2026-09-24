@@ -15,6 +15,7 @@ pub(crate) struct SurfaceAuth {
     pub registration_enabled: bool,
     pub password_reset_enabled: bool,
     pub oauth_enabled: bool,
+    pub oauth_providers: Vec<Located<String>>,
     pub roles: Vec<Located<String>>,
     pub default_role: Option<Located<String>>,
 }

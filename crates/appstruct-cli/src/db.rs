@@ -7,6 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
 
 mod render;
+mod review;
 
 #[derive(Clone, Debug, Subcommand)]
 pub(crate) enum DbCommand {
@@ -24,6 +25,9 @@ pub(crate) enum DbCommand {
         /// Print a unified diff against an existing draft without writing.
         #[arg(long, conflicts_with = "check")]
         diff: bool,
+        /// Review and select tables in a terminal before writing the draft.
+        #[arg(long, conflicts_with_all = ["check", "diff"])]
+        review: bool,
     },
 }
 
@@ -64,6 +68,7 @@ pub(crate) fn run(project: &Path, command: &DbCommand) -> ExitCode {
             output,
             check,
             diff,
+            review,
         } => pull(
             project,
             schema,
@@ -75,11 +80,20 @@ pub(crate) fn run(project: &Path, command: &DbCommand) -> ExitCode {
             } else {
                 PullMode::Create
             },
+            *review,
         ),
     }
 }
 
-fn pull(project: &Path, schema: &str, output: &Path, mode: PullMode) -> ExitCode {
+fn pull(project: &Path, schema: &str, output: &Path, mode: PullMode, review: bool) -> ExitCode {
+    if review && (crate::report::is_json() || !review::interactive()) {
+        return crate::report::fail(
+            "AS6310",
+            crate::report::ErrorCategory::Project,
+            "db pull --review requires a terminal and text output",
+            crate::report::ExitClass::Usage,
+        );
+    }
     if let Err(message) = validate_schema_name(schema) {
         return crate::report::fail(
             "AS6301",
@@ -118,7 +132,7 @@ fn pull(project: &Path, schema: &str, output: &Path, mode: PullMode) -> ExitCode
             crate::report::ExitClass::Environment,
         );
     };
-    let inspection = match inspect_database_schema(&database_url, schema) {
+    let mut inspection = match inspect_database_schema(&database_url, schema) {
         Ok(inspection) => inspection,
         Err(error) => {
             return crate::report::fail(
@@ -129,6 +143,13 @@ fn pull(project: &Path, schema: &str, output: &Path, mode: PullMode) -> ExitCode
             );
         }
     };
+    if review {
+        inspection = match review_schema(inspection) {
+            Ok(Some(selected)) => selected,
+            Ok(None) => return ExitCode::SUCCESS,
+            Err(exit) => return exit,
+        };
+    }
     let draft = render::render(&inspection);
     if mode != PullMode::Create {
         return compare_draft(project, &output_path, inspection.name, draft, mode);
@@ -163,6 +184,24 @@ fn pull(project: &Path, schema: &str, output: &Path, mode: PullMode) -> ExitCode
         println!("Review access rules, then add the draft to appstruct.yaml includes");
     }
     ExitCode::SUCCESS
+}
+
+fn review_schema(
+    inspection: appstruct_migrate::IntrospectedSchema,
+) -> Result<Option<appstruct_migrate::IntrospectedSchema>, ExitCode> {
+    match review::select(inspection) {
+        Ok(Some(selected)) => Ok(Some(selected)),
+        Ok(None) => {
+            println!("Import cancelled; no draft was written");
+            Ok(None)
+        }
+        Err(error) => Err(crate::report::fail(
+            "AS6311",
+            crate::report::ErrorCategory::Project,
+            format!("cannot review database tables: {error}"),
+            crate::report::ExitClass::Usage,
+        )),
+    }
 }
 
 fn compare_draft(

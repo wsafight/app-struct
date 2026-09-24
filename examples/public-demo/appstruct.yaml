@@ -1,0 +1,21 @@
+version: 1
+
+app:
+  name: public-demo
+
+database:
+  provider: postgres
+  dev:
+    mode: managed
+
+preset:
+  name: appstruct/saas
+  version: 1
+
+modules:
+  audit:
+    reader_roles: [member, admin]
+
+includes:
+  - spec/identity.yaml
+  - spec/work.yaml

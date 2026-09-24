@@ -57,13 +57,11 @@ pub struct AppIr {
     pub pages: Vec<PageIr>,
     pub modules: Vec<ResolvedModule>,
 }
-
 /// Application-level metadata.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppMeta {
     pub name: String,
 }
-
 /// Authentication facts known at compile time in the M0 compiler.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,6 +72,8 @@ pub struct AuthIr {
     pub password_reset_enabled: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub oauth_enabled: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub oauth_providers: Vec<String>,
     pub roles: Vec<String>,
     pub default_role: Option<String>,
 }

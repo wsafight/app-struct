@@ -9,11 +9,31 @@ pub(crate) fn lower_auth(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> AuthIr {
     validate_role_declarations(auth, fallback, diagnostics);
+    let mut oauth_providers = auth
+        .oauth_providers
+        .iter()
+        .map(|provider| provider.value.clone())
+        .collect::<Vec<_>>();
+    if auth.oauth_enabled && oauth_providers.is_empty() {
+        oauth_providers.push("oidc".to_owned());
+    }
+    oauth_providers.sort();
+    oauth_providers.dedup();
+    for provider in &oauth_providers {
+        if !matches!(provider.as_str(), "oidc" | "google" | "github") {
+            diagnostics.push(Diagnostic::error(
+                "AS3027",
+                format!("unsupported OAuth provider `{provider}`; use oidc, google, or github"),
+                fallback.clone(),
+            ));
+        }
+    }
     if !auth.enabled {
         if auth.user_entity.is_some()
             || auth.registration_enabled
             || auth.password_reset_enabled
             || auth.oauth_enabled
+            || !auth.oauth_providers.is_empty()
             || !auth.roles.is_empty()
             || auth.default_role.is_some()
         {
@@ -74,7 +94,8 @@ pub(crate) fn lower_auth(
         user_entity,
         registration_enabled: auth.registration_enabled,
         password_reset_enabled: auth.password_reset_enabled,
-        oauth_enabled: auth.oauth_enabled,
+        oauth_enabled: !oauth_providers.is_empty(),
+        oauth_providers,
         roles,
         default_role,
     }
@@ -87,6 +108,7 @@ fn disabled_auth() -> AuthIr {
         registration_enabled: false,
         password_reset_enabled: false,
         oauth_enabled: false,
+        oauth_providers: Vec::new(),
         roles: Vec::new(),
         default_role: None,
     }

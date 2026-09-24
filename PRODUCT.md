@@ -44,6 +44,8 @@ CRUD 写路径已在显式 SeaORM 事务内执行：`before_create/update/delete
 
 M4 已将 `modules.auth` 和 `modules.rbac` 纳入 Surface、Typed IR、Compiler 校验与全部生成器。启用认证的应用会生成注册、登录、退出、当前用户和可选密码重置流程，使用 Argon2id 密码哈希、只保存 hash 的 opaque session/reset token、`HttpOnly` session Cookie、CSRF token 和 Origin 校验。账户注册后会签发 24 小时有效的一次性邮箱验证 token，认证响应提供 `email_verified`，登录用户可请求重新发送，确认接口在事务内标记 `email_verified_at` 并消费 token。可选的 `modules.auth.oauth: true` 发布 OIDC authorization-code 登录，使用环境变量配置 provider，短期 state cookie 防重放，按 provider+subject 绑定本地用户且不持久化 provider token。认证用户还可以创建带名称和可选过期时间的个人 API token；Runtime 只保存 SHA-256 hash，支持 Bearer 认证并记录最近使用时间，明文只返回一次。Actor 被注入普通及事务内 `RequestContext`，`public/authenticated/role/owner/any/all` 规则在后端执行；列表和按 ID 读取会将 owner/RBAC 转换为 SeaORM 查询条件。React 生成物包含认证状态、登录/注册/密码重置/邮箱确认页面、OIDC SSO、API token 管理页、路由守卫和退出入口，TypeScript client 默认携带 Cookie 并自动发送 CSRF，OpenAPI 同步发布 Cookie/Bearer security scheme 和启用的 Auth endpoint。
 
+社交登录现在支持按应用声明 `modules.auth.providers: [google, github]`，旧的 `oauth: true` 仍表示通用 OIDC。Billing 尚未进入生成器；使用 `appstruct capabilities --format json` 可看到当前 Provider 矩阵与 Stripe 的 planned 状态。
+
 M4 已通过独立本地 PostgreSQL 数据库验收：覆盖匿名 401、注册与 Cookie、CSRF 403、owner 数据隔离、admin 跨 owner 访问、member 删除 403、ETag `rev-1/rev-2`、缺少 `If-Match` 的 428、陈旧 revision 的 412，以及密码重置 token 单次使用、旧 session 撤销和新密码登录。验收数据库在测试后已回收。
 
 Migration Runner 使用 `_appstruct_migrations` 保存 migration ID、文件 SHA-256、`applying/applied/failed` 状态和时间；session advisory lock 阻止同一数据库并发 apply。迁移默认与历史写入共享事务；带 `-- appstruct:transaction=off` 的审查后迁移在事务外执行，失败会留下 dirty history 并要求人工恢复。每次 `migrate dev` 生成的最新迁移都绑定 schema snapshot checksum；已执行文件被修改、历史缺失/乱序或 snapshot 不匹配时 apply/status 会拒绝继续。全部迁移完成后，status 从 PostgreSQL catalog 校验业务表、列类型/null/default/identity、主键/唯一、enum CHECK 和外键；存在 pending 时明确延后 drift 判断，避免把尚未执行的目标 schema 误报为漂移。
