@@ -76,6 +76,7 @@ export function useResourceListController(
     fetching: listQuery.isFetching,
     changing: change.isPending,
     dataUpdatedAt: listQuery.dataUpdatedAt,
+    loadError: listQuery.error,
     error: change.error ?? listQuery.error,
     refetch: listQuery.refetch,
     runChange,

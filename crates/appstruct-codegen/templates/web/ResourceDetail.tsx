@@ -1,4 +1,5 @@
 import { ArrowLeft, Edit3 } from "lucide-react";
+import { AsyncState } from "../components/AsyncState";
 import { useResourceDetailController } from "../controller";
 import { Link, useParams } from "../navigation";
 import { RelationValue, recordLabel, useRelationRecords } from "../relations";
@@ -39,7 +40,7 @@ export function ResourceDetail({ resource, resources, registry }: { resource: Re
             <ArrowLeft size={16} /> {resource.label}
           </Link>
           <h1>
-            {record ? recordLabel(resource, record) : "Loading..."}
+            {record ? recordLabel(resource, record) : resource.label}
           </h1>
         </div>
         <div className="detail-actions">
@@ -54,10 +55,18 @@ export function ResourceDetail({ resource, resources, registry }: { resource: Re
           )}
         </div>
       </div>
-      {controller.error && (
-        <div className="alert" role="alert">
-          {errorMessage(controller.error)}
-        </div>
+      {controller.pending && (
+        <AsyncState state="loading" message="Loading record" />
+      )}
+      {!controller.pending && controller.error && (
+        <AsyncState
+          state="error"
+          message={errorMessage(controller.error)}
+          onRetry={() => void controller.refetch()}
+        />
+      )}
+      {!controller.pending && !controller.error && !record && (
+        <AsyncState state="empty" message="Record not found" />
       )}
       {record && (
         <>

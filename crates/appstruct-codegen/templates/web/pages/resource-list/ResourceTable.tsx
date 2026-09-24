@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, Eye, RotateCcw, Trash2 } from "lucide-react";
 import { type InputHTMLAttributes, useEffect, useRef } from "react";
+import { AsyncState } from "../../components/AsyncState";
 import { formatMoney } from "../../field-values";
 import { Link } from "../../navigation";
 import { RelationValue, useRelationRecords } from "../../relations";
@@ -16,7 +17,7 @@ import type {
   ResourceDefinition,
   ResourceRecord,
 } from "../../resource";
-import { canAccessResource, canAccessRule } from "../../resource";
+import { canAccessResource, canAccessRule, errorMessage } from "../../resource";
 import { InlineEditor, supportsInlineEdit } from "./InlineEditor";
 
 const resourceTableFeatures = tableFeatures({ rowSelectionFeature });
@@ -35,6 +36,9 @@ interface ResourceTableProps {
   trashMode: boolean;
   pending: boolean;
   fetching: boolean;
+  loadError: unknown;
+  emptyMessage: string;
+  onRetry(): void;
   rowSelection: RowSelectionState;
   setRowSelection: (
     selection:
@@ -60,6 +64,9 @@ export function ResourceTable({
   trashMode,
   pending,
   fetching,
+  loadError,
+  emptyMessage,
+  onRetry,
   rowSelection,
   setRowSelection,
   changeSort,
@@ -226,14 +233,30 @@ export function ResourceTable({
           {pending && (
             <tr>
               <td colSpan={table.getAllLeafColumns().length} className="empty">
-                Loading...
+                <AsyncState state="loading" message="Loading records" />
               </td>
             </tr>
           )}
-          {!pending && table.getRowModel().rows.length === 0 && (
+          {!pending &&
+            Boolean(loadError) &&
+            table.getRowModel().rows.length === 0 && (
+              <tr>
+                <td
+                  colSpan={table.getAllLeafColumns().length}
+                  className="empty"
+                >
+                  <AsyncState
+                    state="error"
+                    message={errorMessage(loadError)}
+                    onRetry={onRetry}
+                  />
+                </td>
+              </tr>
+            )}
+          {!pending && !loadError && table.getRowModel().rows.length === 0 && (
             <tr>
               <td colSpan={table.getAllLeafColumns().length} className="empty">
-                No records
+                <AsyncState state="empty" message={emptyMessage} />
               </td>
             </tr>
           )}

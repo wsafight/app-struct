@@ -75,6 +75,10 @@ fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             include_str!("../templates/web/Dialog.tsx").to_owned(),
         ),
         (
+            "web/src/components/AsyncState.tsx",
+            include_str!("../templates/web/AsyncState.tsx").to_owned(),
+        ),
+        (
             "web/src/navigation.tsx",
             include_str!("../templates/web/navigation.tsx").to_owned(),
         ),

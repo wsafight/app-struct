@@ -22,18 +22,45 @@ export function DialogFrame({
 }: DialogFrameProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const previousActiveElement = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
+
+    const focusable = () =>
+      Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hasAttribute("disabled"));
+    const focusFirst = () => {
+      const first = focusable()[0];
+      if (first) first.focus();
+      else dialog.focus();
+    };
+
+    if (open) {
+      previousActiveElement.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      if (!dialog.open) dialog.showModal();
+      const focusTimer = window.setTimeout(focusFirst, 0);
+      return () => window.clearTimeout(focusTimer);
+    }
+
+    if (dialog.open) dialog.close();
+    const restore = previousActiveElement.current;
+    previousActiveElement.current = null;
+    if (restore?.isConnected) restore.focus();
   }, [open]);
 
   return (
     <dialog
       ref={ref}
       className="dialog"
+      tabIndex={-1}
       aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault();
@@ -41,6 +68,28 @@ export function DialogFrame({
       }}
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Tab") return;
+        const focusable = Array.from(
+          event.currentTarget.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((element) => !element.hasAttribute("disabled"));
+        if (focusable.length === 0) {
+          event.preventDefault();
+          event.currentTarget.focus();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }}
     >
       <section className="dialog-panel">

@@ -7,6 +7,7 @@ import {
   Save,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { AsyncState } from "../components/AsyncState";
 import { useResourceFormController } from "../controller";
 import { inputType, type FormValue } from "../field-values";
 import { ConfirmDialog } from "../components/Dialog";
@@ -60,7 +61,43 @@ export function ResourceForm({
             <h1>Edit {resource.label}</h1>
           </div>
         </div>
-        <div className="form-frame">Loading...</div>
+        <AsyncState state="loading" message="Loading record" />
+      </main>
+    );
+  }
+
+  if (editing && canSubmit && recordQuery.error) {
+    return (
+      <main className="page form-page">
+        <div className="page-heading">
+          <div>
+            <Link className="back-link" to={`/${resource.slug}`}>
+              <ArrowLeft size={16} /> {resource.label}
+            </Link>
+            <h1>Edit {resource.label}</h1>
+          </div>
+        </div>
+        <AsyncState
+          state="error"
+          message={errorMessage(recordQuery.error)}
+          onRetry={() => void recordQuery.refetch()}
+        />
+      </main>
+    );
+  }
+
+  if (editing && canSubmit && !recordQuery.data) {
+    return (
+      <main className="page form-page">
+        <div className="page-heading">
+          <div>
+            <Link className="back-link" to={`/${resource.slug}`}>
+              <ArrowLeft size={16} /> {resource.label}
+            </Link>
+            <h1>Edit {resource.label}</h1>
+          </div>
+        </div>
+        <AsyncState state="empty" message="Record not found" />
       </main>
     );
   }
@@ -170,7 +207,15 @@ function ResourceFormEditor({
         onSubmit={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          void form.handleSubmit();
+          const formElement = event.currentTarget;
+          void (async () => {
+            await form.handleSubmit();
+            window.setTimeout(() => {
+              formElement
+                .querySelector<HTMLElement>('[aria-invalid="true"]')
+                ?.focus();
+            }, 0);
+          })();
         }}
       >
         <form.Subscribe
@@ -409,9 +454,15 @@ export function FieldControl({
           checked={Boolean(value)}
           onBlur={onBlur}
           onChange={(event) => onChange(event.target.checked)}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${id}-error` : undefined}
         />{" "}
         <span>{field.label}</span>
-        {error && <small>{error}</small>}
+        {error && (
+          <small id={`${id}-error`} className="field-error">
+            {error}
+          </small>
+        )}
       </label>
     );
   if (field.kind === "relation")

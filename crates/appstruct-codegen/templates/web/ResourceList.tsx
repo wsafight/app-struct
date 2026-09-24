@@ -11,6 +11,7 @@ import {
   Upload,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { AsyncState } from "../components/AsyncState";
 import { ConfirmDialog } from "../components/Dialog";
 import {
   useResourceListController,
@@ -202,7 +203,18 @@ export function ResourceList({
   });
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const error =
-    actionError || (controller.error ? errorMessage(controller.error) : "");
+    actionError ||
+    (controller.error && controller.error !== controller.loadError
+      ? errorMessage(controller.error)
+      : "");
+  const hasFilters =
+    Boolean(searchParams.get("q")?.trim()) ||
+    Array.from(searchParams.keys()).some((key) => key.startsWith("filter["));
+  const emptyMessage = trashMode
+    ? "Trash is empty"
+    : hasFilters
+      ? "No records match the current filters"
+      : "No records yet";
   const busy = controller.changing;
   if (!controller.canList) return <AccessDenied />;
   return (
@@ -318,6 +330,13 @@ export function ResourceList({
         />
       )}
       <BulkToolbar actions={bulk} trashMode={trashMode} busy={busy} />
+      {controller.loadError && records.length > 0 && (
+        <AsyncState
+          state="error"
+          message={errorMessage(controller.loadError)}
+          onRetry={() => void controller.refetch()}
+        />
+      )}
       {error && (
         <div className="alert" role="alert">
           {error}
@@ -333,6 +352,9 @@ export function ResourceList({
         trashMode={trashMode}
         pending={controller.pending}
         fetching={controller.fetching}
+        loadError={controller.loadError}
+        emptyMessage={emptyMessage}
+        onRetry={() => void controller.refetch()}
         rowSelection={rowSelection}
         setRowSelection={setRowSelection}
         changeSort={changeSort}
