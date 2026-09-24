@@ -8,6 +8,7 @@ members = [
   "crates/appstruct-module-sdk",
   "crates/appstruct-migrate",
   "crates/appstruct-runtime",
+  "crates/appstruct-schema",
 ]
 resolver = "3"
 
@@ -27,6 +28,7 @@ appstruct-ir = { version = "0.1.0", path = "crates/appstruct-ir" }
 appstruct-module-sdk = { version = "0.1.0", path = "crates/appstruct-module-sdk" }
 appstruct-migrate = { version = "0.1.0", path = "crates/appstruct-migrate" }
 appstruct-runtime = { version = "0.1.0", path = "crates/appstruct-runtime" }
+appstruct-schema = { version = "0.1.0", path = "crates/appstruct-schema" }
 async-trait = "0.1.92"
 base64 = "0.23.1"
 clap = { version = "4.6.7", features = ["derive"] }

@@ -1,6 +1,6 @@
 use crate::{Artifact, ArtifactKind, CodegenError};
 use appstruct_ir::AppIr;
-use appstruct_migrate::{extract, initial_migration, to_json};
+use appstruct_schema::{extract, initial_migration, to_json};
 
 pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     let schema = extract(ir).map_err(|error| CodegenError::new(error.to_string()))?;

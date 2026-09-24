@@ -14,7 +14,7 @@ categories = ["development-tools"]
 [dependencies]
 appstruct-contracts.workspace = true
 appstruct-ir.workspace = true
-appstruct-migrate.workspace = true
+appstruct-schema.workspace = true
 appstruct-module-sdk.workspace = true
 appstruct-runtime.workspace = true
 proc-macro2.workspace = true

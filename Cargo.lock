@@ -124,9 +124,9 @@ dependencies = [
  "appstruct-compiler",
  "appstruct-contracts",
  "appstruct-ir",
- "appstruct-migrate",
  "appstruct-module-sdk",
  "appstruct-runtime",
+ "appstruct-schema",
  "proc-macro2",
  "quote",
  "serde_json",
@@ -176,6 +176,7 @@ dependencies = [
  "appstruct-compiler",
  "appstruct-contracts",
  "appstruct-ir",
+ "appstruct-schema",
  "native-tls",
  "postgres",
  "postgres-native-tls",
@@ -208,6 +209,18 @@ dependencies = [
  "serde_json",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "appstruct-schema"
+version = "0.1.0"
+dependencies = [
+ "appstruct-compiler",
+ "appstruct-contracts",
+ "appstruct-ir",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

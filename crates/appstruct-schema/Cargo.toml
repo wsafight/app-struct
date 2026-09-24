@@ -1,0 +1,25 @@
+[package]
+name = "appstruct-schema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+description = "Database schema contracts and deterministic SQL snapshots for AppStruct"
+documentation = "https://docs.rs/appstruct-schema"
+keywords = ["database", "schema", "postgresql", "sql", "codegen"]
+categories = ["database", "development-tools"]
+
+[dependencies]
+appstruct-contracts.workspace = true
+appstruct-ir.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+appstruct-compiler.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

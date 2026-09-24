@@ -60,6 +60,7 @@ scripts/verify-packages.sh
 ```text
 appstruct-contracts
 appstruct-ir, appstruct-module-sdk, and appstruct-runtime
+appstruct-schema
 appstruct-compiler
 appstruct-migrate
 appstruct-codegen
