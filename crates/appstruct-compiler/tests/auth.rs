@@ -119,6 +119,50 @@ fn lowers_configured_social_providers_and_rejects_unknown_provider() {
     assert_diagnostic(invalid.path(), "AS3027");
 }
 
+#[test]
+fn lowers_configured_stripe_billing_and_rejects_unsupported_capability() {
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("appstruct.yaml"),
+        "    default_role: member\n",
+        concat!(
+            "    default_role: member\n",
+            "  tenant:\n",
+            "    enabled: true\n",
+            "  billing:\n",
+            "    enabled: true\n",
+            "    provider: stripe\n",
+            "    capabilities: { subscriptions: true, trials: true }\n",
+            "    plans:\n",
+            "      - id: pro\n",
+            "        price_env: APPSTRUCT_STRIPE_PRICE_PRO\n",
+            "        trial_days: 14\n",
+            "        entitlements: [projects]\n",
+        ),
+    );
+    let ir = compile_project(temporary.path()).unwrap();
+    assert!(ir.billing.enabled);
+    assert_eq!(ir.billing.provider.as_deref(), Some("stripe"));
+    assert_eq!(ir.billing.plans[0].trial_days, Some(14));
+
+    let invalid = copied_fixture();
+    replace(
+        &invalid.path().join("appstruct.yaml"),
+        "    default_role: member\n",
+        concat!(
+            "    default_role: member\n",
+            "  tenant:\n",
+            "    enabled: true\n",
+            "  billing:\n",
+            "    enabled: true\n",
+            "    provider: stripe\n",
+            "    capabilities: { subscriptions: true, metered_usage: true }\n",
+            "    plans: [{ id: pro, price_env: APPSTRUCT_STRIPE_PRICE_PRO }]\n",
+        ),
+    );
+    assert_diagnostic(invalid.path(), "AS3075");
+}
+
 fn copied_fixture() -> tempfile::TempDir {
     let temporary = tempfile::tempdir().unwrap();
     fs::create_dir(temporary.path().join("spec")).unwrap();

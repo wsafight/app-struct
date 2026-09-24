@@ -39,7 +39,10 @@ pub(super) fn cargo(ir: &AppIr) -> String {
     if ir.jobs.enabled {
         manifest.push_str("cron = \"=0.15.0\"\n");
     }
-    if ir.auth.oauth_enabled || (ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend) {
+    if ir.auth.oauth_enabled
+        || ir.billing.enabled
+        || (ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend)
+    {
         manifest.push_str("reqwest = { version = \"=0.13.5\", default-features = false, features = [\"json\", \"form\", \"rustls\"] }\n");
     }
     if ir.auth.enabled || ir.file.enabled {
@@ -50,6 +53,9 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         if !ir.auth.enabled && !ir.file.enabled {
             manifest.push_str("sha2 = \"=0.10.9\"\n");
         }
+    }
+    if ir.billing.enabled && !ir.webhooks.enabled {
+        manifest.push_str("hmac = \"=0.12.1\"\n");
     }
     if ir.realtime.enabled {
         manifest.push_str("async-stream = \"=0.3.6\"\n");
@@ -76,10 +82,11 @@ pub(super) fn cargo(ir: &AppIr) -> String {
             manifest.push_str("lopdf = { version = \"=0.44.0\", default-features = false }\n");
         }
     }
-    if ir.webhooks.enabled
-        && !ir.auth.oauth_enabled
-        && !(ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend)
-    {
+    let needs_webhook_http = ir.webhooks.enabled
+        && !(ir.auth.oauth_enabled
+            || ir.billing.enabled
+            || (ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend));
+    if needs_webhook_http {
         manifest.push_str("reqwest = { version = \"=0.13.5\", default-features = false, features = [\"rustls\"] }\n");
     }
     manifest

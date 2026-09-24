@@ -32,7 +32,7 @@ Web 运行时现在具有显式批量操作、已保存视图、导入/导出、
 
 ### 2.4 运维管理
 
-已实现的模块暴露了基础设施能力，但运维 UI 有限。Admin 模块应在把 Billing 加入 SaaS 预设之前，完成组织/会话操作、邮件捕获、文件使用以及记录范围的审计导航。
+已实现的模块暴露了基础设施能力，但运维 UI 仍有限。Admin 模块还需要补齐组织/会话操作、邮件捕获、文件使用以及记录范围的审计导航；这些工作与已可按应用启用的 Billing v1 相互独立。
 
 ### 2.5 自动化与生态
 
@@ -72,7 +72,7 @@ Jobs outbox 是 schedules、数据库变更事件、签名 webhooks、重放以�
 
 - [x] 远程模块 registry 生命周期（`install`、`update`、`verify`、`uninstall` 和 `list`），带 `appstruct.modules.lock`、签名校验、离线缓存校验和兼容性检查。
 - 部署适配器和环境晋升，无需强制托管控制面。
-- Billing 和订阅操作（当前 `appstruct capabilities` 仅列出 Stripe planned）。
+- Billing 和订阅操作（Stripe Billing v1 已支持，复杂用量计费仍未支持）。
 - 产出可审阅 App Spec 差异的可视化 schema、权限、页面和迁移编辑器。
 - 项目本地的 agent 指令以及受策略约束的 MCP 适配器。
 

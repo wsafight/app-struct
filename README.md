@@ -10,8 +10,8 @@ The repository is currently a technical preview. It is distributed from a source
 there is no crates.io package or binary installer yet. M0-M6 are complete, including production
 builds, the coordinated development server, Tenant/Audit/Mail/Jobs/File modules, the locked
 `appstruct/saas@1` preset, transactional project updates, and runnable templates. The SaaS preset
-includes an Admin operations overview and guarded Jobs retry/replay controls; Billing remains out
-of scope for preset version 1.
+includes an Admin operations overview and guarded Jobs retry/replay controls. Generated
+applications can opt into Stripe Billing v1; it remains disabled in preset version 1.
 
 ## Requirements
 
@@ -256,6 +256,7 @@ site in `site/` renders both languages; from the workspace root run `pnpm run si
 - [Email verification](docs/email-verification.md)
 - [Organization invitations](docs/organization-invitations.md)
 - [OAuth and OIDC](docs/oauth-oidc.md)
+- [Generated application billing](docs/billing.md)
 - [Personal API tokens](docs/personal-api-tokens.md)
 - [Realtime events, presence, and edit leases](docs/realtime.md)
 - [Interval schedules](docs/schedules.md)
@@ -312,7 +313,8 @@ values in `.env.example` may be committed.
 
 AppStruct is a technical preview. Cutting a GitHub release still requires maintainer remote setup,
 and production migrations are reviewed and applied as a separate release step. Billing, hosted
-deployment adapters, and a visual editor are roadmap items, not stable preset v1 promises.
+deployment adapters, and a visual editor are roadmap items, not stable preset v1 promises. Billing
+is available only when explicitly enabled in a generated application.
 
 ## License
 

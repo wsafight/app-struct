@@ -3,6 +3,7 @@ mod activity;
 mod aggregates;
 mod audit;
 mod auth;
+mod billing;
 mod context;
 mod database;
 mod extension;
@@ -28,9 +29,10 @@ pub(crate) use model::{
     SurfaceWorkflow,
 };
 pub(crate) use modules::{
-    SurfaceActivity, SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobQueue, SurfaceJobSchedule,
-    SurfaceJobs, SurfaceMail, SurfaceMailTemplate, SurfacePreset, SurfaceRealtime, SurfaceReport,
-    SurfaceReportTemplate, SurfaceTenant, SurfaceWebhookEndpoint, SurfaceWebhooks,
+    SurfaceActivity, SurfaceAudit, SurfaceAuth, SurfaceBilling, SurfaceBillingPlan, SurfaceFile,
+    SurfaceJobQueue, SurfaceJobSchedule, SurfaceJobs, SurfaceMail, SurfaceMailTemplate,
+    SurfacePreset, SurfaceRealtime, SurfaceReport, SurfaceReportTemplate, SurfaceTenant,
+    SurfaceWebhookEndpoint, SurfaceWebhooks,
 };
 
 use self::context::DecodeContext;
@@ -76,6 +78,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
     let decoded_modules = modules.as_ref().map(|modules| {
         (
             context.capture(auth::decode(modules.as_ref())),
+            context.capture(billing::decode(modules.as_ref())),
             context.capture(tenant::decode(modules.as_ref())),
             context.capture(audit::decode(modules.as_ref())),
             context.capture(mail::decode(modules.as_ref())),
@@ -90,7 +93,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
 
     let value = (|| {
         let database = database?;
-        let (auth, tenant, audit, mail, jobs, webhooks, realtime, file, report, activity) =
+        let (auth, billing, tenant, audit, mail, jobs, webhooks, realtime, file, report, activity) =
             decoded_modules?;
         Some(SurfaceRoot {
             version: version?,
@@ -101,6 +104,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
             preset: preset?,
             expanded_modules: modules?,
             auth: auth?,
+            billing: billing?,
             tenant: tenant?,
             audit: audit?,
             mail: mail?,

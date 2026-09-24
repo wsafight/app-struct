@@ -84,6 +84,7 @@
       "type": "object",
       "properties": {
         "auth": { "$ref": "#/$defs/authModule" },
+        "billing": { "$ref": "#/$defs/billingModule" },
         "rbac": { "$ref": "#/$defs/rbacModule" },
         "tenant": { "$ref": "#/$defs/tenantModule" },
         "audit": { "$ref": "#/$defs/auditModule" },
@@ -108,6 +109,43 @@
         "providers": {
           "type": "array",
           "items": { "enum": ["oidc", "google", "github"] },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "billingModule": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "provider": { "enum": ["stripe"] },
+        "capabilities": {
+          "type": "object",
+          "properties": {
+            "subscriptions": { "type": "boolean" },
+            "trials": { "type": "boolean" },
+            "customer_portal": { "type": "boolean" },
+            "metered_usage": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "plans": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "price_env"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z_][a-z0-9_-]*$" },
+              "price_env": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" },
+              "trial_days": { "type": "integer", "minimum": 1, "maximum": 730 },
+              "entitlements": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^[a-z_][a-z0-9_-]*$" },
+                "uniqueItems": true
+              }
+            },
+            "additionalProperties": false
+          },
           "uniqueItems": true
         }
       },

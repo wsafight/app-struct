@@ -20,6 +20,27 @@ pub(crate) struct SurfaceAuth {
     pub default_role: Option<Located<String>>,
 }
 
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SurfaceBilling {
+    pub enabled: bool,
+    pub provider: Option<Located<String>>,
+    pub subscriptions: bool,
+    pub trials: bool,
+    pub customer_portal: bool,
+    pub metered_usage: bool,
+    pub plans: Vec<SurfaceBillingPlan>,
+    pub span: Option<SourceSpan>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceBillingPlan {
+    pub id: Located<String>,
+    pub price_env: Located<String>,
+    pub trial_days: Option<Located<u64>>,
+    pub entitlements: Vec<Located<String>>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SurfaceTenant {
     pub enabled: bool,

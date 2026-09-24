@@ -59,6 +59,50 @@ pub(super) fn validate_services(
             "must be true when tenant or audit is enabled",
         );
     }
+    if ir.billing.enabled {
+        if !ir.auth.enabled {
+            push(errors, "billing.enabled", "requires auth to be enabled");
+        }
+        if !ir.tenant.enabled {
+            push(errors, "billing.enabled", "requires tenant to be enabled");
+        }
+        if ir.billing.provider.as_deref() != Some("stripe") {
+            push(errors, "billing.provider", "must be `stripe`");
+        }
+        if !ir.billing.subscriptions {
+            push(
+                errors,
+                "billing.subscriptions",
+                "must be enabled for Billing v1",
+            );
+        }
+        if ir.billing.metered_usage {
+            push(
+                errors,
+                "billing.metered_usage",
+                "is not supported by Billing v1",
+            );
+        }
+        if ir.billing.plans.is_empty() {
+            push(errors, "billing.plans", "must contain at least one plan");
+        }
+        for (index, plan) in ir.billing.plans.iter().enumerate() {
+            if plan.id.is_empty() {
+                push(
+                    errors,
+                    format!("billing.plans[{index}].id"),
+                    "must not be empty",
+                );
+            }
+            if plan.price_env.is_empty() {
+                push(
+                    errors,
+                    format!("billing.plans[{index}].price_env"),
+                    "must not be empty",
+                );
+            }
+        }
+    }
 }
 
 pub(super) fn validate_operations(

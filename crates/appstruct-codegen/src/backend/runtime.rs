@@ -114,6 +114,7 @@ fn contract_source() -> TokenStream {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn application_source() -> TokenStream {
     quote! {
         pub struct Application {
@@ -125,6 +126,8 @@ fn application_source() -> TokenStream {
             pub async fn from_env(
                 database: DatabaseConnection, extensions: AppExtensions,
             ) -> Result<Self, StartupError> {
+                billing::validate_env()
+                    .map_err(|error| StartupError::configuration("appstruct/billing", error))?;
                 let health = ApplicationHealth::starting();
                 let started = start_application_modules(
                     database, extensions, health.clone(),
@@ -239,7 +242,7 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
             Router::new()
                 #(#routes)*
                 .merge(operations::router()).merge(audit::router())
-                .merge(auth::router()).merge(tenant::router())
+                .merge(auth::router()).merge(billing::router()).merge(tenant::router())
                 .merge(realtime::router()).merge(report::router()).merge(activity::router())
                 .route("/health/live", get(liveness)).route("/health/ready", get(readiness))
                 .route("/metrics", get(metrics))

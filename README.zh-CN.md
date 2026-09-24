@@ -9,7 +9,7 @@ React/Vite Web 应用。
 当前仓库处于技术预览阶段。现在需要从源码构建 CLI，尚未发布 crates.io 包或独立安装器。
 M0-M6 已完成，包含生产构建、协调式开发服务器、Tenant/Audit/Mail/Jobs/File 模块、锁定的
 `appstruct/saas@1` 预设、事务化项目更新，以及可运行的 SaaS 模板和示例。SaaS 预设提供
-Admin 运维概览和受保护的 Jobs 重试/重放操作；Billing 不在预设 v1 的范围内。
+Admin 运维概览和受保护的 Jobs 重试/重放操作。生成应用可以按配置启用 Stripe Billing v1，预设 v1 默认关闭。
 
 ## 环境要求
 
@@ -257,6 +257,7 @@ appstruct update
 - [邮箱验证](docs/email-verification.zh-CN.md)
 - [组织邀请](docs/organization-invitations.zh-CN.md)
 - [OAuth 与 OIDC](docs/oauth-oidc.zh-CN.md)
+- [生成应用收费](docs/billing.zh-CN.md)
 - [个人 API Token](docs/personal-api-tokens.zh-CN.md)
 - [实时事件与在线状态](docs/realtime.zh-CN.md)
 - [定时任务](docs/schedules.zh-CN.md)
@@ -311,8 +312,8 @@ Playwright 报告或 `test-results/`。`.env.example` 中的占位配置可以�
 ## 当前边界
 
 AppStruct 仍是技术预览。当前发布流程需要维护者手动配置 GitHub 远端，并在生产发布中单独
-审核和应用迁移。Billing、托管部署适配器和可视化编辑器属于后续路线图，不应被视为当前
-预设 v1 的稳定承诺。
+审核和应用迁移。托管部署适配器和可视化编辑器属于后续路线图，不应被视为当前预设 v1
+的稳定承诺。收费能力仅在生成应用显式启用后提供。
 
 ## 许可证
 

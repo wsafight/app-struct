@@ -7,17 +7,20 @@ use serde::{Deserialize, Serialize};
 mod activity;
 mod audit;
 mod auth;
+mod billing;
 mod file;
 mod jobs;
 mod mail;
 mod module_indexes;
 mod realtime;
 mod report;
+mod snapshot;
 mod tenant;
 mod webhooks;
 
 pub const SCHEMA_VERSION: u32 = appstruct_contracts::DATABASE_SCHEMA.current;
 pub const MIN_COMPATIBLE_SCHEMA_VERSION: u32 = appstruct_contracts::DATABASE_SCHEMA.minimum;
+pub use snapshot::{from_json, to_json};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatabaseSchema {
@@ -196,6 +199,11 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         tables.extend(activity::tables());
         foreign_keys.extend(activity::foreign_keys(ir));
     }
+    if ir.billing.enabled {
+        tables.extend(billing::tables());
+        unique_constraints.extend(billing::unique_constraints());
+        foreign_keys.extend(billing::foreign_keys());
+    }
     Ok(DatabaseSchema {
         schema_version: SCHEMA_VERSION,
         provider: ir.database.provider,
@@ -359,39 +367,6 @@ where
         Columns::One(column) => vec![column],
         Columns::Many(columns) => columns,
     })
-}
-
-/// Serialize a canonical schema snapshot.
-///
-/// # Errors
-///
-/// Returns an error if JSON serialization unexpectedly fails.
-pub fn to_json(schema: &DatabaseSchema) -> Result<String, serde_json::Error> {
-    let mut value = serde_json::to_string_pretty(schema)?;
-    value.push('\n');
-    Ok(value)
-}
-
-/// Parse a schema snapshot.
-///
-/// # Errors
-///
-/// Returns an error if the snapshot is invalid or incompatible JSON.
-pub fn from_json(source: &str) -> Result<DatabaseSchema, serde_json::Error> {
-    let mut schema: DatabaseSchema = serde_json::from_str(source)?;
-    match schema.schema_version {
-        SCHEMA_VERSION => Ok(schema),
-        found if (MIN_COMPATIBLE_SCHEMA_VERSION..SCHEMA_VERSION).contains(&found) => {
-            schema.schema_version = SCHEMA_VERSION;
-            Ok(schema)
-        }
-        found => Err(serde_json::Error::io(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!(
-                "unsupported schema snapshot version {found}; supported versions are {MIN_COMPATIBLE_SCHEMA_VERSION} through {SCHEMA_VERSION}"
-            ),
-        ))),
-    }
 }
 
 #[cfg(test)]

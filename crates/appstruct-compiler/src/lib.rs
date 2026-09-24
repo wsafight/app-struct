@@ -4,6 +4,7 @@ mod access;
 mod activity;
 mod audit;
 mod auth;
+mod billing;
 mod extension;
 mod field;
 mod field_options;

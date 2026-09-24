@@ -37,6 +37,9 @@ fn document(ir: &AppIr) -> Value {
     if ir.auth.enabled {
         auth::add(&mut paths, &mut schemas, ir);
     }
+    if ir.billing.enabled {
+        billing::add(&mut paths, &mut schemas, ir);
+    }
     if ir.tenant.enabled {
         tenant::add(&mut paths, &mut schemas);
     }
@@ -140,6 +143,7 @@ mod admin_schedules;
 mod admin_storage;
 mod audit;
 mod auth;
+mod billing;
 mod bulk;
 mod entity;
 mod extension;

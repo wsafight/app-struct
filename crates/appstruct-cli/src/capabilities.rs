@@ -26,7 +26,12 @@ struct ProviderCapability {
 }
 
 const OIDC_CAPABILITIES: &[&str] = &["login", "signup", "account_linking"];
-const BILLING_CAPABILITIES: &[&str] = &[];
+const BILLING_CAPABILITIES: &[&str] = &[
+    "subscriptions",
+    "trials",
+    "customer_portal",
+    "stripe_webhooks",
+];
 const OIDC_ENV: &[&str] = &[
     "APPSTRUCT_OIDC_AUTHORIZATION_URL",
     "APPSTRUCT_OIDC_TOKEN_URL",
@@ -45,7 +50,11 @@ const GITHUB_ENV: &[&str] = &[
     "APPSTRUCT_GITHUB_CLIENT_SECRET",
     "APPSTRUCT_GITHUB_REDIRECT_URI",
 ];
-const EMPTY_ENV: &[&str] = &[];
+const STRIPE_ENV: &[&str] = &[
+    "APPSTRUCT_STRIPE_SECRET_KEY",
+    "APPSTRUCT_STRIPE_WEBHOOK_SECRET",
+    "APPSTRUCT_STRIPE_PRICE_<PLAN>",
+];
 
 pub(crate) fn run() -> ExitCode {
     let report = CapabilityReport {
@@ -74,9 +83,9 @@ pub(crate) fn run() -> ExitCode {
         billing: BillingCapabilities {
             providers: vec![ProviderCapability {
                 id: "stripe",
-                status: "planned",
+                status: "supported",
                 capabilities: BILLING_CAPABILITIES,
-                required_env: EMPTY_ENV,
+                required_env: STRIPE_ENV,
             }],
         },
     };

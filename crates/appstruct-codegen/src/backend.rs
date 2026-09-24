@@ -3,6 +3,7 @@ mod activity;
 mod api;
 mod audit;
 mod auth;
+mod billing;
 mod context;
 mod entity;
 mod extensions;
@@ -106,6 +107,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     ]);
     artifacts.extend(audit::plan(ir)?);
     artifacts.extend(activity::plan(ir)?);
+    artifacts.extend(billing::plan(ir)?);
     artifacts.extend(auth::plan(ir)?);
     artifacts.extend(file::plan(ir)?);
     artifacts.extend(jobs::plan(ir)?);
@@ -277,6 +279,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod audit;
         mod activity;
         mod auth;
+        mod billing;
         mod error;
         mod file;
         mod jobs;

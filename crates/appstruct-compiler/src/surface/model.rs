@@ -1,7 +1,7 @@
 use super::{
-    SurfaceActivity, SurfaceAudit, SurfaceAuth, SurfaceFile, SurfaceJobs, SurfaceMail,
-    SurfaceOperation, SurfacePage, SurfacePreset, SurfaceRealtime, SurfaceReport, SurfaceTenant,
-    SurfaceValueObject, SurfaceWebhooks,
+    SurfaceActivity, SurfaceAudit, SurfaceAuth, SurfaceBilling, SurfaceFile, SurfaceJobs,
+    SurfaceMail, SurfaceOperation, SurfacePage, SurfacePreset, SurfaceRealtime, SurfaceReport,
+    SurfaceTenant, SurfaceValueObject, SurfaceWebhooks,
 };
 use crate::yaml::MappingEntry;
 use appstruct_ir::SourceSpan;
@@ -22,6 +22,7 @@ pub(crate) struct SurfaceRoot {
     pub preset: Option<SurfacePreset>,
     pub expanded_modules: Option<MappingEntry>,
     pub auth: SurfaceAuth,
+    pub billing: SurfaceBilling,
     pub tenant: SurfaceTenant,
     pub audit: SurfaceAudit,
     pub mail: SurfaceMail,

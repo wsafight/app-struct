@@ -1,5 +1,6 @@
 mod activity;
 mod auth;
+mod billing;
 mod bulk;
 mod collections;
 mod entity;
@@ -29,6 +30,9 @@ fn client_source(ir: &AppIr) -> String {
     ];
     if ir.auth.enabled {
         sections.push(auth::source(ir));
+    }
+    if ir.billing.enabled {
+        sections.push(billing::source(ir));
     }
     if ir.tenant.enabled {
         sections.push(tenant_source());

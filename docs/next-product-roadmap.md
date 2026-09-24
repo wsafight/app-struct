@@ -51,8 +51,9 @@ mutation invalidation.
 ### 2.4 Operational administration
 
 The implemented modules expose infrastructure capabilities but only limited operational UI. An
-Admin module should complete organization/session operations, mail capture, file usage, and
-record-scoped audit navigation before Billing is added to the SaaS preset.
+Admin module still needs organization/session operations, mail capture, file usage, and
+record-scoped audit navigation; those improvements are independent of the opt-in Billing v1
+module.
 
 ### 2.5 Automation and ecosystem
 
@@ -96,7 +97,7 @@ remains out of scope.
 - [x] Remote module registry lifecycle (`install`, `update`, `verify`, `uninstall`, and `list`) with
   `appstruct.modules.lock`, signature verification, offline cache validation, and compatibility checks.
 - Deployment adapters and environment promotion without a mandatory hosted control plane.
-- Billing and subscription operations (the current `appstruct capabilities` report lists Stripe as planned).
+- Billing and subscription operations (Stripe Billing v1 is supported; metered usage remains out of scope).
 - Visual schema, permission, page, and migration editor that produces reviewable App Spec diffs.
 - Project-local agent instructions and a policy-governed MCP adapter.
 

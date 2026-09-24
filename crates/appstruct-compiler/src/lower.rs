@@ -2,6 +2,7 @@ use crate::access::build_access;
 use crate::activity::lower_activity;
 use crate::audit::lower_audit;
 use crate::auth::lower_auth;
+use crate::billing::lower_billing;
 use crate::extension::{ExtensionContext, lower_extensions};
 use crate::file::lower_file;
 use crate::jobs::lower_jobs;
@@ -50,6 +51,13 @@ pub(crate) fn build_ir(
     let auth = lower_auth(
         &root.auth,
         &surface_entities,
+        &root.app_name.span,
+        &mut diagnostics,
+    );
+    let billing = lower_billing(
+        &root.billing,
+        auth.enabled,
+        root.tenant.enabled,
         &root.app_name.span,
         &mut diagnostics,
     );
@@ -160,6 +168,7 @@ pub(crate) fn build_ir(
             digest: crate::preset::preset_digest(),
         }),
         auth,
+        billing,
         tenant,
         audit,
         mail,

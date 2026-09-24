@@ -16,6 +16,7 @@ pub(super) fn source(ir: &AppIr) -> String {
     }
     let audit = ir.audit.enabled;
     let report = ir.report.enabled;
+    let billing = ir.billing.enabled;
     let tenant = ir.tenant.enabled;
     include_str!("../../templates/web/AppAuthenticated.tsx")
         .replace(
@@ -63,6 +64,12 @@ pub(super) fn source(ir: &AppIr) -> String {
             },
         )
         .replace(
+            "__BILLING_PAGE__",
+            if billing {
+                "const BillingPage = lazy(() => import(\"../billing/BillingPage\").then(({ BillingPage: component }) => ({ default: component })));\n"
+            } else { "" },
+        )
+        .replace(
             "__TENANT_ROOT__",
             if tenant {
                 "function TenantRoot() {\n  return <TenantProvider><RequireTenant /></TenantProvider>;\n}\n"
@@ -103,6 +110,10 @@ pub(super) fn source(ir: &AppIr) -> String {
             },
         )
         .replace(
+            "__BILLING_ROUTE__",
+            if billing { "    { path: \"/billing\", component: BillingPage }," } else { "" },
+        )
+        .replace(
             "__ORGANIZATION_ROUTE__",
             if tenant {
                 "    { path: \"/organization\", component: OrganizationPage },"
@@ -127,10 +138,12 @@ pub(super) fn layout_source(ir: &AppIr) -> String {
     }
     let audit = ir.audit.enabled;
     let report = ir.report.enabled;
+    let billing = ir.billing.enabled;
     let tenant = ir.tenant.enabled;
     include_str!("../../templates/web/LayoutAuthenticated.tsx")
         .replace("__HISTORY_ICON__", if audit { ", History" } else { "" })
         .replace("__REPORT_ICON__", if report { ", FileText" } else { "" })
+        .replace("__BILLING_ICON__", if billing { ", CreditCard" } else { "" })
         .replace(
             "__AUDIT_RESOURCE_IMPORT__",
             if audit {
@@ -186,6 +199,10 @@ pub(super) fn layout_source(ir: &AppIr) -> String {
             } else {
                 ""
             },
+        )
+        .replace(
+            "__BILLING_LINK__",
+            if billing { "        <NavLink to=\"/billing\"><CreditCard size={15} /> Billing</NavLink>" } else { "" },
         )
         .replace("__APP_TITLE__", &title)
 }

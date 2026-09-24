@@ -13,8 +13,8 @@ pub(super) fn decode(modules_entry: Option<&MappingEntry>) -> Result<SurfaceAuth
     ensure_known_keys(
         modules,
         &[
-            "auth", "rbac", "tenant", "audit", "mail", "jobs", "webhooks", "realtime", "file",
-            "report", "activity",
+            "auth", "billing", "rbac", "tenant", "audit", "mail", "jobs", "webhooks", "realtime",
+            "file", "report", "activity",
         ],
         "`modules`",
     )?;

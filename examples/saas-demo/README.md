@@ -2,10 +2,10 @@
 
 This project was created from the AppStruct `saas` template and locks `appstruct/saas@1`.
 
-1. Ensure Docker with Compose is running.
-2. Run `appstruct preset show` to inspect the locked modules.
-3. Run `appstruct doctor`.
-4. Run `appstruct dev`.
+For `database.dev.mode: managed`, ensure Docker with Compose is running. For `external`, set
+`DATABASE_URL` in `.env` (see `.env.example`) and run `appstruct migrate dev --accept`.
+Run `appstruct preset show` to inspect the locked modules, then `appstruct doctor` and
+`appstruct dev`.
 
 The API listens on `http://127.0.0.1:3000` and the Web application on
 `http://127.0.0.1:5173` by default. Create an account, create an organization, and then manage

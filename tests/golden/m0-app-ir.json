@@ -20,6 +20,9 @@
     ],
     "default_role": "member"
   },
+  "billing": {
+    "enabled": false
+  },
   "tenant": {
     "enabled": false
   },

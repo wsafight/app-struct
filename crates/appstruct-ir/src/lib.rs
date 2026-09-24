@@ -1,4 +1,6 @@
 //! Stable, serialization-friendly intermediate representation for `AppStruct`.
+mod auth;
+mod billing;
 mod compatibility;
 mod database;
 mod extension;
@@ -8,6 +10,8 @@ mod ui;
 mod validation;
 mod views;
 mod workflow;
+pub use auth::AuthIr;
+pub use billing::{BillingIr, BillingPlanIr};
 pub use compatibility::{IrCompatibilityError, from_compatible_json};
 pub use database::{DatabaseDevMode, DatabaseIr, DatabaseMigrationPolicy, DatabaseProvider};
 pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
@@ -33,6 +37,8 @@ pub struct AppIr {
     pub database: DatabaseIr,
     pub preset: Option<PresetIr>,
     pub auth: AuthIr,
+    #[serde(default)]
+    pub billing: BillingIr,
     pub tenant: TenantIr,
     pub audit: AuditIr,
     pub mail: MailIr,
@@ -62,22 +68,6 @@ pub struct AppIr {
 pub struct AppMeta {
     pub name: String,
 }
-/// Authentication facts known at compile time in the M0 compiler.
-#[allow(clippy::struct_excessive_bools)]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AuthIr {
-    pub enabled: bool,
-    pub user_entity: Option<EntityId>,
-    pub registration_enabled: bool,
-    pub password_reset_enabled: bool,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub oauth_enabled: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub oauth_providers: Vec<String>,
-    pub roles: Vec<String>,
-    pub default_role: Option<String>,
-}
-
 /// Stable logical entity identifier. It never depends on vector position.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

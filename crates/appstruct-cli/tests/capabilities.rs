@@ -15,6 +15,6 @@ fn capabilities_reports_social_login_and_billing_status_without_a_project() {
     assert_eq!(report["result"]["auth"]["providers"][2]["id"], "github");
     assert_eq!(
         report["result"]["billing"]["providers"][0]["status"],
-        "planned"
+        "supported"
     );
 }

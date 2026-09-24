@@ -11,6 +11,7 @@ import { resourceRoutes } from "./ResourceRoutes";
 
 __AUDIT_PAGE__
 __REPORT_PAGE__
+__BILLING_PAGE__
 const LoginPage = lazy(() => import("../auth/AuthPages").then(({ LoginPage: component }) => ({ default: component })));
 const RegisterPage = lazy(() => import("../auth/AuthPages").then(({ RegisterPage: component }) => ({ default: component })));
 const ForgotPasswordPage = lazy(() => import("../auth/AuthPages").then(({ ForgotPasswordPage: component }) => ({ default: component })));
@@ -68,6 +69,7 @@ function layoutRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
     ...resourceRoutes(registry),
 __AUDIT_ROUTE__
 __REPORT_ROUTE__
+__BILLING_ROUTE__
     ...customPageRoutes(registry),
     { path: "/empty", component: EmptyPage },
 __ORGANIZATION_ROUTE__
