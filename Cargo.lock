@@ -110,7 +110,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "similar",
  "tempfile",
  "toml",
@@ -130,7 +130,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "syn 2.0.119",
  "tempfile",
 ]
@@ -149,7 +149,7 @@ dependencies = [
  "saphyr-parser",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "tempfile",
  "toml",
  "url",
@@ -166,7 +166,7 @@ dependencies = [
  "appstruct-contracts",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -182,7 +182,7 @@ dependencies = [
  "postgres-native-tls",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "tempfile",
 ]
 
@@ -195,7 +195,7 @@ dependencies = [
  "ed25519-dalek",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
 ]
 
 [[package]]
