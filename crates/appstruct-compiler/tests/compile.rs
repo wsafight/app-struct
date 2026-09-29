@@ -1,6 +1,5 @@
 use appstruct_compiler::{compile_project, compile_project_report, updated_project_lock};
 use appstruct_ir::{DatabaseMigrationPolicy, ModuleOrigin, OperationTypeIr, to_canonical_json};
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -181,7 +180,7 @@ fn loads_local_modules_and_artifacts_into_the_capability_graph() {
     );
     assert_eq!(
         module.content_sha256.as_deref(),
-        Some(format!("sha256:{:x}", Sha256::digest(manifest.as_bytes())).as_str())
+        Some(appstruct_core::sha256_tagged(manifest.as_bytes()).as_str())
     );
     assert_eq!(module.requires, ["auth.identity"]);
     assert_eq!(module.artifacts[0].path, "docs/README.md");
@@ -192,7 +191,7 @@ fn loads_local_modules_and_artifacts_into_the_capability_graph() {
     assert_eq!(module.artifacts[0].byte_len, 15);
     assert_eq!(
         module.artifacts[0].sha256,
-        format!("sha256:{:x}", Sha256::digest(b"# Local module\n"))
+        appstruct_core::sha256_tagged(b"# Local module\n")
     );
     assert_eq!(module.artifacts[0].content, "# Local module\n");
     assert!(module.startup_order > ir.modules[0].startup_order);

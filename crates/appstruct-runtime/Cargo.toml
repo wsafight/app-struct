@@ -12,6 +12,7 @@ keywords = ["axum", "codegen", "runtime", "saas"]
 categories = ["web-programming"]
 
 [dependencies]
+appstruct-core.workspace = true
 appstruct-contracts.workspace = true
 async-trait.workspace = true
 base64.workspace = true

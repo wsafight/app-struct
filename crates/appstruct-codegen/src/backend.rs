@@ -5,6 +5,7 @@ mod audit;
 mod auth;
 mod billing;
 mod context;
+mod embedded;
 mod entity;
 mod extensions;
 mod file;
@@ -36,6 +37,11 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             ArtifactKind::RustManifest,
         ),
         Artifact::text(
+            "backend/core/Cargo.toml",
+            manifest::core_cargo(),
+            ArtifactKind::RustManifest,
+        ),
+        Artifact::text(
             "backend/runtime/Cargo.toml",
             manifest::runtime_cargo(),
             ArtifactKind::RustManifest,
@@ -47,11 +53,12 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         ),
         Artifact::text(
             "backend/contracts/src/lib.rs",
-            embedded_crate_source(appstruct_contracts::__source::LIB),
+            embedded::crate_source(appstruct_contracts::__source::LIB),
             ArtifactKind::RustSource,
         ),
     ];
-    artifacts.extend(embedded_runtime_artifacts());
+    artifacts.extend(embedded::core_artifacts());
+    artifacts.extend(embedded::runtime_artifacts());
     artifacts.extend([
         Artifact::text(
             "server/Cargo.toml",
@@ -118,78 +125,6 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     artifacts.extend(webhooks::plan(ir)?);
     artifacts.extend(entity_artifacts(ir)?);
     Ok(artifacts)
-}
-
-fn embedded_runtime_artifacts() -> [Artifact; 7] {
-    [
-        Artifact::text(
-            "backend/runtime/src/bigint.rs",
-            embedded_crate_source(appstruct_runtime::__source::BIGINT),
-            ArtifactKind::RustSource,
-        ),
-        Artifact::text(
-            "backend/runtime/src/lib.rs",
-            embedded_crate_source(appstruct_runtime::__source::LIB),
-            ArtifactKind::RustSource,
-        ),
-        Artifact::text(
-            "backend/runtime/src/lifecycle.rs",
-            format!(
-                "{}{}",
-                generated_header("//"),
-                appstruct_runtime::__source::LIFECYCLE
-            ),
-            ArtifactKind::RustSource,
-        ),
-        Artifact::text(
-            "backend/runtime/src/origin.rs",
-            format!(
-                "{}{}",
-                generated_header("//"),
-                appstruct_runtime::__source::ORIGIN
-            ),
-            ArtifactKind::RustSource,
-        ),
-        Artifact::text(
-            "backend/runtime/src/query.rs",
-            format!(
-                "{}{}",
-                generated_header("//"),
-                appstruct_runtime::__source::QUERY
-            ),
-            ArtifactKind::RustSource,
-        ),
-        Artifact::text(
-            "backend/runtime/src/resource.rs",
-            format!(
-                "{}{}",
-                generated_header("//"),
-                appstruct_runtime::__source::RESOURCE
-            ),
-            ArtifactKind::RustSource,
-        ),
-        Artifact::text(
-            "backend/runtime/src/supervisor.rs",
-            format!(
-                "{}{}",
-                generated_header("//"),
-                appstruct_runtime::__source::SUPERVISOR
-            ),
-            ArtifactKind::RustSource,
-        ),
-    ]
-}
-
-fn embedded_crate_source(source: &str) -> String {
-    let source = source
-        .lines()
-        .map(|line| {
-            line.strip_prefix("//!")
-                .map_or(line.to_owned(), |line| format!("//{line}"))
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!("{}{}\n", generated_header("//"), source)
 }
 
 fn entity_artifacts(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {

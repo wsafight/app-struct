@@ -5,7 +5,6 @@ pub use lock::ProjectLayout;
 use crate::surface::{SurfacePreset, SurfaceRoot};
 use crate::yaml::{self, MappingEntry, Node, NodeKind};
 use appstruct_ir::Diagnostic;
-use sha2::{Digest, Sha256};
 use std::fmt::Write;
 use std::path::Path;
 
@@ -76,7 +75,7 @@ pub fn preset_info(name: &str, version: u64) -> Option<PresetInfo> {
 }
 
 pub(crate) fn preset_digest() -> String {
-    format!("sha256:{:x}", Sha256::digest(EXPANDED.as_bytes()))
+    appstruct_core::sha256_tagged(EXPANDED.as_bytes())
 }
 
 /// Build the canonical project lock used by official templates.

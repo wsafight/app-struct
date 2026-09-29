@@ -102,7 +102,7 @@ fn prepare_formatter(cache: &Path, artifacts: &[Artifact]) -> io::Result<Formatt
     hash.update(&package.content);
     hash.update([0]);
     hash.update(&lock.content);
-    let dependency_identity = format!("sha256:{:x}", hash.finalize());
+    let dependency_identity = format!("sha256:{}", hex::encode(hash.finalize()));
     let directory = cache.join("web-formatter").join(&dependency_identity[7..]);
     let ready = directory.join(".ready");
     if !ready.is_file() || !prettier_path(&directory).is_file() {

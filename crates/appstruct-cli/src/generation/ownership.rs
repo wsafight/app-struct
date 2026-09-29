@@ -340,7 +340,7 @@ fn portable_path(path: &Path) -> io::Result<String> {
 }
 
 fn content_hash(content: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(content))
+    hex::encode(Sha256::digest(content))
 }
 
 fn invalid(message: impl Into<String>) -> io::Error {

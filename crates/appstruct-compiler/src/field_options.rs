@@ -1,5 +1,5 @@
-use crate::naming::is_rust_type_name;
 use crate::surface::SurfaceField;
+use appstruct_core::is_rust_type_name;
 use appstruct_ir::{Diagnostic, FieldTypeIr, GeneratedValueIr};
 
 pub(crate) fn validate_field_options(

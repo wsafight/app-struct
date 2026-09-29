@@ -1,7 +1,6 @@
 use super::ReportWork;
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
-use sha2::Digest as _;
 use std::time::Duration;
 
 const MAX_HTML: usize = 2 * 1024 * 1024;
@@ -9,7 +8,7 @@ const MAX_PDF: usize = 50 * 1024 * 1024;
 const MAX_RESPONSE: usize = MAX_PDF * 4 / 3 + 8192;
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", sha2::Sha256::digest(bytes))
+    appstruct_runtime::sha256_hex(bytes)
 }
 
 #[derive(Serialize)]
@@ -62,7 +61,7 @@ pub(super) async fn render(
         .map_err(|_| "REPORT_INVALID_TEMPLATE_ARTIFACT")?;
     let mut output = HtmlWriter(Vec::new());
     template
-        .render_to_write(
+        .render_captured_to(
             minijinja::context! {
                 input => input, locale => work.locale, timezone => work.timezone,
                 paper => work.paper, orientation => work.orientation,

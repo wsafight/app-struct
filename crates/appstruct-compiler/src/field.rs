@@ -1,5 +1,5 @@
-use crate::naming::{is_rust_field_name, is_sql_name};
 use crate::surface::SurfaceField;
+use appstruct_core::{is_rust_field_name, is_sql_name};
 use appstruct_ir::{
     Cardinality, Diagnostic, EntityId, FieldId, FieldTypeIr, OnDeleteIr, RelationId, RelationIr,
     SourceSpan,

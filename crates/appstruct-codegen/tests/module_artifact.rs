@@ -86,7 +86,10 @@ fn rejects_official_provenance_invalid_digests_and_byte_length() {
     ir.modules[0].origin = appstruct_ir::ModuleOrigin::Local;
     ir.modules[0].name = "local/example".to_owned();
     ir.modules[0].manifest_path = Some("modules/example/module.toml".to_owned());
-    ir.modules[0].content_sha256 = Some(format!("sha256:{:x}", Sha256::digest(b"manifest")));
+    ir.modules[0].content_sha256 = Some(format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(b"manifest"))
+    ));
     ir.modules[0].artifacts = vec![appstruct_ir::ModuleArtifactIr {
         path: "docs/README.md".to_owned(),
         source: Some("modules/example/assets/README.md".to_owned()),
@@ -99,7 +102,7 @@ fn rejects_official_provenance_invalid_digests_and_byte_length() {
         digest_error.contains("SHA-256") || digest_error.contains("sha256"),
         "{digest_error}"
     );
-    ir.modules[0].artifacts[0].sha256 = format!("sha256:{:x}", Sha256::digest(b"ok"));
+    ir.modules[0].artifacts[0].sha256 = format!("sha256:{}", hex::encode(Sha256::digest(b"ok")));
     ir.modules[0].artifacts[0].byte_len = 99;
     assert!(plan(&ir).unwrap_err().to_string().contains("byte length"));
 }

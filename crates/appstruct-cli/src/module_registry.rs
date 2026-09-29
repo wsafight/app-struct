@@ -151,7 +151,10 @@ fn install_envelope(
     }
     let manifest_path = format!("{relative_directory}/module.toml");
     let envelope_path = format!("{relative_directory}/package.envelope.json");
-    let manifest_sha256 = format!("sha256:{:x}", Sha256::digest(package.manifest.as_bytes()));
+    let manifest_sha256 = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(package.manifest.as_bytes()))
+    );
     let mut lock = read_lock(project)?;
     lock.modules.retain(|module| module.name != package.name);
     lock.modules.push(LockedRemoteModule {
@@ -218,7 +221,7 @@ fn validate_package(
         total = total
             .checked_add(content.len())
             .ok_or_else(|| "artifact size overflow".to_owned())?;
-        let digest = format!("sha256:{:x}", Sha256::digest(&content));
+        let digest = format!("sha256:{}", hex::encode(Sha256::digest(&content)));
         if content.len() > 1024 * 1024
             || total > 8 * 1024 * 1024
             || digest != artifact.sha256

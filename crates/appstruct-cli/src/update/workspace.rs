@@ -145,7 +145,7 @@ fn ignored(relative: &Path, name: &OsStr) -> bool {
 }
 
 fn content_hash(content: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(content))
+    format!("sha256:{}", hex::encode(Sha256::digest(content)))
 }
 
 fn invalid(message: impl Into<String>) -> io::Error {

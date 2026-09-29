@@ -54,7 +54,6 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         use ring::{aead, rand::{SecureRandom, SystemRandom}};
         use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
         use serde::{Deserialize, Serialize};
-        use sha2::{Digest, Sha256};
 
         #contract
         #crypto

@@ -16,7 +16,6 @@ mod lower;
 mod mail;
 mod module;
 mod module_registry;
-mod naming;
 mod preset;
 mod realtime;
 mod report;

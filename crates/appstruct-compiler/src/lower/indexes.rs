@@ -35,7 +35,7 @@ pub(super) fn build_indexes(
             continue;
         }
         if let Some(name) = &index.name
-            && !crate::naming::is_sql_name(&name.value)
+            && !appstruct_core::is_sql_name(&name.value)
         {
             diagnostics.push(Diagnostic::error(
                 "AS2051",

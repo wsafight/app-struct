@@ -4,7 +4,6 @@ use crate::{Actor, ApiError};
 use axum::http::{HeaderMap, HeaderValue, Method, header};
 use base64::Engine;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
-use sha2::{Digest, Sha256};
 use std::env;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
@@ -361,7 +360,7 @@ pub(crate) fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
 }
 
 pub(crate) fn token_hash(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    appstruct_runtime::sha256_hex(token.as_bytes())
 }
 
 pub(crate) fn random_token() -> String {

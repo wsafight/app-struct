@@ -1,8 +1,8 @@
 mod value;
 
 use crate::access::build_operation_access;
-use crate::naming::is_rust_type_name;
 use crate::surface::{SurfaceOperation, SurfacePage, SurfaceValueObject};
+use appstruct_core::is_rust_type_name;
 use appstruct_ir::{
     AuthIr, CommandIr, Diagnostic, EntityId, OperationTypeIr, PageIr, QueryIr, SourceSpan,
     ValueObjectIr,

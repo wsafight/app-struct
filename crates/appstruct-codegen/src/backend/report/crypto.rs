@@ -4,7 +4,7 @@ use quote::quote;
 pub(super) fn source() -> TokenStream {
     quote! {
         fn sha256_hex(bytes: &[u8]) -> String {
-            format!("sha256:{:x}", Sha256::digest(bytes))
+            appstruct_runtime::sha256_tagged(bytes)
         }
 
         fn snapshot_key() -> Result<aead::LessSafeKey, ApiError> {

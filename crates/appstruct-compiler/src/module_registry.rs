@@ -6,7 +6,6 @@ use appstruct_module_sdk::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -139,7 +138,7 @@ fn validate_package(package: &RegistryPackage, locked: &LockedRemoteModule) -> R
     {
         return Err("signed package compatibility differs from the lock".to_owned());
     }
-    let digest = format!("sha256:{:x}", Sha256::digest(package.manifest.as_bytes()));
+    let digest = appstruct_core::sha256_tagged(package.manifest.as_bytes());
     if digest != locked.manifest_sha256 {
         return Err("signed manifest digest differs from the lock".to_owned());
     }
@@ -162,7 +161,7 @@ fn validate_artifacts(package: &RegistryPackage, module: &LoadedModule) -> Resul
         let content = STANDARD
             .decode(&artifact.content)
             .map_err(|error| format!("artifact base64 is invalid: {error}"))?;
-        let digest = format!("sha256:{:x}", Sha256::digest(&content));
+        let digest = appstruct_core::sha256_tagged(&content);
         if digest != artifact.sha256
             || artifact.sha256 != loaded.sha256
             || artifact.byte_len != loaded.byte_len

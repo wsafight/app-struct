@@ -12,6 +12,7 @@ keywords = ["compiler", "configuration", "codegen", "rust", "yaml"]
 categories = ["config", "development-tools"]
 
 [dependencies]
+appstruct-core.workspace = true
 appstruct-contracts.workspace = true
 appstruct-ir.workspace = true
 appstruct-module-sdk.workspace = true
@@ -21,7 +22,6 @@ minijinja.workspace = true
 saphyr-parser.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 toml.workspace = true
 url.workspace = true
 

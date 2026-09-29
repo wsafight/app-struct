@@ -1,7 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{error::Error, fmt};
 
 /// Signed registry response. The signature covers the decoded `payload` bytes exactly.
@@ -66,7 +65,7 @@ pub fn verify_registry_envelope(
     let payload = STANDARD
         .decode(&envelope.payload)
         .map_err(|error| invalid(format!("invalid payload base64: {error}")))?;
-    let digest = format!("sha256:{:x}", Sha256::digest(&payload));
+    let digest = appstruct_core::sha256_tagged(&payload);
     if envelope.sha256 != digest {
         return Err(invalid("registry payload SHA-256 does not match"));
     }

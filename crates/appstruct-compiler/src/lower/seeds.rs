@@ -12,7 +12,7 @@ pub(super) fn build_seeds(
         .seeds
         .iter()
         .filter_map(|seed| {
-            if !crate::naming::is_sql_name(&seed.name.value) {
+            if !appstruct_core::is_sql_name(&seed.name.value) {
                 diagnostics.push(Diagnostic::error(
                     "AS2060",
                     format!("invalid seed name `{}`", seed.name.value),

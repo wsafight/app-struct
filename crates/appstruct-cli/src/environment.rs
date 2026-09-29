@@ -77,7 +77,7 @@ impl ProjectEnvironment {
                 hasher.update([0]);
             }
         }
-        format!("sha256:{:x}", hasher.finalize())
+        format!("sha256:{}", hex::encode(hasher.finalize()))
     }
 }
 

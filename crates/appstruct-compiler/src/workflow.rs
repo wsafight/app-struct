@@ -1,6 +1,6 @@
 use crate::access::build_entity_operation_access;
-use crate::naming::is_rust_field_name;
 use crate::surface::{SurfaceEntity, SurfaceWorkflow};
+use appstruct_core::is_rust_field_name;
 use appstruct_ir::{AuthIr, Diagnostic, FieldIr, FieldTypeIr, WorkflowIr, WorkflowTransitionIr};
 use std::collections::BTreeSet;
 

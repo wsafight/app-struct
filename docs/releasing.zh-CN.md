@@ -58,7 +58,7 @@ scripts/verify-packages.sh
 按依赖顺序发布，并在消费者发布前等待每个 crate 出现在 crates.io 索引中：
 
 ```text
-appstruct-contracts
+appstruct-core and appstruct-contracts
 appstruct-ir, appstruct-module-sdk, and appstruct-runtime
 appstruct-schema
 appstruct-compiler

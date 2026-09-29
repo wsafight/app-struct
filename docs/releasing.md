@@ -71,7 +71,7 @@ Publish in dependency order and wait for each crate to appear in the crates.io i
 consumers:
 
 ```text
-appstruct-contracts
+appstruct-core and appstruct-contracts
 appstruct-ir, appstruct-module-sdk, and appstruct-runtime
 appstruct-schema
 appstruct-compiler

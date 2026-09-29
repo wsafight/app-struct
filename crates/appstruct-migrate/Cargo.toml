@@ -12,6 +12,7 @@ keywords = ["database", "migration", "postgresql", "schema", "sql"]
 categories = ["database"]
 
 [dependencies]
+appstruct-core.workspace = true
 appstruct-contracts.workspace = true
 appstruct-ir.workspace = true
 appstruct-schema.workspace = true
@@ -20,7 +21,6 @@ postgres.workspace = true
 postgres-native-tls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 
 [dev-dependencies]
 appstruct-compiler.workspace = true

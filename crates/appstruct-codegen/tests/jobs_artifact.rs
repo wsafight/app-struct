@@ -55,7 +55,7 @@ fn assert_backend_contracts(artifacts: &[Artifact]) {
     assert!(jobs.contains("AND NOT paused"));
     assert!(jobs.contains("IS NOT DISTINCT FROM EXCLUDED.interval_seconds"));
     assert!(jobs.contains("enqueue(\n            &transaction"));
-    assert!(artifact_text(artifacts, "backend/Cargo.toml").contains("cron = \"=0.15.0\""));
+    assert!(artifact_text(artifacts, "backend/Cargo.toml").contains("cron = \"=0.17.0\""));
     let webhooks = artifact_text(artifacts, "backend/src/webhooks.rs");
     assert!(webhooks.contains("x-appstruct-signature"));
     assert!(webhooks.contains("Hmac::<Sha256>"));

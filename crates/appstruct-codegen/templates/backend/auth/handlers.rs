@@ -2,7 +2,6 @@ use super::config;
 use super::recovery::{account_email_verified, issue_email_verification};
 use super::session::{cookie_value, random_token, token_hash};
 use crate::{Actor, ApiError, AppState};
-use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -304,10 +303,8 @@ pub(super) fn validate_password(value: &str) -> Result<(), ApiError> {
 }
 
 pub(super) fn hash_password(value: &str) -> Result<String, ApiError> {
-    let salt = SaltString::encode_b64(&rand::random::<[u8; 16]>())
-        .map_err(|_| ApiError::Internal)?;
     Argon2::default()
-        .hash_password(value.as_bytes(), &salt)
+        .hash_password(value.as_bytes())
         .map(|hash| hash.to_string())
         .map_err(|_| ApiError::Internal)
 }

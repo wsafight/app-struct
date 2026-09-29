@@ -85,7 +85,7 @@ fn input_fingerprint(project: &Path) -> io::Result<String> {
             hash_file(&path, &mut hasher)?;
         }
     }
-    Ok(format!("sha256:{:x}", hasher.finalize()))
+    Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
 }
 
 fn collect_directory(directory: &Path, paths: &mut Vec<PathBuf>) -> io::Result<()> {
@@ -124,7 +124,7 @@ fn executable_identity() -> io::Result<String> {
 fn file_fingerprint(path: &Path) -> io::Result<String> {
     let mut hasher = Sha256::new();
     hash_file(path, &mut hasher)?;
-    Ok(format!("sha256:{:x}", hasher.finalize()))
+    Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
 }
 
 fn hash_file(path: &Path, hasher: &mut Sha256) -> io::Result<()> {

@@ -67,7 +67,7 @@ fn verify_one(project: &Path, locked: &LockedRemoteModule) -> Result<(), String>
     }
     let (_, artifacts) = validate_package(&package, &locked.name, &locked.version)?;
     let manifest = read_cache_file(project, &locked.manifest_path, 1024 * 1024)?;
-    let manifest_digest = format!("sha256:{:x}", Sha256::digest(&manifest));
+    let manifest_digest = format!("sha256:{}", hex::encode(Sha256::digest(&manifest)));
     if manifest != package.manifest.as_bytes() || manifest_digest != locked.manifest_sha256 {
         return Err(format!(
             "module `{}` cached manifest differs from the signed package",

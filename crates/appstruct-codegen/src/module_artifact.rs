@@ -1,7 +1,6 @@
 use crate::{Artifact, ArtifactKind, CodegenError};
 use appstruct_ir::{AppIr, ModuleOrigin};
 use appstruct_module_sdk::{module_namespace, validate_relative_path};
-use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
 pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
@@ -37,7 +36,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
                 validate_project_source_path(&module.name, "artifact source", source)?;
             }
             validate_sha256(&module.name, "artifact", &artifact.sha256)?;
-            let actual_sha256 = format!("sha256:{:x}", Sha256::digest(artifact.content.as_bytes()));
+            let actual_sha256 = appstruct_core::sha256_tagged(artifact.content.as_bytes());
             if artifact.sha256 != actual_sha256 {
                 return Err(CodegenError::new(format!(
                     "module `{}` artifact `{}` content does not match its SHA-256",

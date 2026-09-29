@@ -136,7 +136,7 @@ fn files_fingerprint(files: &[PathBuf]) -> io::Result<String> {
         hasher.update(path.to_string_lossy().as_bytes());
         hasher.update(fingerprint::digest(&path)?);
     }
-    Ok(format!("sha256:{:x}", hasher.finalize()))
+    Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
 }
 
 fn current(path: &Path, key: &CacheKey, output_exists: bool) -> io::Result<bool> {

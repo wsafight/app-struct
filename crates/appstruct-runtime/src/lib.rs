@@ -3,9 +3,10 @@
 pub mod bigint;
 mod lifecycle;
 mod origin;
-mod query;
-mod resource;
 mod supervisor;
+
+pub use appstruct_core::{query, resource};
+pub use appstruct_core::{sha256_hex, sha256_tagged};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -20,8 +21,8 @@ pub mod __source {
     pub const BIGINT: &str = include_str!("bigint.rs");
     pub const LIFECYCLE: &str = include_str!("lifecycle.rs");
     pub const ORIGIN: &str = include_str!("origin.rs");
-    pub const QUERY: &str = include_str!("query.rs");
-    pub const RESOURCE: &str = include_str!("resource.rs");
+    pub const QUERY: &str = appstruct_core::__source::QUERY;
+    pub const RESOURCE: &str = appstruct_core::__source::RESOURCE;
     pub const SUPERVISOR: &str = include_str!("supervisor.rs");
 }
 

@@ -25,7 +25,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let read_timeout = ir.webhooks.read_timeout_ms;
     let request_timeout = ir.webhooks.request_timeout_ms;
     render(quote! {
-        use hmac::{Hmac, Mac};
+        use hmac::{Hmac, KeyInit, Mac};
         use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
         use serde::Serialize;
         use sha2::Sha256;

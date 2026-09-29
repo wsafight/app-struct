@@ -37,7 +37,7 @@ fn installs_and_compiles_a_signed_remote_module_offline() {
         artifacts: vec![RegistryArtifact {
             source: "assets/README.md".to_owned(),
             content: STANDARD.encode(artifact),
-            sha256: format!("sha256:{:x}", Sha256::digest(artifact)),
+            sha256: format!("sha256:{}", hex::encode(Sha256::digest(artifact))),
             byte_len: artifact.len() as u64,
         }],
     };
@@ -45,7 +45,7 @@ fn installs_and_compiles_a_signed_remote_module_offline() {
     let envelope = RegistryEnvelope {
         schema_version: 1,
         payload: STANDARD.encode(&payload),
-        sha256: format!("sha256:{:x}", Sha256::digest(&payload)),
+        sha256: format!("sha256:{}", hex::encode(Sha256::digest(&payload))),
         signature: STANDARD.encode(signing.sign(&payload).to_bytes()),
     };
     install_envelope(
@@ -99,7 +99,7 @@ fn rejects_a_tampered_registry_signature() {
     let envelope = RegistryEnvelope {
         schema_version: 1,
         payload: STANDARD.encode(b"{}"),
-        sha256: format!("sha256:{:x}", Sha256::digest(b"{}")),
+        sha256: format!("sha256:{}", hex::encode(Sha256::digest(b"{}"))),
         signature: STANDARD.encode([0_u8; 64]),
     };
     let error = install_envelope(

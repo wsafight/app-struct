@@ -1,4 +1,5 @@
-pub(crate) fn is_app_name(value: &str) -> bool {
+#[must_use]
+pub fn is_app_name(value: &str) -> bool {
     value
         .bytes()
         .next()
@@ -8,7 +9,8 @@ pub(crate) fn is_app_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
-pub(crate) fn is_rust_type_name(value: &str) -> bool {
+#[must_use]
+pub fn is_rust_type_name(value: &str) -> bool {
     value
         .bytes()
         .next()
@@ -17,7 +19,8 @@ pub(crate) fn is_rust_type_name(value: &str) -> bool {
         && !is_rust_keyword(value)
 }
 
-pub(crate) fn is_rust_field_name(value: &str) -> bool {
+#[must_use]
+pub fn is_rust_field_name(value: &str) -> bool {
     is_sql_name(value) && !is_rust_keyword(value)
 }
 
@@ -79,7 +82,8 @@ fn is_rust_keyword(value: &str) -> bool {
     )
 }
 
-pub(crate) fn is_sql_name(value: &str) -> bool {
+#[must_use]
+pub fn is_sql_name(value: &str) -> bool {
     value
         .bytes()
         .next()
@@ -89,7 +93,8 @@ pub(crate) fn is_sql_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
-pub(crate) fn to_snake_case(value: &str) -> String {
+#[must_use]
+pub fn to_snake_case(value: &str) -> String {
     let mut output = String::new();
     for (index, character) in value.chars().enumerate() {
         if character.is_ascii_uppercase() {
@@ -104,7 +109,8 @@ pub(crate) fn to_snake_case(value: &str) -> String {
     output
 }
 
-pub(crate) fn pluralize(value: &str) -> String {
+#[must_use]
+pub fn pluralize(value: &str) -> String {
     if value.ends_with('s') {
         format!("{value}es")
     } else {

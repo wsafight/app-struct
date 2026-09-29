@@ -6,7 +6,6 @@ use appstruct_ir::{
 use appstruct_module_sdk::{
     ModuleGraphError, ModuleManifest, resolve_modules, validate_manifest, validate_relative_path,
 };
-use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path};
@@ -159,7 +158,7 @@ pub(crate) fn load_remote_module(
 }
 
 fn content_sha256(content: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(content))
+    appstruct_core::sha256_tagged(content)
 }
 
 fn module_path_error(declaration: &Located<String>, reason: &str) -> Diagnostic {

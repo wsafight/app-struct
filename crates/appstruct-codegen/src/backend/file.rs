@@ -33,7 +33,6 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             path::Path as ObjectPath,
         };
         use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
-        use sha2::{Digest, Sha256};
         use std::{env, fmt, path::{Component, Path}, sync::Arc};
         #contract
         #state
@@ -132,7 +131,7 @@ fn state_source(
                 let size = u64::try_from(content.len()).unwrap_or(u64::MAX);
                 if size > #max_bytes { return Err(FileError::TooLarge { size, max: #max_bytes }); }
                 validate_content(content_type, content, &self.allowed_content_types)?;
-                let checksum = format!("{:x}", Sha256::digest(content));
+                let checksum = appstruct_runtime::sha256_hex(content);
                 self.provider.put(object_key, content).await?;
                 match insert_metadata(
                     database, object_key, original_name, content_type, size, &checksum, tenant_id,
@@ -155,7 +154,7 @@ fn state_source(
                 validate_key(object_key)?;
                 let metadata = load_metadata(database, object_key, tenant_id).await?;
                 let content = self.provider.get(object_key).await?;
-                if format!("{:x}", Sha256::digest(&content)) != metadata.checksum {
+                if appstruct_runtime::sha256_hex(&content) != metadata.checksum {
                     return Err(FileError::Storage("stored object checksum does not match metadata".to_owned()));
                 }
                 Ok((metadata, content))

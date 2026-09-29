@@ -1,0 +1,22 @@
+[package]
+name = "appstruct-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+description = "Pure naming, query, and resource algorithms shared by AppStruct tools and generated backends"
+documentation = "https://docs.rs/appstruct-core"
+keywords = ["codegen", "compiler", "runtime", "saas"]
+categories = ["development-tools", "web-programming"]
+
+[dependencies]
+base64.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

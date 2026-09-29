@@ -1,5 +1,5 @@
-use crate::naming::{is_app_name, is_rust_type_name, is_sql_name, pluralize, to_snake_case};
 use crate::surface::{SurfaceEntity, SurfaceRoot};
+use appstruct_core::{is_app_name, is_rust_type_name, is_sql_name, pluralize, to_snake_case};
 use appstruct_ir::{Diagnostic, SourceSpan};
 use std::collections::BTreeMap;
 

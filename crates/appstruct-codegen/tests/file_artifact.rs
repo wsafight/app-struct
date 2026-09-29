@@ -67,7 +67,7 @@ fn assert_provider(
         manifest.contains("features = [\"aws\"]"),
         provider == FileProviderIr::S3
     );
-    assert!(manifest.contains("infer = \"=0.19.0\""));
+    assert!(manifest.contains("infer = \"=0.22.0\""));
     let admin = artifact_text(&artifacts, "backend/src/auth/admin_storage.rs");
     assert!(admin.contains("/api/admin/files"));
     assert!(admin.contains("total_bytes"));

@@ -158,10 +158,10 @@ pub(super) fn support(
     let audit = entity.audit_enabled.then(|| {
         quote! {
             let input_bytes = serde_json::to_vec(&input).map_err(|_| ApiError::Internal)?;
-            let input_digest = <sha2::Sha256 as sha2::Digest>::digest(&input_bytes);
+            let input_digest = appstruct_runtime::sha256_tagged(&input_bytes);
             let audit_metadata = serde_json::json!({
                 "transition": transition,
-                "input_sha256": format!("sha256:{input_digest:x}"),
+                "input_sha256": input_digest,
                 "from_revision": before.revision,
                 "to_revision": after.revision,
             });

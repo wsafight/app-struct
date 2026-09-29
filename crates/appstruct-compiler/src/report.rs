@@ -1,6 +1,5 @@
 use crate::surface::SurfaceReport;
 use appstruct_ir::{AuthIr, Diagnostic, FileIr, JobsIr, ReportIr, ReportTemplateIr, SourceSpan};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 const DEFAULT_MAX_INPUT_BYTES: u64 = 256 * 1024;
@@ -226,10 +225,7 @@ fn lower_template(
         name: template.name.value.clone(),
         version: u32::try_from(template.version.value).unwrap_or(u32::MAX),
         document_type: "pdf".to_owned(),
-        artifact_digest: format!(
-            "sha256:{:x}",
-            Sha256::digest(template.body.value.as_bytes())
-        ),
+        artifact_digest: appstruct_core::sha256_tagged(template.body.value.as_bytes()),
         body: template.body.value.clone(),
         input_schema,
         data_schema_version: template

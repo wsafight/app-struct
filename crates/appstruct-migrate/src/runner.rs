@@ -5,7 +5,6 @@ mod project;
 use crate::DatabaseSchema;
 use postgres::{Client, Config, NoTls, config::SslMode};
 use postgres_native_tls::MakeTlsConnector;
-use sha2::{Digest, Sha256};
 use std::fmt;
 use std::path::Path;
 
@@ -167,7 +166,7 @@ fn detect_drift(
 }
 
 fn checksum(content: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(content))
+    appstruct_core::sha256_hex(content)
 }
 
 #[cfg(test)]

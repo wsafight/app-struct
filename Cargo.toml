@@ -2,6 +2,7 @@
 members = [
   "crates/appstruct-cli",
   "crates/appstruct-codegen",
+  "crates/appstruct-core",
   "crates/appstruct-contracts",
   "crates/appstruct-compiler",
   "crates/appstruct-ir",
@@ -22,6 +23,7 @@ repository = "https://github.com/wsafight/app-struct"
 
 [workspace.dependencies]
 appstruct-codegen = { version = "0.1.0", path = "crates/appstruct-codegen" }
+appstruct-core = { version = "0.1.0", path = "crates/appstruct-core" }
 appstruct-contracts = { version = "0.1.0", path = "crates/appstruct-contracts" }
 appstruct-compiler = { version = "0.1.0", path = "crates/appstruct-compiler" }
 appstruct-ir = { version = "0.1.0", path = "crates/appstruct-ir" }
@@ -32,27 +34,28 @@ appstruct-schema = { version = "0.1.0", path = "crates/appstruct-schema" }
 async-trait = "0.1.92"
 base64 = "0.23.1"
 clap = { version = "4.6.7", features = ["derive"] }
-cron = "0.15.0"
+cron = "0.17.0"
 ctrlc = "3.5.2"
 dotenvy = "0.15.7"
-ed25519-dalek = "2.2.0"
-native-tls = "0.2.14"
-minijinja = "=2.12.0"
+ed25519-dalek = "3.0.0"
+native-tls = "0.2.18"
+minijinja = "=2.24.0"
 notify = "8.2.0"
 postgres = "0.19.14"
 postgres-native-tls = "0.5.3"
-proc-macro2 = "1.0.101"
-quote = "1.0.40"
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
 reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "rustls"] }
-saphyr-parser = "0.0.12"
+saphyr-parser = "0.1.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-sha2 = "0.10.9"
-similar = "2.7.0"
-toml = "0.9.12"
-syn = { version = "2.0.106", features = ["full"] }
+sha2 = "0.11.0"
+similar = "3.2.0"
+toml = "1.1.6"
+syn = { version = "3.0.6", features = ["full"] }
 tempfile = "3.27.0"
-jsonschema = { version = "0.51.0", default-features = false }
+jsonschema = { version = "0.58.2", default-features = false }
+hex = "0.4.3"
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 uuid = { version = "1.26.1", features = ["serde", "v7"] }
 url = "2.5.8"

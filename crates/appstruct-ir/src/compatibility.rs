@@ -1,6 +1,5 @@
 use crate::{AppIr, IR_VERSION};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fmt;
 
@@ -149,7 +148,7 @@ fn migrate_v9(value: &mut Value) -> Result<(), IrCompatibilityError> {
                 .ok_or_else(|| invalid_shape("IR v9 artifact is missing string `content`"))?;
             let byte_len = u64::try_from(content.len())
                 .map_err(|_| invalid_shape("IR v9 artifact byte count overflowed"))?;
-            let sha256 = format!("sha256:{:x}", Sha256::digest(content.as_bytes()));
+            let sha256 = appstruct_core::sha256_tagged(content.as_bytes());
             artifact.insert("source".to_owned(), Value::Null);
             artifact.insert("sha256".to_owned(), Value::String(sha256));
             artifact.insert("byte_len".to_owned(), Value::from(byte_len));

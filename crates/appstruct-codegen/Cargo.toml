@@ -12,6 +12,7 @@ keywords = ["codegen", "openapi", "postgresql", "rust", "typescript"]
 categories = ["development-tools"]
 
 [dependencies]
+appstruct-core.workspace = true
 appstruct-contracts.workspace = true
 appstruct-ir.workspace = true
 appstruct-schema.workspace = true
@@ -21,6 +22,7 @@ proc-macro2.workspace = true
 quote.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+hex.workspace = true
 syn.workspace = true
 tempfile.workspace = true
 

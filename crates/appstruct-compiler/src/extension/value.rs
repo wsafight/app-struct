@@ -1,6 +1,6 @@
 use super::duplicate;
-use crate::naming::{is_rust_field_name, is_rust_type_name};
 use crate::surface::{SurfaceValueField, SurfaceValueObject};
+use appstruct_core::{is_rust_field_name, is_rust_type_name};
 use appstruct_ir::{Diagnostic, FieldTypeIr, ValueFieldIr, ValueObjectIr};
 use std::collections::{BTreeMap, BTreeSet};
 
