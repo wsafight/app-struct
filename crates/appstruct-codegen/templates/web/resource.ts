@@ -193,6 +193,7 @@ export type FieldSemantic = {
 
 export interface FieldDefinition {
   name: string;
+  apiName: string;
   label: string;
   kind: FieldKind;
   required: boolean;
@@ -254,6 +255,7 @@ export interface ActivityDefinition {
 
 export interface ResourceDefinition {
   aggregateOwner?: string;
+  charts?: ChartDefinition[];
   collections?: CollectionDefinition[];
   displayField?: string;
   id: string;
@@ -268,6 +270,17 @@ export interface ResourceDefinition {
   workflow?: WorkflowDefinition;
   activity?: ActivityDefinition;
   api: ResourceApi;
+}
+
+export type ChartType = "kpi" | "bar" | "horizontal_bar" | "donut";
+
+export interface ChartDefinition {
+  name: string;
+  label: string;
+  type: ChartType;
+  dimension?: string;
+  measure: string;
+  limit: number;
 }
 
 export interface CollectionDefinition {

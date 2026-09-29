@@ -176,7 +176,7 @@ export function validateResourceSearch(
   if (search.trash === "1" || search.trash === 1) result.trash = "1";
   for (const [key, value] of Object.entries(search)) {
     if (
-      /^filter\[\w+\](?:\[(?:gte|lte)\])?$/.test(key) &&
+      /^filter\[\w+(?:\.\w+)?\](?:\[(?:gte|lte)\])?$/.test(key) &&
       typeof value === "string" &&
       value
     )

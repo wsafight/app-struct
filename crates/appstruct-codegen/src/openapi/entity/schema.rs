@@ -173,11 +173,12 @@ fn aggregate_response_schema() -> Value {
             },
             "meta": {
                 "type": "object",
-                "required": ["metrics", "group_by", "limit"],
+                "required": ["metrics", "group_by", "limit", "order"],
                 "properties": {
                     "metrics": { "type": "array", "items": { "type": "string" } },
                     "group_by": { "type": "array", "items": { "type": "string" } },
-                    "limit": { "type": "integer", "minimum": 1, "maximum": 500 }
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 500 },
+                    "order": { "type": "string", "enum": ["asc", "desc"] }
                 }
             }
         }

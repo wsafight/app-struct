@@ -148,6 +148,7 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(package.contains("@tanstack/react-router"));
     assert!(package.contains("@tanstack/react-table"));
     assert!(package.contains("@tanstack/react-form"));
+    assert!(package.contains("\"recharts\": \"3.10.1\""));
     assert!(package.contains("typescript-eslint"));
     assert!(package.contains("@testing-library/react"));
     assert!(package.contains("happy-dom"));
@@ -173,6 +174,13 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(list.contains("useRealtimeResource"));
     assert!(table.contains("useTable"));
     assert!(table.contains("InlineEditor"));
+    let insights = artifact_text(
+        &artifacts,
+        "web/src/pages/resource-list/ResourceInsights.tsx",
+    );
+    assert!(insights.contains("ResponsiveContainer"));
+    assert!(insights.contains("aggregateGroupOptions"));
+    assert!(insights.contains("aggregateGroupKey"));
     let inline_editor = artifact_text(&artifacts, "web/src/pages/resource-list/InlineEditor.tsx");
     assert!(inline_editor.contains("supportsInlineEdit"));
     assert!(list.contains("expected_revisions"));
@@ -626,7 +634,9 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("/health/ready"));
     assert!(artifact_text(artifacts, "backend/src/metrics.rs").contains("appstruct_health_ready"));
     assert!(artifact_text(artifacts, "backend/src/lib.rs").contains("MakeRequestUuid"));
-    assert!(artifact_text(artifacts, "web/pnpm-lock.yaml").contains("lockfileVersion"));
+    let web_lock = artifact_text(artifacts, "web/pnpm-lock.yaml");
+    assert!(web_lock.contains("lockfileVersion"));
+    assert!(web_lock.contains("recharts@3.10.1"));
     assert!(artifact_text(artifacts, "web/.gitignore").contains("node_modules/"));
     query_contract::assert_query_contract(artifacts);
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("resourceEtags"));
@@ -635,6 +645,7 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
         artifact_text(artifacts, "web/src/generated/resources.ts")
             .contains("minimum: \"0\", maximum: \"5\"")
     );
+    assert_chart_contract(artifacts);
     assert!(
         artifact_text(artifacts, "backend/src/entities/project.rs")
             .contains("pub tasks: HasMany<super::task::Entity>")
@@ -674,6 +685,13 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     );
     assert!(openapi["paths"]["/api/projects/{id}"]["patch"]["responses"]["412"].is_object());
     assert!(openapi["paths"]["/api/projects/{id}"]["delete"]["responses"]["428"].is_object());
+}
+
+fn assert_chart_contract(artifacts: &[Artifact]) {
+    let resources = artifact_text(artifacts, "web/src/generated/resources.ts");
+    assert!(resources.contains("apiName: \"project\""));
+    assert!(resources.contains("\"name\":\"by_project_status\""));
+    assert!(resources.contains("\"dimension\":\"project.status\""));
 }
 
 fn artifact_text<'artifacts>(artifacts: &'artifacts [Artifact], path: &str) -> &'artifacts str {

@@ -89,7 +89,7 @@ pub fn from_compatible_json(source: &str) -> Result<AppIr, IrCompatibilityError>
             migrate_v12(&mut value);
         }
         Ok(12) => migrate_v12(&mut value),
-        Ok(13 | 14) => value["ir_version"] = Value::from(IR_VERSION),
+        Ok(13..=15) => value["ir_version"] = Value::from(IR_VERSION),
         _ => return Err(IrCompatibilityError::UnsupportedVersion { found: version }),
     }
     serde_json::from_value(value).map_err(IrCompatibilityError::from)

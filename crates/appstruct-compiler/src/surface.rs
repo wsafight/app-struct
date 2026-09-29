@@ -4,6 +4,7 @@ mod aggregates;
 mod audit;
 mod auth;
 mod billing;
+mod charts;
 mod context;
 mod database;
 mod extension;
@@ -24,9 +25,9 @@ mod workflow;
 
 pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
 pub(crate) use model::{
-    FieldFlags, Located, SurfaceAccess, SurfaceAccessRule, SurfaceDomain, SurfaceEntity,
-    SurfaceField, SurfaceFieldAccess, SurfaceFieldSemantic, SurfaceFieldUi, SurfaceRoot,
-    SurfaceWorkflow,
+    FieldFlags, Located, SurfaceAccess, SurfaceAccessRule, SurfaceChart, SurfaceDomain,
+    SurfaceEntity, SurfaceField, SurfaceFieldAccess, SurfaceFieldSemantic, SurfaceFieldUi,
+    SurfaceRoot, SurfaceWorkflow,
 };
 pub(crate) use modules::{
     SurfaceActivity, SurfaceAudit, SurfaceAuth, SurfaceBilling, SurfaceBillingPlan, SurfaceFile,
@@ -244,6 +245,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
             "soft_delete",
             "display_field",
             "aggregates",
+            "charts",
             "workflow",
         ],
         "entity definition",
@@ -275,6 +277,11 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
         aggregates: mapping
             .get("aggregates")
             .map(|entry| aggregates::decode(&entry.value))
+            .transpose()?
+            .unwrap_or_default(),
+        charts: mapping
+            .get("charts")
+            .map(|entry| charts::decode(&entry.value))
             .transpose()?
             .unwrap_or_default(),
         table: optional_string(mapping, "table", "entity `table`")?,

@@ -85,6 +85,17 @@ entities:
         type: datetime
         generated: now
         sortable: true
+    charts:
+      task_count:
+        label: Total tasks
+        type: kpi
+        measure: count
+      by_project_status:
+        label: Tasks by project status
+        type: horizontal_bar
+        dimension: project.status
+        measure: count
+        limit: 20
     access:
       list: { public: true }
       read: { public: true }

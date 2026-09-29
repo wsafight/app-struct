@@ -1,3 +1,5 @@
+mod group;
+
 use super::relation;
 use super::{column_ident, filter_keys, filter_rules, primary_key, search_rule};
 use crate::CodegenError;
@@ -20,15 +22,18 @@ pub fn aggregate_support(
     let search = search_rule(entity, module)?;
     let access_scope = super::access::scope(entity, module, &entity.access.list)?;
     let metric_arms = metric_arms(entity, module)?;
-    let group_arms = group_arms(entity, module)?;
-    let expression_trait = entity
-        .fields
-        .iter()
-        .any(|field| {
-            field.capabilities.filterable
-                && matches!(field.ty, FieldTypeIr::Bigint | FieldTypeIr::Decimal)
-        })
-        .then(|| quote! { use sea_orm::ExprTrait as _; });
+    let group_arms = group::arms(ir, entity, module)?;
+    let metric_order_arms = metric_order_arms(entity, module)?;
+    let group_order_arms = group::order_arms(ir, entity)?;
+    let has_relation_groups = group::has_relation_groups(ir, entity)?;
+    let relation_imports = has_relation_groups.then(|| {
+        quote! { use sea_orm::{JoinType, RelationTrait as _}; }
+    });
+    let relation_group_state = has_relation_groups.then(|| {
+        quote! { let mut relation_group_selected = false; }
+    });
+    let expression_trait =
+        group::uses_expr_trait(ir, entity)?.then(|| quote! { use sea_orm::ExprTrait as _; });
     let handler = aggregate_handler(&AggregateHandlerTokens {
         module,
         policy,
@@ -39,16 +44,21 @@ pub fn aggregate_support(
         search: &search,
         metric_arms: &metric_arms,
         group_arms: &group_arms,
+        metric_order_arms: &metric_order_arms,
+        group_order_arms: &group_order_arms,
+        relation_group_state: relation_group_state.as_ref(),
     });
     Ok(quote! {
         use std::collections::BTreeSet;
         #expression_trait
+        #relation_imports
 
         #[derive(Debug, Default, Deserialize)]
         pub struct AggregateQuery {
             metrics: Option<String>,
             group_by: Option<String>,
             limit: Option<u64>,
+            order: Option<String>,
             q: Option<String>,
             #[serde(flatten)]
             filters: BTreeMap<String, String>,
@@ -59,6 +69,7 @@ pub fn aggregate_support(
             metrics: Vec<String>,
             group_by: Vec<String>,
             limit: u64,
+            order: String,
         }
 
         #[derive(Debug, Serialize)]
@@ -81,8 +92,12 @@ struct AggregateHandlerTokens<'a> {
     search: &'a TokenStream,
     metric_arms: &'a [TokenStream],
     group_arms: &'a [TokenStream],
+    metric_order_arms: &'a [TokenStream],
+    group_order_arms: &'a [TokenStream],
+    relation_group_state: Option<&'a TokenStream>,
 }
 
+#[allow(clippy::too_many_lines)]
 fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
     let AggregateHandlerTokens {
         module,
@@ -94,6 +109,9 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
         search,
         metric_arms,
         group_arms,
+        metric_order_arms,
+        group_order_arms,
+        relation_group_state,
     } = tokens;
     quote! {
         async fn aggregate(
@@ -112,6 +130,14 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
                     "`limit` must be between 1 and 500".to_owned()
                 ));
             }
+            let order = query.order.as_deref().unwrap_or("desc");
+            let descending = match order {
+                "asc" => false,
+                "desc" => true,
+                _ => return Err(ApiError::InvalidQuery(
+                    "`order` must be `asc` or `desc`".to_owned()
+                )),
+            };
             let metrics = query
                 .metrics
                 .as_deref()
@@ -150,6 +176,7 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
                 .filter(|field| !field.is_empty())
                 .collect::<Vec<_>>();
             let mut selected_groups = BTreeSet::new();
+            #relation_group_state
             for field in &group_by {
                 if !selected_groups.insert(*field) {
                     return Err(ApiError::InvalidQuery(format!("duplicate group field `{field}`")));
@@ -157,6 +184,16 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
                 match *field {
                     #(#group_arms,)*
                     _ => return Err(ApiError::InvalidQuery(format!("group field `{field}` is not allowed"))),
+                }
+            }
+            match metrics[0] {
+                #(#metric_order_arms,)*
+                _ => unreachable!("aggregate metrics were validated"),
+            }
+            for field in &group_by {
+                match *field {
+                    #(#group_order_arms,)*
+                    _ => unreachable!("aggregate groups were validated"),
                 }
             }
             let data = select
@@ -170,6 +207,7 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
                     metrics: metrics.into_iter().map(str::to_owned).collect(),
                     group_by: group_by.into_iter().map(str::to_owned).collect(),
                     limit,
+                    order: order.to_owned(),
                 },
             }))
         }
@@ -232,32 +270,58 @@ fn metric_arms(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream
     Ok(arms)
 }
 
-fn group_arms(entity: &EntityIr, module: &syn::Ident) -> Result<Vec<TokenStream>, CodegenError> {
-    entity
-        .fields
+fn metric_order_arms(
+    entity: &EntityIr,
+    module: &syn::Ident,
+) -> Result<Vec<TokenStream>, CodegenError> {
+    let primary = column_ident(primary_key(entity)?)?;
+    let mut arms = vec![order_arm(
+        &["count", "count:*"],
+        &quote! { #module::Column::#primary.count() },
+    )];
+    for field in aggregate_fields(entity) {
+        let column = column_ident(field)?;
+        if supports_sum_avg(&field.ty) {
+            arms.push(order_arm(
+                &[&format!("sum:{}", field.rust_name)],
+                &quote! { #module::Column::#column.sum() },
+            ));
+            arms.push(order_arm(
+                &[&format!("avg:{}", field.rust_name)],
+                &quote! { #module::Column::#column.avg() },
+            ));
+        }
+        if supports_min_max(&field.ty) {
+            arms.push(order_arm(
+                &[&format!("min:{}", field.rust_name)],
+                &quote! { #module::Column::#column.min() },
+            ));
+            arms.push(order_arm(
+                &[&format!("max:{}", field.rust_name)],
+                &quote! { #module::Column::#column.max() },
+            ));
+        }
+    }
+    Ok(arms)
+}
+
+fn order_arm(names: &[&str], expression: &TokenStream) -> TokenStream {
+    let names = names
         .iter()
-        .filter(|field| field.capabilities.filterable && groupable(&field.ty))
-        .map(|field| {
-            let name = LitStr::new(&field.rust_name, Span::call_site());
-            let column = column_ident(field)?;
-            let alias = LitStr::new(&format!("group_{}", field.rust_name), Span::call_site());
-            let selected = if matches!(field.ty, FieldTypeIr::Bigint | FieldTypeIr::Decimal) {
-                quote! { sea_orm::sea_query::Expr::col((#module::Entity, #module::Column::#column)).cast_as("text") }
+        .map(|name| LitStr::new(name, Span::call_site()));
+    quote! {
+        #(#names)|* => {
+            select = if descending {
+                select.order_by_desc(#expression)
             } else {
-                quote! { #module::Column::#column }
+                select.order_by_asc(#expression)
             };
-            Ok(quote! {
-                #name => {
-                    if !field_read_allowed(&context, #name) {
-                        return Err(access_denied(&context));
-                    }
-                    select = select
-                        .column_as(#selected, #alias)
-                        .group_by(#module::Column::#column);
-                }
-            })
-        })
-        .collect()
+        }
+    }
+}
+
+fn relation_group_alias(relation: &FieldIr, target: &FieldIr) -> String {
+    format!("group_{}_{}", relation.api_name, target.rust_name)
 }
 
 fn aggregate_fields(entity: &EntityIr) -> impl Iterator<Item = &FieldIr> {

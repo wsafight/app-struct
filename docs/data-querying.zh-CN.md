@@ -67,16 +67,16 @@ GET /api/tasks/?filter[project.created_at][gte]=2026-01-01T00:00:00Z
 每个生成的资源都暴露一个有界报表端点：
 
 ```text
-GET /api/tasks/_aggregate?metrics=count,sum:priority,avg:priority&group_by=status
+GET /api/tasks/_aggregate?metrics=count,sum:priority,avg:priority&group_by=project.status&limit=20
 ```
 
-`metrics` 是逗号分隔列表。`count`（或 `count:*`）始终可用。标记为 `filterable: true` 的字段在为整数、bigint 或 decimal 值时可以使用 `sum` 和 `avg`；`min` 和 `max` 额外支持 string、enum、date 和 datetime 字段。`group_by` 接受除 JSON 以外的可过滤标量字段。重复或不支持的指标和分组会作为无效查询失败。
+`metrics` 是逗号分隔列表。`count`（或 `count:*`）始终可用。标记为 `filterable: true` 的字段在为整数、bigint 或 decimal 值时可以使用 `sum` 和 `avg`；`min` 和 `max` 额外支持 string、enum、date 和 datetime 字段。`group_by` 接受除 JSON 以外的可过滤标量字段，以及 `project.status` 这类一跳 to-one 关联维度；每个请求最多使用一个关联维度。重复或不支持的指标和分组会作为无效查询失败。
 
 ```json
 {
   "data": [
     {
-      "group_status": "todo",
+      "group_project_status": "active",
       "count": 12,
       "sum_priority": 31,
       "avg_priority": 2.5833333333333335
@@ -84,23 +84,47 @@ GET /api/tasks/_aggregate?metrics=count,sum:priority,avg:priority&group_by=statu
   ],
   "meta": {
     "metrics": ["count", "sum:priority", "avg:priority"],
-    "group_by": ["status"],
-    "limit": 100
+    "group_by": ["project.status"],
+    "limit": 20,
+    "order": "desc"
   }
 }
 ```
 
-结果属性使用 `group_<field>` 和 `<metric>_<field>` 别名。省略 `metrics` 参数时默认为 `count`。`limit` 默认为 100，必须介于 1 和 500 之间；它限制返回的分组数，而不是源行数。搜索、标量过滤器和一跳关系过滤器使用与列表查询相同的参数。源实体的列表访问规则和租户范围在聚合之前应用，关系过滤器保留其目标访问范围，因此计数和其他指标不能包含不可访问的记录。
+结果属性使用 `group_<field>` 和 `<metric>_<field>` 别名，关联维度中的点会转换为下划线。省略 `metrics` 参数时默认为 `count`。`limit` 默认为 100，必须介于 1 和 500 之间；它限制返回的分组数，而不是源行数。分组先按第一个指标排序（默认 `desc`，也可使用 `order=asc`），再按维度排序，因此 Top-N 结果是确定的。搜索、标量过滤器和一跳关系过滤器使用与列表查询相同的参数。源实体和分组目标实体都会应用列表权限、租户、软删除和字段读取规则，因此聚合不会泄露不可访问的数据。
 
 生成的 TypeScript 客户端接受数组并将它们序列化为逗号分隔的传输格式：
 
 ```ts
 const report = await taskApi.aggregate({
   metrics: ["count", "sum:priority"],
-  group_by: ["status"],
+  group_by: ["project.status"],
+  limit: 20,
   filters: { "project.status": "active" },
 });
 ```
+
+### 声明式资源图表
+
+实体可以为生成的资源摘要声明经过校验的图表：
+
+```yaml
+entities:
+  Task:
+    charts:
+      total_tasks:
+        label: Total tasks
+        type: kpi
+        measure: count
+      by_project_status:
+        label: Tasks by project status
+        type: horizontal_bar
+        dimension: project.status
+        measure: count
+        limit: 20
+```
+
+当前支持 `kpi`、`bar`、`horizontal_bar` 和 `donut`。KPI 不使用维度；其他类型必须指定可过滤的标量字段或一跳 to-one 关联维度。指标沿用聚合端点的 `count`、`sum:<field>`、`avg:<field>`、`min:<field>` 和 `max:<field>` 契约。编译器会拒绝未知路径、更深层关联、不兼容指标、1-100 之外的上限，以及单个实体超过 20 个图表的配置。日期分桶和折线图会等聚合端点具备明确的时间分桶契约后再支持。
 
 ## 字段级访问
 

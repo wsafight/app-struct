@@ -40,6 +40,11 @@ fn relation_filter_applies_target_access_and_tenant_scope() {
     assert!(related.contains("let relation_access_scope = context.actor()"));
     assert!(related.contains("project::Column::TenantId.eq(context.require_tenant()?)"));
     assert!(related.contains("project::Column::Name.eq(value)"));
+    let aggregate = &api[api.find("async fn aggregate").unwrap()..];
+    assert!(aggregate.contains("\"project.name\""));
+    assert!(aggregate.contains("task::Relation::Project.def()"));
+    assert!(aggregate.contains("project::Column::TenantId.eq(context.require_tenant()?)"));
+    assert!(aggregate.contains("group_project_name"));
 }
 
 pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
@@ -53,6 +58,8 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     assert!(client.contains("aggregatePath"));
     assert!(client.contains("aggregate: (query: AggregateQuery"));
     assert!(client.contains("range_filters"));
+    assert!(client.contains("order?: \"asc\" | \"desc\""));
+    assert!(client.contains("params.set(\"order\", query.order)"));
 
     let project_api = artifact_text(artifacts, "backend/src/api/project.rs");
     assert!(project_api.contains("cursor pagination cannot be combined"));
@@ -77,7 +84,13 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     assert!(task_api.contains("Column::Priority.min()"));
     assert!(task_api.contains("Column::Priority.max()"));
     assert!(task_api.contains("group_priority"));
+    assert!(task_api.contains("group_project_status"));
+    assert!(task_api.contains("Relation::Project.def()"));
+    assert!(task_api.contains("at most one relation group field is allowed"));
+    assert!(task_api.contains("order_by_desc(task::Column::Id.count())"));
+    assert!(task_api.contains("order_by_desc(task::Column::Priority.sum())"));
     assert!(task_api.contains("limit` must be between 1 and 500"));
+    assert!(task_api.contains("order` must be `asc` or `desc"));
     assert!(task_api.contains("aggregate metric `{metric}` is not allowed"));
 
     let openapi: Value =
@@ -114,6 +127,18 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
             .unwrap()
             .iter()
             .any(|parameter| parameter["name"] == "metrics")
+    );
+    assert!(
+        openapi["paths"]["/api/tasks/_aggregate"]["get"]["parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|parameter| parameter["name"] == "order")
+    );
+    assert_eq!(
+        openapi["components"]["schemas"]["TaskAggregateResponse"]["properties"]["meta"]["properties"]
+            ["order"]["enum"][1],
+        "desc"
     );
 }
 

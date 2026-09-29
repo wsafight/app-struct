@@ -56,6 +56,34 @@ pub(super) fn related_scope(
     })
 }
 
+pub(super) fn related_join_scope(
+    entity: &EntityIr,
+    module: &syn::Ident,
+    rule: &AccessRuleIr,
+) -> Result<TokenStream, CodegenError> {
+    let condition = condition(entity, module, rule)?;
+    let tenant_scope = if entity.tenant_scoped {
+        quote! {
+            select = select.filter(#module::Column::TenantId.eq(context.require_tenant()?));
+        }
+    } else {
+        TokenStream::new()
+    };
+    let soft_delete_scope = entity.views.soft_delete.then(|| {
+        quote! {
+            select = select.filter(#module::Column::DeletedAt.is_null());
+        }
+    });
+    Ok(quote! {
+        let relation_access_scope = #condition;
+        let relation_access_condition = relation_access_scope
+            .ok_or_else(|| access_denied(&context))?;
+        select = select.filter(relation_access_condition);
+        #tenant_scope
+        #soft_delete_scope
+    })
+}
+
 pub(super) fn member_scope(
     entity: &EntityIr,
     module: &syn::Ident,

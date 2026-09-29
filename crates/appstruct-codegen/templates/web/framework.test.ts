@@ -10,7 +10,12 @@ import {
   formatFieldValue,
   formatValue,
 } from "./pages/resource-list/ResourceTable";
-import { aggregateMetricOptions } from "./pages/resource-list/ResourceInsights";
+import {
+  aggregateChartRows,
+  aggregateGroupKey,
+  aggregateGroupOptions,
+  aggregateMetricOptions,
+} from "./pages/resource-list/ResourceInsights";
 import { parseLocalSavedViews } from "./pages/resource-list/SavedViews";
 import {
   defaultVisibleFieldNames,
@@ -37,7 +42,9 @@ describe("validateResourceSearch", () => {
         trash: 1,
         columns: "id,status,created_at",
         "filter[status]": "open",
+        "filter[project.status]": "active",
         "filter[created_at][gte]": "2026-01-01",
+        "filter[project.created_at][lte]": "2026-12-31",
       }),
     ).toEqual({
       page: 10000,
@@ -47,7 +54,9 @@ describe("validateResourceSearch", () => {
       trash: "1",
       columns: "id,status,created_at",
       "filter[status]": "open",
+      "filter[project.status]": "active",
       "filter[created_at][gte]": "2026-01-01",
+      "filter[project.created_at][lte]": "2026-12-31",
     });
   });
 
@@ -65,6 +74,7 @@ describe("validateResourceSearch", () => {
         "filter[]": "value",
         "filter[broken": "value",
         "filter[created_at][unknown]": "value",
+        "filter[project.owner.status]": "active",
       }),
     ).toEqual({});
   });
@@ -184,6 +194,63 @@ describe("aggregate metrics", () => {
       "max:status",
     ]);
   });
+
+  it("publishes allowed scalar and one-hop relation dimensions", () => {
+    const project = resource({
+      id: "app::Project",
+      fields: [
+        field({
+          name: "status",
+          kind: "enum",
+          filterable: true,
+          label: "Status",
+        }),
+      ],
+    });
+    const options = aggregateGroupOptions(
+      [
+        field({ name: "priority", kind: "integer", filterable: true }),
+        field({
+          name: "project_id",
+          apiName: "project",
+          kind: "relation",
+          filterable: true,
+          relation: "app::Project",
+          label: "Project",
+        }),
+      ],
+      [project],
+      null,
+    );
+    expect(options).toEqual([
+      { value: "priority", label: "priority" },
+      { value: "project.status", label: "Project / Status" },
+    ]);
+  });
+
+  it("maps relation aggregate aliases into numeric chart rows", () => {
+    expect(aggregateGroupKey("project.status")).toBe("group_project_status");
+    expect(
+      aggregateChartRows(
+        [
+          { group_project_status: "active", count: 12 },
+          { group_project_status: "paused", count: "3" },
+        ],
+        "project.status",
+        "count",
+      ),
+    ).toEqual([
+      { dimension: "active", value: 12 },
+      { dimension: "paused", value: 3 },
+    ]);
+    expect(
+      aggregateChartRows(
+        [{ group_status: "active", min_name: "Alpha" }],
+        "status",
+        "min_name",
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("shouldRetryQuery", () => {
@@ -255,6 +322,7 @@ function field(
   overrides: Partial<FieldDefinition> & Pick<FieldDefinition, "name" | "kind">,
 ): FieldDefinition {
   return {
+    apiName: overrides.name,
     label: overrides.name,
     required: false,
     readOnly: false,

@@ -61,6 +61,7 @@ pub(crate) struct SurfaceEntity {
     pub label: Option<Located<String>>,
     pub display_field: Option<Located<String>>,
     pub aggregates: Vec<appstruct_ir::AggregateIr>,
+    pub charts: Vec<SurfaceChart>,
     pub table: Option<Located<String>>,
     pub fields: Vec<SurfaceField>,
     pub indexes: Vec<SurfaceIndex>,
@@ -70,6 +71,17 @@ pub(crate) struct SurfaceEntity {
     pub audit_enabled: bool,
     pub soft_delete: bool,
     pub workflow: Option<SurfaceWorkflow>,
+    pub span: SourceSpan,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceChart {
+    pub name: String,
+    pub label: Option<Located<String>>,
+    pub kind: Located<String>,
+    pub dimension: Option<Located<String>>,
+    pub measure: Located<String>,
+    pub limit: u32,
     pub span: SourceSpan,
 }
 

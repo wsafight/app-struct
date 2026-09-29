@@ -189,7 +189,7 @@ fn filterable_fields(entity: &EntityIr) -> impl Iterator<Item = &appstruct_ir::F
         .filter(|field| field.capabilities.filterable)
 }
 
-fn read_allowed(field: &FieldIr) -> TokenStream {
+pub(super) fn read_allowed(field: &FieldIr) -> TokenStream {
     field
         .read_access
         .as_ref()

@@ -13,6 +13,8 @@ use crate::report::lower_report;
 use appstruct_core::{pluralize, to_snake_case};
 mod indexes;
 use self::indexes::build_indexes;
+mod charts;
+use self::charts::build_charts;
 mod seeds;
 use self::seeds::build_seeds;
 use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceRoot};
@@ -110,6 +112,15 @@ pub(crate) fn build_ir(
         diagnostics.extend(errors.errors().iter().map(|error| {
             Diagnostic::error(
                 "AS2043",
+                format!("{}: {}", error.path, error.message),
+                root.app_name.span.clone(),
+            )
+        }));
+    }
+    if let Err(errors) = appstruct_ir::validate_charts(&entities) {
+        diagnostics.extend(errors.errors().iter().map(|error| {
+            Diagnostic::error(
+                "AS2044",
                 format!("{}: {}", error.path, error.message),
                 root.app_name.span.clone(),
             )
@@ -284,6 +295,7 @@ fn lower_entities(
         }
         let indexes = build_indexes(&entity, &entity_id, &fields, diagnostics);
         let display_field = lower_display_field(&entity, &fields, diagnostics);
+        let charts = build_charts(&entity, &fields, diagnostics);
         seeds.extend(build_seeds(&entity, &entity_id, &fields, diagnostics));
         let workflow = lower_workflow(&entity, &fields, known_values, auth, diagnostics);
         relations.append(&mut entity_relations);
@@ -301,6 +313,7 @@ fn lower_entities(
                 access,
                 views: EntityViewsIr {
                     aggregates: entity.aggregates,
+                    charts,
                     display_field,
                     soft_delete: entity.soft_delete,
                 },

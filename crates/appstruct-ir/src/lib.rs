@@ -25,8 +25,11 @@ pub use service::{
 use std::fmt;
 pub use ui::FieldSemanticIr;
 pub use validation::aggregates::validate_aggregates;
+pub use validation::charts::validate_charts;
 pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir};
-pub use views::{AggregateIr, EntityViewsIr};
+pub use views::{
+    AggregateIr, ChartDimensionIr, ChartIr, ChartKindIr, ChartMeasureIr, EntityViewsIr,
+};
 pub use workflow::{WorkflowIr, WorkflowTransitionIr};
 pub const IR_VERSION: u32 = appstruct_contracts::IR.current;
 

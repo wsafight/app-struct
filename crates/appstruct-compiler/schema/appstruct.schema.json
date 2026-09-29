@@ -416,6 +416,12 @@
           "propertyNames": { "$ref": "#/$defs/fieldName" },
           "additionalProperties": { "$ref": "#/$defs/aggregate" }
         },
+        "charts": {
+          "type": "object",
+          "maxProperties": 20,
+          "propertyNames": { "$ref": "#/$defs/fieldName" },
+          "additionalProperties": { "$ref": "#/$defs/chart" }
+        },
         "workflow": { "$ref": "#/$defs/workflow" }
       },
       "additionalProperties": false
@@ -428,6 +434,24 @@
         "relation": { "$ref": "#/$defs/fieldName" },
         "states": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
         "max_items": { "type": "integer", "minimum": 1, "maximum": 100, "default": 100 }
+      },
+      "additionalProperties": false
+    },
+    "chart": {
+      "type": "object",
+      "required": ["type", "measure"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "type": { "enum": ["kpi", "bar", "horizontal_bar", "donut"] },
+        "dimension": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)?$"
+        },
+        "measure": {
+          "type": "string",
+          "pattern": "^(count|(sum|avg|min|max):[A-Za-z][A-Za-z0-9_]*)$"
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
       },
       "additionalProperties": false
     },

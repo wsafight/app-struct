@@ -237,6 +237,7 @@ export interface AggregateQuery extends FilterQuery {
   metrics?: string[];
   group_by?: string[];
   limit?: number;
+  order?: "asc" | "desc";
 }
 
 export interface ListResponse<T> {
@@ -249,13 +250,11 @@ export interface CursorListResponse<T> {
   meta: { limit: number; next_cursor: string | null; has_more: boolean };
 }
 
-export interface AggregateRow {
-  [key: string]: unknown;
-}
+export interface AggregateRow { [key: string]: unknown; }
 
 export interface AggregateResponse {
   data: AggregateRow[];
-  meta: { metrics: string[]; group_by: string[]; limit: number };
+  meta: { metrics: string[]; group_by: string[]; limit: number; order: "asc" | "desc" };
 }
 
 function listPath(path: string, query: ListQuery | CursorListQuery): string {
@@ -275,6 +274,7 @@ function aggregatePath(path: string, query: AggregateQuery): string {
   if (query.metrics?.length) params.set("metrics", query.metrics.join(","));
   if (query.group_by?.length) params.set("group_by", query.group_by.join(","));
   if (query.limit) params.set("limit", String(query.limit));
+  if (query.order) params.set("order", query.order);
   appendFilterParams(params, query);
   const search = params.toString();
   return search ? `${path}?${search}` : path;

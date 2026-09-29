@@ -172,6 +172,25 @@ fn migrates_v12_without_inventing_ui_semantics() {
 }
 
 #[test]
+fn migrates_v15_without_inventing_charts() {
+    let mut value: serde_json::Value = serde_json::from_str(GOLDEN_IR).unwrap();
+    value["ir_version"] = 15.into();
+    for entity in value["entities"].as_array_mut().unwrap() {
+        entity["views"].as_object_mut().unwrap().remove("charts");
+    }
+
+    let migrated = from_compatible_json(&serde_json::to_string(&value).unwrap()).unwrap();
+
+    assert_eq!(migrated.ir_version, IR_VERSION);
+    assert!(
+        migrated
+            .entities
+            .iter()
+            .all(|entity| entity.views.charts.is_empty())
+    );
+}
+
+#[test]
 fn migrating_v11_preserves_explicit_service_contracts() {
     let mut value: serde_json::Value = serde_json::from_str(GOLDEN_IR).unwrap();
     value["ir_version"] = 11.into();

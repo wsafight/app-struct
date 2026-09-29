@@ -322,6 +322,7 @@ export function ResourceList({
       {!trashMode && (
         <ResourceInsights
           resource={resource}
+          resources={resources}
           fields={filterFields}
           query={{
             q: searchParams.get("q") ?? undefined,

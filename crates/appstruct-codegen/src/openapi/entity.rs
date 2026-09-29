@@ -313,6 +313,10 @@ fn aggregate_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
             "limit",
             &json!({ "type": "integer", "minimum": 1, "maximum": 500, "default": 100 }),
         ),
+        query_parameter(
+            "order",
+            &json!({ "type": "string", "enum": ["asc", "desc"], "default": "desc" }),
+        ),
     ];
     parameters.extend(list_parameters(ir, entity).into_iter().filter(|parameter| {
         let name = parameter["name"].as_str().unwrap_or_default();

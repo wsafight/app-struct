@@ -19,6 +19,7 @@ afterEach(cleanup);
 
 const amount: FieldDefinition = {
   name: "amount",
+  apiName: "amount",
   label: "Amount",
   kind: "decimal",
   required: true,

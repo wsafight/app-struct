@@ -149,16 +149,23 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
               ? "Create account"
               : "Sign in"}
         </button>
-        {authFeatures.oauth && !registering && authFeatures.oauthProviders.map((provider) => (
-          <button
-            key={provider}
-            type="button"
-            className="secondary-button"
-            onClick={() => authApi.startOAuth(provider)}
-          >
-            Continue with {provider === "google" ? "Google" : provider === "github" ? "GitHub" : "SSO"}
-          </button>
-        ))}
+        {authFeatures.oauth &&
+          !registering &&
+          authFeatures.oauthProviders.map((provider) => (
+            <button
+              key={provider}
+              type="button"
+              className="secondary-button"
+              onClick={() => authApi.startOAuth(provider)}
+            >
+              Continue with{" "}
+              {provider === "google"
+                ? "Google"
+                : provider === "github"
+                  ? "GitHub"
+                  : "SSO"}
+            </button>
+          ))}
         <div className="auth-links">
           {authFeatures.passwordReset && (
             <Link to="/forgot-password">Forgot password?</Link>

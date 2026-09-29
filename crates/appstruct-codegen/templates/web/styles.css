@@ -708,6 +708,20 @@ a {
   color: #1c6157;
   font-size: 24px;
 }
+.insights-chart {
+  width: min(920px, 100%);
+  min-width: 0;
+  color: var(--color-muted);
+}
+.insights-chart-donut {
+  width: min(640px, 100%);
+}
+.insights-chart .recharts-cartesian-axis-tick-value {
+  fill: var(--color-muted);
+}
+.insights-chart .recharts-cartesian-grid line {
+  stroke: var(--color-border);
+}
 .insights-table {
   max-width: 720px;
 }

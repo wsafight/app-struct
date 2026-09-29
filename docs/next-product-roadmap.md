@@ -34,10 +34,10 @@ runtime-incompatible fields. Access rules cannot be inferred from database metad
 
 ### 2.2 Data access and reporting
 
-Generated resources now provide offset/cursor pagination, one-hop relation filters, bounded
-aggregates/grouping, and field-level access. Remaining gaps are read-only computed fields, deeper
-relation traversal, richer report/dashboard queries, and cursor traversal with user-selected sort
-keys.
+Generated resources now provide offset/cursor pagination, one-hop relation filters and aggregate
+dimensions, deterministic Top-N grouping, declarative KPI/bar/donut charts, and field-level access.
+Remaining gaps are read-only computed fields, deeper relation traversal, date/time bucketing,
+richer report/dashboard query plans, and cursor traversal with user-selected sort keys.
 
 ### 2.3 Admin productivity
 
@@ -69,6 +69,7 @@ remains out of scope.
 - [x] `appstruct db pull` for PostgreSQL tables, columns, keys, supported defaults, enums, and relations.
 - [x] Cursor pagination and filters across relations.
 - [x] Count/sum/average/min/max aggregates and group-by queries.
+- [x] One-hop relation dimensions, deterministic Top-N ordering, and declarative resource charts.
 - [x] Composite and partial indexes.
 - [x] Seed data.
 - [x] Stronger migration linting.

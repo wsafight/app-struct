@@ -1,5 +1,6 @@
 mod activity;
 pub(crate) mod aggregates;
+pub(crate) mod charts;
 mod error;
 mod graph;
 mod indexes;
@@ -41,6 +42,9 @@ pub fn validate_app_ir(ir: &AppIr) -> Result<(), IrValidationErrors> {
     validate_entities(ir, &entities, &value_objects, &mut errors);
     if let Err(aggregate_errors) = aggregates::validate_aggregates(&ir.entities) {
         errors.extend(aggregate_errors.0);
+    }
+    if let Err(chart_errors) = charts::validate_charts(&ir.entities) {
+        errors.extend(chart_errors.0);
     }
     validate_seeds(ir, &entities, &mut errors);
     validate_relations(ir, &entities, &mut errors);

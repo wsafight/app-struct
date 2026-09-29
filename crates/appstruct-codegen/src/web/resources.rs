@@ -1,7 +1,7 @@
 use crate::generated_header;
 use appstruct_ir::{
-    AccessRuleIr, AppIr, EntityIr, FieldIr, FieldSemanticIr, FieldTypeIr, GeneratedValueIr,
-    ValueFieldIr,
+    AccessRuleIr, AppIr, ChartDimensionIr, ChartIr, ChartKindIr, ChartMeasureIr, EntityIr, FieldIr,
+    FieldSemanticIr, FieldTypeIr, GeneratedValueIr, ValueFieldIr,
 };
 use std::fmt::Write;
 
@@ -74,6 +74,20 @@ fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
         )
         .unwrap();
     }
+    if !entity.views.charts.is_empty() {
+        let charts = entity
+            .views
+            .charts
+            .iter()
+            .map(|chart| chart_source(ir, entity, chart))
+            .collect::<Vec<_>>();
+        writeln!(
+            workflow,
+            "  charts: {},",
+            serde_json::to_string(&charts).expect("chart definitions are serializable")
+        )
+        .unwrap();
+    }
     if let Some(field) = entity
         .views
         .display_field
@@ -98,6 +112,64 @@ fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
         activity,
         api,
     )
+}
+
+fn chart_source(ir: &AppIr, entity: &EntityIr, chart: &ChartIr) -> serde_json::Value {
+    let dimension = chart
+        .dimension
+        .as_ref()
+        .map(|dimension| chart_dimension(ir, entity, dimension));
+    let measure = match &chart.measure {
+        ChartMeasureIr::Count => "count".to_owned(),
+        ChartMeasureIr::Sum { field } => format!("sum:{}", chart_field(entity, field).rust_name),
+        ChartMeasureIr::Avg { field } => format!("avg:{}", chart_field(entity, field).rust_name),
+        ChartMeasureIr::Min { field } => format!("min:{}", chart_field(entity, field).rust_name),
+        ChartMeasureIr::Max { field } => format!("max:{}", chart_field(entity, field).rust_name),
+    };
+    let kind = match chart.kind {
+        ChartKindIr::Kpi => "kpi",
+        ChartKindIr::Bar => "bar",
+        ChartKindIr::HorizontalBar => "horizontal_bar",
+        ChartKindIr::Donut => "donut",
+    };
+    let mut value = serde_json::json!({
+        "name": chart.name,
+        "label": chart.label,
+        "type": kind,
+        "measure": measure,
+        "limit": chart.limit,
+    });
+    if let Some(dimension) = dimension {
+        value["dimension"] = serde_json::Value::String(dimension);
+    }
+    value
+}
+
+fn chart_dimension(ir: &AppIr, entity: &EntityIr, dimension: &ChartDimensionIr) -> String {
+    match dimension {
+        ChartDimensionIr::Field { field } => chart_field(entity, field).rust_name.clone(),
+        ChartDimensionIr::RelationField { relation, field } => {
+            let relation = chart_field(entity, relation);
+            let FieldTypeIr::Relation { target } = &relation.ty else {
+                unreachable!("validated chart relation dimension")
+            };
+            let target = ir
+                .entities
+                .iter()
+                .find(|entity| entity.id == *target)
+                .expect("validated chart relation target");
+            let field = chart_field(target, field);
+            format!("{}.{}", relation.api_name, field.rust_name)
+        }
+    }
+}
+
+fn chart_field<'entity>(entity: &'entity EntityIr, id: &appstruct_ir::FieldId) -> &'entity FieldIr {
+    entity
+        .fields
+        .iter()
+        .find(|field| field.id == *id)
+        .expect("validated chart field")
 }
 
 fn activity_source(ir: &AppIr, entity: &EntityIr) -> String {
@@ -203,6 +275,7 @@ fn audit_access_source(ir: &AppIr) -> String {
 fn field_source(entity: &EntityIr, field: &FieldIr) -> String {
     let mut properties = vec![
         format!("name: {:?}", field.rust_name),
+        format!("apiName: {:?}", field.api_name),
         format!("label: {:?}", humanize(&field.api_name)),
         format!("kind: {:?}", field_kind(&field.ty)),
         format!("required: {}", !field.nullable && field.default.is_none()),
