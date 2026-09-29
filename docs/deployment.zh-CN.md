@@ -8,11 +8,11 @@ CLI 不会配置生产基础设施，也不会在 API 启动时自动迁移数�
 
 ## 构建产物
 
-生产 Web 构建默认使用当前 origin。生成的 nginx 配置会把 `/api/` 代理到 API 服务。对于独立的 API origin，请在构建前设置 `VITE_API_URL`，因为 Vite 会把它嵌入 Web 包：
+生产 Web 构建默认使用当前 origin。生成的 nginx 配置会把 `/api/` 代理到 API 服务。对于独立的 API origin，请在构建前设置 `PUBLIC_API_URL`，Rsbuild 会把它嵌入 Web 包。已有部署仍可继续使用 `VITE_API_URL`：
 
 ```bash
 # Only for a separate API origin:
-# export VITE_API_URL=https://api.example.com
+# export PUBLIC_API_URL=https://api.example.com
 appstruct check
 appstruct build
 appstruct generate --check

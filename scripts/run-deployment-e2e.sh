@@ -21,7 +21,7 @@ cli="$workspace/target/debug/appstruct"
 "$cli" --project "$temporary_root" new deployment-smoke --template minimal
 mkdir -p "$project/.appstruct/cache" "$m6_backend_target"
 ln -s "$m6_backend_target" "$project/.appstruct/cache/backend-target"
-env -u VITE_API_URL DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" build
+env -u PUBLIC_API_URL -u VITE_API_URL DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" build
 env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" migrate dev --accept
 env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" migrate apply
 env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" migrate status

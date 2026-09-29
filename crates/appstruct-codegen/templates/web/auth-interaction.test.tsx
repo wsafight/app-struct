@@ -1,32 +1,32 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, rs } from "@rstest/core";
+import * as clientActual from "./generated/client" with {
+  rstest: "importActual",
+};
 import { AuthProvider, useAuth } from "./auth/Auth";
 import { AdminPagination } from "./auth/AuthPages";
 
-const authMocks = vi.hoisted(() => ({
-  me: vi.fn(),
-  register: vi.fn(),
+const authMocks = rs.hoisted(() => ({
+  me: rs.fn(),
+  register: rs.fn(),
 }));
 
-vi.mock("./generated/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./generated/client")>();
-  return {
-    ...actual,
-    authApi: {
-      ...actual.authApi,
-      me: authMocks.me,
-      register: authMocks.register,
-    },
-  };
-});
+rs.mock("./generated/client", () => ({
+  ...clientActual,
+  authApi: {
+    ...clientActual.authApi,
+    me: authMocks.me,
+    register: authMocks.register,
+  },
+}));
 
 afterEach(cleanup);
 
 describe("AdminPagination", () => {
   it("disables unavailable directions and requests the next page", async () => {
-    const onPageChange = vi.fn();
+    const onPageChange = rs.fn();
     const user = userEvent.setup();
     render(
       <AdminPagination

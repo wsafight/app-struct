@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, describe, expect, it, rs } from "@rstest/core";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import * as resourceActual from "./resource" with { rstest: "importActual" };
 import {
   useResourceFormController,
   useResourceListController,
@@ -10,8 +11,8 @@ import { recordLabel } from "./relations";
 import type { FieldDefinition, ResourceDefinition } from "./resource";
 import { parseResourceQuery } from "./url-controller";
 
-vi.mock("./resource", async (original) => ({
-  ...(await original<typeof import("./resource")>()),
+rs.mock("./resource", () => ({
+  ...resourceActual,
   useResourceActor: () => null,
   useCanAccess: () => true,
 }));
@@ -47,17 +48,17 @@ function resource(): ResourceDefinition {
       delete: { mode: "public" },
     },
     api: {
-      get: vi.fn(),
-      list: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      remove: vi.fn(),
-      aggregate: vi.fn(),
-      listCursor: vi.fn(),
-      bulkUpdate: vi.fn(),
-      bulkDelete: vi.fn(),
-      exportCsv: vi.fn(),
-      importCsv: vi.fn(),
+      get: rs.fn(),
+      list: rs.fn(),
+      create: rs.fn(),
+      update: rs.fn(),
+      remove: rs.fn(),
+      aggregate: rs.fn(),
+      listCursor: rs.fn(),
+      bulkUpdate: rs.fn(),
+      bulkDelete: rs.fn(),
+      exportCsv: rs.fn(),
+      importCsv: rs.fn(),
     },
   };
 }
@@ -75,17 +76,17 @@ function wrapper() {
 describe("headless controllers", () => {
   it("preserves the draft after a conflict and explicitly reloads the latest baseline", async () => {
     const invoice = resource();
-    vi.mocked(invoice.api.update)
+    rs.mocked(invoice.api.update)
       .mockRejectedValueOnce({ code: "CONCURRENT_MODIFICATION" })
       .mockResolvedValueOnce({
         id: "one",
         amount: "9007199254740993.15",
         revision: 3,
       });
-    const refetchRecord = vi
+    const refetchRecord = rs
       .fn()
       .mockResolvedValue({ id: "one", amount: "2.00", revision: 2 });
-    const onSaved = vi.fn();
+    const onSaved = rs.fn();
     const { result } = renderHook(
       () =>
         useResourceFormController(invoice, {
@@ -123,7 +124,7 @@ describe("headless controllers", () => {
 
   it("refetches when query input changes under the same caller cache key", async () => {
     const invoice = resource();
-    vi.mocked(invoice.api.list).mockImplementation(async (query) => ({
+    rs.mocked(invoice.api.list).mockImplementation(async (query) => ({
       data: [{ id: query?.q }],
       meta: { page: 1, page_size: 25, total: 1 },
     }));

@@ -155,8 +155,18 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(package.contains("pnpm@11.25.0"));
     assert!(package.contains("tsc6 --noEmit"));
     assert!(!package.contains("@typescript/native"));
-    assert!(package.contains("vitest run"));
+    assert!(package.contains("@rsbuild/core"));
+    assert!(package.contains("@rstest/core"));
+    assert!(package.contains("\"test\": \"rstest\""));
+    assert!(!package.contains("vite"));
     assert!(!package.contains("react-router-dom"));
+    let rsbuild = artifact_text(&artifacts, "web/rsbuild.config.ts");
+    assert!(rsbuild.contains("pluginReact"));
+    assert!(rsbuild.contains("./src/main.tsx"));
+    assert!(rsbuild.contains("prefixes: [\"PUBLIC_\", \"VITE_\"]"));
+    let rstest = artifact_text(&artifacts, "web/rstest.config.ts");
+    assert!(rstest.contains("testEnvironment: \"happy-dom\""));
+    assert!(!artifact_text(&artifacts, "web/tsconfig.json").contains("@types/react/index.d.ts"));
     assert!(main.contains("QueryClientProvider"));
     assert!(navigation.contains("createRuntimeRouter"));
     let controller = artifact_text(&artifacts, "web/src/controller.ts");
@@ -281,7 +291,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 105);
+    assert_eq!(artifacts.len(), 106);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -584,7 +594,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 89);
+    assert_eq!(artifacts.len(), 90);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")

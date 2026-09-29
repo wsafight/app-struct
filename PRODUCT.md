@@ -24,7 +24,7 @@
 | Generator Transaction | 已完成 | 跨进程项目锁、追加式恢复 journal、目录交换崩溃恢复和歧义状态保护 |
 | M5 Templates | 已完成 | `appstruct new`、`minimal/dashboard`、固定 Rust/Node 依赖和不覆盖的一次性项目骨架 |
 | M5 Build/Doctor | 已完成 | 工具链与数据库模式诊断、JSON 报告、锁定依赖的 Rust/TypeScript 生产构建门禁 |
-| M5 Dev Server | 已完成 | managed/external PostgreSQL 协调、可配置迁移策略、生成与构建、API/Vite 日志聚合、监听重启和 Ctrl-C 清理 |
+| M5 Dev Server | 已完成 | managed/external PostgreSQL 协调、可配置迁移策略、生成与构建、API/Rsbuild 日志聚合、监听重启和 Ctrl-C 清理 |
 | M5 Docs | 已完成 | 源码/归档安装、external/managed 首次运行、事务升级、生产构建/迁移/配置/回滚文档 |
 | M5 Quality Gates | 已完成 | 跨目录字节确定性、10/100 实体性能预算、PostgreSQL + Chromium 用户旅程、桌面/移动布局、readiness/request ID |
 | M6 Modules | 已完成 | Tenant、Audit、Mail、Jobs/Outbox 和本地/S3 File 能力及独立 PostgreSQL 验收 |
@@ -56,7 +56,7 @@ ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新�
 
 `appstruct new <name> --template minimal|dashboard|saas` 已提供不覆盖的一次性项目创建。`minimal` 生成 external PostgreSQL 的公开 Note 应用；`dashboard` 生成 managed PostgreSQL Compose、Auth/RBAC/owner 和 User/Project/Task 三实体项目管理应用；`saas` 锁定 `appstruct/saas@1`，生成 Tenant/Audit 化的 Project/Task 骨架和 Mail/Jobs/File 开发配置。三个模板都提交带 `project_layout_version = 2` 的 `appstruct.lock`、`rust-toolchain.toml`、`.env.example` 和本地状态忽略规则，首次 generate 再产生固定的 `pnpm-lock.yaml`；目标或 sibling staging 已存在时创建会中止。布局 v1 直接运行 generated backend，v2 使用 server composition root；普通 build/dev 只按 lock 协议选择，未版本化 lock 由显式 update 一次性迁移。
 
-`appstruct doctor --format text|json` 检查 1.98 Rust/Cargo、rustfmt、Clippy、固定 pnpm 版本和数据库开发模式。managed 模式验证 Compose 文件及 Docker/Compose 服务；external 模式从进程环境或 `.env` 读取 `DATABASE_URL` 并执行 migration status，不在输出中暴露连接串。`appstruct build` 先生成 canonical Artifact，再对固定 Rust dependency lock 执行 fmt、release Clippy 和 release build，并对 pnpm lock 执行 Prettier check、TypeScript 检查和 Vite build。生成 TypeScript 在 manifest hash 计算前由 lockfile 固定的 Prettier 格式化，`generate --check` 与 build 因此使用同一份字节输出。
+`appstruct doctor --format text|json` 检查 1.98 Rust/Cargo、rustfmt、Clippy、固定 pnpm 版本和数据库开发模式。managed 模式验证 Compose 文件及 Docker/Compose 服务；external 模式从进程环境或 `.env` 读取 `DATABASE_URL` 并执行 migration status，不在输出中暴露连接串。`appstruct build` 先生成 canonical Artifact，再对固定 Rust dependency lock 执行 fmt、release Clippy 和 release build，并对 pnpm lock 执行 Prettier check、TypeScript 检查和 Rsbuild。生成 TypeScript 在 manifest hash 计算前由 lockfile 固定的 Prettier 格式化，`generate --check` 与 build 因此使用同一份字节输出。
 
 `appstruct dev [--api-port <port>] [--web-port <port>]` 已实现完整开发协调。external 模式从进程环境或 `.env` 读取并连接 `DATABASE_URL`；managed 模式只启动 Compose 的 `postgres` service，并只在退出时停止本次 session 启动的 service，命名 volume 保留。`database.dev.migration` 支持 `auto/prompt/never/unmanaged`：managed 默认 prompt，external 默认 unmanaged；unmanaged 完全跳过 AppStruct migration plan/status/apply，never 只读检查并在不一致时阻止重启。迁移策略通过后再生成、构建后端并 frozen install Web 依赖。CLI 监听 App Spec、lockfile、`spec/`、`modules/` 和 `app/backend/`，以 `[api]`/`[web]` 聚合日志；Unix 子进程使用独立进程组，重载或 Ctrl-C 会终止完整进程树。生产后端启动始终不执行迁移，由独立 release job 运行 status/apply。
 
@@ -705,9 +705,9 @@ help: did you mean `User`?
 `appstruct dev` 负责协调后端、前端和配置监听：
 
 - 根据 `database.dev.migration` 选择自动迁移、按需询问、只读校验或完全由用户管理。
-- 迁移通过后完整重新编译和生成，只提交内容发生变化的 Artifact，再构建后端并启动 API/Vite。
+- 迁移通过后完整重新编译和生成，只提交内容发生变化的 Artifact，再构建后端并启动 API/Rsbuild。
 - 配置、迁移、生成或构建失败时不重启服务；上一版进程保持运行。
-- `appstruct.yaml`、`appstruct.lock`、`spec/`、`modules/` 和 `app/backend/` 变化触发协调重载，用户 React 变化由 Vite 处理。
+- `appstruct.yaml`、`appstruct.lock`、`spec/`、`modules/` 和 `app/backend/` 变化触发协调重载，用户 React 变化由 Rsbuild 处理。
 - API 和 Web 日志分别带 `[api]`、`[web]` 前缀；`--api-port` 与 `--web-port` 必须不同。
 - Ctrl-C 优雅终止 API 和 Web 的完整子进程树。
 
@@ -878,7 +878,7 @@ Template 可以包含初始领域配置、用户可修改的 React 页面、邮�
 | 数据库 | PostgreSQL |
 | OpenAPI | Utoipa |
 | 配置 | Serde + YAML + JSON Schema |
-| 前端 | React + TypeScript + Vite |
+| 前端 | React + TypeScript + Rsbuild/Rspack + Rstest |
 | 数据请求 | TanStack Query |
 | 路由 | TanStack Router |
 | 表格 | TanStack Table |

@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, rs } from "@rstest/core";
 import { AsyncState } from "./components/AsyncState";
 import { ConfirmDialog } from "./components/Dialog";
 
@@ -8,7 +8,7 @@ afterEach(cleanup);
 
 describe("ConfirmDialog", () => {
   it("requires an explicit confirmation", async () => {
-    const onConfirm = vi.fn();
+    const onConfirm = rs.fn();
     const user = userEvent.setup();
     render(
       <ConfirmDialog
@@ -60,7 +60,7 @@ describe("ConfirmDialog", () => {
   });
 
   it("exposes a retry action for async errors", async () => {
-    const onRetry = vi.fn();
+    const onRetry = rs.fn();
     const user = userEvent.setup();
     render(
       <AsyncState

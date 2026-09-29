@@ -127,7 +127,7 @@ fn runtime_source() -> String {
     )
 }
 fn request_runtime_source() -> &'static str {
-    r#"const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? (import.meta.env.PROD ? "" : "http://127.0.0.1:3000");
+    r#"const API_BASE = (import.meta.env.PUBLIC_API_URL as string | undefined) ?? (import.meta.env.VITE_API_URL as string | undefined) ?? (import.meta.env.PROD ? "" : "http://127.0.0.1:3000");
 
 export interface RequestOptions { signal?: AbortSignal; }
 export const sessionSyncKey = "appstruct_session_sync";

@@ -39,11 +39,11 @@ CLI 生成路径已拆为 orchestration、ownership 和 transaction 模块。`ge
 
 M5 Template 初始化已进入 CLI。`new` 在项目发现前执行，以当前目录或全局 `--project` 指定目录为 parent；名称限制为可移植的小写 ASCII package/directory name。内置 `minimal/dashboard/saas` 文件表在编译期嵌入二进制，通过固定 sibling staging 写完后提交，目标或 staging 存在时不覆盖。Template 产物归用户所有，包含 `appstruct.lock`、固定 1.98.0 的 `rust-toolchain.toml`、`app/backend` 用户扩展 crate、环境示例和本地状态 ignore；`generate` 仍只拥有 `generated/`。
 
-M5 build/doctor 已实现。项目 `.env` 使用 dotenv parser 读取但不修改 CLI 进程环境，显式环境变量始终优先；错误和诊断只报告变量名或连接结果。doctor 根据 IR 的 `database.dev.mode` 选择 Docker/Compose 或 PostgreSQL migration status 检查，并提供 text/JSON 两种确定性结构。build 先完成生成事务，若缺少 backend `Cargo.lock` 则生成一次，之后目录交换在 Cargo.toml 未变化时保留该 transient lock；Clippy 与 release build 均使用 `--locked` 和 `.appstruct/cache/backend-target`。Web Artifact 在 ownership manifest 计算前由临时目录内、pnpm lock 固定的 Prettier 3.9.6 格式化；build 再运行 frozen install、format check、`tsc6 --noEmit` 与 Vite build。
+M5 build/doctor 已实现。项目 `.env` 使用 dotenv parser 读取但不修改 CLI 进程环境，显式环境变量始终优先；错误和诊断只报告变量名或连接结果。doctor 根据 IR 的 `database.dev.mode` 选择 Docker/Compose 或 PostgreSQL migration status 检查，并提供 text/JSON 两种确定性结构。build 先完成生成事务，若缺少 backend `Cargo.lock` 则生成一次，之后目录交换在 Cargo.toml 未变化时保留该 transient lock；Clippy 与 release build 均使用 `--locked` 和 `.appstruct/cache/backend-target`。Web Artifact 在 ownership manifest 计算前由临时目录内、pnpm lock 固定的 Prettier 3.9.6 格式化；build 再运行 frozen install、format check、`tsc6 --noEmit` 与 Rsbuild。
 
-M5 dev server 已实现。CLI 在 external 模式显式传递从进程环境或 `.env` 得到的数据库 URL，不修改父进程环境；managed 模式只协调 Compose `postgres` service，并记录本次 session 是否拥有其生命周期。`database.dev.migration` 提供 `auto/prompt/never/unmanaged`，managed 默认 prompt，external 默认 unmanaged；never 同时只读检查 Spec diff、pending/history 和 catalog drift，unmanaged 不调用迁移子系统。策略检查通过后执行 canonical generation、debug backend build 和 frozen Web install。协调器指纹覆盖 `appstruct.yaml`、`appstruct.lock`、`spec/` 与 `app/backend/`；重载时为 API 和 pnpm/Vite 分配独立 Unix 进程组，TERM 整组退出并在超时后 kill，避免包装进程退出后遗留 Vite。Ctrl-C 与 Drop 路径幂等清理子进程，只停止本 session 启动的 managed PostgreSQL。生产 backend runtime 始终不执行迁移。
+M5 dev server 已实现。CLI 在 external 模式显式传递从进程环境或 `.env` 得到的数据库 URL，不修改父进程环境；managed 模式只协调 Compose `postgres` service，并记录本次 session 是否拥有其生命周期。`database.dev.migration` 提供 `auto/prompt/never/unmanaged`，managed 默认 prompt，external 默认 unmanaged；never 同时只读检查 Spec diff、pending/history 和 catalog drift，unmanaged 不调用迁移子系统。策略检查通过后执行 canonical generation、debug backend build 和 frozen Web install。协调器指纹覆盖 `appstruct.yaml`、`appstruct.lock`、`spec/` 与 `app/backend/`；重载时为 API 和 pnpm/Rsbuild 分配独立 Unix 进程组，TERM 整组退出并在超时后 kill，避免包装进程退出后遗留 Rsbuild。Ctrl-C 与 Drop 路径幂等清理子进程，只停止本 session 启动的 managed PostgreSQL。生产 backend runtime 始终不执行迁移。
 
-M5 交付文档已落在根 README 与 `docs/installation.md`、`docs/upgrading.md`、`docs/deployment.md`。安装路径支持 workspace 锁定源码构建，并为发布后的校验和二进制包与 crates.io CLI 保留协议。升级使用显式 `appstruct update` staging 事务，再独立执行数据库 plan/status；部署文档把 build-time `VITE_API_URL` 与 backend runtime environment 分开，并规定 migration status/apply、不可变 Artifact、健康/业务 smoke 和无自动 down migration 的回滚边界。
+M5 交付文档已落在根 README 与 `docs/installation.md`、`docs/upgrading.md`、`docs/deployment.md`。安装路径支持 workspace 锁定源码构建，并为发布后的校验和二进制包与 crates.io CLI 保留协议。升级使用显式 `appstruct update` staging 事务，再独立执行数据库 plan/status；部署文档把 build-time `PUBLIC_API_URL` 与 backend runtime environment 分开，并规定 migration status/apply、不可变 Artifact、健康/业务 smoke 和无自动 down migration 的回滚边界。
 
 M5 确定性、性能和浏览器门禁已实现。CLI 集成测试在两个独立 project root 生成并递归比较所有 Artifact bytes；Prettier 依赖按 package/lock SHA-256 缓存在 `.appstruct/cache/web-formatter/`，ready marker 与 executable 同时存在才命中。Backend Generator 按 `available_parallelism` 分块并行规划 Entity/API 文件，顶层 planner 最终按路径排序维持确定性；同一计划的 Rust Artifact 由一次 `rustfmt` 子进程批量完成最终格式化。生成 crate 测试按 manifest 与 `src/` 内容生成隔离包名，并共享 `target/appstruct-generated-tests` 的依赖缓存，避免每个临时项目重复冷编译。性能 gate 计入 Compiler 与 Generator，当前 10 实体为 518 ms、100 实体为 7774 ms。根 pnpm lock 固定 Playwright 1.63.0；`scripts/run-m5-browser-e2e.sh` 从 dashboard Template 创建临时 external project，等待数据库 readiness 后验证 request ID、Auth 和 Project owner CRUD，并对桌面 dashboard 与移动登录页输出截图。生成后端新增数据库 ping `/health/ready`，`SetRequestIdLayer`/`PropagateRequestIdLayer` 为响应提供 `X-Request-Id`。dev signal handler 在所有启动动作前安装，测试脚本以独立进程组运行，冷构建中断也能清理子进程与临时目录。
 
@@ -65,7 +65,7 @@ Operations correctness 在 2026-08-30 完成加固。Jobs Schedule 采用 interv
 | 后端 | Axum + Tokio + SeaORM + PostgreSQL |
 | Rust 工具链 | 使用本地最新稳定版启动开发，并通过 `rust-toolchain.toml` 固定为 `1.98.0` |
 | API 契约 | 从 IR 直接构建 OpenAPI，Utoipa 提供 OpenAPI 数据模型 |
-| 前端 | React + TypeScript + Vite，使用编译期 UI Manifest |
+| 前端 | React + TypeScript + Rsbuild/Rspack + Rstest，使用编译期 UI Manifest |
 | API 客户端 | 从 OpenAPI 生成 TypeScript 类型和客户端 |
 | 前端数据边界 | Resource Definition + DataProvider + headless Controller |
 | 生成策略 | Rust 后端生成代码；前端生成 Manifest、路由和客户端 |
@@ -661,7 +661,7 @@ App Spec -> Rust API -> OpenAPI -> 前端
 
 这里的保证是可恢复的目录事务，而不是依赖“用一次 rename 覆盖非空目录”这一不可移植假设。`app/`、`migrations/` 和其他用户目录永远不进入该事务。
 
-当前实现覆盖 ownership/hash 校验、路径校验、项目级跨进程文件锁、sibling staging/backup、同步失败回滚和崩溃后自动恢复。journal 采用追加式 JSON record，依次记录 `prepared`、`backed_up` 和 `installed`；即使最后一行因崩溃不完整，也可使用上一条完整 phase 与目录组合恢复。无 journal 的旧版 staging/backup 会回滚到已有完整树；三个目录同时存在等歧义组合不会被猜测性删除。Rust Artifact 在内存规划期经过 rustfmt；TypeScript Artifact 在 manifest 计算前经过 lockfile 固定的 Prettier。生产 build 还对最终 staging 结果执行 Clippy、Prettier check、TypeScript check 和 Vite build。
+当前实现覆盖 ownership/hash 校验、路径校验、项目级跨进程文件锁、sibling staging/backup、同步失败回滚和崩溃后自动恢复。journal 采用追加式 JSON record，依次记录 `prepared`、`backed_up` 和 `installed`；即使最后一行因崩溃不完整，也可使用上一条完整 phase 与目录组合恢复。无 journal 的旧版 staging/backup 会回滚到已有完整树；三个目录同时存在等歧义组合不会被猜测性删除。Rust Artifact 在内存规划期经过 rustfmt；TypeScript Artifact 在 manifest 计算前经过 lockfile 固定的 Prettier。生产 build 还对最终 staging 结果执行 Clippy、Prettier check、TypeScript check 和 Rsbuild。
 
 ## 12. 数据库模型与迁移
 
@@ -1386,14 +1386,14 @@ CI 中检测到非 TTY 时：
 
 ## 20. 开发服务器
 
-`appstruct dev` 是进程协调器，不重新实现 Vite、Cargo、Docker Compose 或数据库服务器。
+`appstruct dev` 是进程协调器，不重新实现 Rsbuild、Cargo、Docker Compose 或数据库服务器。
 
 职责：
 
 - 加载环境变量并要求 API/Web 端口不同
 - 根据 `database.dev.mode` 协调 managed PostgreSQL 或连接 external PostgreSQL
 - 根据 `database.dev.migration` 执行自动迁移、按需询问、只读校验或完全跳过迁移检查，再生成、构建后端和安装 Web 依赖
-- 监听 App Spec、lockfile、`spec/`、本地 `modules/` 与用户 Rust；用户 React 交由 Vite 监听
+- 监听 App Spec、lockfile、`spec/`、本地 `modules/` 与用户 Rust；用户 React 交由 Rsbuild 监听
 - 迁移、生成或构建失败时不重启上一版服务
 - 聚合日志并以 `[api]`/`[web]` 标明来源
 - 使用独立进程组优雅终止完整子进程树
@@ -1415,10 +1415,10 @@ CI 中检测到非 TTY 时：
 | --- | --- |
 | App Spec / `appstruct.lock` | 按迁移策略检查、完整生成与服务重启，只提交内容变化的 Artifact |
 | 用户 Rust | 完整 debug build 并重启 API/Web |
-| 用户 React | 交给 Vite HMR |
+| 用户 React | 交给 Rsbuild HMR |
 | migrations | 不作为 watch 输入；下次启动或其他输入重载时按迁移策略处理 |
 
-实现使用 400 ms polling 指纹，不监听 `generated/`、`.appstruct/cache/` 或构建输出。API 与 Web 默认端口分别为 3000/5173，可由 CLI flag 覆盖；Vite 使用 strict port，端口冲突直接失败。generation 输入和 ownership tree 未变时跳过 Compiler/Codegen/formatter/目录事务；Rust 输入和 debug binary 未变时复用 backend build，Web package/lock 和 `.pnpm` 未变时复用安装。任一 cache state 缺失、损坏或输出缺失都回退完整流程。
+实现使用 400 ms polling 指纹，不监听 `generated/`、`.appstruct/cache/` 或构建输出。API 与 Web 默认端口分别为 3000/5173，可由 CLI flag 覆盖；Rsbuild 使用 strict port，端口冲突直接失败。generation 输入和 ownership tree 未变时跳过 Compiler/Codegen/formatter/目录事务；Rust 输入和 debug binary 未变时复用 backend build，Web package/lock 和 `.pnpm` 未变时复用安装。任一 cache state 缺失、损坏或输出缺失都回退完整流程。
 
 ## 21. 缓存与构建指纹
 

@@ -4,7 +4,7 @@
 
 AppStruct 是一个由配置驱动的 Rust 全栈应用生成器。它把多文件 YAML App Spec 编译为类型化
 中间表示（IR）、PostgreSQL 迁移、Axum/SeaORM 后端、OpenAPI、TypeScript 客户端以及
-React/Vite Web 应用。
+React/Rsbuild Web 应用。
 
 当前仓库处于技术预览阶段。现在需要从源码构建 CLI，尚未发布 crates.io 包或独立安装器。
 M0-M6 已完成，包含生产构建、协调式开发服务器、Tenant/Audit/Mail/Jobs/File 模块、锁定的
@@ -90,7 +90,7 @@ appstruct dev
 ```
 
 外部数据库默认使用 `database.dev.migration: unmanaged`，因此首次启动前需要显式运行迁移。
-`appstruct dev` 随后会生成并构建后端、安装锁定的 Web 依赖，并启动 API 和 Vite。默认地址为
+`appstruct dev` 随后会生成并构建后端、安装锁定的 Web 依赖，并启动 API 和 Rsbuild。默认地址为
 `http://127.0.0.1:3000` 和 `http://127.0.0.1:5173`，也可以通过 `--api-port` 与 `--web-port`
 修改。
 
@@ -170,7 +170,7 @@ database:
 
 ## 生成能力
 
-Web 运行时采用固定且现代的 React 19 + TypeScript + Vite 基线，并集成：
+Web 运行时采用固定且现代的 React 19 + TypeScript + Rsbuild/Rspack + Rstest 基线，并集成：
 
 - TanStack Query：服务端数据获取和缓存。
 - TanStack Router：类型安全路由和认证/租户路由保护。

@@ -156,7 +156,7 @@ impl<'project> DevSession<'project> {
         } else if changes.backend {
             self.reload_backend();
         } else if changes.web {
-            println!("[appstruct] web extension changed; Vite will apply the update");
+            println!("[appstruct] web extension changed; Rsbuild will apply the update");
         }
     }
 

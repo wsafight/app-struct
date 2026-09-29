@@ -25,7 +25,7 @@ As of 2026-08-30, the repository has completed M0 through M6, and after M1 it co
 | Generator Transaction | Complete | Cross-process project lock, append-only recovery journal, crash recovery for directory swap, and protection against ambiguous states |
 | M5 Templates | Complete | `appstruct new`, `minimal/dashboard`, pinned Rust/Node dependencies, and a one-shot project skeleton that never overwrites |
 | M5 Build/Doctor | Complete | Toolchain and database-mode diagnostics, JSON reports, and production build gates on locked Rust/TypeScript dependencies |
-| M5 Dev Server | Complete | managed/external PostgreSQL coordination, configurable migration strategy, generate and build, aggregated API/Vite logs, watch-and-reload, and Ctrl-C cleanup |
+| M5 Dev Server | Complete | managed/external PostgreSQL coordination, configurable migration strategy, generate and build, aggregated API/Rsbuild logs, watch-and-reload, and Ctrl-C cleanup |
 | M5 Docs | Complete | Source/archive install, first-run for external/managed, transactional upgrades, and production build/migrate/config/rollback docs |
 | M5 Quality Gates | Complete | Cross-directory byte-level determinism, 10/100-entity performance budgets, PostgreSQL + Chromium user journeys, desktop/mobile layout, readiness/request ID |
 | M6 Modules | Complete | Tenant, Audit, Mail, Jobs/Outbox, and local/S3 File capabilities, with independent PostgreSQL acceptance |
@@ -57,7 +57,7 @@ When inputs have not changed, the generation cache validates inputs, the CLI exe
 
 `appstruct new <name> --template minimal|dashboard|saas` already provides one-shot project creation that never overwrites. `minimal` generates a public Note app for external PostgreSQL. `dashboard` generates managed PostgreSQL Compose, Auth/RBAC/owner, and a three-entity User/Project/Task project-management app. `saas` locks `appstruct/saas@1` and generates a Tenant/Audit Project/Task skeleton plus Mail/Jobs/File development configuration. All three templates commit `appstruct.lock` with `project_layout_version = 2`, `rust-toolchain.toml`, `.env.example`, and local-state ignore rules. The first generate then produces a pinned `pnpm-lock.yaml`. Creation aborts if the target or a sibling staging directory already exists. Layout v1 runs the generated backend directly. v2 uses a server composition root. Ordinary build/dev select by the lock protocol only. An unversioned lock is migrated once by an explicit update.
 
-`appstruct doctor --format text|json` checks Rust 1.98/Cargo, rustfmt, Clippy, the pinned pnpm version, and the database development mode. Managed mode validates the Compose file and Docker/Compose services. External mode reads `DATABASE_URL` from the process environment or `.env` and runs migration status. Connection strings are never exposed in output. `appstruct build` first generates canonical Artifacts, then runs fmt, release Clippy, and release build against the pinned Rust dependency lock, and Prettier check, TypeScript check, and Vite build against the pnpm lock. Generated TypeScript is formatted by the lockfile-pinned Prettier before the manifest hash is computed, so `generate --check` and build use the same bytes.
+`appstruct doctor --format text|json` checks Rust 1.98/Cargo, rustfmt, Clippy, the pinned pnpm version, and the database development mode. Managed mode validates the Compose file and Docker/Compose services. External mode reads `DATABASE_URL` from the process environment or `.env` and runs migration status. Connection strings are never exposed in output. `appstruct build` first generates canonical Artifacts, then runs fmt, release Clippy, and release build against the pinned Rust dependency lock, and Prettier check, TypeScript check, and Rsbuild against the pnpm lock. Generated TypeScript is formatted by the lockfile-pinned Prettier before the manifest hash is computed, so `generate --check` and build use the same bytes.
 
 `appstruct dev [--api-port <port>] [--web-port <port>]` already coordinates the full development loop. External mode reads and connects to `DATABASE_URL` from the process environment or `.env`. Managed mode starts only the Compose `postgres` service and, on exit, stops only the service started by this session. Named volumes are kept. `database.dev.migration` supports `auto/prompt/never/unmanaged`. Managed defaults to prompt; external defaults to unmanaged. unmanaged skips AppStruct migration plan/status/apply entirely. never performs a read-only check and blocks reload on inconsistency. After the migration strategy passes, the CLI generates, builds the backend, and frozen-installs Web dependencies. The CLI watches App Spec, lockfile, `spec/`, `modules/`, and `app/backend/`, and aggregates logs as `[api]`/`[web]`. Unix child processes use a separate process group. Reload or Ctrl-C terminates the full process tree. Production backend startup never runs migrations. A separate release job runs status/apply.
 
@@ -713,9 +713,9 @@ help: did you mean `User`?
 `appstruct dev` coordinates backend, frontend, and configuration watching:
 
 - Choose automatic migration, prompt-when-needed, read-only validation, or fully user-managed from `database.dev.migration`.
-- After migrations pass, fully recompile and generate, commit only Artifacts whose contents changed, then build the backend and start API/Vite.
+- After migrations pass, fully recompile and generate, commit only Artifacts whose contents changed, then build the backend and start API/Rsbuild.
 - Do not restart services when configuration, migration, generate, or build fails. The previous process stays running.
-- Changes to `appstruct.yaml`, `appstruct.lock`, `spec/`, `modules/`, and `app/backend/` trigger a coordinated reload. User React changes are handled by Vite.
+- Changes to `appstruct.yaml`, `appstruct.lock`, `spec/`, `modules/`, and `app/backend/` trigger a coordinated reload. User React changes are handled by Rsbuild.
 - API and Web logs are prefixed `[api]` and `[web]`. `--api-port` and `--web-port` must differ.
 - Ctrl-C gracefully terminates the full API and Web child process trees.
 
@@ -896,7 +896,7 @@ The following is the first-version default stack. It is not a long-term multi-im
 | Database | PostgreSQL |
 | OpenAPI | Utoipa |
 | Configuration | Serde + YAML + JSON Schema |
-| Frontend | React + TypeScript + Vite |
+| Frontend | React + TypeScript + Rsbuild/Rspack + Rstest |
 | Data fetching | TanStack Query |
 | Routing | TanStack Router |
 | Tables | TanStack Table |

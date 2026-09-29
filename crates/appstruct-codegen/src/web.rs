@@ -18,7 +18,8 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
     modules::extend_artifacts(ir, &mut artifacts);
     artifacts.extend([
         Artifact::text("web/tsconfig.json", tsconfig(), ArtifactKind::Web),
-        Artifact::text("web/vite.config.ts", vite_config(), ArtifactKind::Web),
+        Artifact::text("web/rsbuild.config.ts", rsbuild_config(), ArtifactKind::Web),
+        Artifact::text("web/rstest.config.ts", rstest_config(), ArtifactKind::Web),
         Artifact::text(
             "web/src/generated/resources.ts",
             resources::source(ir),
@@ -209,32 +210,42 @@ fn tsconfig() -> &'static str {
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "paths": {
-      "react": ["./node_modules/@types/react/index.d.ts"],
-      "react/*": ["./node_modules/@types/react/*"]
-    },
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vite/client"]
+    "types": ["@rsbuild/core/types"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "rsbuild.config.ts", "rstest.config.ts"]
 }
 "#
 }
 
-fn vite_config() -> &'static str {
-    r#"import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
+fn rsbuild_config() -> &'static str {
+    r#"import { defineConfig, loadEnv } from "@rsbuild/core";
+import { pluginReact } from "@rsbuild/plugin-react";
+
+const { publicVars } = loadEnv({ prefixes: ["PUBLIC_", "VITE_"] });
 
 export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: { react: new URL("./node_modules/react", import.meta.url).pathname },
+  plugins: [pluginReact()],
+  source: {
+    entry: { index: "./src/main.tsx" },
+    define: publicVars,
   },
+  html: { template: "./index.html" },
   server: { host: "127.0.0.1", port: 5173 },
-  test: { environment: "happy-dom" },
+});
+"#
+}
+
+fn rstest_config() -> &'static str {
+    r#"import { defineConfig } from "@rstest/core";
+import { pluginReact } from "@rsbuild/plugin-react";
+
+export default defineConfig({
+  plugins: [pluginReact()],
+  testEnvironment: "happy-dom",
 });
 "#
 }

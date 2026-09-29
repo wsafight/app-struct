@@ -161,16 +161,17 @@ fn start_web(
             "127.0.0.1",
             "--port",
             &web_port.to_string(),
-            "--strictPort",
+            "--strict-port",
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     environment.apply(&mut command);
     command.env(
-        "VITE_API_URL",
+        "PUBLIC_API_URL",
         environment
-            .get("VITE_API_URL")
+            .get("PUBLIC_API_URL")
+            .or_else(|| environment.get("VITE_API_URL"))
             .unwrap_or_else(|| api_url.to_owned()),
     );
     isolate_process_group(&mut command);

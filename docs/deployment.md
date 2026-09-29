@@ -13,12 +13,12 @@ unmanaged: it connects to PostgreSQL but never plans, creates, validates, or app
 ## Build Artifacts
 
 Production Web builds default to the current origin. The generated nginx configuration proxies
-`/api/` to the API service. For a separate API origin, set `VITE_API_URL` before building because
-Vite embeds it in the Web bundle:
+`/api/` to the API service. For a separate API origin, set `PUBLIC_API_URL` before building because
+Rsbuild embeds it in the Web bundle. `VITE_API_URL` remains accepted for existing deployments:
 
 ```bash
 # Only for a separate API origin:
-# export VITE_API_URL=https://api.example.com
+# export PUBLIC_API_URL=https://api.example.com
 appstruct check
 appstruct build
 appstruct generate --check

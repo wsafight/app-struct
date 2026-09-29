@@ -4,7 +4,7 @@
 
 AppStruct is a configuration-driven Rust full-stack application generator. It compiles a
 multi-file YAML App Spec into a typed IR, PostgreSQL migrations, an Axum/SeaORM backend,
-OpenAPI, a TypeScript client, and a React/Vite application.
+OpenAPI, a TypeScript client, and a React/Rsbuild application.
 
 The repository is currently a technical preview. It is distributed from a source checkout for now;
 there is no crates.io package or binary installer yet. M0-M6 are complete, including production
@@ -98,7 +98,7 @@ appstruct dev
 
 External databases default to `database.dev.migration: unmanaged`, so run migrations before the
 first start. `appstruct dev` then generates and builds the backend, installs locked Web
-dependencies, and starts the API and Vite. The default URLs are `http://127.0.0.1:3000` and
+dependencies, and starts the API and Rsbuild. The default URLs are `http://127.0.0.1:3000` and
 `http://127.0.0.1:5173`; override them with `--api-port` and `--web-port`.
 
 ### Managed PostgreSQL
@@ -176,7 +176,7 @@ Production backend startup never runs migrations; use `migrate status` and an ex
 
 ## Generated capabilities
 
-The Web runtime is pinned to React 19, TypeScript, and Vite, with TanStack Query, Router, Table,
+The Web runtime is pinned to React 19, TypeScript, Rsbuild/Rspack, and Rstest, with TanStack Query, Router, Table,
 and Form plus Zod. Resource APIs support offset and cursor pagination, filters, sorts, relation
 filters, aggregates, and group-by queries, all under actor, resource, and tenant policy.
 
@@ -293,7 +293,7 @@ scripts/run-template-build.sh
 PostgreSQL browser tests use dedicated databases and the matching `scripts/run-*-e2e.sh` scripts.
 GitHub Actions deploys the documentation site and validates tagged release builds; run template
 and PostgreSQL gates locally before tagging. `scripts/run-template-build.sh` checks generated Web
-production dependencies, formatting, tests, types, and the Vite bundle.
+production dependencies, formatting, tests, types, and the Rsbuild bundle.
 
 `scripts/clean-test-artifacts.sh` removes disposable generated-backend, coverage, and package
 targets. Pass `--all` to run `cargo clean` on the whole workspace.

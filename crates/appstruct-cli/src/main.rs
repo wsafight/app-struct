@@ -79,7 +79,7 @@ enum Command {
     },
     /// Check the local toolchain, database mode, and project configuration.
     Doctor {},
-    /// Start PostgreSQL coordination, the API, and the Vite development server.
+    /// Start PostgreSQL coordination, the API, and the Rsbuild development server.
     Dev {
         #[arg(long)]
         api_port: Option<u16>,

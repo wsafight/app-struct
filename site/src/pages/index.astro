@@ -184,7 +184,7 @@ const docsHref = href('docs');
           <h2><T en="Explicit where<br>it matters." zh="关键环节，<br>保持显式。" /></h2>
         </div>
         <ol class="delivery-steps">
-          <li><span>01</span><div><strong><T en="Develop as one system" zh="把开发环境作为一个系统" /></strong><p><T en="One command coordinates PostgreSQL, generation, the Rust API, and Vite, then cleans up the complete process tree." zh="一条命令协调 PostgreSQL、生成、Rust API 与 Vite，并完整清理进程树。" /></p></div></li>
+          <li><span>01</span><div><strong><T en="Develop as one system" zh="把开发环境作为一个系统" /></strong><p><T en="One command coordinates PostgreSQL, generation, the Rust API, and Rsbuild, then cleans up the complete process tree." zh="一条命令协调 PostgreSQL、生成、Rust API 与 Rsbuild，并完整清理进程树。" /></p></div></li>
           <li><span>02</span><div><strong><T en="Review the database plan" zh="审查数据库计划" /></strong><p><T en="Plan and lint are read-only. Risky changes stop before SQL is accepted or applied." zh="Plan 与 Lint 保持只读；高风险变更在 SQL 被接受或应用前停止。" /></p></div></li>
           <li><span>03</span><div><strong><T en="Ship immutable artifacts" zh="交付不可变产物" /></strong><p><T en="Production startup never migrates implicitly. Status and apply run as a dedicated release job." zh="生产启动永不隐式迁移；Status 与 Apply 在独立发布任务中执行。" /></p></div></li>
         </ol>
