@@ -438,6 +438,7 @@ fn oauth_enabled_auth_publishes_oidc_contracts() {
     let mut ir = compile_project(&fixture).unwrap();
     ir.auth.oauth_enabled = true;
     ir.auth.oauth_providers = vec!["oidc".to_owned()];
+    ir.auth.oauth_signup_disabled = vec!["oidc".to_owned()];
     let artifacts = plan(&ir).unwrap();
     let sql = artifact_text(&artifacts, "database/0001_initial.sql");
     assert!(sql.contains("_appstruct_auth_oauth_accounts"));
@@ -446,6 +447,11 @@ fn oauth_enabled_auth_publishes_oidc_contracts() {
     assert!(oauth.contains("get(\"email_verified\")"));
     assert!(oauth.contains("== Some(true)"));
     assert!(oauth.contains("find_or_create_oauth_user(&state, provider, &subject, &email)"));
+    assert!(oauth.contains("provider_config(provider, link_user.is_some())"));
+    assert!(oauth.contains("provider_config(provider, linking)"));
+    assert!(oauth.contains("strip_suffix(\"/callback\")"));
+    assert!(oauth.contains("const SIGNUP_DISABLED_PROVIDERS: &[&str] = &[\"oidc\"]"));
+    assert!(oauth.contains("if !signup_allowed(provider)"));
     assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("startOAuth"));
     let openapi: Value =
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
@@ -482,6 +488,57 @@ fn configured_social_providers_publish_only_their_routes_and_buttons() {
     assert!(openapi["paths"]["/api/auth/oauth/google/start"]["get"].is_object());
     assert!(openapi["paths"]["/api/auth/oauth/github/start"]["get"].is_object());
     assert!(openapi["paths"]["/api/auth/oauth/oidc/start"].is_null());
+}
+
+#[test]
+fn stripe_billing_admin_contract_generates_a_compilable_backend() {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");
+    let mut ir = compile_project(&fixture).unwrap();
+    ir.billing = appstruct_ir::BillingIr {
+        enabled: true,
+        provider: Some("stripe".to_owned()),
+        subscriptions: true,
+        trials: true,
+        customer_portal: true,
+        metered_usage: false,
+        plans: vec![appstruct_ir::BillingPlanIr {
+            id: "pro".to_owned(),
+            price_env: "APPSTRUCT_STRIPE_PRICE_PRO".to_owned(),
+            trial_days: Some(14),
+            entitlements: vec!["projects".to_owned()],
+        }],
+    };
+    let artifacts = plan(&ir).unwrap();
+    let billing = artifact_text(&artifacts, "backend/src/billing.rs");
+    assert!(billing.contains("list_admin_billing_events"));
+    assert!(billing.contains("replay_admin_billing_event"));
+    assert!(billing.contains("require_billing_admin"));
+    let client = artifact_text(&artifacts, "web/src/generated/client.ts");
+    assert!(client.contains("billingAdminApi"));
+    assert!(client.contains("events: (page = 1"));
+    assert!(client.contains("replayEvent: (eventId: string)"));
+    assert!(client.contains("billing: true"));
+    assert!(artifact_text(&artifacts, "web/src/app/App.tsx").contains("/admin/billing"));
+    assert!(
+        artifact_text(&artifacts, "web/src/billing/AdminBillingPage.tsx")
+            .contains("billingAdminApi.replayEvent")
+    );
+    let openapi: Value =
+        serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
+    assert!(openapi["paths"]["/api/admin/billing/events"]["get"].is_object());
+    assert!(openapi["paths"]["/api/admin/billing/events/{event_id}/replay"]["post"].is_object());
+
+    let temporary = tempfile::tempdir().unwrap();
+    write_artifacts(temporary.path(), &artifacts);
+    let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest);
+    let checked = cargo_check(&manifest, true);
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
 }
 
 #[test]

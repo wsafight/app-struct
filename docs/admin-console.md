@@ -4,7 +4,7 @@ Auth-enabled projects include an `/admin` page and a matching `GET /api/admin/ov
 Use it to inspect health, queues, and deliveries, and to run guarded recovery actions. This is an
 operator surface, not a second application UI. The endpoint is restricted to actors with the
 configured `admin` role and reports live counts for users, sessions, organizations, invitations,
-queued/dead Jobs, Mail deliveries, Files, and Audit events.
+queued/dead Jobs, Mail deliveries, Files, Audit events, and Billing events.
 
 Counters for disabled modules remain zero and do not query tables that were not installed. The page
 links to the detailed users, API token, organization, audit, Jobs, schedules, mail delivery, and file
@@ -41,6 +41,11 @@ state survives runtime definition reconciliation; schedule definitions remain ow
 When Mail or Files is enabled, `/admin/mail` and `/admin/files` provide paginated, searchable
 inspection. Mail detail renders text and escaped HTML source without executing it. File detail
 exposes metadata and checksums only; it does not provide object downloads.
+
+When Billing is enabled, `/admin/billing` lists stored Stripe events with bounded pagination.
+Administrators can replay subscription reconciliation for a selected event; replay fetches current
+Stripe subscription state and retains the same idempotency and monotonic event-time checks as live
+webhook processing.
 
 `GET /api/admin/users?limit=50` returns at most 100 registered accounts. It only exposes the user
 identity, roles, verification state, creation time, and a count of non-revoked, non-expired sessions;

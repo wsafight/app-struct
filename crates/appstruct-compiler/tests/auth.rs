@@ -120,6 +120,55 @@ fn lowers_configured_social_providers_and_rejects_unknown_provider() {
 }
 
 #[test]
+fn lowers_object_oauth_providers_and_validates_their_contract() {
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("appstruct.yaml"),
+        "    password_reset: true\n",
+        concat!(
+            "    password_reset: true\n",
+            "    providers:\n",
+            "      - id: google\n",
+            "        type: oidc\n",
+            "        enabled: true\n",
+            "        allow_signup: true\n",
+            "        capabilities: { login: true, account_linking: true }\n",
+            "      - id: github\n",
+            "        type: oauth\n",
+            "        enabled: false\n",
+        ),
+    );
+    let ir = compile_project(temporary.path()).unwrap();
+    assert_eq!(ir.auth.oauth_providers, vec!["google".to_owned()]);
+    assert!(ir.auth.oauth_signup_disabled.is_empty());
+
+    let signup_disabled = copied_fixture();
+    replace(
+        &signup_disabled.path().join("appstruct.yaml"),
+        "    password_reset: true\n",
+        "    password_reset: true\n    providers: [{ id: google, type: oidc, allow_signup: false }]\n",
+    );
+    let ir = compile_project(signup_disabled.path()).unwrap();
+    assert_eq!(ir.auth.oauth_signup_disabled, vec!["google".to_owned()]);
+
+    let incompatible = copied_fixture();
+    replace(
+        &incompatible.path().join("appstruct.yaml"),
+        "    password_reset: true\n",
+        "    password_reset: true\n    providers: [{ id: github, type: oidc }]\n",
+    );
+    assert_diagnostic(incompatible.path(), "AS3039");
+
+    let duplicate = copied_fixture();
+    replace(
+        &duplicate.path().join("appstruct.yaml"),
+        "    password_reset: true\n",
+        "    password_reset: true\n    providers: [google, { id: google, type: oidc }]\n",
+    );
+    assert_diagnostic(duplicate.path(), "AS3038");
+}
+
+#[test]
 fn lowers_configured_stripe_billing_and_rejects_unsupported_capability() {
     let temporary = copied_fixture();
     replace(

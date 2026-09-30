@@ -80,6 +80,7 @@ pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Valu
     }
     if ir.auth.oauth_enabled {
         add_oauth_paths(paths, &ir.auth.oauth_providers);
+        add_account_paths(paths, schemas);
     }
     add_email_verification_paths(paths);
     add_token_paths(paths, schemas);
@@ -89,6 +90,35 @@ pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Valu
     }
     super::admin_storage::add(paths, schemas, ir.mail.enabled, ir.file.enabled);
     super::saved_views::add(paths, schemas);
+}
+
+fn add_account_paths(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {
+    schemas.insert(
+        "LinkedAccount".to_owned(),
+        json!({
+            "type": "object",
+            "required": ["provider", "created_at"],
+            "properties": {
+                "provider": { "type": "string" },
+                "created_at": { "type": "string", "format": "date-time" }
+            }
+        }),
+    );
+    paths.insert("/api/auth/accounts".to_owned(), json!({
+        "get": {
+            "operationId": "listLinkedAccounts", "tags": ["Auth"],
+            "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
+            "responses": { "200": response("Linked OAuth accounts", &json!({ "type": "array", "items": schema_ref("LinkedAccount") })), "401": error_response() }
+        }
+    }));
+    paths.insert("/api/auth/accounts/{provider}".to_owned(), json!({
+        "delete": {
+            "operationId": "unlinkOAuthAccount", "tags": ["Auth"],
+            "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
+            "parameters": [csrf_parameter(), { "name": "provider", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "204": { "description": "OAuth account unlinked" }, "401": error_response(), "404": error_response(), "409": error_response() }
+        }
+    }));
 }
 
 fn add_token_paths(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {
@@ -179,6 +209,30 @@ fn add_oauth_paths(paths: &mut Map<String, Value>, providers: &[String]) {
                     "operationId": operation,
                     "tags": ["Auth"],
                     "responses": { "307": { "description": "Redirect to OAuth provider" }, "404": error_response() }
+                }
+            }),
+        );
+        paths.insert(
+            format!("/api/auth/oauth/{provider}/link/start"),
+            json!({
+                "get": {
+                    "operationId": format!("start{}Link", provider[..1].to_ascii_uppercase() + &provider[1..]),
+                    "tags": ["Auth"], "security": [{ "cookieSession": [] }, { "bearerToken": [] }],
+                    "responses": { "307": { "description": "Redirect to provider" }, "401": error_response(), "502": error_response() }
+                }
+            }),
+        );
+        paths.insert(
+            format!("/api/auth/oauth/{provider}/link/callback"),
+            json!({
+                "get": {
+                    "operationId": format!("{}LinkCallback", provider[..1].to_ascii_uppercase() + &provider[1..]),
+                    "tags": ["Auth"],
+                    "parameters": [
+                        { "name": "code", "in": "query", "required": true, "schema": { "type": "string" } },
+                        { "name": "state", "in": "query", "required": true, "schema": { "type": "string" } }
+                    ],
+                    "responses": { "307": { "description": "Redirect to account settings" }, "400": error_response(), "401": error_response(), "409": error_response(), "502": error_response() }
                 }
             }),
         );

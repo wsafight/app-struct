@@ -12,6 +12,20 @@ modules:
 be enabled together. The generated UI only renders enabled providers, and the compiler rejects
 unknown IDs. Provider credentials are configured only through environment variables:
 
+Object entries can disable a provider without removing its configuration and can prevent new local
+user creation while preserving login for previously linked accounts:
+
+```yaml
+providers:
+  - id: google
+    type: oidc
+    enabled: true
+    allow_signup: false
+```
+
+Google and generic OIDC require `type: oidc`; GitHub requires `type: oauth`. Duplicate IDs and
+incompatible protocol types are compile errors.
+
 - `APPSTRUCT_OIDC_AUTHORIZATION_URL`
 - `APPSTRUCT_OIDC_TOKEN_URL`
 - `APPSTRUCT_OIDC_USERINFO_URL`
@@ -40,9 +54,18 @@ marked email-verified only when the provider returns the standard boolean claim
 Configure generic OIDC and Google to include both `email` and `email_verified` in userinfo. GitHub
 uses the `/user/emails` endpoint and accepts only a primary, verified email.
 
+Register both `/api/auth/oauth/<provider>/callback` and
+`/api/auth/oauth/<provider>/link/callback` with the provider. `*_REDIRECT_URI` contains the normal
+callback URL; AppStruct derives the link callback by replacing the final `/callback` segment and
+uses that same URI for authorization and token exchange.
+
 The first verified OIDC login can link an existing local user with the same normalized email.
 Only enable providers whose account and email-verification policies are trusted for this purpose;
 later logins use the stored provider subject mapping rather than email matching.
+
+Authenticated users can list, link, and unlink providers from the generated account UI. Linking
+requires the active session plus short-lived state and user cookies; unlinking the final usable
+login method is rejected.
 
 The generated login page shows an SSO button when OAuth is enabled. Provider failures return
 `502 OAUTH_PROVIDER_ERROR`; missing environment configuration returns

@@ -13,8 +13,8 @@ fn external_managed_database_is_a_noop() {
 
 #[test]
 fn log_pipe_ignores_missing_handles_and_drains_available_lines() {
-    assert!(log_pipe("api", None::<Cursor<Vec<u8>>>).is_none());
-    let handle = log_pipe("api", Some(Cursor::new(b"ready\n".to_vec()))).unwrap();
+    assert!(log_pipe("api", None::<Cursor<Vec<u8>>>, None).is_none());
+    let handle = log_pipe("api", Some(Cursor::new(b"ready\n".to_vec())), None).unwrap();
     handle.join().unwrap();
 }
 

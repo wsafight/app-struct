@@ -70,6 +70,14 @@ pub(super) fn source(ir: &AppIr) -> String {
             } else { "" },
         )
         .replace(
+            "__BILLING_ADMIN_PAGE__",
+            if billing {
+                "const AdminBillingPage = lazy(() => import(\"../billing/AdminBillingPage\").then(({ AdminBillingPage: component }) => ({ default: component })));\n"
+            } else {
+                ""
+            },
+        )
+        .replace(
             "__TENANT_ROOT__",
             if tenant {
                 "function TenantRoot() {\n  return <TenantProvider><RequireTenant /></TenantProvider>;\n}\n"
@@ -112,6 +120,14 @@ pub(super) fn source(ir: &AppIr) -> String {
         .replace(
             "__BILLING_ROUTE__",
             if billing { "    { path: \"/billing\", component: BillingPage }," } else { "" },
+        )
+        .replace(
+            "__BILLING_ADMIN_ROUTE__",
+            if billing {
+                "    { path: \"/admin/billing\", component: AdminBillingPage },"
+            } else {
+                ""
+            },
         )
         .replace(
             "__ORGANIZATION_ROUTE__",

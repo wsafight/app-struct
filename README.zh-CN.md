@@ -61,8 +61,8 @@ appstruct doctor
 appstruct dev
 ```
 
-打开转发的 Web 端口 5173，创建一条 Note；API 使用转发的端口 3000。主机需要 Docker、
-VS Code 和 Dev Containers 扩展，但不需要预装 Rust、Node.js 或 PostgreSQL。
+转发的 Web 端口 5173 就绪后，`appstruct dev` 会自动打开生成应用；API 使用转发的端口
+3000。主机需要 Docker、VS Code 和 Dev Containers 扩展，但不需要预装 Rust、Node.js 或 PostgreSQL。
 详情见[安装指南](docs/installation.zh-CN.md)。
 
 在终端运行 `appstruct init`，依次输入项目名并选择模板。脚本可使用
@@ -90,9 +90,9 @@ appstruct dev
 ```
 
 外部数据库默认使用 `database.dev.migration: unmanaged`，因此首次启动前需要显式运行迁移。
-`appstruct dev` 随后会生成并构建后端、安装锁定的 Web 依赖，并启动 API 和 Rsbuild。默认地址为
-`http://127.0.0.1:3000` 和 `http://127.0.0.1:5173`，也可以通过 `--api-port` 与 `--web-port`
-修改。
+`appstruct dev` 随后会生成并构建后端、安装锁定的 Web 依赖、启动 API 和 Rsbuild，并在 Web
+应用就绪后打开浏览器。默认地址为 `http://127.0.0.1:3000` 和 `http://127.0.0.1:5173`，
+也可以通过 `--api-port` 与 `--web-port` 修改，或用 `--no-open` 禁止打开浏览器。
 
 ### 使用托管 PostgreSQL
 
@@ -142,7 +142,9 @@ appstruct db pull --schema public --output spec/imported.yaml
 ```
 
 该命令读取 `DATABASE_URL`，不会修改数据库或根配置中的 `includes`，也拒绝覆盖已有输出。先
-处理不支持形态的警告并补上实体访问规则，再把草稿纳入 `appstruct.yaml`。CI 中可用
+处理不支持形态的警告并补上实体访问规则，再把草稿纳入 `appstruct.yaml`。可以使用
+`--access public|authenticated`、`--access role --role <name>` 或
+`--access owner --owner <relation>` 写入统一且经过审阅的规则；默认仍为拒绝访问。CI 中可用
 `--check`；`--diff` 只打印线上变更，不写文件。
 
 ## 开发迁移策略
@@ -200,10 +202,12 @@ appstruct capabilities [--format text|json]
 appstruct check [--deny-warnings] [--format text|json]
 appstruct generate [--check] [--timings]
 appstruct migrate plan|dev|lint|apply|status
-appstruct dev [--api-port <port>] [--web-port <port>]
+appstruct dev [--api-port <port>] [--web-port <port>] [--no-open]
 appstruct build
 appstruct doctor [--format text|json]
-appstruct db pull [--schema <name>] [--output <project-relative-path>] [--review | --check | --diff]
+appstruct status [--format text|json]
+appstruct project status|events|diagnose
+appstruct db pull [--schema <name>] [--output <path>] [--review | --check | --diff] [--access <policy>]
 appstruct auth bootstrap-admin --email <address>
 appstruct preset show [--expanded]
 appstruct update

@@ -542,6 +542,7 @@ export function AdminPage() {
         ["Mail deliveries", overview.mail_deliveries],
         ["Files", overview.files],
         ["Audit events", overview.audit_events],
+        ["Billing events", overview.billing_events],
       ] as const)
     : [];
   return (
@@ -581,6 +582,9 @@ export function AdminPage() {
         {adminFeatures.file && <Link to="/admin/files">Files</Link>}
         {adminFeatures.tenant && <Link to="/organization">Organization</Link>}
         {adminFeatures.audit && <Link to="/audit">Audit log</Link>}
+        {adminFeatures.billing && (
+          <Link to="/admin/billing">Billing events</Link>
+        )}
       </nav>
     </main>
   );

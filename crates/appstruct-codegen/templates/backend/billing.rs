@@ -1,6 +1,6 @@
 use crate::{ApiError, AppState};
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, State};
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -60,13 +60,104 @@ struct CheckoutInput { plan_id: String }
 #[derive(Serialize)]
 struct RedirectUrl { url: String }
 
+#[derive(Deserialize)]
+struct BillingEventQuery { page: Option<u64>, page_size: Option<u64> }
+
+#[derive(Serialize)]
+struct BillingEvent {
+    event_id: String,
+    event_type: String,
+    payload: Value,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Serialize)]
+struct BillingEventList { data: Vec<BillingEvent>, meta: BillingEventMeta }
+
+#[derive(Serialize)]
+struct BillingEventMeta { page: u64, page_size: u64, total: u64 }
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/billing", get(overview))
         .route("/api/billing/checkout", post(checkout))
         .route("/api/billing/portal", post(portal))
         .route("/api/billing/stripe/webhook", post(webhook))
+        .route("/api/admin/billing/events", get(list_admin_billing_events))
+        .route("/api/admin/billing/events/{event_id}/replay", post(replay_admin_billing_event))
         .layer(DefaultBodyLimit::max(65_536))
+}
+
+async fn require_billing_admin(
+    state: &AppState,
+    headers: &HeaderMap,
+    mutation: bool,
+) -> Result<(), ApiError> {
+    let actor = if mutation {
+        state.auth.actor_for_mutation(&state.database, headers).await?
+    } else {
+        state.auth.actor(&state.database, headers).await?
+    }
+    .ok_or(ApiError::Unauthorized)?;
+    if actor.has_role("admin") { Ok(()) } else { Err(ApiError::Forbidden) }
+}
+
+async fn list_admin_billing_events(
+    State(state): State<AppState>, headers: HeaderMap, Query(input): Query<BillingEventQuery>,
+) -> Result<Json<BillingEventList>, ApiError> {
+    require_billing_admin(&state, &headers, false).await?;
+    let page = input.page.unwrap_or(1);
+    let page_size = input.page_size.unwrap_or(25);
+    if !(1..=10_000).contains(&page) || !(1..=100).contains(&page_size) {
+        return Err(ApiError::InvalidQuery("page must be between 1 and 10000 and page_size between 1 and 100".to_owned()));
+    }
+    let offset = (page - 1).checked_mul(page_size).ok_or_else(|| ApiError::InvalidQuery("pagination is too large".to_owned()))?;
+    let count = state.database.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT COUNT(*) AS total FROM \"_appstruct_billing_events\"",
+        [],
+    )).await?.ok_or(ApiError::Internal)?.try_get::<i64>("", "total")?;
+    let rows = state.database.query_all_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT event_id, event_type, payload, created_at FROM \"_appstruct_billing_events\" ORDER BY created_at DESC, event_id DESC LIMIT $1 OFFSET $2",
+        [i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
+    )).await?;
+    let data = rows.into_iter().map(|row| Ok(BillingEvent {
+        event_id: row.try_get("", "event_id")?,
+        event_type: row.try_get("", "event_type")?,
+        payload: row.try_get("", "payload")?,
+        created_at: row.try_get("", "created_at")?,
+    })).collect::<Result<Vec<_>, sea_orm::DbErr>>()?;
+    Ok(Json(BillingEventList { data, meta: BillingEventMeta { page, page_size, total: u64::try_from(count).unwrap_or(0) } }))
+}
+
+async fn replay_admin_billing_event(
+    State(state): State<AppState>, headers: HeaderMap, Path(event_id): Path<String>,
+) -> Result<Json<BillingEvent>, ApiError> {
+    require_billing_admin(&state, &headers, true).await?;
+    let row = state.database.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT event_type, payload FROM \"_appstruct_billing_events\" WHERE event_id = $1",
+        [event_id.clone().into()],
+    )).await?.ok_or(ApiError::NotFound)?;
+    let event_type: String = row.try_get("", "event_type")?;
+    let event: Value = row.try_get("", "payload")?;
+    let subscription_id = event.pointer("/data/object/id").and_then(Value::as_str)
+        .or_else(|| event.pointer("/data/object/subscription").and_then(Value::as_str))
+        .filter(|id| id.starts_with("sub_")).ok_or_else(|| ApiError::InvalidQuery("Billing event has no replayable subscription".to_owned()))?;
+    let replay_id = format!("{event_id}:replay:{}", uuid::Uuid::now_v7());
+    reconcile_subscription(&state, &config()?, &replay_id, &event_type, subscription_id, &event).await?;
+    let replay = state.database.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT event_id, event_type, payload, created_at FROM \"_appstruct_billing_events\" WHERE event_id = $1",
+        [replay_id.into()],
+    )).await?.ok_or(ApiError::Internal)?;
+    Ok(Json(BillingEvent {
+        event_id: replay.try_get("", "event_id")?,
+        event_type: replay.try_get("", "event_type")?,
+        payload: replay.try_get("", "payload")?,
+        created_at: replay.try_get("", "created_at")?,
+    }))
 }
 
 pub fn validate_env() -> Result<(), String> {

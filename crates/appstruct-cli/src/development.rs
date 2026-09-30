@@ -8,18 +8,23 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
+mod browser;
 mod build_cache;
 mod ports;
 mod process;
 mod watch;
-
 use process::{DevProcesses, ManagedDatabase};
 use watch::{ProjectChanges, ProjectWatcher};
 
-const MANAGED_DATABASE_URL: &str =
+pub(crate) const MANAGED_DATABASE_URL: &str =
     "postgresql://appstruct:appstruct-dev@127.0.0.1:5432/appstruct?sslmode=disable";
 
-pub(crate) fn run(project: &Path, api_port: Option<u16>, web_port: Option<u16>) -> ExitCode {
+pub(crate) fn run(
+    project: &Path,
+    api_port: Option<u16>,
+    web_port: Option<u16>,
+    open_browser: bool,
+) -> ExitCode {
     let (api_port, web_port) = match ports::resolve(project, api_port, web_port) {
         Ok(ports) => ports,
         Err(error) => {
@@ -46,7 +51,7 @@ pub(crate) fn run(project: &Path, api_port: Option<u16>, web_port: Option<u16>) 
             crate::report::ExitClass::Environment,
         );
     }
-    match DevSession::start(project, api_port, web_port, stopping)
+    match DevSession::start(project, api_port, web_port, open_browser, stopping)
         .and_then(|mut session| session.run())
     {
         Ok(()) => ExitCode::SUCCESS,
@@ -79,6 +84,7 @@ impl<'project> DevSession<'project> {
         project: &'project Path,
         api_port: u16,
         web_port: u16,
+        open_browser: bool,
         stopping: Arc<AtomicBool>,
     ) -> io::Result<Self> {
         check_stopping(&stopping)?;
@@ -114,13 +120,23 @@ impl<'project> DevSession<'project> {
             true,
             &stopping,
         )?;
-        let processes =
+        let mut processes =
             DevProcesses::spawn(project, &environment, &database_url, api_port, web_port)?;
+        browser::wait_for_web(&mut processes, web_port, &stopping)?;
         check_stopping(&stopping)?;
         let watcher = ProjectWatcher::start(project)?;
+        let web_url = format!("http://127.0.0.1:{web_port}");
         println!("AppStruct development environment is ready:");
         println!("- API: http://127.0.0.1:{api_port}");
-        println!("- Web: http://127.0.0.1:{web_port}");
+        println!("- Web: {web_url}");
+        if open_browser {
+            match browser::launch(&web_url) {
+                Ok(()) => println!("- Browser: opened"),
+                Err(error) => eprintln!(
+                    "[appstruct] could not open the default browser: {error}; open {web_url} manually"
+                ),
+            }
+        }
         Ok(Self {
             project,
             environment,

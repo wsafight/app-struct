@@ -57,6 +57,21 @@ fn schema_names_reject_ambiguous_values() {
 }
 
 #[test]
+fn access_options_require_matching_role_or_owner_values() {
+    assert_eq!(
+        resolve_access(PullAccess::Role, Some("admin"), None).unwrap(),
+        render::AccessMode::Role("admin".to_owned())
+    );
+    assert_eq!(
+        resolve_access(PullAccess::Owner, None, Some("account_owner")).unwrap(),
+        render::AccessMode::Owner("account_owner".to_owned())
+    );
+    assert!(resolve_access(PullAccess::Role, None, None).is_err());
+    assert!(resolve_access(PullAccess::Owner, None, Some("Owner")).is_err());
+    assert!(resolve_access(PullAccess::Public, Some("admin"), None).is_err());
+}
+
+#[test]
 fn resolve_output_rejects_symlinked_and_file_parents() {
     let project = tempfile::tempdir().unwrap();
     fs::write(project.path().join("file.yaml"), "x\n").unwrap();
@@ -126,6 +141,9 @@ fn pull_rejects_invalid_schema_names_and_output_paths() {
                     check: false,
                     diff: false,
                     review: false,
+                    access: super::PullAccess::None,
+                    role: None,
+                    owner: None,
                 },
             ),
             ExitCode::SUCCESS

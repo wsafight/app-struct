@@ -46,6 +46,56 @@ fn new_emits_a_success_envelope_without_a_project() {
     assert!(parent.path().join("json-app/appstruct.yaml").is_file());
 }
 
+#[test]
+fn project_events_and_diagnostics_emit_redacted_reports() {
+    let project = copied_fixture("m2-project");
+    let events = run(
+        project.path(),
+        &["project", "events", "--limit", "5", "--format", "json"],
+    );
+    assert_success(&events, "project events");
+
+    let diagnostics = run(
+        project.path(),
+        &[
+            "project",
+            "diagnose",
+            "--output",
+            "diagnostics.json",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&diagnostics, "project diagnose");
+    let bundle: Value =
+        serde_json::from_slice(&fs::read(project.path().join("diagnostics.json")).unwrap())
+            .unwrap();
+    assert_eq!(bundle["appstruct_version"], env!("CARGO_PKG_VERSION"));
+    assert!(bundle["status"]["compile"]["valid"].as_bool().unwrap());
+    assert!(
+        bundle["configuration"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|file| {
+                file["sha256"]
+                    .as_str()
+                    .is_some_and(|value| value.starts_with("sha256:"))
+            })
+    );
+    assert!(
+        bundle["environment"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entry| {
+                entry.get("name").is_some()
+                    && entry.get("configured").is_some()
+                    && entry.as_object().is_some_and(|value| value.len() == 2)
+            })
+    );
+}
+
 fn assert_success(output: &Output, command: &str) {
     assert!(
         output.status.success(),

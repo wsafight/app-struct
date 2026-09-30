@@ -8,14 +8,14 @@ mod init;
 mod mode;
 mod name;
 mod paths;
-pub(crate) use init::run as init;
-pub(crate) use mode::DatabaseMode;
+pub(crate) use init::{InitArgs, run as init};
+pub(crate) use mode::{CapabilityMode, DatabaseMode};
 use paths::{cd_command, invalid, validate_relative_path};
 
 const PROJECT_NAME_MARKER: &str = "__APPSTRUCT_PROJECT_NAME__";
 const DATABASE_MODE_MARKER: &str = "__APPSTRUCT_DATABASE_MODE__";
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub(crate) enum ProjectTemplate {
     Minimal,
     Dashboard,
@@ -51,6 +51,8 @@ fn run_with_command(
                     result["database_mode"] = serde_json::json!(settings.database_mode.name());
                     result["api_port"] = serde_json::json!(settings.api_port);
                     result["web_port"] = serde_json::json!(settings.web_port);
+                    result["auth"] = serde_json::json!(settings.auth.name());
+                    result["tenant"] = serde_json::json!(settings.tenant.name());
                 }
                 crate::report::success(&result);
             } else {

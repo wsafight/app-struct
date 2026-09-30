@@ -13,6 +13,8 @@ pub struct AuthIr {
     pub oauth_enabled: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub oauth_providers: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub oauth_signup_disabled: Vec<String>,
     pub roles: Vec<String>,
     pub default_role: Option<String>,
 }

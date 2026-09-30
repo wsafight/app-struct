@@ -76,5 +76,7 @@ export const appQueryKeys = {
     files: (search: string, page: number, pageSize: number) =>
       ["admin", "files", { search, page, pageSize }] as const,
     fileDetail: (id: string) => ["admin", "files", id] as const,
+    billingEvents: (page: number, pageSize: number) =>
+      ["admin", "billing", "events", { page, pageSize }] as const,
   },
 };

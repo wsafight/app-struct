@@ -108,7 +108,31 @@
         "oauth": { "type": "boolean" },
         "providers": {
           "type": "array",
-          "items": { "enum": ["oidc", "google", "github"] },
+          "items": {
+            "oneOf": [
+              { "enum": ["oidc", "google", "github"] },
+              {
+                "type": "object",
+                "required": ["id", "type"],
+                "properties": {
+                  "id": { "enum": ["oidc", "google", "github"] },
+                  "type": { "enum": ["oidc", "oauth"] },
+                  "enabled": { "type": "boolean" },
+                  "allow_signup": { "type": "boolean" },
+                  "capabilities": {
+                    "type": "object",
+                    "properties": {
+                      "login": { "type": "boolean" },
+                      "signup": { "type": "boolean" },
+                      "account_linking": { "type": "boolean" }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
           "uniqueItems": true
         }
       },

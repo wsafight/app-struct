@@ -14,11 +14,18 @@ pub(crate) fn lower_auth(
         .iter()
         .map(|provider| provider.value.clone())
         .collect::<Vec<_>>();
+    let mut oauth_signup_disabled = auth
+        .oauth_signup_disabled
+        .iter()
+        .map(|provider| provider.value.clone())
+        .collect::<Vec<_>>();
     if auth.oauth_enabled && oauth_providers.is_empty() {
         oauth_providers.push("oidc".to_owned());
     }
     oauth_providers.sort();
     oauth_providers.dedup();
+    oauth_signup_disabled.sort();
+    oauth_signup_disabled.dedup();
     for provider in &oauth_providers {
         if !matches!(provider.as_str(), "oidc" | "google" | "github") {
             diagnostics.push(Diagnostic::error(
@@ -34,6 +41,7 @@ pub(crate) fn lower_auth(
             || auth.password_reset_enabled
             || auth.oauth_enabled
             || !auth.oauth_providers.is_empty()
+            || !auth.oauth_signup_disabled.is_empty()
             || !auth.roles.is_empty()
             || auth.default_role.is_some()
         {
@@ -96,6 +104,7 @@ pub(crate) fn lower_auth(
         password_reset_enabled: auth.password_reset_enabled,
         oauth_enabled: !oauth_providers.is_empty(),
         oauth_providers,
+        oauth_signup_disabled,
         roles,
         default_role,
     }
@@ -109,6 +118,7 @@ fn disabled_auth() -> AuthIr {
         password_reset_enabled: false,
         oauth_enabled: false,
         oauth_providers: Vec::new(),
+        oauth_signup_disabled: Vec::new(),
         roles: Vec::new(),
         default_role: None,
     }

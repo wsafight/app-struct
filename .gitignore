@@ -9,6 +9,7 @@
 .DS_Store
 /target/
 **/.appstruct/cache/
+**/.appstruct/logs/
 **/.appstruct/generation.lock
 **/.appstruct/generation.journal
 **/.appstruct/update.lock

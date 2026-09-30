@@ -29,6 +29,7 @@ struct AdminOverview {
     mail_deliveries: i64,
     files: i64,
     audit_events: i64,
+    billing_events: i64,
 }
 
 #[derive(Serialize)]
@@ -92,6 +93,7 @@ async fn admin_overview(
         mail_deliveries: optional_count(&state, config::MAIL_ENABLED, "_appstruct_mail_deliveries").await?,
         files: optional_count(&state, config::FILE_ENABLED, "_appstruct_files").await?,
         audit_events: optional_count(&state, config::AUDIT_ENABLED, "_appstruct_audit_events").await?,
+        billing_events: optional_count(&state, config::BILLING_ENABLED, "_appstruct_billing_events").await?,
     }))
 }
 

@@ -1,15 +1,35 @@
-use super::{DatabaseMode, ProjectTemplate, name, run_with_command};
+use super::{CapabilityMode, DatabaseMode, ProjectTemplate, name, run_with_command};
+use clap::Args;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
+#[derive(Debug, Args)]
+pub(crate) struct InitArgs {
+    pub name: Option<String>,
+    #[arg(long, value_enum)]
+    pub template: Option<ProjectTemplate>,
+    #[arg(long, value_enum)]
+    pub database_mode: Option<DatabaseMode>,
+    #[arg(long)]
+    pub api_port: Option<u16>,
+    #[arg(long)]
+    pub web_port: Option<u16>,
+    #[arg(long, value_enum)]
+    pub auth: Option<CapabilityMode>,
+    #[arg(long, value_enum)]
+    pub tenant: Option<CapabilityMode>,
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct InitSettings {
     pub(super) database_mode: DatabaseMode,
     pub(super) api_port: u16,
     pub(super) web_port: u16,
+    pub(super) auth: CapabilityMode,
+    pub(super) tenant: CapabilityMode,
 }
 
 impl InitSettings {
@@ -19,6 +39,10 @@ impl InitSettings {
         name: &str,
         template: ProjectTemplate,
     ) -> io::Result<()> {
+        let appstruct_path = root.join("appstruct.yaml");
+        let source = fs::read_to_string(&appstruct_path)?;
+        let source = render_capabilities(source, template, self.auth, self.tenant)?;
+        fs::write(appstruct_path, source)?;
         match (template, self.database_mode) {
             (ProjectTemplate::Minimal, DatabaseMode::Managed) => {
                 fs::write(
@@ -66,15 +90,61 @@ impl InitSettings {
     }
 }
 
-pub(crate) fn run(
-    parent: &Path,
-    name: Option<&str>,
-    template: Option<ProjectTemplate>,
-    database_mode: Option<DatabaseMode>,
-    api_port: Option<u16>,
-    web_port: Option<u16>,
-) -> ExitCode {
+fn render_capabilities(
+    source: String,
+    template: ProjectTemplate,
+    auth: CapabilityMode,
+    tenant: CapabilityMode,
+) -> io::Result<String> {
+    let valid = match template {
+        ProjectTemplate::Minimal => {
+            auth == CapabilityMode::Disabled && tenant == CapabilityMode::Disabled
+        }
+        ProjectTemplate::Dashboard => auth == CapabilityMode::Enabled,
+        ProjectTemplate::Saas => {
+            auth == CapabilityMode::Enabled && tenant == CapabilityMode::Enabled
+        }
+    };
+    if !valid {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "template `{}` does not support auth={} and tenant={}",
+                template.name(),
+                auth.name(),
+                tenant.name()
+            ),
+        ));
+    }
+    let mut output = source;
+    if template == ProjectTemplate::Dashboard {
+        output = output.replace(
+            "    enabled: true\n",
+            &format!("    enabled: {}\n", auth == CapabilityMode::Enabled),
+        );
+        if tenant == CapabilityMode::Enabled {
+            output = output.replace(
+                "    default_role: member\n",
+                "    default_role: member\n  tenant:\n    enabled: true\n",
+            );
+        }
+    }
+    if template == ProjectTemplate::Saas {
+        output.push_str("\nmodules:\n  auth:\n    enabled: true\n  tenant:\n    enabled: true\n");
+    }
+    Ok(output)
+}
+
+pub(crate) fn run(parent: &Path, args: &InitArgs) -> ExitCode {
+    let name = args.name.as_deref();
+    let template = args.template;
+    let database_mode = args.database_mode;
+    let api_port = args.api_port;
+    let web_port = args.web_port;
+    let auth = args.auth;
+    let tenant = args.tenant;
     let needs_prompt = name.is_none() || template.is_none();
+    let interactive = io::stdin().is_terminal() && !crate::report::is_json();
     if needs_prompt && (crate::report::is_json() || !io::stdin().is_terminal()) {
         return crate::report::fail(
             "AS6003",
@@ -118,7 +188,7 @@ pub(crate) fn run(
     }
     let database_mode = match database_mode {
         Some(mode) => mode,
-        None if needs_prompt => match prompt_database_mode(template.database_mode()) {
+        None if interactive => match prompt_database_mode(template.database_mode()) {
             Ok(mode) => mode,
             Err(error) => return prompt_error("database mode", &error),
         },
@@ -126,7 +196,7 @@ pub(crate) fn run(
     };
     let api_port = match api_port {
         Some(port) => port,
-        None if needs_prompt => match prompt_port("API port [3000]: ", 3000, None) {
+        None if interactive => match prompt_port("API port [3000]: ", 3000, None) {
             Ok(port) => port,
             Err(error) => return prompt_error("API port", &error),
         },
@@ -134,7 +204,7 @@ pub(crate) fn run(
     };
     let web_port = match web_port {
         Some(port) => port,
-        None if needs_prompt => match prompt_port("Web port [5173]: ", 5173, Some(api_port)) {
+        None if interactive => match prompt_port("Web port [5173]: ", 5173, Some(api_port)) {
             Ok(port) => port,
             Err(error) => return prompt_error("web port", &error),
         },
@@ -143,10 +213,28 @@ pub(crate) fn run(
     if api_port == web_port {
         return invalid_ports();
     }
+    let auth = match auth {
+        Some(value) => value,
+        None if interactive => match prompt_capability("Auth", template.auth_mode()) {
+            Ok(value) => value,
+            Err(error) => return prompt_error("auth capability", &error),
+        },
+        None => template.auth_mode(),
+    };
+    let tenant = match tenant {
+        Some(value) => value,
+        None if interactive => match prompt_capability("Tenant", template.tenant_mode()) {
+            Ok(value) => value,
+            Err(error) => return prompt_error("tenant capability", &error),
+        },
+        None => template.tenant_mode(),
+    };
     let settings = InitSettings {
         database_mode,
         api_port,
         web_port,
+        auth,
+        tenant,
     };
     run_with_command(parent, &name, template, "init", Some(settings))
 }
@@ -227,6 +315,21 @@ fn prompt_database_mode(default: DatabaseMode) -> io::Result<DatabaseMode> {
     }
 }
 
+fn prompt_capability(label: &str, default: CapabilityMode) -> io::Result<CapabilityMode> {
+    let fallback = default.name();
+    loop {
+        let input = prompt_line(
+            &format!("{label} capability [{fallback}]: "),
+            Some(fallback),
+        )?;
+        match input.as_str() {
+            "enabled" | "on" | "true" => return Ok(CapabilityMode::Enabled),
+            "disabled" | "off" | "false" => return Ok(CapabilityMode::Disabled),
+            _ => eprintln!("{label} must be enabled or disabled"),
+        }
+    }
+}
+
 fn prompt_port(label: &str, default: u16, other: Option<u16>) -> io::Result<u16> {
     let fallback = default.to_string();
     loop {
@@ -245,6 +348,20 @@ impl ProjectTemplate {
             "2" | "dashboard" => Some(Self::Dashboard),
             "3" | "saas" => Some(Self::Saas),
             _ => None,
+        }
+    }
+
+    fn auth_mode(self) -> CapabilityMode {
+        match self {
+            Self::Minimal => CapabilityMode::Disabled,
+            Self::Dashboard | Self::Saas => CapabilityMode::Enabled,
+        }
+    }
+
+    fn tenant_mode(self) -> CapabilityMode {
+        match self {
+            Self::Saas => CapabilityMode::Enabled,
+            Self::Minimal | Self::Dashboard => CapabilityMode::Disabled,
         }
     }
 }

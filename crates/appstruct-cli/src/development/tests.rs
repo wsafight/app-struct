@@ -3,8 +3,11 @@ use super::*;
 #[test]
 fn rejects_invalid_ports_before_project_access() {
     let missing = Path::new("/path/that/does/not/exist");
-    assert_eq!(run(missing, Some(0), Some(5173)), ExitCode::from(2));
-    assert_eq!(run(missing, Some(3000), Some(3000)), ExitCode::from(2));
+    assert_eq!(run(missing, Some(0), Some(5173), false), ExitCode::from(2));
+    assert_eq!(
+        run(missing, Some(3000), Some(3000), false),
+        ExitCode::from(2)
+    );
 }
 
 #[test]
@@ -55,8 +58,14 @@ fn prepare_stops_immediately_when_signaled() {
 #[test]
 fn run_reports_missing_projects_after_installing_the_signal_handler() {
     let missing = Path::new("/missing-appstruct-project");
-    assert_ne!(run(missing, Some(3000), Some(5173)), ExitCode::SUCCESS);
-    assert_ne!(run(missing, Some(3001), Some(5174)), ExitCode::SUCCESS);
+    assert_ne!(
+        run(missing, Some(3000), Some(5173), false),
+        ExitCode::SUCCESS
+    );
+    assert_ne!(
+        run(missing, Some(3001), Some(5174), false),
+        ExitCode::SUCCESS
+    );
 }
 
 #[test]
@@ -68,7 +77,7 @@ fn compile_succeeds_for_the_m0_fixture_and_build_helpers_fail_without_outputs() 
     assert!(build_backend(project.path(), &environment).is_err());
     assert!(install_web(project.path(), &environment).is_err());
     let stopping = Arc::new(AtomicBool::new(true));
-    let Err(error) = DevSession::start(project.path(), 3000, 5173, stopping) else {
+    let Err(error) = DevSession::start(project.path(), 3000, 5173, false, stopping) else {
         panic!("expected startup to stop immediately");
     };
     assert_eq!(error.kind(), io::ErrorKind::Interrupted);
@@ -82,9 +91,13 @@ fn start_fails_for_external_projects_without_database_url() {
         "version: 1\napp:\n  name: demo\ndatabase:\n  provider: postgres\n  dev:\n    mode: external\n    migration: unmanaged\nincludes: []\n",
     )
     .unwrap();
-    let Err(error) =
-        DevSession::start(project.path(), 3000, 5173, Arc::new(AtomicBool::new(false)))
-    else {
+    let Err(error) = DevSession::start(
+        project.path(),
+        3000,
+        5173,
+        false,
+        Arc::new(AtomicBool::new(false)),
+    ) else {
         panic!("expected missing DATABASE_URL");
     };
     assert_eq!(error.kind(), io::ErrorKind::NotFound);

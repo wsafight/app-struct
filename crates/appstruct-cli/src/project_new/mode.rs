@@ -14,3 +14,20 @@ impl DatabaseMode {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub(crate) enum CapabilityMode {
+    #[value(alias = "on", alias = "true")]
+    Enabled,
+    #[value(alias = "off", alias = "false")]
+    Disabled,
+}
+
+impl CapabilityMode {
+    pub(super) const fn name(self) -> &'static str {
+        match self {
+            Self::Enabled => "enabled",
+            Self::Disabled => "disabled",
+        }
+    }
+}

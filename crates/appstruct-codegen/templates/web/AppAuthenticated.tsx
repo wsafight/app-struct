@@ -12,6 +12,7 @@ import { resourceRoutes } from "./ResourceRoutes";
 __AUDIT_PAGE__
 __REPORT_PAGE__
 __BILLING_PAGE__
+__BILLING_ADMIN_PAGE__
 const LoginPage = lazy(() => import("../auth/AuthPages").then(({ LoginPage: component }) => ({ default: component })));
 const RegisterPage = lazy(() => import("../auth/AuthPages").then(({ RegisterPage: component }) => ({ default: component })));
 const ForgotPasswordPage = lazy(() => import("../auth/AuthPages").then(({ ForgotPasswordPage: component }) => ({ default: component })));
@@ -83,6 +84,7 @@ __ORGANIZATION_ROUTE__
     { path: "/admin/mail/$id", component: AdminMailDetailPage },
     { path: "/admin/files", component: AdminFilesPage },
     { path: "/admin/files/$id", component: AdminFileDetailPage },
+__BILLING_ADMIN_ROUTE__
   ];
 }
 

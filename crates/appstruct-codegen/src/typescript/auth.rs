@@ -50,6 +50,11 @@ export interface ApiToken {
 
 export interface CreatedApiToken extends ApiToken { token: string; }
 
+export interface LinkedAccount {
+  provider: string;
+  created_at: string;
+}
+
 export interface AdminOverview {
   users: number;
   organizations: number;
@@ -60,6 +65,7 @@ export interface AdminOverview {
   mail_deliveries: number;
   files: number;
   audit_events: number;
+  billing_events: number;
 }
 
 export interface AdminUser {
@@ -201,9 +207,10 @@ fn api_source(ir: &AppIr) -> String {
     let webhooks = ir.webhooks.enabled;
     let mail = ir.mail.enabled;
     let file = ir.file.enabled;
+    let billing = ir.billing.enabled;
     format!(
         r#"export const authFeatures = {{ registration: {registration}, passwordReset: {password_reset}, emailVerification: true, oauth: {oauth}, oauthProviders: [{oauth_providers}] }} as const;
-export const adminFeatures = {{ tenant: {tenant}, audit: {audit}, jobs: {jobs}, webhooks: {webhooks}, mail: {mail}, file: {file} }} as const;
+export const adminFeatures = {{ tenant: {tenant}, audit: {audit}, jobs: {jobs}, webhooks: {webhooks}, mail: {mail}, file: {file}, billing: {billing} }} as const;
 
 export const authApi = {{
   me: async (options: RequestOptions = {{}}) => (await request<AuthResponse>("/api/auth/me", options)).user,
@@ -230,6 +237,9 @@ export const authApi = {{
   requestEmailVerification: () => request<void>("/api/auth/email/request", {{ method: "POST" }}),
   verifyEmail: (token: string) => request<void>("/api/auth/email/verify", {{ method: "POST", body: JSON.stringify({{ token }}) }}),
   startOAuth: (provider: string) => {{ window.location.assign(`/api/auth/oauth/${{provider}}/start`); }},
+  listLinkedAccounts: (options: RequestOptions = {{}}) => request<LinkedAccount[]>("/api/auth/accounts", options),
+  startOAuthLink: (provider: string) => {{ window.location.assign(`/api/auth/oauth/${{provider}}/link/start`); }},
+  unlinkOAuthAccount: (provider: string) => request<void>(`/api/auth/accounts/${{encodeURIComponent(provider)}}`, {{ method: "DELETE" }}),
   listApiTokens: (options: RequestOptions = {{}}) => request<ApiToken[]>("/api/auth/tokens", options),
   createApiToken: (name: string, expiresInDays?: number) => request<CreatedApiToken>("/api/auth/tokens", {{ method: "POST", body: JSON.stringify({{ name, expires_in_days: expiresInDays }}) }}),
   revokeApiToken: (id: string) => request<void>(`/api/auth/tokens/${{id}}`, {{ method: "DELETE" }}),

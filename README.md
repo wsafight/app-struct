@@ -66,7 +66,8 @@ appstruct doctor
 appstruct dev
 ```
 
-Open the forwarded Web port 5173 and create a Note. The API uses forwarded port 3000. This path
+`appstruct dev` opens the generated Web application after forwarded port 5173 is ready. The API
+uses forwarded port 3000. This path
 requires Docker and VS Code with Dev Containers on the host, but no host Rust, Node.js, or
 PostgreSQL installation. See [Installation](docs/installation.md) for details.
 
@@ -97,9 +98,10 @@ appstruct dev
 ```
 
 External databases default to `database.dev.migration: unmanaged`, so run migrations before the
-first start. `appstruct dev` then generates and builds the backend, installs locked Web
-dependencies, and starts the API and Rsbuild. The default URLs are `http://127.0.0.1:3000` and
-`http://127.0.0.1:5173`; override them with `--api-port` and `--web-port`.
+first start. `appstruct dev` then generates and builds the backend, installs locked Web dependencies,
+starts the API and Rsbuild, and opens the Web application when it is ready. The default URLs are
+`http://127.0.0.1:3000` and `http://127.0.0.1:5173`; override them with `--api-port` and
+`--web-port`, or pass `--no-open` to keep the browser closed.
 
 ### Managed PostgreSQL
 
@@ -150,7 +152,9 @@ appstruct db pull --schema public --output spec/imported.yaml
 
 The command reads `DATABASE_URL`, never changes the database or root `includes`, and refuses to
 overwrite the output. Review unsupported-shape warnings and add entity access rules before
-including the draft in `appstruct.yaml`. Use `--check` in CI, or `--diff` to print live changes
+including the draft in `appstruct.yaml`. Use `--access public|authenticated`,
+`--access role --role <name>`, or `--access owner --owner <relation>` to write a uniform reviewed
+policy; the default remains fail-closed. Use `--check` in CI, or `--diff` to print live changes
 without writing the file.
 
 ## Development migrations
@@ -199,10 +203,12 @@ appstruct capabilities [--format text|json]
 appstruct check [--deny-warnings] [--format text|json]
 appstruct generate [--check] [--timings]
 appstruct migrate plan|dev|lint|apply|status
-appstruct dev [--api-port <port>] [--web-port <port>]
+appstruct dev [--api-port <port>] [--web-port <port>] [--no-open]
 appstruct build
 appstruct doctor [--format text|json]
-appstruct db pull [--schema <name>] [--output <project-relative-path>] [--review | --check | --diff]
+appstruct status [--format text|json]
+appstruct project status|events|diagnose
+appstruct db pull [--schema <name>] [--output <path>] [--review | --check | --diff] [--access <policy>]
 appstruct auth bootstrap-admin --email <address>
 appstruct preset show [--expanded]
 appstruct update

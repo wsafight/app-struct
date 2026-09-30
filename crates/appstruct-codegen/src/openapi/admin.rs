@@ -83,13 +83,13 @@ fn revoke_sessions_path() -> Value {
 fn overview_schema() -> Value {
     json!({
         "type": "object",
-        "required": ["users", "organizations", "invitations", "sessions", "jobs_queued", "jobs_dead", "mail_deliveries", "files", "audit_events"],
+        "required": ["users", "organizations", "invitations", "sessions", "jobs_queued", "jobs_dead", "mail_deliveries", "files", "audit_events", "billing_events"],
         "properties": {
             "users": { "type": "integer" }, "organizations": { "type": "integer" },
             "invitations": { "type": "integer" }, "sessions": { "type": "integer" },
             "jobs_queued": { "type": "integer" }, "jobs_dead": { "type": "integer" },
             "mail_deliveries": { "type": "integer" }, "files": { "type": "integer" },
-            "audit_events": { "type": "integer" }
+            "audit_events": { "type": "integer" }, "billing_events": { "type": "integer" }
         }
     })
 }

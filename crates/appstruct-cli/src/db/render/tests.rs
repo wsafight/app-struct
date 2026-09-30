@@ -47,6 +47,26 @@ fn renders_deterministic_entities_relations_and_review_warnings() {
 }
 
 #[test]
+fn renders_role_and_owner_access_policies() {
+    let schema = fixture();
+    let role = render_with_access(&schema, &AccessMode::Role("admin".to_owned()));
+    assert!(role.source.contains("      list: { role: \"admin\" }\n"));
+    assert!(role.source.contains("      delete: { role: \"admin\" }\n"));
+    assert!(
+        role.source
+            .contains("Access rules were selected during import")
+    );
+
+    let owner = render_with_access(&schema, &AccessMode::Owner("owner".to_owned()));
+    assert!(owner.source.contains("      list: { owner: \"owner\" }\n"));
+    assert!(
+        owner
+            .source
+            .contains("      delete: { owner: \"owner\" }\n")
+    );
+}
+
+#[test]
 fn normalizes_quoted_identifiers_but_preserves_database_names() {
     let schema = IntrospectedSchema {
         name: "public".to_owned(),

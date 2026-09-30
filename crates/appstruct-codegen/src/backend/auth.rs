@@ -38,10 +38,7 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             template("auth/admin_webhooks.rs")?,
         ),
         generated("backend/src/auth/mail.rs", template("auth/mail.rs")?),
-        generated(
-            "backend/src/auth/oauth.rs",
-            oauth_template(&ir.auth.oauth_providers)?,
-        ),
+        generated("backend/src/auth/oauth.rs", oauth_template(&ir.auth)?),
         generated(
             "backend/src/auth/recovery.rs",
             template("auth/recovery.rs")?,
@@ -81,6 +78,7 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
     let webhooks = ir.webhooks.enabled;
     let mail = ir.mail.enabled;
     let file = ir.file.enabled;
+    let billing = ir.billing.enabled;
     let tenant = ir.tenant.enabled;
     let audit = ir.audit.enabled;
     let resources = ir.entities.iter().map(|entity| entity.id.0.as_str());
@@ -101,6 +99,7 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub const WEBHOOKS_ENABLED: bool = #webhooks;
         pub const MAIL_ENABLED: bool = #mail;
         pub const FILE_ENABLED: bool = #file;
+        pub const BILLING_ENABLED: bool = #billing;
         pub const TENANT_ENABLED: bool = #tenant;
         pub const AUDIT_ENABLED: bool = #audit;
         pub const SAVED_VIEW_RESOURCES: &[&str] = &[#(#resources),*];
@@ -172,19 +171,33 @@ fn template(name: &str) -> Result<String, CodegenError> {
     super::rust_template(source)
 }
 
-fn oauth_template(providers: &[String]) -> Result<String, CodegenError> {
-    let source = if providers.is_empty() {
+fn oauth_template(auth: &appstruct_ir::AuthIr) -> Result<String, CodegenError> {
+    let source = if auth.oauth_providers.is_empty() {
         include_str!("../../templates/backend/auth/oauth_disabled.rs")
     } else {
         include_str!("../../templates/backend/auth/oauth.rs")
     };
-    let provider_list = providers
+    let provider_list = auth
+        .oauth_providers
         .iter()
         .map(|provider| format!("\"{provider}\""))
         .collect::<Vec<_>>()
         .join(", ");
-    super::rust_template(&source.replace(
-        "const ENABLED_PROVIDERS: &[&str] = &[];",
-        &format!("const ENABLED_PROVIDERS: &[&str] = &[{provider_list}];"),
-    ))
+    let signup_disabled = auth
+        .oauth_signup_disabled
+        .iter()
+        .map(|provider| format!("\"{provider}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    super::rust_template(
+        &source
+            .replace(
+                "const ENABLED_PROVIDERS: &[&str] = &[];",
+                &format!("const ENABLED_PROVIDERS: &[&str] = &[{provider_list}];"),
+            )
+            .replace(
+                "const SIGNUP_DISABLED_PROVIDERS: &[&str] = &[];",
+                &format!("const SIGNUP_DISABLED_PROVIDERS: &[&str] = &[{signup_disabled}];"),
+            ),
+    )
 }

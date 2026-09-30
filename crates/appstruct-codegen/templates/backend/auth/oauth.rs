@@ -1,33 +1,45 @@
 use super::config;
-use super::handlers::{hash_password, normalize_email, quote_ident};
+use super::handlers::{normalize_email, quote_ident};
 use super::session::{cookie_value, random_token};
 use crate::{ApiError, AppState};
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::Redirect;
-use axum::routing::get;
+use axum::routing::{delete, get};
 use axum::Router;
 use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const ENABLED_PROVIDERS: &[&str] = &[];
+const SIGNUP_DISABLED_PROVIDERS: &[&str] = &[];
 
 pub(super) fn router() -> Router<AppState> {
     let mut router = Router::new();
+    if !ENABLED_PROVIDERS.is_empty() {
+        router = router
+            .route("/api/auth/accounts", get(list_accounts))
+            .route("/api/auth/accounts/{provider}", delete(unlink_account));
+    }
     if enabled("oidc") {
         router = router
             .route("/api/auth/oauth/oidc/start", get(start_oidc))
-            .route("/api/auth/oauth/oidc/callback", get(callback_oidc));
+            .route("/api/auth/oauth/oidc/callback", get(callback_oidc))
+            .route("/api/auth/oauth/oidc/link/start", get(start_oidc_link))
+            .route("/api/auth/oauth/oidc/link/callback", get(callback_oidc_link));
     }
     if enabled("google") {
         router = router
             .route("/api/auth/oauth/google/start", get(start_google))
-            .route("/api/auth/oauth/google/callback", get(callback_google));
+            .route("/api/auth/oauth/google/callback", get(callback_google))
+            .route("/api/auth/oauth/google/link/start", get(start_google_link))
+            .route("/api/auth/oauth/google/link/callback", get(callback_google_link));
     }
     if enabled("github") {
         router = router
             .route("/api/auth/oauth/github/start", get(start_github))
-            .route("/api/auth/oauth/github/callback", get(callback_github));
+            .route("/api/auth/oauth/github/callback", get(callback_github))
+            .route("/api/auth/oauth/github/link/start", get(start_github_link))
+            .route("/api/auth/oauth/github/link/callback", get(callback_github_link));
     }
     router
 }
@@ -39,19 +51,19 @@ struct OAuthCallback {
 }
 
 async fn start_oidc() -> Result<(HeaderMap, Redirect), ApiError> {
-    start_oauth("oidc").await
+    start_oauth("oidc", None).await
 }
 
 async fn start_google() -> Result<(HeaderMap, Redirect), ApiError> {
-    start_oauth("google").await
+    start_oauth("google", None).await
 }
 
 async fn start_github() -> Result<(HeaderMap, Redirect), ApiError> {
-    start_oauth("github").await
+    start_oauth("github", None).await
 }
 
-async fn start_oauth(provider: &str) -> Result<(HeaderMap, Redirect), ApiError> {
-    let config = provider_config(provider)?;
+async fn start_oauth(provider: &str, link_user: Option<uuid::Uuid>) -> Result<(HeaderMap, Redirect), ApiError> {
+    let config = provider_config(provider, link_user.is_some())?;
     let oauth_state = random_token();
     let scope = if provider == "github" {
         "read:user user:email"
@@ -75,6 +87,13 @@ async fn start_oauth(provider: &str) -> Result<(HeaderMap, Redirect), ApiError> 
         .parse()
         .map_err(|_| ApiError::Internal)?,
     );
+    if let Some(user_id) = link_user {
+        headers.append(
+            axum::http::header::SET_COOKIE,
+            format!("appstruct_oauth_link_user={user_id}; Path=/api/auth/oauth/{provider}/link; HttpOnly; SameSite=Lax; Max-Age=600")
+                .parse().map_err(|_| ApiError::Internal)?,
+        );
+    }
     Ok((headers, Redirect::temporary(&url)))
 }
 
@@ -83,7 +102,7 @@ async fn callback_oidc(
     headers: HeaderMap,
     query: axum::extract::Query<OAuthCallback>,
 ) -> Result<(HeaderMap, Redirect), ApiError> {
-    oauth_callback("oidc", state, headers, query).await
+    oauth_callback("oidc", state, headers, query, false).await
 }
 
 async fn callback_google(
@@ -91,7 +110,7 @@ async fn callback_google(
     headers: HeaderMap,
     query: axum::extract::Query<OAuthCallback>,
 ) -> Result<(HeaderMap, Redirect), ApiError> {
-    oauth_callback("google", state, headers, query).await
+    oauth_callback("google", state, headers, query, false).await
 }
 
 async fn callback_github(
@@ -99,7 +118,179 @@ async fn callback_github(
     headers: HeaderMap,
     query: axum::extract::Query<OAuthCallback>,
 ) -> Result<(HeaderMap, Redirect), ApiError> {
-    oauth_callback("github", state, headers, query).await
+    oauth_callback("github", state, headers, query, false).await
+}
+
+async fn start_oidc_link(
+    State(state): State<AppState>, headers: HeaderMap,
+) -> Result<(HeaderMap, Redirect), ApiError> {
+    start_link("oidc", &state, &headers).await
+}
+
+async fn start_google_link(
+    State(state): State<AppState>, headers: HeaderMap,
+) -> Result<(HeaderMap, Redirect), ApiError> {
+    start_link("google", &state, &headers).await
+}
+
+async fn start_github_link(
+    State(state): State<AppState>, headers: HeaderMap,
+) -> Result<(HeaderMap, Redirect), ApiError> {
+    start_link("github", &state, &headers).await
+}
+
+async fn start_link(
+    provider: &str,
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(HeaderMap, Redirect), ApiError> {
+    let actor = state
+        .auth
+        .actor(&state.database, headers)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    start_oauth(provider, Some(actor.id)).await
+}
+
+async fn callback_oidc_link(
+    State(state): State<AppState>, headers: HeaderMap,
+    query: axum::extract::Query<OAuthCallback>,
+) -> Result<(HeaderMap, Redirect), ApiError> {
+    oauth_callback("oidc", state, headers, query, true).await
+}
+
+async fn callback_google_link(
+    State(state): State<AppState>, headers: HeaderMap,
+    query: axum::extract::Query<OAuthCallback>,
+) -> Result<(HeaderMap, Redirect), ApiError> {
+    oauth_callback("google", state, headers, query, true).await
+}
+
+async fn callback_github_link(
+    State(state): State<AppState>, headers: HeaderMap,
+    query: axum::extract::Query<OAuthCallback>,
+) -> Result<(HeaderMap, Redirect), ApiError> {
+    oauth_callback("github", state, headers, query, true).await
+}
+
+#[derive(Serialize)]
+struct LinkedAccount {
+    provider: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+async fn list_accounts(
+    State(state): State<AppState>, headers: HeaderMap,
+) -> Result<axum::Json<Vec<LinkedAccount>>, ApiError> {
+    let actor = state
+        .auth
+        .actor(&state.database, &headers)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    let rows = state
+        .database
+        .query_all_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT provider, created_at FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1 ORDER BY created_at, provider",
+            [actor.id.into()],
+        ))
+        .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(LinkedAccount {
+                provider: row.try_get("", "provider")?,
+                created_at: row.try_get("", "created_at")?,
+            })
+        })
+        .collect::<Result<Vec<_>, sea_orm::DbErr>>()
+        .map(axum::Json)
+        .map_err(ApiError::from)
+}
+
+async fn unlink_account(
+    State(state): State<AppState>, headers: HeaderMap, Path(provider): Path<String>,
+) -> Result<axum::http::StatusCode, ApiError> {
+    let actor = state
+        .auth
+        .actor_for_mutation(&state.database, &headers)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    if !enabled(&provider) {
+        return Err(ApiError::NotFound);
+    }
+    let transaction = state.database.begin().await?;
+    let account = transaction
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT (SELECT COUNT(*) FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1) AS oauth_count, a.password_hash FROM \"_appstruct_auth_accounts\" a WHERE a.user_id = $1",
+            [actor.id.into()],
+        ))
+        .await?
+        .ok_or(ApiError::Internal)?;
+    let count: i64 = account.try_get("", "oauth_count")?;
+    let password_hash: String = account.try_get("", "password_hash")?;
+    if count <= 1 && password_hash.is_empty() {
+        return Err(ApiError::Conflict(
+            "The last linked login method cannot be removed".to_owned(),
+        ));
+    }
+    let deleted = transaction
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "DELETE FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1 AND provider = $2",
+            [actor.id.into(), provider.clone().into()],
+        ))
+        .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(ApiError::NotFound);
+    }
+    transaction.commit().await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+async fn link_oauth_account(
+    state: &AppState,
+    user_id: uuid::Uuid,
+    provider: &str,
+    subject: &str,
+) -> Result<(), ApiError> {
+    if state
+        .database
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT user_id FROM \"_appstruct_auth_oauth_accounts\" WHERE provider = $1 AND subject = $2",
+            [provider.to_owned().into(), subject.to_owned().into()],
+        ))
+        .await?
+        .is_some()
+    {
+        return Err(ApiError::Conflict(
+            "This provider account is already linked".to_owned(),
+        ));
+    }
+    state
+        .database
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO \"_appstruct_auth_oauth_accounts\" (provider, subject, user_id, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
+            [provider.to_owned().into(), subject.to_owned().into(), user_id.into()],
+        ))
+        .await?;
+    Ok(())
+}
+
+fn clear_link_cookies(provider: &str) -> Result<HeaderMap, ApiError> {
+    let mut headers = HeaderMap::new();
+    for cookie in [
+        format!("appstruct_oauth_state=; Path=/api/auth/oauth/{provider}; Max-Age=0; HttpOnly; SameSite=Lax"),
+        format!("appstruct_oauth_link_user=; Path=/api/auth/oauth/{provider}/link; Max-Age=0; HttpOnly; SameSite=Lax"),
+    ] {
+        headers.append(
+            axum::http::header::SET_COOKIE,
+            cookie.parse().map_err(|_| ApiError::Internal)?,
+        );
+    }
+    Ok(headers)
 }
 
 async fn oauth_callback(
@@ -107,13 +298,14 @@ async fn oauth_callback(
     state: AppState,
     headers: HeaderMap,
     axum::extract::Query(input): axum::extract::Query<OAuthCallback>,
+    linking: bool,
 ) -> Result<(HeaderMap, Redirect), ApiError> {
     let expected = cookie_value(&headers, "appstruct_oauth_state")
         .ok_or(ApiError::InvalidOAuthState)?;
     if expected != input.state {
         return Err(ApiError::InvalidOAuthState);
     }
-    let provider_config = provider_config(provider)?;
+    let provider_config = provider_config(provider, linking)?;
     let token_response = reqwest::Client::new()
         .post(&provider_config.token_url)
         .header("Accept", "application/json")
@@ -179,6 +371,21 @@ async fn oauth_callback(
         return Err(ApiError::OAuthProvider);
     }
     let email = normalize_email(&email)?;
+    if linking {
+        let actor = state
+            .auth
+            .actor(&state.database, &headers)
+            .await?
+            .ok_or(ApiError::Unauthorized)?;
+        let linked_user = cookie_value(&headers, "appstruct_oauth_link_user")
+            .and_then(|value| uuid::Uuid::parse_str(&value).ok())
+            .ok_or(ApiError::InvalidOAuthState)?;
+        if actor.id != linked_user {
+            return Err(ApiError::InvalidOAuthState);
+        }
+        link_oauth_account(&state, actor.id, provider, &subject).await?;
+        return Ok((clear_link_cookies(provider)?, Redirect::temporary("/account")));
+    }
     let user_id = find_or_create_oauth_user(&state, provider, &subject, &email).await?;
     let (session, csrf) = state.auth.create_session(&state.database, user_id).await?;
     let mut response_headers = state.auth.session_headers(&session, &csrf);
@@ -252,6 +459,9 @@ async fn find_or_create_oauth_user(
     {
         row.try_get("", config::USER_ID_COLUMN)?
     } else {
+        if !signup_allowed(provider) {
+            return Err(ApiError::Forbidden);
+        }
         let id = uuid::Uuid::now_v7();
         transaction
             .execute_raw(Statement::from_sql_and_values(
@@ -269,7 +479,7 @@ async fn find_or_create_oauth_user(
             .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
                 "INSERT INTO \"_appstruct_auth_accounts\" (user_id, password_hash, roles, email_verified_at, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-                [id.into(), hash_password(&random_token())?.into(), serde_json::json!([config::DEFAULT_ROLE]).into()],
+                [id.into(), "".to_owned().into(), serde_json::json!([config::DEFAULT_ROLE]).into()],
             ))
             .await?;
         id
@@ -294,7 +504,7 @@ struct ProviderConfig {
     redirect_uri: String,
 }
 
-fn provider_config(provider: &str) -> Result<ProviderConfig, ApiError> {
+fn provider_config(provider: &str, linking: bool) -> Result<ProviderConfig, ApiError> {
     if !enabled(provider) {
         return Err(ApiError::OAuthConfiguration);
     }
@@ -319,18 +529,31 @@ fn provider_config(provider: &str) -> Result<ProviderConfig, ApiError> {
         ),
         _ => return Err(ApiError::OAuthConfiguration),
     };
+    let redirect_uri = required_env(&format!("{prefix}_REDIRECT_URI"))?;
+    let redirect_uri = if linking {
+        redirect_uri
+            .strip_suffix("/callback")
+            .map(|base| format!("{base}/link/callback"))
+            .ok_or(ApiError::OAuthConfiguration)?
+    } else {
+        redirect_uri
+    };
     Ok(ProviderConfig {
         authorization_url,
         token_url,
         userinfo_url,
         client_id: required_env(&format!("{prefix}_CLIENT_ID"))?,
         client_secret: required_env(&format!("{prefix}_CLIENT_SECRET"))?,
-        redirect_uri: required_env(&format!("{prefix}_REDIRECT_URI"))?,
+        redirect_uri,
     })
 }
 
 fn enabled(provider: &str) -> bool {
     ENABLED_PROVIDERS.contains(&provider)
+}
+
+fn signup_allowed(provider: &str) -> bool {
+    !SIGNUP_DISABLED_PROVIDERS.contains(&provider)
 }
 
 fn required_env(name: &str) -> Result<String, ApiError> {

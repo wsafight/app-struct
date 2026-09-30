@@ -32,11 +32,18 @@ pub(super) fn extend_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
         ]);
     }
     if ir.billing.enabled {
-        artifacts.push(Artifact::text(
-            "web/src/billing/BillingPage.tsx",
-            include_str!("../../templates/web/billing/BillingPage.tsx"),
-            ArtifactKind::Web,
-        ));
+        artifacts.extend([
+            Artifact::text(
+                "web/src/billing/BillingPage.tsx",
+                include_str!("../../templates/web/billing/BillingPage.tsx"),
+                ArtifactKind::Web,
+            ),
+            Artifact::text(
+                "web/src/billing/AdminBillingPage.tsx",
+                include_str!("../../templates/web/billing/AdminBillingPage.tsx"),
+                ArtifactKind::Web,
+            ),
+        ]);
     }
     if ir.tenant.enabled {
         artifacts.push(Artifact::text(

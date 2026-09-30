@@ -1,5 +1,6 @@
 use crate::environment::ProjectEnvironment;
-use std::io::{self, BufRead, BufReader, Read};
+use std::fs::{self, OpenOptions};
+use std::io::{self, BufRead, BufReader, Read, Write};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 #[cfg(windows)]
@@ -36,11 +37,12 @@ impl DevProcesses {
         };
         let mut api = api;
         let mut web = web;
+        let log_path = prepare_log(project)?;
         let logs = vec![
-            log_pipe("api", api.stdout.take()),
-            log_pipe("api", api.stderr.take()),
-            log_pipe("web", web.stdout.take()),
-            log_pipe("web", web.stderr.take()),
+            log_pipe("api", api.stdout.take(), Some(log_path.clone())),
+            log_pipe("api", api.stderr.take(), Some(log_path.clone())),
+            log_pipe("web", web.stdout.take(), Some(log_path.clone())),
+            log_pipe("web", web.stderr.take(), Some(log_path)),
         ]
         .into_iter()
         .flatten()
@@ -66,8 +68,8 @@ impl DevProcesses {
         )?;
         self.logs.extend(
             [
-                log_pipe("api", api.stdout.take()),
-                log_pipe("api", api.stderr.take()),
+                log_pipe("api", api.stdout.take(), prepare_log(project).ok()),
+                log_pipe("api", api.stderr.take(), prepare_log(project).ok()),
             ]
             .into_iter()
             .flatten(),
@@ -269,13 +271,29 @@ impl Drop for ManagedDatabase {
 fn log_pipe(
     service: &'static str,
     pipe: Option<impl Read + Send + 'static>,
+    log_path: Option<std::path::PathBuf>,
 ) -> Option<thread::JoinHandle<()>> {
     let pipe = pipe?;
     Some(thread::spawn(move || {
+        let mut log =
+            log_path.and_then(|path| OpenOptions::new().create(true).append(true).open(path).ok());
         for line in BufReader::new(pipe).lines().map_while(Result::ok) {
             eprintln!("[{service}] {line}");
+            if let Some(log) = &mut log {
+                let _ = writeln!(log, "[{service}] {line}");
+            }
         }
     }))
+}
+
+fn prepare_log(project: &Path) -> io::Result<std::path::PathBuf> {
+    let directory = project.join(".appstruct/logs");
+    fs::create_dir_all(&directory)?;
+    let path = directory.join("dev.log");
+    if fs::metadata(&path).is_ok_and(|metadata| metadata.len() > 5 * 1024 * 1024) {
+        OpenOptions::new().write(true).truncate(true).open(&path)?;
+    }
+    Ok(path)
 }
 
 fn terminate(child: &mut Child) {

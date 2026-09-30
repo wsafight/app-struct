@@ -18,7 +18,9 @@ mod generation;
 mod migration;
 mod module_registry;
 mod preset;
+mod project_diagnostics;
 mod project_new;
+mod project_status;
 mod report;
 mod schema;
 mod transaction;
@@ -54,22 +56,7 @@ enum Command {
         template: project_new::ProjectTemplate,
     },
     /// Interactively create a new `AppStruct` project.
-    Init {
-        /// Optional project name; when omitted, prompt in a terminal.
-        name: Option<String>,
-        /// Optional template; when omitted, prompt in a terminal.
-        #[arg(long, value_enum)]
-        template: Option<project_new::ProjectTemplate>,
-        /// Development database mode; defaults to the selected template.
-        #[arg(long, value_enum)]
-        database_mode: Option<project_new::DatabaseMode>,
-        /// API port saved as a project-local development default.
-        #[arg(long)]
-        api_port: Option<u16>,
-        /// Web port saved as a project-local development default.
-        #[arg(long)]
-        web_port: Option<u16>,
-    },
+    Init(project_new::InitArgs),
     /// Build validated backend and web production artifacts.
     Build,
     /// Manage authentication accounts.
@@ -85,6 +72,9 @@ enum Command {
         api_port: Option<u16>,
         #[arg(long)]
         web_port: Option<u16>,
+        /// Do not open the generated Web application in the default browser.
+        #[arg(long)]
+        no_open: bool,
     },
     /// Inspect an existing PostgreSQL database.
     Db {
@@ -125,6 +115,13 @@ enum Command {
     Schema,
     /// Stage, verify, and transactionally commit locked framework updates.
     Update,
+    /// Inspect the local project control-plane status.
+    Project {
+        #[command(subcommand)]
+        command: project_status::ProjectCommand,
+    },
+    /// Show the local project control-plane status.
+    Status,
 }
 
 #[derive(Serialize)]
@@ -141,52 +138,18 @@ fn main() -> ExitCode {
 fn run(cli: Cli) -> ExitCode {
     report::set_output_format(cli.format);
     if let Command::New { name, template } = &cli.command {
-        let parent = match cli.project {
-            Some(ref path) => path.clone(),
-            None => match env::current_dir() {
-                Ok(path) => path,
-                Err(error) => {
-                    return report::fail(
-                        "AS6001",
-                        report::ErrorCategory::Project,
-                        format!("cannot read current directory: {error}"),
-                        report::ExitClass::Environment,
-                    );
-                }
-            },
+        let parent = match project_start(cli.project.as_ref()) {
+            Ok(path) => path,
+            Err(exit) => return exit,
         };
         return project_new::run(&parent, name, *template);
     }
-    if let Command::Init {
-        name,
-        template,
-        database_mode,
-        api_port,
-        web_port,
-    } = &cli.command
-    {
-        let parent = match cli.project {
-            Some(ref path) => path.clone(),
-            None => match env::current_dir() {
-                Ok(path) => path,
-                Err(error) => {
-                    return report::fail(
-                        "AS6001",
-                        report::ErrorCategory::Project,
-                        format!("cannot read current directory: {error}"),
-                        report::ExitClass::Environment,
-                    );
-                }
-            },
+    if let Command::Init(args) = &cli.command {
+        let parent = match project_start(cli.project.as_ref()) {
+            Ok(path) => path,
+            Err(exit) => return exit,
         };
-        return project_new::init(
-            &parent,
-            name.as_deref(),
-            *template,
-            *database_mode,
-            *api_port,
-            *web_port,
-        );
+        return project_new::init(&parent, args);
     }
     if matches!(&cli.command, Command::Schema | Command::Capabilities) {
         if matches!(&cli.command, Command::Capabilities) {
@@ -194,19 +157,9 @@ fn run(cli: Cli) -> ExitCode {
         }
         return schema::run();
     }
-    let start = match cli.project {
-        Some(path) => path,
-        None => match env::current_dir() {
-            Ok(path) => path,
-            Err(error) => {
-                return report::fail(
-                    "AS6001",
-                    report::ErrorCategory::Project,
-                    format!("cannot read current directory: {error}"),
-                    report::ExitClass::Environment,
-                );
-            }
-        },
+    let start = match project_start(cli.project.as_ref()) {
+        Ok(path) => path,
+        Err(exit) => return exit,
     };
     let project = match appstruct_compiler::discover_project(&start) {
         Ok(project) => project,
@@ -222,13 +175,17 @@ fn run(cli: Cli) -> ExitCode {
     };
 
     match cli.command {
-        Command::New { .. } | Command::Init { .. } | Command::Schema | Command::Capabilities => {
+        Command::New { .. } | Command::Init(_) | Command::Schema | Command::Capabilities => {
             unreachable!()
         }
         Command::Auth { command } => auth_admin::run(&project, &command),
         Command::Build => build::run(&project),
         Command::Doctor {} => doctor::run(&project, cli.format == report::OutputFormat::Json),
-        Command::Dev { api_port, web_port } => development::run(&project, api_port, web_port),
+        Command::Dev {
+            api_port,
+            web_port,
+            no_open,
+        } => development::run(&project, api_port, web_port, !no_open),
         Command::Db { command } => db::run(&project, &command),
         Command::Check { deny_warnings } => run_check(&project, cli.format, deny_warnings),
         Command::Generate { check, timings } => {
@@ -238,7 +195,25 @@ fn run(cli: Cli) -> ExitCode {
         Command::Module { command } => module_registry::run(&project, &command),
         Command::Preset { command } => preset::run(&project, &command),
         Command::Update => update::run(&project),
+        Command::Project { command } => {
+            project_diagnostics::run(&project, &command, cli.format == report::OutputFormat::Json)
+        }
+        Command::Status => project_status::run(&project, cli.format == report::OutputFormat::Json),
     }
+}
+
+fn project_start(project: Option<&PathBuf>) -> Result<PathBuf, ExitCode> {
+    if let Some(path) = project {
+        return Ok(path.clone());
+    }
+    env::current_dir().map_err(|error| {
+        report::fail(
+            "AS6001",
+            report::ErrorCategory::Project,
+            format!("cannot read current directory: {error}"),
+            report::ExitClass::Environment,
+        )
+    })
 }
 
 fn run_check(
