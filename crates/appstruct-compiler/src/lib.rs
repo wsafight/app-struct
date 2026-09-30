@@ -19,6 +19,7 @@ mod module_registry;
 mod preset;
 mod realtime;
 mod report;
+mod server;
 mod surface;
 mod tenant;
 mod validation;
@@ -111,10 +112,10 @@ pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
-    let warnings = lint::warnings(&application);
+    let mut warnings = lint::warnings(&application);
     let mut modules = local_modules;
     modules.extend(remote_modules);
-    lower::build_ir(surface_root, application, modules).map(|ir| CompileReport {
+    lower::build_ir(surface_root, application, modules, &mut warnings).map(|ir| CompileReport {
         ir,
         diagnostics: warnings,
     })

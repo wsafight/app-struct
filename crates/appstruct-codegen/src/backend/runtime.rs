@@ -15,6 +15,7 @@ pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, 
     let contract = contract_source();
     let application = application_source();
     let routing = router_source(routes);
+    let security = super::security::source(ir);
     let start_worker = start_worker(ir);
     let start_webhooks = start_webhook_worker(ir);
     let startup = super::startup::source(ir)?;
@@ -39,6 +40,7 @@ pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, 
         #contract
         #application
         #routing
+        #security
         #start_worker
         #start_webhooks
         #startup
@@ -239,7 +241,7 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
             mail: MailState, file: FileState, health: ApplicationHealth,
         ) -> Router {
             let cors = auth.cors_layer();
-            Router::new()
+            let router = Router::new()
                 #(#routes)*
                 .merge(operations::router()).merge(audit::router())
                 .merge(auth::router()).merge(billing::router()).merge(tenant::router())
@@ -249,8 +251,9 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
                 .route("/openapi.json", get(openapi)).layer(cors)
                 .layer(axum::middleware::from_fn(metrics::observe_http))
                 .layer(PropagateRequestIdLayer::x_request_id()).layer(TraceLayer::new_for_http())
-                .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-                .with_state(AppState {
+                .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid));
+            let router = apply_security_headers(router);
+            router.with_state(AppState {
                     realtime: RealtimeState::new(database.clone()),
                     database, extensions, auth, mail, file, health,
                 })

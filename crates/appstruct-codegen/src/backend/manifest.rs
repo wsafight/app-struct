@@ -22,7 +22,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         "serde_json = \"=1.0.151\"\n",
         "tinyvec = \"=1.13.3\"\n",
         "tokio = { version = \"=1.53.1\", features = [\"io-util\", \"macros\", \"net\", \"rt-multi-thread\", \"signal\", \"sync\", \"time\"] }\n",
-        "tower-http = { version = \"=0.7.1\", features = [\"cors\", \"request-id\", \"trace\"] }\n",
+        "tower-http = { version = \"=0.7.1\", features = [\"cors\", \"request-id\", \"set-header\", \"trace\"] }\n",
         "tracing = \"=0.1.44\"\n",
         "tracing-subscriber = { version = \"=0.3.23\", features = [\"env-filter\", \"fmt\"] }\n",
         "uuid = { version = \"=1.26.1\", features = [\"serde\", \"v7\"] }\n",

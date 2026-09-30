@@ -17,6 +17,7 @@ mod charts;
 use self::charts::build_charts;
 mod seeds;
 use self::seeds::build_seeds;
+use crate::server::lower_server;
 use crate::surface::{SurfaceDomain, SurfaceEntity, SurfaceRoot};
 use crate::tenant::lower_tenant;
 use crate::validation::validate_entity_declarations;
@@ -37,6 +38,7 @@ pub(crate) fn build_ir(
     root: SurfaceRoot,
     definitions: SurfaceDomain,
     local_modules: Vec<LoadedModule>,
+    warnings: &mut Vec<Diagnostic>,
 ) -> Result<AppIr, Vec<Diagnostic>> {
     let SurfaceDomain {
         entities: mut surface_entities,
@@ -64,6 +66,7 @@ pub(crate) fn build_ir(
         &mut diagnostics,
     );
     let tenant = lower_tenant(&root, &surface_entities, &auth, &mut diagnostics);
+    let server = lower_server(&root, warnings);
     let audit = lower_audit(
         &root.audit,
         &root.auth,
@@ -180,6 +183,7 @@ pub(crate) fn build_ir(
         }),
         auth,
         billing,
+        server,
         tenant,
         audit,
         mail,

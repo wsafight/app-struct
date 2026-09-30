@@ -233,6 +233,7 @@ site in `site/` renders both languages; from the workspace root run `pnpm run si
 
 - [Deployment](docs/deployment.md)
 - [Releasing](docs/releasing.md)
+- [Security headers](docs/security-headers.md)
 - [Migration lint](docs/migration-lint.md)
 - [Module registry](docs/module-registry.md)
 - [Delivery optimization](docs/optimization-progress.md)

@@ -10,6 +10,7 @@ mod typescript;
 mod web;
 
 pub use artifact::{Artifact, ArtifactKind, CodegenError};
+pub use web::symbols::{RequiredSymbols, check_user_symbols, required_symbols};
 
 use appstruct_ir::{AppIr, to_canonical_json, validate_app_ir};
 use quote::ToTokens;

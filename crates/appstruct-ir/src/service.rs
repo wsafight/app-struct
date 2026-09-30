@@ -14,6 +14,81 @@ pub struct TenantIr {
     pub enabled: bool,
 }
 
+/// Application server settings normalized by the compiler.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerIr {
+    #[serde(default)]
+    pub security_headers: SecurityHeadersIr,
+}
+
+impl ServerIr {
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Security response headers applied to every generated route.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SecurityHeadersIr {
+    pub enabled: bool,
+    pub hsts: HstsIr,
+    pub frame_options: FrameOptionsIr,
+    pub referrer_policy: ReferrerPolicyIr,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_security_policy: Option<String>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub custom: std::collections::BTreeMap<String, String>,
+}
+
+impl SecurityHeadersIr {
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+impl Default for SecurityHeadersIr {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            hsts: HstsIr::Auto,
+            frame_options: FrameOptionsIr::Deny,
+            referrer_policy: ReferrerPolicyIr::StrictOriginWhenCrossOrigin,
+            content_security_policy: None,
+            custom: std::collections::BTreeMap::new(),
+        }
+    }
+}
+
+/// Strict-Transport-Security policy. `Auto` emits the header only in production.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HstsIr {
+    Auto,
+    Off,
+    MaxAge(u64),
+}
+
+/// X-Frame-Options policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrameOptionsIr {
+    Deny,
+    SameOrigin,
+    Off,
+}
+
+/// Referrer-Policy policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReferrerPolicyIr {
+    NoReferrer,
+    SameOrigin,
+    StrictOriginWhenCrossOrigin,
+    Off,
+}
+
 /// Audit module settings normalized by the compiler.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuditIr {

@@ -223,10 +223,26 @@ fn run_check(
 ) -> ExitCode {
     match appstruct_compiler::compile_project_report(project) {
         Ok(report) => {
-            let denied = deny_warnings && !report.diagnostics.is_empty();
+            let mut diagnostics = report.diagnostics;
+            match appstruct_codegen::check_user_symbols(project, &report.ir) {
+                Ok(missing) => diagnostics.extend(missing),
+                Err(error) => {
+                    return report::fail(
+                        "AS5008",
+                        report::ErrorCategory::Generation,
+                        format!("cannot inspect app/web sources: {error}"),
+                        report::ExitClass::Environment,
+                    );
+                }
+            }
+            // Errors always fail the check; `--deny-warnings` additionally promotes warnings.
+            let has_error = diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.severity == appstruct_ir::Severity::Error);
+            let denied = has_error || (deny_warnings && !diagnostics.is_empty());
             match format {
                 report::OutputFormat::Text => {
-                    for diagnostic in &report.diagnostics {
+                    for diagnostic in &diagnostics {
                         report::render_text_diagnostic(diagnostic);
                     }
                     if !denied {
@@ -238,7 +254,7 @@ fn run_check(
                     }
                 }
                 report::OutputFormat::Json => {
-                    render_json_report(!denied, report.ir.entities.len(), &report.diagnostics);
+                    render_json_report(!denied, report.ir.entities.len(), &diagnostics);
                 }
             }
             if denied {

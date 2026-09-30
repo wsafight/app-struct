@@ -89,7 +89,7 @@ pub fn from_compatible_json(source: &str) -> Result<AppIr, IrCompatibilityError>
             migrate_v12(&mut value);
         }
         Ok(12) => migrate_v12(&mut value),
-        Ok(13..=15) => value["ir_version"] = Value::from(IR_VERSION),
+        Ok(13..=16) => migrate_v16(&mut value),
         _ => return Err(IrCompatibilityError::UnsupportedVersion { found: version }),
     }
     serde_json::from_value(value).map_err(IrCompatibilityError::from)
@@ -192,6 +192,11 @@ fn migrate_v11(value: &mut Value) -> Result<(), IrCompatibilityError> {
 }
 
 fn migrate_v12(value: &mut Value) {
+    value["ir_version"] = Value::from(IR_VERSION);
+}
+
+fn migrate_v16(value: &mut Value) {
+    // `server` is serde-defaulted when absent and preserved when a prerelease v16 IR contains it.
     value["ir_version"] = Value::from(IR_VERSION);
 }
 

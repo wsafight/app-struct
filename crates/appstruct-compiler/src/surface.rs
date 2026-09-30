@@ -17,7 +17,9 @@ mod modules;
 mod preset;
 mod realtime;
 mod report;
+mod root;
 mod seeds;
+mod server;
 mod tenant;
 mod value;
 mod webhooks;
@@ -27,7 +29,8 @@ pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, Sur
 pub(crate) use model::{
     FieldFlags, Located, SurfaceAccess, SurfaceAccessRule, SurfaceChart, SurfaceDomain,
     SurfaceEntity, SurfaceField, SurfaceFieldAccess, SurfaceFieldSemantic, SurfaceFieldUi,
-    SurfaceRoot, SurfaceWorkflow,
+    SurfaceFrameOptions, SurfaceHsts, SurfaceReferrerPolicy, SurfaceRoot, SurfaceSecurityHeaders,
+    SurfaceServer, SurfaceWorkflow,
 };
 pub(crate) use modules::{
     SurfaceActivity, SurfaceAudit, SurfaceAuth, SurfaceBilling, SurfaceBillingPlan, SurfaceFile,
@@ -38,10 +41,11 @@ pub(crate) use modules::{
 
 use self::context::DecodeContext;
 use self::indexes::decode_indexes;
+use self::root::{decode_app_name, decode_string_list, decode_version};
 use self::seeds::decode_seeds;
 use self::value::{
     ensure_known_keys, expect_mapping, expect_scalar_string, expect_sequence, expect_string,
-    expect_u64, optional_bool, optional_string, optional_u64, required, unknown_key_diagnostics,
+    optional_bool, optional_string, optional_u64, required, unknown_key_diagnostics,
 };
 use self::workflow::decode_workflow;
 use crate::yaml::{MappingEntry, Node};
@@ -59,6 +63,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
             "preset",
             "modules",
             "module_manifests",
+            "server",
             "includes",
         ],
         "root configuration",
@@ -70,6 +75,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
     let module_manifests =
         context.capture(decode_string_list(mapping, "module_manifests", false, root));
     let preset = context.capture(preset::decode(mapping.get("preset")));
+    let server = context.capture(server::decode(mapping.get("server")));
     let modules = preset.as_ref().and_then(|preset| {
         context.capture(crate::preset::expand_modules(
             preset.as_ref(),
@@ -106,6 +112,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
             expanded_modules: modules?,
             auth: auth?,
             billing: billing?,
+            server: server?,
             tenant: tenant?,
             audit: audit?,
             mail: mail?,
@@ -166,45 +173,6 @@ pub(crate) fn decode_domain(root: &Node) -> Result<SurfaceDomain, Vec<Diagnostic
         })
     });
     context.finish(value)
-}
-
-fn decode_version(
-    mapping: &std::collections::BTreeMap<String, MappingEntry>,
-    root: &Node,
-) -> Result<Located<u64>, Diagnostic> {
-    let node = required(mapping, "version", &root.span)?;
-    expect_u64(&node.value, "`version`")
-}
-
-fn decode_app_name(
-    mapping: &std::collections::BTreeMap<String, MappingEntry>,
-    root: &Node,
-) -> Result<Located<String>, Diagnostic> {
-    let node = required(mapping, "app", &root.span)?;
-    let app = expect_mapping(&node.value, "`app`")?;
-    ensure_known_keys(app, &["name"], "`app`")?;
-    let name = required(app, "name", &node.value.span)?;
-    expect_string(&name.value, "`app.name`")
-}
-
-fn decode_string_list(
-    mapping: &std::collections::BTreeMap<String, MappingEntry>,
-    key: &str,
-    required_key: bool,
-    root: &Node,
-) -> Result<Vec<Located<String>>, Diagnostic> {
-    let entry = if required_key {
-        Some(required(mapping, key, &root.span)?)
-    } else {
-        mapping.get(key)
-    };
-    let Some(entry) = entry else {
-        return Ok(Vec::new());
-    };
-    expect_sequence(&entry.value, &format!("`{key}`"))?
-        .iter()
-        .map(|node| expect_string(node, &format!("{key} path")))
-        .collect()
 }
 
 fn decode_entities(

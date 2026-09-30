@@ -153,4 +153,22 @@ mod tests {
 
         assert!(input_fingerprint(project.path()).is_ok());
     }
+
+    #[test]
+    fn web_sources_do_not_invalidate_generated_artifacts() {
+        let project = tempfile::tempdir().unwrap();
+        fs::create_dir_all(project.path().join("app/web")).unwrap();
+        let registry = project.path().join("app/web/registry.ts");
+        fs::write(&registry, "export const registry = {};\n").unwrap();
+        let before = input_fingerprint(project.path()).unwrap();
+
+        fs::write(
+            registry,
+            "export const registry = { fields: {}, pages: {} };\n",
+        )
+        .unwrap();
+        let after = input_fingerprint(project.path()).unwrap();
+
+        assert_eq!(before, after);
+    }
 }

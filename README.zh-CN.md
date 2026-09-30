@@ -232,6 +232,7 @@ appstruct update
 
 - [部署](docs/deployment.zh-CN.md)
 - [发布 AppStruct](docs/releasing.zh-CN.md)
+- [安全响应头](docs/security-headers.zh-CN.md)
 - [迁移检查](docs/migration-lint.zh-CN.md)
 - [模块注册表](docs/module-registry.zh-CN.md)
 - [交付优化](docs/optimization-progress.zh-CN.md)

@@ -14,6 +14,15 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
             "dev": { "mode": "external", "migration": "unmanaged" }
         },
         "preset": { "name": "appstruct/saas", "version": 1 },
+        "server": {
+            "security_headers": {
+                "enabled": true,
+                "hsts": "auto",
+                "frame_options": "deny",
+                "referrer_policy": "strict-origin-when-cross-origin",
+                "custom": { "x-robots-tag": "noindex" }
+            }
+        },
         "modules": {
             "mail": {
                 "provider": "smtp",
@@ -141,4 +150,22 @@ fn app_spec_schema_rejects_unknown_keys_and_invalid_access() {
         }
     });
     assert!(!validator.is_valid(&invalid_semantic));
+
+    let invalid_security_headers = json!({
+        "version": 1,
+        "app": { "name": "demo" },
+        "database": { "provider": "postgres" },
+        "server": { "security_headers": { "frame_options": "sometimes" } },
+        "includes": []
+    });
+    assert!(!validator.is_valid(&invalid_security_headers));
+
+    let invalid_custom_header_name = json!({
+        "version": 1,
+        "app": { "name": "demo" },
+        "database": { "provider": "postgres" },
+        "server": { "security_headers": { "custom": { "Bad Header": "x" } } },
+        "includes": []
+    });
+    assert!(!validator.is_valid(&invalid_custom_header_name));
 }

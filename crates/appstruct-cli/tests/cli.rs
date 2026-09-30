@@ -554,6 +554,60 @@ fn generation_reuses_persistent_format_caches_after_an_incremental_change() {
     assert!(project.join(".appstruct/cache/web-format-v1").is_dir());
 }
 
+#[test]
+fn check_fails_on_missing_user_component() {
+    let project = temporary_project("m3-missing-symbol");
+    let output = run(&project, &["check", "--format", "json"]);
+    assert_eq!(output.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["valid"], false);
+    let diagnostics = report["diagnostics"].as_array().unwrap();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "AS3106"),
+        "{diagnostics:?}"
+    );
+}
+
+#[test]
+fn check_passes_when_user_components_are_provided() {
+    let project = temporary_project("m3-project");
+    let output = run(&project, &["check", "--format", "json"]);
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["valid"], true);
+}
+
+#[test]
+fn generate_fails_on_missing_user_component() {
+    let project = temporary_project("m3-missing-symbol");
+    let output = run(&project, &["generate"]);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("AS3106"), "{stderr}");
+    assert!(!project.join("generated").exists());
+}
+
+#[test]
+fn generation_cache_hit_rechecks_app_web_changes() {
+    let project = temporary_project("m3-project");
+    assert!(run(&project, &["generate"]).status.success());
+    fs::write(
+        project.join("app/web/registry.tsx"),
+        "export const registry = { fields: {}, pages: {} };\n",
+    )
+    .unwrap();
+    let output = run(&project, &["generate"]);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "cache must not hide a broken app/web tree"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("AS3106"), "{stderr}");
+}
+
 fn temporary_project(fixture: &str) -> PathBuf {
     let source = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/fixtures")

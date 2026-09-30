@@ -5,11 +5,64 @@ use super::{
 };
 use crate::yaml::MappingEntry;
 use appstruct_ir::SourceSpan;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Located<T> {
     pub value: T,
     pub span: SourceSpan,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct SurfaceServer {
+    pub security_headers: SurfaceSecurityHeaders,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceSecurityHeaders {
+    pub enabled: bool,
+    pub hsts: SurfaceHsts,
+    pub frame_options: SurfaceFrameOptions,
+    pub referrer_policy: SurfaceReferrerPolicy,
+    pub content_security_policy: Option<Located<String>>,
+    pub custom: BTreeMap<String, String>,
+    pub span: Option<SourceSpan>,
+}
+
+impl Default for SurfaceSecurityHeaders {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            hsts: SurfaceHsts::Auto,
+            frame_options: SurfaceFrameOptions::Deny,
+            referrer_policy: SurfaceReferrerPolicy::StrictOriginWhenCrossOrigin,
+            content_security_policy: None,
+            custom: BTreeMap::new(),
+            span: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SurfaceHsts {
+    Auto,
+    Off,
+    MaxAge(u64),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SurfaceFrameOptions {
+    Deny,
+    SameOrigin,
+    Off,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SurfaceReferrerPolicy {
+    NoReferrer,
+    SameOrigin,
+    StrictOriginWhenCrossOrigin,
+    Off,
 }
 
 #[derive(Clone, Debug)]
@@ -23,6 +76,7 @@ pub(crate) struct SurfaceRoot {
     pub expanded_modules: Option<MappingEntry>,
     pub auth: SurfaceAuth,
     pub billing: SurfaceBilling,
+    pub server: SurfaceServer,
     pub tenant: SurfaceTenant,
     pub audit: SurfaceAudit,
     pub mail: SurfaceMail,

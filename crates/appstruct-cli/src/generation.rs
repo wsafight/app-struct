@@ -51,6 +51,9 @@ fn run_with_output(
     timings.cache_lookup = cache_started.elapsed();
     match cache_hit {
         Ok(Some(hit)) => {
+            if let Err(status) = check_cached_user_symbols(project, &root) {
+                return status;
+            }
             timings.total = total_started.elapsed();
             if emit_success {
                 render_success(
@@ -139,6 +142,9 @@ fn plan_artifacts(
         crate::report::fail_diagnostics(crate::report::ErrorCategory::Validation, diagnostics)
     })?;
     timings.compiler = Some(compiler_started.elapsed());
+    // Run the cheap Rust-side symbol check before codegen and web formatting so a missing
+    // component fails fast instead of after a multi-second prettier pass.
+    check_user_symbols(project, &ir)?;
     let rustfmt_cache = project.join(".appstruct/cache/rustfmt-v1");
     let options = appstruct_codegen::PlanOptions::default().with_rustfmt_cache(&rustfmt_cache);
     let plan = appstruct_codegen::plan_with_options(&ir, options).map_err(|error| {
@@ -162,6 +168,50 @@ fn plan_artifacts(
         })?,
     );
     Ok((ir.app.name, artifacts))
+}
+
+/// Fails generation when `app/web/registry` omits a component the App Spec references.
+///
+/// This is the lightweight, Rust-side gate. `appstruct build` additionally runs the full
+/// TypeScript checker over the generated registry.
+fn check_user_symbols(project: &Path, ir: &appstruct_ir::AppIr) -> Result<(), ExitCode> {
+    let diagnostics = appstruct_codegen::check_user_symbols(project, ir).map_err(|error| {
+        crate::report::fail(
+            "AS5008",
+            crate::report::ErrorCategory::Generation,
+            format!("cannot inspect app/web sources: {error}"),
+            crate::report::ExitClass::Environment,
+        )
+    })?;
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(crate::report::fail_diagnostics(
+            crate::report::ErrorCategory::Validation,
+            diagnostics,
+        ))
+    }
+}
+
+fn check_cached_user_symbols(project: &Path, generated: &Path) -> Result<(), ExitCode> {
+    let path = generated.join("ir/app-ir.json");
+    let source = fs::read_to_string(&path).map_err(|error| {
+        crate::report::fail(
+            "AS5004",
+            crate::report::ErrorCategory::Generation,
+            format!("cannot read cached IR `{}`: {error}", path.display()),
+            crate::report::ExitClass::Environment,
+        )
+    })?;
+    let ir = appstruct_ir::from_compatible_json(&source).map_err(|error| {
+        crate::report::fail(
+            "AS5004",
+            crate::report::ErrorCategory::Generation,
+            format!("cached IR is invalid: {error}"),
+            crate::report::ExitClass::Validation,
+        )
+    })?;
+    check_user_symbols(project, &ir)
 }
 
 fn check_artifacts(

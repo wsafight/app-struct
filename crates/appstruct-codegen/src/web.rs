@@ -3,6 +3,7 @@ mod controllers;
 mod module_tests;
 mod modules;
 mod resources;
+pub mod symbols;
 
 use crate::{Artifact, ArtifactKind, generated_header};
 use appstruct_ir::AppIr;

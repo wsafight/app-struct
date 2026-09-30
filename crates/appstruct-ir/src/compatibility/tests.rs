@@ -191,6 +191,44 @@ fn migrates_v15_without_inventing_charts() {
 }
 
 #[test]
+fn migrates_v16_with_safe_server_defaults() {
+    let mut value: serde_json::Value = serde_json::from_str(GOLDEN_IR).unwrap();
+    value["ir_version"] = 16.into();
+    value.as_object_mut().unwrap().remove("server");
+
+    let migrated = from_compatible_json(&serde_json::to_string(&value).unwrap()).unwrap();
+
+    assert_eq!(migrated.ir_version, IR_VERSION);
+    assert!(migrated.server.security_headers.enabled);
+    assert!(
+        migrated
+            .server
+            .security_headers
+            .content_security_policy
+            .is_none()
+    );
+}
+
+#[test]
+fn migrates_v16_without_discarding_explicit_server_settings() {
+    let mut value: serde_json::Value = serde_json::from_str(GOLDEN_IR).unwrap();
+    value["ir_version"] = 16.into();
+    value["server"] = serde_json::json!({
+        "security_headers": {
+            "enabled": false,
+            "hsts": "off",
+            "frame_options": "off",
+            "referrer_policy": "off"
+        }
+    });
+
+    let migrated = from_compatible_json(&serde_json::to_string(&value).unwrap()).unwrap();
+
+    assert_eq!(migrated.ir_version, IR_VERSION);
+    assert!(!migrated.server.security_headers.enabled);
+}
+
+#[test]
 fn migrating_v11_preserves_explicit_service_contracts() {
     let mut value: serde_json::Value = serde_json::from_str(GOLDEN_IR).unwrap();
     value["ir_version"] = 11.into();

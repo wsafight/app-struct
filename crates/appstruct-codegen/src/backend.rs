@@ -18,6 +18,7 @@ mod realtime;
 mod report;
 mod runtime;
 mod scalar;
+mod security;
 mod startup;
 mod tenant;
 mod validation;

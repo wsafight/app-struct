@@ -18,9 +18,10 @@ pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, V
 pub use seed::SeedIr;
 use serde::{Deserialize, Serialize};
 pub use service::{
-    ActivityIr, ActivityResourceIr, AuditIr, FileIr, FileProviderIr, JobQueueIr, JobScheduleIr,
-    JobsIr, MailIr, MailProviderIr, MailTemplateIr, PresetIr, RealtimeIr, ReportIr,
-    ReportRendererIr, ReportTemplateIr, TenantIr, WebhookEndpointIr, WebhooksIr,
+    ActivityIr, ActivityResourceIr, AuditIr, FileIr, FileProviderIr, FrameOptionsIr, HstsIr,
+    JobQueueIr, JobScheduleIr, JobsIr, MailIr, MailProviderIr, MailTemplateIr, PresetIr,
+    RealtimeIr, ReferrerPolicyIr, ReportIr, ReportRendererIr, ReportTemplateIr, SecurityHeadersIr,
+    ServerIr, TenantIr, WebhookEndpointIr, WebhooksIr,
 };
 use std::fmt;
 pub use ui::FieldSemanticIr;
@@ -42,6 +43,8 @@ pub struct AppIr {
     pub auth: AuthIr,
     #[serde(default)]
     pub billing: BillingIr,
+    #[serde(default, skip_serializing_if = "ServerIr::is_default")]
+    pub server: ServerIr,
     pub tenant: TenantIr,
     pub audit: AuditIr,
     pub mail: MailIr,

@@ -6,6 +6,7 @@ mod graph;
 mod indexes;
 mod report;
 mod seeds;
+mod server;
 mod ui;
 mod workflow;
 use self::activity::validate_activity;
@@ -13,6 +14,7 @@ use self::graph::{validate_modules, validate_operations, validate_services};
 use self::indexes::validate_indexes;
 use self::report::validate_report;
 use self::seeds::validate_seeds;
+use self::server::validate_server;
 use self::ui::validate_field_semantics;
 use self::workflow::validate_workflow;
 use crate::{
@@ -51,6 +53,7 @@ pub fn validate_app_ir(ir: &AppIr) -> Result<(), IrValidationErrors> {
     validate_services(ir, &entities, &mut errors);
     validate_operations(ir, &entities, &value_objects, &mut errors);
     validate_report(ir, &mut errors);
+    validate_server(ir, &mut errors);
     validate_activity(ir, &entities, &mut errors);
     validate_modules(ir, &mut errors);
     errors.sort_by(|left, right| {

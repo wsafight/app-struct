@@ -299,6 +299,13 @@ database:
     mode: managed
     migration: prompt
 
+server:
+  security_headers:
+    enabled: true
+    hsts: auto
+    frame_options: deny
+    referrer_policy: strict-origin-when-cross-origin
+
 modules:
   auth:
     enabled: true
@@ -315,11 +322,16 @@ includes:
 
 - App 元数据
 - 数据库 Provider
+- HTTP 服务器策略（`server.security_headers`）
 - Template 来源记录
 - Preset 和 Module 配置
 - `module_manifests` 本地 manifest 路径
 - `includes`
 - 应用级默认访问策略
+
+`server.security_headers` 默认开启，只接受编译期常量：响应头在生成代码里是字面量，运行时不读环境
+（`hsts: auto` 的 production 判定除外）。`enabled: false` 时配置 `content_security_policy` 或
+`custom` 会输出 `AS3108` 警告。
 
 领域文件负责 Entity、Value Object、Enum、Command、Query 和页面覆盖。
 
@@ -1237,7 +1249,11 @@ export const registry = defineAppStructRegistry({
 });
 ```
 
-Registry key 由生成类型限制。Manifest 引用不存在的组件时 `tsc` 失败。
+Registry key 由生成类型限制。`satisfies AppStructRegistry` 和 `defineAppStructRegistry({...})` 两种写法
+都受支持。`appstruct generate` 与 `appstruct check` 会用 Rust 侧的 oxc 解析 `app/web/registry`
+模块，对各自 `pages` 或 `fields` map 中确定缺失的 key 报 `AS3106`（页面）或 `AS3107`（字段 UI
+组件）；registry 解析失败、重导出其值或使用动态对象结构时视为不确定，不报错。`appstruct build`
+仍运行完整 `tsc`，Manifest 引用不存在的组件时 `tsc` 失败。
 
 ### 17.5 状态管理
 

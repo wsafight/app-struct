@@ -22,6 +22,7 @@ export const pages = [
   {source:'docs/migration-lint.md', slug:'delivery/migration-lint', group:'delivery', title:{en:'Migration lint', zh:'迁移检查'}, description:{en:'Review destructive, locking, and unsafe schema changes before shipping.', zh:'在交付前审查破坏性、锁表和不安全的 Schema 变更。'}},
   {source:'docs/module-registry.md', slug:'delivery/module-registry', group:'delivery', title:{en:'Module registry', zh:'模块注册表'}, description:{en:'Resolve signed remote modules with locked versions and digests.', zh:'使用锁定版本与摘要解析签名远程模块。'}},
   {source:'docs/optimization-progress.md', slug:'delivery/optimization', group:'delivery', title:{en:'Delivery optimization', zh:'交付优化'}, description:{en:'Track compiler, generator, and build-time improvements.', zh:'记录编译器、生成器与构建耗时优化。'}},
+  {source:'docs/security-headers.md', slug:'delivery/security-headers', group:'delivery', title:{en:'Security headers', zh:'安全响应头'}, description:{en:'Default response headers on every generated route, with spec-level overrides.', zh:'为所有生成路由提供默认响应头，并支持 Spec 级覆盖。'}},
 
   {source:'docs/data-querying.md', slug:'data/querying', group:'data', title:{en:'Resource queries', zh:'资源查询'}, description:{en:'Pagination, filters, relations, aggregates, and access-aware query contracts.', zh:'分页、筛选、关系、聚合与权限感知查询契约。'}},
   {source:'docs/scalar-values.md', slug:'data/scalar-values', group:'data', title:{en:'Scalar values', zh:'标量值'}, description:{en:'Lossless values and datetime controls across Rust, JSON, and TypeScript.', zh:'在 Rust、JSON 与 TypeScript 间保持无损值和日期时间控制。'}},

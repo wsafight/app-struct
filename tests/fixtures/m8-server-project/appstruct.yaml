@@ -1,0 +1,33 @@
+version: 1
+
+app:
+  name: hardened-hub
+
+database:
+  provider: postgres
+  dev:
+    mode: external
+
+server:
+  security_headers:
+    enabled: true
+    hsts: auto
+    frame_options: sameorigin
+    referrer_policy: no-referrer
+    content_security_policy: "default-src 'self'"
+    custom:
+      x-robots-tag: noindex
+
+modules:
+  auth:
+    enabled: true
+    user_entity: User
+    registration: true
+    password_reset: true
+  rbac:
+    roles: [member, admin]
+    default_role: member
+
+includes:
+  - spec/project.yaml
+  - spec/identity.yaml

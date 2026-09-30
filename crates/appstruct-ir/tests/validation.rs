@@ -53,6 +53,34 @@ fn accepts_the_internal_revision_default() {
 }
 
 #[test]
+fn rejects_invalid_security_header_ir() {
+    let mut ir: appstruct_ir::AppIr =
+        serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();
+    ir.server.security_headers.content_security_policy = Some("default-src '自'".to_owned());
+    ir.server
+        .security_headers
+        .custom
+        .insert("X-Unsafe".to_owned(), "ok".to_owned());
+    ir.server
+        .security_headers
+        .custom
+        .insert("x-control".to_owned(), "bad\nvalue".to_owned());
+
+    let errors = validate_app_ir(&ir).unwrap_err();
+
+    for path in [
+        "server.security_headers.content_security_policy",
+        "server.security_headers.custom.X-Unsafe",
+        "server.security_headers.custom.x-control",
+    ] {
+        assert!(
+            errors.errors().iter().any(|error| error.path == path),
+            "missing {path} in {errors}"
+        );
+    }
+}
+
+#[test]
 fn validates_money_ui_semantics_without_trusting_the_compiler() {
     let mut ir: appstruct_ir::AppIr =
         serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();

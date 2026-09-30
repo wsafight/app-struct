@@ -299,6 +299,13 @@ database:
     mode: managed
     migration: prompt
 
+server:
+  security_headers:
+    enabled: true
+    hsts: auto
+    frame_options: deny
+    referrer_policy: strict-origin-when-cross-origin
+
 modules:
   auth:
     enabled: true
@@ -315,11 +322,17 @@ The root entry is the only place allowed to declare:
 
 - App metadata
 - Database Provider
+- HTTP server policy (`server.security_headers`)
 - Template source records
 - Preset and Module configuration
 - `module_manifests` local manifest paths
 - `includes`
 - Application-level default access policy
+
+`server.security_headers` is on by default and accepts compile-time constants only: the headers are
+literals in the generated code, and the runtime reads no environment at request time (the only
+exception is the production check behind `hsts: auto`). Configuring `content_security_policy` or
+`custom` while `enabled: false` emits warning `AS3108`.
 
 Domain files own Entity, Value Object, Enum, Command, Query, and page overrides.
 
@@ -1172,7 +1185,13 @@ export const registry = defineAppStructRegistry({
 });
 ```
 
-Registry keys are constrained by generated types. `tsc` fails when the Manifest references a missing component.
+Registry keys are constrained by generated types. Both `satisfies AppStructRegistry` and
+`defineAppStructRegistry({...})` are supported. `appstruct generate` and `appstruct check` parse
+the `app/web/registry` module with oxc on the Rust side and report `AS3106` (page) or `AS3107`
+(field UI component) for keys that are definitely missing from their respective `pages` or `fields`
+maps. A registry that fails to parse, re-exports its value, or uses a dynamic object shape makes the
+check inconclusive and reports nothing. `appstruct build` still runs the full `tsc`, which fails when
+the Manifest references a missing component.
 
 ### 17.5 State Management
 
