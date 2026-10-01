@@ -188,9 +188,13 @@ fn generated_web_uses_the_tanstack_runtime() {
         &artifacts,
         "web/src/pages/resource-list/ResourceInsights.tsx",
     );
-    assert!(insights.contains("ResponsiveContainer"));
+    // `recharts` lives in a lazily loaded module so the resource list does not pull it in.
     assert!(insights.contains("aggregateGroupOptions"));
     assert!(insights.contains("aggregateGroupKey"));
+    assert!(insights.contains("lazy(() =>"));
+    let chart = artifact_text(&artifacts, "web/src/pages/resource-list/AggregateChart.tsx");
+    assert!(chart.contains("ResponsiveContainer"));
+    assert!(chart.contains("from \"recharts\""));
     let inline_editor = artifact_text(&artifacts, "web/src/pages/resource-list/InlineEditor.tsx");
     assert!(inline_editor.contains("supportsInlineEdit"));
     assert!(list.contains("expected_revisions"));
@@ -251,6 +255,7 @@ fn m3_extensions_require_every_handler_at_compile_time() {
         artifact_text(&artifacts, "web/src/generated/registry.ts")
             .contains("ProjectMetadataEditor")
     );
+    assert!(artifact_text(&artifacts, "web/src/generated/registry.ts").contains("id: string"));
     assert!(
         artifact_text(&artifacts, "web/src/generated/registry.ts")
             .contains("resources: readonly ResourceDefinition[]")
@@ -291,7 +296,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 106);
+    assert_eq!(artifacts.len(), 109);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -651,7 +656,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 90);
+    assert_eq!(artifacts.len(), 93);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")

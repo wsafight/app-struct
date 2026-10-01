@@ -7,6 +7,7 @@ import {
   useResourceFormController,
   useResourceListController,
 } from "./controller";
+import { useRelationOptions } from "./relation-options";
 import { recordLabel } from "./relations";
 import type { FieldDefinition, ResourceDefinition } from "./resource";
 import { parseResourceQuery } from "./url-controller";
@@ -156,5 +157,17 @@ describe("headless controllers", () => {
       "INV-001",
     );
     expect(recordLabel(invoice, { id: "one" })).toBe("one");
+  });
+
+  it("keeps relation controls usable when option loading is unauthorized", () => {
+    const invoice = resource();
+    invoice.access.list = { mode: "authenticated" };
+    const { result } = renderHook(() => useRelationOptions(invoice, "one"), {
+      wrapper: wrapper(),
+    });
+    expect(result.current.canLoad).toBe(false);
+    expect(result.current.isPending).toBe(true);
+    expect(invoice.api.list).not.toHaveBeenCalled();
+    expect(invoice.api.get).not.toHaveBeenCalled();
   });
 });

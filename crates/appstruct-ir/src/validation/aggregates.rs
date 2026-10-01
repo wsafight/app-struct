@@ -1,13 +1,24 @@
 use super::{IrValidationErrors, push};
 use crate::{EntityIr, FieldTypeIr, GeneratedValueIr};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Validate ownership, bounded editing and workflow guards for aggregate collections.
 ///
 /// # Errors
 /// Returns every invalid aggregate declaration.
-#[allow(clippy::too_many_lines)]
 pub fn validate_aggregates(entities: &[EntityIr]) -> Result<(), IrValidationErrors> {
+    let entity_index = entities
+        .iter()
+        .map(|entity| (entity.id.0.as_str(), entity))
+        .collect::<BTreeMap<_, _>>();
+    validate_aggregates_indexed(entities, &entity_index)
+}
+
+#[allow(clippy::too_many_lines)]
+pub(super) fn validate_aggregates_indexed(
+    entities: &[EntityIr],
+    entity_index: &BTreeMap<&str, &EntityIr>,
+) -> Result<(), IrValidationErrors> {
     let mut errors = Vec::new();
     let mut owned = BTreeSet::new();
     for parent in entities {
@@ -30,7 +41,7 @@ pub fn validate_aggregates(entities: &[EntityIr]) -> Result<(), IrValidationErro
             if !(1..=100).contains(&aggregate.max_items) {
                 push(&mut errors, &path, "max_items must be between 1 and 100");
             }
-            let Some(child) = entities.iter().find(|entity| entity.id == aggregate.child) else {
+            let Some(child) = entity_index.get(aggregate.child.0.as_str()) else {
                 push(
                     &mut errors,
                     &path,

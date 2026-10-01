@@ -8,6 +8,7 @@ import type {
   ResourceRecord,
 } from "../../resource";
 import { canAccessRule } from "../../resource";
+import { revisionMap } from "./revisions";
 
 interface BulkActionOptions {
   resource: ResourceDefinition;
@@ -49,18 +50,6 @@ export function useBulkActions({
       setBulkField(writableFields[0]?.name ?? "");
   }, [bulkField, writableFields]);
 
-  function revisionMap(ids: string[]): Record<string, number> {
-    return Object.fromEntries(
-      ids.map((id) => [
-        id,
-        Number(
-          records.find((record) => String(record[resource.primaryKey]) === id)
-            ?.revision ?? 0,
-        ),
-      ]),
-    );
-  }
-
   function bulkDelete() {
     if (!selectedIds.length) return;
     confirm(
@@ -69,7 +58,11 @@ export function useBulkActions({
         await runChange(async () => {
           const result = await resource.api.bulkDelete({
             ids: selectedIds,
-            expected_revisions: revisionMap(selectedIds),
+            expected_revisions: revisionMap(
+              records,
+              resource.primaryKey,
+              selectedIds,
+            ),
           });
           if (result.failed.length)
             onError(`${result.failed.length} records could not be deleted`);
@@ -83,7 +76,11 @@ export function useBulkActions({
     await runChange(async () => {
       const result = await resource.api.restore!({
         ids: selectedIds,
-        expected_revisions: revisionMap(selectedIds),
+        expected_revisions: revisionMap(
+          records,
+          resource.primaryKey,
+          selectedIds,
+        ),
       });
       if (result.failed.length)
         onError(`${result.failed.length} records could not be restored`);
@@ -99,7 +96,11 @@ export function useBulkActions({
       const result = await resource.api.bulkUpdate({
         ids: selectedIds,
         patch: { [field.name]: inputValue(bulkValue, field) },
-        expected_revisions: revisionMap(selectedIds),
+        expected_revisions: revisionMap(
+          records,
+          resource.primaryKey,
+          selectedIds,
+        ),
       });
       if (result.failed.length)
         onError(`${result.failed.length} records could not be updated`);

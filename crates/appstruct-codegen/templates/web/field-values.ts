@@ -151,6 +151,14 @@ export function toApiValue(
   return value;
 }
 
+/** Render an arbitrary field value for read-only display. */
+export function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 export function formatMoney(
   amount: unknown,
   currency: string,
@@ -158,6 +166,26 @@ export function formatMoney(
 ): string {
   const decimal = new Decimal(String(amount));
   if (!decimal.isFinite()) throw new Error("Invalid monetary amount");
+  // `Intl.NumberFormat` construction resolves locale data and is far more expensive
+  // than formatting, so reuse one instance per currency and precision. This runs once
+  // per money cell on every render, which makes the cache the difference between one
+  // formatter and one per cell.
+  const formatter = moneyFormatter(currency, fractionDigits);
+  // ECMA-402 accepts exact decimal strings; TypeScript's Intl signature omits this overload.
+  return formatter.format(
+    decimal.toFixed(fractionDigits, Decimal.ROUND_HALF_UP) as unknown as number,
+  );
+}
+
+const moneyFormatters = new Map<string, Intl.NumberFormat>();
+
+function moneyFormatter(
+  currency: string,
+  fractionDigits: number,
+): Intl.NumberFormat {
+  const key = `${currency}\u0000${fractionDigits}`;
+  const cached = moneyFormatters.get(key);
+  if (cached) return cached;
   const formatter = new Intl.NumberFormat(undefined, {
     style: "currency",
     currency,
@@ -165,8 +193,6 @@ export function formatMoney(
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   });
-  // ECMA-402 accepts exact decimal strings; TypeScript's Intl signature omits this overload.
-  return formatter.format(
-    decimal.toFixed(fractionDigits, Decimal.ROUND_HALF_UP) as unknown as number,
-  );
+  moneyFormatters.set(key, formatter);
+  return formatter;
 }

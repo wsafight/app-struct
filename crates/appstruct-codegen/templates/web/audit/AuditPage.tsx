@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import { useState } from "react";
 import { auditApi, type AuditEvent } from "../generated/client";
 import { auditAccess } from "../generated/resources";
+import { formatValue } from "../field-values";
 import { appQueryKeys } from "../query";
 import { errorMessage, useCanAccessRule } from "../resource";
 
@@ -196,12 +197,6 @@ function snapshotObject(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function formatValue(value: unknown): string {
-  if (value === undefined || value === null) return "-";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
 }
 
 function formatJson(value: unknown): string {

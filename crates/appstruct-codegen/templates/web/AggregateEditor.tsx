@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Edit3, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   collectionBatch,
   collectionRow,
@@ -71,7 +71,8 @@ export function AggregateEditor({
       !isSemanticCompanion(field, child.fields) &&
       canAccessRule(field.readAccess ?? { mode: "public" }, actor),
   );
-  const relations = useRelationRecords(resources, data?.rows ?? [], visible);
+  const aggregateRows = useMemo(() => data?.rows ?? [], [data]);
+  const relations = useRelationRecords(resources, aggregateRows, visible);
   const draft = collectionBatch(rows, baseline?.rows ?? [], child, fields);
   const allowed =
     data &&

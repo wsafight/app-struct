@@ -34,6 +34,7 @@ import { ResourceFilters } from "./ResourceFilters";
 import { buildResourceFilterQuery } from "../url-controller";
 import { BulkToolbar, useBulkActions } from "./resource-list/BulkActions";
 import { ResourceInsights } from "./resource-list/ResourceInsights";
+import { revisionMap } from "./resource-list/revisions";
 import { ResourceTable } from "./resource-list/ResourceTable";
 import { SavedViews } from "./resource-list/SavedViews";
 import { useCsvTransfer } from "./resource-list/useCsvTransfer";
@@ -146,24 +147,12 @@ export function ResourceList({
     });
   }
 
-  function revisionMap(ids: string[]): Record<string, number> {
-    return Object.fromEntries(
-      ids.map((id) => [
-        id,
-        Number(
-          records.find((record) => String(record[resource.primaryKey]) === id)
-            ?.revision ?? 0,
-        ),
-      ]),
-    );
-  }
-
   async function restoreOne(id: string) {
     if (!resource.api.restore) return;
     await runChange(async () => {
       const result = await resource.api.restore!({
         ids: [id],
-        expected_revisions: revisionMap([id]),
+        expected_revisions: revisionMap(records, resource.primaryKey, [id]),
       });
       if (result.failed.length) setActionError(result.failed[0].message);
     });

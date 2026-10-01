@@ -42,10 +42,11 @@ pub fn validate_app_ir(ir: &AppIr) -> Result<(), IrValidationErrors> {
         &mut errors,
     );
     validate_entities(ir, &entities, &value_objects, &mut errors);
-    if let Err(aggregate_errors) = aggregates::validate_aggregates(&ir.entities) {
+    if let Err(aggregate_errors) = aggregates::validate_aggregates_indexed(&ir.entities, &entities)
+    {
         errors.extend(aggregate_errors.0);
     }
-    if let Err(chart_errors) = charts::validate_charts(&ir.entities) {
+    if let Err(chart_errors) = charts::validate_charts_indexed(&ir.entities, &entities) {
         errors.extend(chart_errors.0);
     }
     validate_seeds(ir, &entities, &mut errors);

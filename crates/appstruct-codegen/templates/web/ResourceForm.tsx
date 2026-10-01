@@ -6,7 +6,7 @@ import {
   RefreshCw,
   Save,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useMemo, type ComponentType } from "react";
 import { AsyncState } from "../components/AsyncState";
 import { useResourceFormController } from "../controller";
 import { inputType, type FormValue } from "../field-values";
@@ -23,13 +23,8 @@ import type {
   ResourceDefinition,
   ResourceRecord,
 } from "../resource";
-import {
-  canAccessResource,
-  errorMessage,
-  isSemanticCompanion,
-  useCanAccess,
-  useResourceActor,
-} from "../resource";
+import { errorMessage, isSemanticCompanion, useCanAccess } from "../resource";
+import { useRelationOptions } from "../relation-options";
 
 export function ResourceForm({
   resource,
@@ -424,12 +419,13 @@ export function FieldControl({
     const Component = components?.[String(field.uiComponent)];
     return (
       <div className="field">
-        <label>
+        <label htmlFor={id}>
           {field.label}
           {field.required && <span aria-hidden> *</span>}
         </label>
         {Component ? (
           <Component
+            id={id}
             label={field.label}
             required={field.required}
             value={value}
@@ -552,46 +548,18 @@ function RelationSelect({
   onBlur(): void;
   onChange(value: string): void;
 }) {
-  const actor = useResourceActor();
-  const canLoad = Boolean(target && canAccessResource(target, "list", actor));
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const deferredSearch = useDebouncedValue(search, 250);
-  const optionsQuery = useQuery({
-    queryKey: resourceQueryKeys.options(
-      target?.id ?? "unavailable",
-      `${deferredSearch}:${page}`,
-    ),
-    queryFn: ({ signal }) =>
-      target!.api.list(
-        { page, page_size: 25, q: deferredSearch || undefined },
-        { signal },
-      ),
-    enabled: canLoad,
-    placeholderData: (previous) => previous,
-  });
-  const selectedQuery = useQuery({
-    queryKey: resourceQueryKeys.detail(target?.id ?? "unavailable", value),
-    queryFn: ({ signal }) => target!.api.get(value, { signal }),
-    enabled: canLoad && Boolean(value),
-  });
-  const loadError = optionsQuery.error ? errorMessage(optionsQuery.error) : "";
-  const options = [
-    ...(selectedQuery.data && value ? [selectedQuery.data] : []),
-    ...(optionsQuery.data?.data ?? []),
-  ].filter(
-    (record, index, items) =>
-      String(record[target?.primaryKey ?? "id"]) &&
-      items.findIndex(
-        (candidate) =>
-          String(candidate[target?.primaryKey ?? "id"]) ===
-          String(record[target?.primaryKey ?? "id"]),
-      ) === index,
-  );
-  const pages = Math.max(
-    1,
-    Math.ceil((optionsQuery.data?.meta.total ?? 0) / 25),
-  );
+  const {
+    options,
+    pages,
+    loadError,
+    canLoad,
+    isFetching,
+    isPending,
+    search,
+    page,
+    setSearch,
+    setPage,
+  } = useRelationOptions(target, value);
   const errorId = `${id}-error`;
   return (
     <div className="field">
@@ -619,8 +587,8 @@ function RelationSelect({
         onChange={(event) => onChange(event.target.value)}
         aria-invalid={Boolean(error || loadError)}
         aria-describedby={error || loadError ? errorId : undefined}
-        aria-busy={optionsQuery.isFetching}
-        disabled={optionsQuery.isPending && canLoad}
+        aria-busy={isFetching}
+        disabled={isPending && canLoad}
       >
         <option value="">Select</option>
         {options.map((record) => {
@@ -637,7 +605,7 @@ function RelationSelect({
           type="button"
           className="icon-button"
           disabled={page <= 1}
-          onClick={() => setPage((current) => current - 1)}
+          onClick={() => setPage(page - 1)}
           aria-label="Previous options"
         >
           <ChevronLeft size={14} />
@@ -649,14 +617,14 @@ function RelationSelect({
           type="button"
           className="icon-button"
           disabled={page >= pages}
-          onClick={() => setPage((current) => current + 1)}
+          onClick={() => setPage(page + 1)}
           aria-label="Next options"
         >
           <ChevronRight size={14} />
         </button>
       </span>
       <span className="sr-only" role="status" aria-live="polite">
-        {optionsQuery.isFetching
+        {isFetching
           ? `Loading ${field.label} options`
           : `${options.length} ${field.label} options loaded`}
       </span>
@@ -667,15 +635,6 @@ function RelationSelect({
       )}
     </div>
   );
-}
-
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delay);
-    return () => window.clearTimeout(timer);
-  }, [delay, value]);
-  return debounced;
 }
 
 function validationMessage(errors: unknown[]): string | undefined {

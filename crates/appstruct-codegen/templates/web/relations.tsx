@@ -1,4 +1,5 @@
 import { useQueries } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { Link } from "./navigation";
 import { resourceQueryKeys } from "./query";
 import {
@@ -33,29 +34,35 @@ export function useRelationRecords(
   fields: FieldDefinition[],
 ) {
   const actor = useResourceActor();
-  const requests = resources.flatMap((target) => {
-    if (!target.api.lookup || !canAccessResource(target, "read", actor))
-      return [];
-    const related = fields.filter(
-      (field) =>
-        field.relation === target.id &&
-        canAccessRule(field.readAccess ?? { mode: "public" }, actor),
-    );
-    const ids = [
-      ...new Set(
-        records.flatMap((record) =>
-          related
-            .map((field) => record[field.name])
-            .filter((value) => value != null && value !== "")
-            .map(String),
-        ),
-      ),
-    ].sort();
-    const batches = [];
-    for (let start = 0; start < ids.length; start += 100)
-      batches.push({ target, ids: ids.slice(start, start + 100) });
-    return batches;
-  });
+  // Rebuilding the batch list walks every resource, field and record; memoizing keeps
+  // that work off unrelated re-renders such as typing in the search box.
+  const requests = useMemo(
+    () =>
+      resources.flatMap((target) => {
+        if (!target.api.lookup || !canAccessResource(target, "read", actor))
+          return [];
+        const related = fields.filter(
+          (field) =>
+            field.relation === target.id &&
+            canAccessRule(field.readAccess ?? { mode: "public" }, actor),
+        );
+        const ids = [
+          ...new Set(
+            records.flatMap((record) =>
+              related
+                .map((field) => record[field.name])
+                .filter((value) => value != null && value !== "")
+                .map(String),
+            ),
+          ),
+        ].sort();
+        const batches = [];
+        for (let start = 0; start < ids.length; start += 100)
+          batches.push({ target, ids: ids.slice(start, start + 100) });
+        return batches;
+      }),
+    [actor, fields, records, resources],
+  );
   const queries = useQueries({
     queries: requests.map(({ target, ids }) => ({
       queryKey: [...resourceQueryKeys.all(target.id), "lookup", ids],

@@ -26,7 +26,7 @@ git ls-files -co --exclude-standard | rg '(^|/)(\.env($|\.)|node_modules|target|
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
-cargo deny check advisories
+cargo deny check
 scripts/verify-packages.sh
 scripts/run-template-build.sh
 ```

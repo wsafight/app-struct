@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useRef } from "react";
 import type { ResourceDefinition } from "../../resource";
-import { errorMessage } from "../../resource";
+import { errorMessage, triggerDownload } from "../../resource";
 
 interface CsvTransferOptions {
   resource: ResourceDefinition;
@@ -18,14 +18,10 @@ export function useCsvTransfer({
   const exportMutation = useMutation({
     mutationFn: () => resource.api.exportCsv(),
     onSuccess: (csv) => {
-      const href = URL.createObjectURL(
+      triggerDownload(
         new Blob([csv], { type: "text/csv;charset=utf-8" }),
+        `${resource.slug}.csv`,
       );
-      const anchor = document.createElement("a");
-      anchor.href = href;
-      anchor.download = `${resource.slug}.csv`;
-      anchor.click();
-      URL.revokeObjectURL(href);
     },
     onError: (reason) => onError(errorMessage(reason)),
   });

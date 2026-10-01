@@ -8,7 +8,7 @@ import {
 import { ArrowDown, ArrowUp, Eye, RotateCcw, Trash2 } from "lucide-react";
 import { type InputHTMLAttributes, useEffect, useRef } from "react";
 import { AsyncState } from "../../components/AsyncState";
-import { formatMoney } from "../../field-values";
+import { formatMoney, formatValue } from "../../field-values";
 import { Link } from "../../navigation";
 import { RelationValue, useRelationRecords } from "../../relations";
 import type {
@@ -296,12 +296,7 @@ function SelectionCheckbox({
   return <input ref={ref} type="checkbox" {...props} />;
 }
 
-export function formatValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "-";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
+export { formatValue } from "../../field-values";
 
 export function formatFieldValue(
   record: ResourceRecord,

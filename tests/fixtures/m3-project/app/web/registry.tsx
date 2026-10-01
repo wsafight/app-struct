@@ -5,6 +5,7 @@ import type {
 } from "../../generated/web/src/generated/registry";
 
 function ProjectMetadataEditor({
+  id,
   label,
   value,
   error,
@@ -14,6 +15,7 @@ function ProjectMetadataEditor({
   return (
     <>
       <textarea
+        id={id}
         aria-label={label}
         value={String(value ?? "")}
         readOnly={readOnly}

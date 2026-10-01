@@ -1,6 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { type InputHTMLAttributes, useEffect, useState } from "react";
+import { type InputHTMLAttributes, useEffect, useRef, useState } from "react";
 import {
   inputType,
   toApiValue,
@@ -9,10 +8,9 @@ import {
 } from "../field-values";
 import { supportsRange } from "../url-controller";
 export { buildResourceFilterQuery, supportsRange } from "../url-controller";
-import { resourceQueryKeys } from "../query";
 import { recordLabel } from "../relations";
+import { useRelationOptions } from "../relation-options";
 import type { FieldDefinition, ResourceDefinition } from "../resource";
-import { canAccessResource, errorMessage, useResourceActor } from "../resource";
 
 interface ResourceFiltersProps {
   fields: FieldDefinition[];
@@ -133,14 +131,21 @@ function DebouncedFilterInput({
   "value" | "onChange"
 >) {
   const [draft, setDraft] = useState(value);
+  // Hold the callback in a ref: callers pass an inline arrow, so depending on it
+  // directly would restart the timer on every parent render and the filter value
+  // would never be committed while the user keeps typing.
+  const onValueChangeRef = useRef(onValueChange);
+  useEffect(() => {
+    onValueChangeRef.current = onValueChange;
+  }, [onValueChange]);
   useEffect(() => {
     setDraft(value);
   }, [value]);
   useEffect(() => {
     if (draft === value) return;
-    const timer = window.setTimeout(() => onValueChange(draft), 300);
+    const timer = window.setTimeout(() => onValueChangeRef.current(draft), 300);
     return () => window.clearTimeout(timer);
-  }, [draft, onValueChange, value]);
+  }, [draft, value]);
   return (
     <input
       {...props}
@@ -161,46 +166,18 @@ function RelationFilter({
   value: string;
   onChange(value?: string): void;
 }) {
-  const actor = useResourceActor();
-  const canLoad = Boolean(target && canAccessResource(target, "list", actor));
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const deferredSearch = useDebouncedValue(search, 250);
-  const optionsQuery = useQuery({
-    queryKey: resourceQueryKeys.options(
-      target?.id ?? "unavailable",
-      `${deferredSearch}:${page}`,
-    ),
-    queryFn: ({ signal }) =>
-      target!.api.list(
-        { page, page_size: 25, q: deferredSearch || undefined },
-        { signal },
-      ),
-    enabled: canLoad,
-    placeholderData: (previous) => previous,
-  });
-  const selectedQuery = useQuery({
-    queryKey: resourceQueryKeys.detail(target?.id ?? "unavailable", value),
-    queryFn: ({ signal }) => target!.api.get(value, { signal }),
-    enabled: canLoad && Boolean(value),
-  });
-  const loadError = optionsQuery.error ? errorMessage(optionsQuery.error) : "";
-  const pages = Math.max(
-    1,
-    Math.ceil((optionsQuery.data?.meta.total ?? 0) / 25),
-  );
-  const options = [
-    ...(selectedQuery.data && value ? [selectedQuery.data] : []),
-    ...(optionsQuery.data?.data ?? []),
-  ].filter(
-    (record, index, items) =>
-      String(record[target?.primaryKey ?? "id"]) &&
-      items.findIndex(
-        (candidate) =>
-          String(candidate[target?.primaryKey ?? "id"]) ===
-          String(record[target?.primaryKey ?? "id"]),
-      ) === index,
-  );
+  const {
+    options,
+    pages,
+    loadError,
+    canLoad,
+    isFetching,
+    isPending,
+    search,
+    page,
+    setSearch,
+    setPage,
+  } = useRelationOptions(target, value);
   return (
     <div className="filter-control">
       <span>{field.label}</span>
@@ -216,9 +193,9 @@ function RelationFilter({
       <select
         value={value}
         aria-label={field.label}
-        aria-busy={optionsQuery.isFetching}
+        aria-busy={isFetching}
         aria-invalid={Boolean(loadError)}
-        disabled={optionsQuery.isPending && canLoad}
+        disabled={isPending && canLoad}
         onChange={(event) => onChange(event.target.value || undefined)}
       >
         <option value="">All</option>
@@ -236,7 +213,7 @@ function RelationFilter({
           type="button"
           className="icon-button"
           disabled={page <= 1}
-          onClick={() => setPage((current) => current - 1)}
+          onClick={() => setPage(page - 1)}
           aria-label="Previous options"
         >
           <ChevronLeft size={14} />
@@ -248,28 +225,19 @@ function RelationFilter({
           type="button"
           className="icon-button"
           disabled={page >= pages}
-          onClick={() => setPage((current) => current + 1)}
+          onClick={() => setPage(page + 1)}
           aria-label="Next options"
         >
           <ChevronRight size={14} />
         </button>
       </span>
       <span className="sr-only" role="status" aria-live="polite">
-        {optionsQuery.isFetching
+        {isFetching
           ? `Loading ${field.label} options`
           : loadError || `${options.length} ${field.label} options loaded`}
       </span>
     </div>
   );
-}
-
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delay);
-    return () => window.clearTimeout(timer);
-  }, [delay, value]);
-  return debounced;
 }
 
 function filterDisplayValue(

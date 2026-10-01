@@ -2,6 +2,9 @@ use appstruct_ir::{Diagnostic, SourceSpan};
 use saphyr_parser::{Event, Parser, ScalarStyle, Span};
 use std::collections::BTreeMap;
 
+mod offsets;
+use offsets::CharToByte;
+
 #[derive(Clone, Debug)]
 pub(crate) struct Node {
     pub kind: NodeKind,
@@ -61,6 +64,7 @@ pub(crate) fn parse(file: &str, source: &str) -> Result<Node, Diagnostic> {
         source,
         events,
         cursor: 0,
+        offsets: CharToByte::with_source(source),
     };
     parser.document()
 }
@@ -70,6 +74,7 @@ struct AstParser<'source> {
     source: &'source str,
     events: Vec<(Event<'source>, Span)>,
     cursor: usize,
+    offsets: CharToByte,
 }
 
 impl AstParser<'_> {
@@ -222,24 +227,36 @@ impl AstParser<'_> {
     }
 
     fn error_at_cursor(&self, code: &str, message: impl Into<String>) -> Diagnostic {
-        let span = self.events.get(self.cursor).map_or_else(
-            || eof_span(self.file, self.source),
-            |(_, span)| self.source_span(*span),
-        );
+        let span = match self.events.get(self.cursor) {
+            Some((_, span)) => self.source_span(*span),
+            None => eof_span(self.file, self.source),
+        };
         Diagnostic::error(code, message, span)
     }
 
     fn source_span(&self, span: Span) -> SourceSpan {
+        let start = self.offsets.byte_offset(span.start.index());
+        let end = self.offsets.byte_offset(span.end.index());
         SourceSpan {
             file: self.file.to_owned(),
-            start: char_to_byte(self.source, span.start.index()),
-            end: char_to_byte(self.source, span.end.index()),
+            start,
+            end,
             line: span.start.line(),
             column: span.start.col() + 1,
             end_line: span.end.line(),
             end_column: span.end.col() + 1,
         }
     }
+}
+
+/// Convert a character index into a byte offset.
+///
+/// Used for parser errors reported before the memoized converter is available.
+fn char_to_byte(source: &str, char_index: usize) -> usize {
+    source
+        .char_indices()
+        .nth(char_index)
+        .map_or(source.len(), |(byte, _)| byte)
 }
 
 fn marker_span(file: &str, source: &str, index: usize, line: usize, column: usize) -> SourceSpan {
@@ -272,13 +289,6 @@ fn eof_span(file: &str, source: &str) -> SourceSpan {
         end_line: line,
         end_column: column,
     }
-}
-
-fn char_to_byte(source: &str, char_index: usize) -> usize {
-    source
-        .char_indices()
-        .nth(char_index)
-        .map_or(source.len(), |(byte, _)| byte)
 }
 
 #[cfg(test)]

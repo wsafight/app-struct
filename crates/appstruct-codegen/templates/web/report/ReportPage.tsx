@@ -9,13 +9,14 @@ import {
   type ReportTemplateName,
 } from "../generated/client";
 import { appQueryKeys } from "../query";
-import { errorMessage } from "../resource";
+import { errorMessage, triggerDownload } from "../resource";
 
 export function ReportPage() {
   const client = useQueryClient();
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<ReportTemplateName | "">("");
   const [values, setValues] = useState<Record<string, unknown>>({});
+  const [downloadError, setDownloadError] = useState("");
   const pageSize = 25;
   const templates = useQuery({
     queryKey: appQueryKeys.reports.templates,
@@ -59,17 +60,16 @@ export function ReportPage() {
   const pages = Math.max(1, Math.ceil(total / pageSize));
 
   async function download(run: ReportRun) {
+    setDownloadError("");
     try {
       const blob = await reportApi.download(run.id);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${run.template}-${run.id}.pdf`;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      triggerDownload(blob, `${run.template}-${run.id}.pdf`);
     } catch (requestError) {
+      // Surface the failure instead of rejecting: the caller invokes this with
+      // `void download(run)`, so a rethrow would be an unhandled rejection and the
+      // button would appear to do nothing.
+      setDownloadError(errorMessage(requestError));
       await client.invalidateQueries({ queryKey: appQueryKeys.reports.all });
-      throw requestError;
     }
   }
 
@@ -82,9 +82,9 @@ export function ReportPage() {
         </div>
         <FileText size={22} aria-hidden />
       </div>
-      {error && (
+      {(error || downloadError) && (
         <div className="alert" role="alert">
-          {errorMessage(error)}
+          {error ? errorMessage(error) : downloadError}
         </div>
       )}
       <section className="report-create" aria-labelledby="new-report-heading">

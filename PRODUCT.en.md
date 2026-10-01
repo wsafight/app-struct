@@ -542,7 +542,9 @@ export const customComponents = {
 };
 ```
 
-Custom components must receive a typed value, errors, read-only state, and a change callback. If the component name does not exist, the build fails.
+Custom components receive a control id, typed value, errors, read-only state, and a change callback.
+They must attach the id to their primary form control so the generated label remains associated with
+it. If the component name does not exist, the build fails.
 
 ### 10.6 Custom Pages
 

@@ -61,6 +61,14 @@ fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             include_str!("../templates/web/field-values.ts").to_owned(),
         ),
         (
+            "web/src/relation-options.ts",
+            include_str!("../templates/web/relation-options.ts").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/revisions.ts",
+            include_str!("../templates/web/pages/resource-list/revisions.ts").to_owned(),
+        ),
+        (
             "web/src/field-values.test.ts",
             include_str!("../templates/web/field-values.test.ts").to_owned(),
         ),
@@ -152,6 +160,10 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
         (
             "web/src/pages/resource-list/ResourceInsights.tsx",
             include_str!("../templates/web/pages/resource-list/ResourceInsights.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/AggregateChart.tsx",
+            include_str!("../templates/web/pages/resource-list/AggregateChart.tsx").to_owned(),
         ),
         (
             "web/src/pages/resource-list/InlineEditor.tsx",
@@ -300,7 +312,7 @@ fn registry_source(ir: &AppIr) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "{}{component_import}import type {{ ResourceDefinition }} from \"../resource\";\n\nexport interface FieldComponentProps {{\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport interface PageComponentProps {{\n  resources: readonly ResourceDefinition[];\n}}\n\nexport interface AppStructRegistry {{\n  fields: {field_registry};\n  pages: {page_registry};\n}}\n\nexport interface CustomPageDefinition {{\n  name: string;\n  label: string;\n  path: string;\n  component: keyof AppStructRegistry[\"pages\"];\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages: readonly CustomPageDefinition[] = [\n{pages}\n];\n",
+        "{}{component_import}import type {{ ResourceDefinition }} from \"../resource\";\n\nexport interface FieldComponentProps {{\n  id: string;\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport interface PageComponentProps {{\n  resources: readonly ResourceDefinition[];\n}}\n\nexport interface AppStructRegistry {{\n  fields: {field_registry};\n  pages: {page_registry};\n}}\n\nexport interface CustomPageDefinition {{\n  name: string;\n  label: string;\n  path: string;\n  component: keyof AppStructRegistry[\"pages\"];\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages: readonly CustomPageDefinition[] = [\n{pages}\n];\n",
         generated_header("//"),
     )
 }

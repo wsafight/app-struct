@@ -1,12 +1,23 @@
 use super::{IrValidationErrors, push};
 use crate::{ChartDimensionIr, ChartKindIr, ChartMeasureIr, EntityIr, FieldIr, FieldTypeIr};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Validate bounded, typed chart declarations.
 ///
 /// # Errors
 /// Returns every invalid chart declaration.
 pub fn validate_charts(entities: &[EntityIr]) -> Result<(), IrValidationErrors> {
+    let entity_index = entities
+        .iter()
+        .map(|entity| (entity.id.0.as_str(), entity))
+        .collect::<BTreeMap<_, _>>();
+    validate_charts_indexed(entities, &entity_index)
+}
+
+pub(super) fn validate_charts_indexed(
+    entities: &[EntityIr],
+    entity_index: &BTreeMap<&str, &EntityIr>,
+) -> Result<(), IrValidationErrors> {
     let mut errors = Vec::new();
     for entity in entities {
         if entity.views.charts.len() > 20 {
@@ -49,7 +60,7 @@ pub fn validate_charts(entities: &[EntityIr]) -> Result<(), IrValidationErrors> 
                     "bar and donut charts require a dimension",
                 ),
                 (_, Some(dimension)) => {
-                    validate_dimension(entities, entity, dimension, &path, &mut errors);
+                    validate_dimension(entity_index, entity, dimension, &path, &mut errors);
                 }
             }
             validate_measure(entity, &chart.measure, &path, &mut errors);
@@ -63,7 +74,7 @@ pub fn validate_charts(entities: &[EntityIr]) -> Result<(), IrValidationErrors> 
 }
 
 fn validate_dimension(
-    entities: &[EntityIr],
+    entities: &BTreeMap<&str, &EntityIr>,
     entity: &EntityIr,
     dimension: &ChartDimensionIr,
     path: &str,
@@ -108,7 +119,7 @@ fn validate_dimension(
                 );
                 return;
             };
-            let Some(target) = entities.iter().find(|candidate| candidate.id == *target) else {
+            let Some(target) = entities.get(target.0.as_str()) else {
                 push(errors, path, "chart dimension relation target is missing");
                 return;
             };

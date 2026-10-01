@@ -21,7 +21,7 @@ import {
 } from "../generated/client";
 import { appQueryKeys } from "../query";
 import type { ResourceDefinition } from "../resource";
-import { errorMessage, useResourceActor } from "../resource";
+import { errorMessage, triggerDownload, useResourceActor } from "../resource";
 import { useActivityRealtime } from "./useActivityRealtime";
 
 const PAGE_SIZE = 20;
@@ -109,12 +109,7 @@ export function ActivityTimeline({
         recordId,
         entry.id,
       );
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = entry.attachment_name ?? "attachment";
-      link.click();
-      URL.revokeObjectURL(url);
+      triggerDownload(blob, entry.attachment_name ?? "attachment");
     } catch (error) {
       window.alert(errorMessage(error));
     }

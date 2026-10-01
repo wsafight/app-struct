@@ -303,3 +303,20 @@ export function errorMessage(error: unknown): string {
     ? error.message
     : "The request could not be completed";
 }
+
+/**
+ * Start a browser download for `blob` under `filename`.
+ *
+ * The object URL is revoked on the next task rather than immediately: some browsers
+ * begin the download asynchronously after `click()`, so revoking in the same tick can
+ * abort it. A zero-delay timer keeps the URL alive for that handoff without leaking it.
+ */
+export function triggerDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
