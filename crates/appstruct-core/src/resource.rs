@@ -17,6 +17,7 @@ pub struct ListQuery {
     pub page_size: Option<u64>,
     pub cursor: Option<String>,
     pub limit: Option<u64>,
+    pub direction: Option<String>,
     pub sort: Option<String>,
     pub q: Option<String>,
     #[serde(flatten)]
@@ -34,6 +35,7 @@ pub enum ListMeta {
     Cursor {
         limit: u64,
         next_cursor: Option<String>,
+        previous_cursor: Option<String>,
         has_more: bool,
     },
 }

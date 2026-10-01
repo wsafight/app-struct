@@ -21,7 +21,7 @@ GET /api/tasks/?page=2&page_size=25&sort=-created_at&filter[status]=todo
 
 ## 游标分页
 
-提供 `limit` 或 `cursor` 会选择游标模式。用 `limit` 开始遍历；传入返回的不透明 `next_cursor` 以继续：
+提供 `limit`、`cursor` 或 `direction` 会选择游标模式。用 `limit` 开始遍历；传入返回的不透明 `next_cursor` 以继续：
 
 ```text
 GET /api/tasks/?limit=25&filter[status]=todo
@@ -31,11 +31,16 @@ GET /api/tasks/?limit=25&cursor=<next_cursor>&filter[status]=todo
 ```json
 {
   "data": [],
-  "meta": { "limit": 25, "next_cursor": null, "has_more": false }
+  "meta": {
+    "limit": 25,
+    "next_cursor": null,
+    "previous_cursor": null,
+    "has_more": false
+  }
 }
 ```
 
-游标模式按资源主键升序排序，最多获取 100 条记录，并且不运行总数查询。`page`、`page_size` 和 `sort` 不能与游标模式组合。游标令牌是带版本的 Base64URL 值，属于 API 实现细节；客户端必须原样保留。更改搜索或过滤参数后，从第一页重新开始。
+游标模式按资源主键升序排序，最多获取 100 条记录，并且不运行总数查询。`page`、`page_size` 和 `sort` 不能与游标模式组合。游标令牌是带版本的 Base64URL 值，属于 API 实现细节；客户端必须原样保留。向前翻页使用 `next_cursor`；向后翻页时把 `previous_cursor` 作为 `cursor` 并传入 `direction=previous`。更改搜索或过滤参数后，从第一页重新开始。生成的资源列表在没有显式排序时默认使用双向游标；排序列表和回收站继续使用偏移分页。
 
 生成的 TypeScript 客户端分别暴露这两种模式：
 
@@ -45,6 +50,12 @@ const first = await taskApi.listCursor({ limit: 25, filters: { status: "todo" } 
 const next = await taskApi.listCursor({
   limit: 25,
   cursor: first.meta.next_cursor ?? undefined,
+  filters: { status: "todo" },
+});
+const previous = await taskApi.listCursor({
+  limit: 25,
+  cursor: next.meta.previous_cursor ?? undefined,
+  direction: "previous",
   filters: { status: "todo" },
 });
 ```

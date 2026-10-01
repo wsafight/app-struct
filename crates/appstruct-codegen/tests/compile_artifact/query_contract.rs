@@ -53,6 +53,8 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     assert!(client.contains("CursorListResponse"));
     assert!(client.contains("listCursor"));
     assert!(client.contains("{ limit: 25, ...query }"));
+    assert!(client.contains("direction?: \"next\" | \"previous\""));
+    assert!(client.contains("previous_cursor: string | null"));
     assert!(client.contains("AggregateQuery"));
     assert!(client.contains("AggregateResponse"));
     assert!(client.contains("aggregatePath"));
@@ -74,6 +76,8 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     assert!(project_api.contains("decode_cursor(cursor)"));
     assert!(project_api.contains("limit + 1"));
     assert!(project_api.contains("ListMeta::Cursor"));
+    assert!(project_api.contains("order_by_desc"));
+    assert!(project_api.contains("previous_cursor"));
     let task_api = artifact_text(artifacts, "backend/src/api/task.rs");
     assert!(task_api.contains("filter[project.status]"));
     assert!(task_api.contains("project::Column::Status.eq(value)"));
@@ -101,7 +105,7 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     let task_parameters = openapi["paths"]["/api/tasks/"]["get"]["parameters"]
         .as_array()
         .unwrap();
-    for name in ["cursor", "limit", "filter[project.status]"] {
+    for name in ["cursor", "direction", "limit", "filter[project.status]"] {
         assert!(
             task_parameters
                 .iter()

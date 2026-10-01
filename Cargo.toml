@@ -70,3 +70,6 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 all = "deny"
 pedantic = "deny"
+
+[profile.release]
+strip = "symbols"

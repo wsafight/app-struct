@@ -149,10 +149,11 @@ fn list_response_schema(entity: &EntityIr) -> Value {
                     },
                     {
                         "title": "Cursor pagination",
-                        "required": ["limit", "next_cursor", "has_more"],
+                        "required": ["limit", "next_cursor", "previous_cursor", "has_more"],
                         "properties": {
                             "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
                             "next_cursor": { "type": ["string", "null"] },
+                            "previous_cursor": { "type": ["string", "null"] },
                             "has_more": { "type": "boolean" },
                         }
                     }

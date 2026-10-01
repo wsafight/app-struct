@@ -142,6 +142,33 @@ describe("headless controllers", () => {
     await waitFor(() => expect(result.current.records[0]?.id).toBe("second"));
   });
 
+  it("uses cursor metadata without requesting a total count", async () => {
+    const invoice = resource();
+    rs.mocked(invoice.api.listCursor).mockResolvedValue({
+      data: [{ id: "one" }],
+      meta: {
+        limit: 25,
+        next_cursor: "next",
+        previous_cursor: null,
+        has_more: true,
+      },
+    });
+    const { result } = renderHook(
+      () =>
+        useResourceListController(invoice, {
+          cacheKey: "cursor",
+          cursorMode: true,
+          query: { limit: 25 },
+        }),
+      { wrapper: wrapper() },
+    );
+    await waitFor(() => expect(result.current.records[0]?.id).toBe("one"));
+    expect(result.current.total).toBe(0);
+    expect(result.current.nextCursor).toBe("next");
+    expect(result.current.previousCursor).toBeNull();
+    expect(invoice.api.list).not.toHaveBeenCalled();
+  });
+
   it("uses shared URL defaults and falls back for redacted labels", () => {
     const invoice = resource();
     const parsed = parseResourceQuery(
@@ -151,6 +178,8 @@ describe("headless controllers", () => {
     );
     expect(parsed.page).toBe(1);
     expect(parsed.pageSize).toBe(25);
+    expect(parsed.cursorMode).toBe(true);
+    expect("limit" in parsed.query ? parsed.query.limit : undefined).toBe(25);
     expect(parsed.query.range_filters.amount.gte).toBe("0.1");
     invoice.displayField = "number";
     expect(recordLabel(invoice, { id: "one", number: "INV-001" })).toBe(

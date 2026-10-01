@@ -296,7 +296,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 109);
+    assert_eq!(artifacts.len(), 110);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -352,16 +352,19 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(layout.contains("await auth.logout();"));
     assert!(!layout.contains("useNavigate"));
     assert!(artifact_text(&artifacts, "web/src/styles.css").contains(".sidebar-account"));
+    let public_auth_pages = artifact_text(&artifacts, "web/src/auth/PublicAuthPages.tsx");
+    assert!(public_auth_pages.contains("auth-brand\">Project Hub"));
+    assert!(!public_auth_pages.contains("if (auth.user) return <Navigate"));
+    assert!(public_auth_pages.contains("if (!auth.user || submitting)"));
+    assert!(public_auth_pages.contains("if (redirecting.current) return;"));
+    assert!(public_auth_pages.contains("}, [auth.user, navigate, submitting]);"));
+    assert!(public_auth_pages.contains("await navigate(from, { replace: true });"));
     let auth_pages = artifact_text(&artifacts, "web/src/auth/AuthPages.tsx");
-    assert!(auth_pages.contains("auth-brand\">Project Hub"));
-    assert!(!auth_pages.contains("if (auth.user) return <Navigate"));
-    assert!(auth_pages.contains("if (!auth.user || submitting)"));
-    assert!(auth_pages.contains("if (redirecting.current) return;"));
-    assert!(auth_pages.contains("}, [auth.user, navigate, submitting]);"));
-    assert!(auth_pages.contains("await navigate(from, { replace: true });"));
     assert!(auth_pages.contains("AdminPagination"));
     assert!(auth_pages.contains("appQueryKeys.admin.users"));
+    assert!(artifact_text(&artifacts, "server/Cargo.toml").contains("strip = \"symbols\""));
     let app = artifact_text(&artifacts, "web/src/app/App.tsx");
+    assert!(app.contains("lazy(() => import(\"../auth/PublicAuthPages\")"));
     assert!(app.contains("lazy(() => import(\"../auth/AuthPages\")"));
     assert!(!app.contains("from \"../auth/AuthPages\";"));
     let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
@@ -399,7 +402,7 @@ fn m4_disabled_auth_flows_are_not_published() {
         artifact_text(&artifacts, "backend/src/auth/session.rs").contains("DisabledMailSender")
     );
     assert!(
-        artifact_text(&artifacts, "web/src/auth/AuthPages.tsx")
+        artifact_text(&artifacts, "web/src/auth/PublicAuthPages.tsx")
             .contains("if (!authFeatures.passwordReset)")
     );
     let oauth = artifact_text(&artifacts, "backend/src/auth/oauth.rs");

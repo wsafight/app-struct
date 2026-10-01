@@ -144,5 +144,7 @@ pub(super) fn server_cargo() -> &'static str {
         "tokio = { version = \"=1.53.1\", features = [\"macros\", \"net\", \"rt-multi-thread\"] }\n",
         "tracing = \"=0.1.44\"\n",
         "tracing-subscriber = { version = \"=0.3.23\", features = [\"env-filter\", \"fmt\"] }\n",
+        "\n[profile.release]\n",
+        "strip = \"symbols\"\n",
     )
 }

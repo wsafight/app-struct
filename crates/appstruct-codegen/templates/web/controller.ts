@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ListQuery } from "./generated/client";
+import type { CursorListQuery, ListQuery } from "./generated/client";
 import { resourceQueryKeys } from "./query";
 import type { ResourceDefinition, ResourceRecord } from "./resource";
 import { useCanAccess } from "./resource";
@@ -12,13 +12,19 @@ export { useResourceUrlController } from "./url-controller";
 
 export interface ResourceListControllerOptions {
   cacheKey: string;
-  query: ListQuery;
+  query: ListQuery | CursorListQuery;
+  cursorMode?: boolean;
   trashMode?: boolean;
   enabled?: boolean;
   onChangeSuccess?(): void;
 }
 
-const EMPTY_LIST = { data: [] as ResourceRecord[], total: 0 };
+const EMPTY_LIST = {
+  data: [] as ResourceRecord[],
+  total: 0,
+  nextCursor: null as string | null,
+  previousCursor: null as string | null,
+};
 
 export function useResourceListController(
   resource: ResourceDefinition,
@@ -36,14 +42,39 @@ export function useResourceListController(
     ],
     queryFn: async ({ signal }) => {
       if (options.trashMode) {
+        const pageQuery = options.query as ListQuery;
         const response = await resource.api.trash?.(
-          { page: options.query.page, page_size: options.query.page_size },
+          { page: pageQuery.page, page_size: pageQuery.page_size },
           { signal },
         );
-        return { data: response?.data ?? [], total: response?.meta.total ?? 0 };
+        return {
+          data: response?.data ?? [],
+          total: response?.meta.total ?? 0,
+          nextCursor: null,
+          previousCursor: null,
+        };
       }
-      const response = await resource.api.list(options.query, { signal });
-      return { data: response.data, total: response.meta.total };
+      if (options.cursorMode) {
+        const response = await resource.api.listCursor(
+          options.query as CursorListQuery,
+          { signal },
+        );
+        return {
+          data: response.data,
+          total: 0,
+          nextCursor: response.meta.next_cursor,
+          previousCursor: response.meta.previous_cursor,
+        };
+      }
+      const response = await resource.api.list(options.query as ListQuery, {
+        signal,
+      });
+      return {
+        data: response.data,
+        total: response.meta.total,
+        nextCursor: null,
+        previousCursor: null,
+      };
     },
     enabled: canList && (options.enabled ?? true),
     placeholderData: (previous) => previous,
@@ -72,6 +103,8 @@ export function useResourceListController(
     canList,
     records: result.data,
     total: result.total,
+    nextCursor: result.nextCursor,
+    previousCursor: result.previousCursor,
     pending: listQuery.isPending,
     fetching: listQuery.isFetching,
     changing: change.isPending,

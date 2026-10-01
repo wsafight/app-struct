@@ -8,6 +8,8 @@ mod init;
 mod mode;
 mod name;
 mod paths;
+#[cfg(test)]
+mod tests;
 pub(crate) use init::{InitArgs, run as init};
 pub(crate) use mode::{CapabilityMode, DatabaseMode};
 use paths::{cd_command, invalid, validate_relative_path};

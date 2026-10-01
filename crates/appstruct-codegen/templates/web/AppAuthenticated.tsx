@@ -13,11 +13,11 @@ __AUDIT_PAGE__
 __REPORT_PAGE__
 __BILLING_PAGE__
 __BILLING_ADMIN_PAGE__
-const LoginPage = lazy(() => import("../auth/AuthPages").then(({ LoginPage: component }) => ({ default: component })));
-const RegisterPage = lazy(() => import("../auth/AuthPages").then(({ RegisterPage: component }) => ({ default: component })));
-const ForgotPasswordPage = lazy(() => import("../auth/AuthPages").then(({ ForgotPasswordPage: component }) => ({ default: component })));
-const ResetPasswordPage = lazy(() => import("../auth/AuthPages").then(({ ResetPasswordPage: component }) => ({ default: component })));
-const VerifyEmailPage = lazy(() => import("../auth/AuthPages").then(({ VerifyEmailPage: component }) => ({ default: component })));
+const LoginPage = lazy(() => import("../auth/PublicAuthPages").then(({ LoginPage: component }) => ({ default: component })));
+const RegisterPage = lazy(() => import("../auth/PublicAuthPages").then(({ RegisterPage: component }) => ({ default: component })));
+const ForgotPasswordPage = lazy(() => import("../auth/PublicAuthPages").then(({ ForgotPasswordPage: component }) => ({ default: component })));
+const ResetPasswordPage = lazy(() => import("../auth/PublicAuthPages").then(({ ResetPasswordPage: component }) => ({ default: component })));
+const VerifyEmailPage = lazy(() => import("../auth/PublicAuthPages").then(({ VerifyEmailPage: component }) => ({ default: component })));
 const ApiTokensPage = lazy(() => import("../auth/AuthPages").then(({ ApiTokensPage: component }) => ({ default: component })));
 const AdminPage = lazy(() => import("../auth/AuthPages").then(({ AdminPage: component }) => ({ default: component })));
 const AdminUsersPage = lazy(() => import("../auth/AuthPages").then(({ AdminUsersPage: component }) => ({ default: component })));

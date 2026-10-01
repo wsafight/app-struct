@@ -20,6 +20,14 @@ pub(super) fn extend_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
                 ArtifactKind::Web,
             ),
             Artifact::text(
+                "web/src/auth/PublicAuthPages.tsx",
+                with_app_title(
+                    include_str!("../../templates/web/auth/PublicAuthPages.tsx"),
+                    &title,
+                ),
+                ArtifactKind::Web,
+            ),
+            Artifact::text(
                 "web/src/auth/AdminStoragePages.tsx",
                 include_str!("../../templates/web/auth/AdminStoragePages.tsx"),
                 ArtifactKind::Web,

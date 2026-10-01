@@ -20,7 +20,6 @@ pub(crate) fn plan(ir: &AppIr) -> Vec<Artifact> {
         ArtifactKind::TypeScript,
     )]
 }
-
 fn client_source(ir: &AppIr) -> String {
     let mut sections = vec![
         generated_header("//"),
@@ -57,7 +56,6 @@ fn client_source(ir: &AppIr) -> String {
     sections.extend(operation_clients(ir));
     format!("{}\n", sections.join("\n"))
 }
-
 fn value_object_type(value: &ValueObjectIr) -> String {
     let fields = value
         .fields
@@ -231,6 +229,7 @@ export interface ListQuery extends FilterQuery {
 export interface CursorListQuery extends FilterQuery {
   cursor?: string;
   limit?: number;
+  direction?: "next" | "previous";
 }
 
 export interface AggregateQuery extends FilterQuery {
@@ -247,7 +246,7 @@ export interface ListResponse<T> {
 
 export interface CursorListResponse<T> {
   data: T[];
-  meta: { limit: number; next_cursor: string | null; has_more: boolean };
+  meta: { limit: number; next_cursor: string | null; previous_cursor: string | null; has_more: boolean };
 }
 
 export interface AggregateRow { [key: string]: unknown; }
@@ -264,6 +263,7 @@ function listPath(path: string, query: ListQuery | CursorListQuery): string {
   if ("sort" in query && query.sort) params.set("sort", query.sort);
   if ("cursor" in query && query.cursor) params.set("cursor", query.cursor);
   if ("limit" in query && query.limit) params.set("limit", String(query.limit));
+  if ("direction" in query && query.direction) params.set("direction", query.direction);
   appendFilterParams(params, query);
   const search = params.toString();
   return search ? `${path}?${search}` : path;

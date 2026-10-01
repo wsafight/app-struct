@@ -223,6 +223,10 @@ fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
         ),
         query_parameter("cursor", &json!({ "type": "string" })),
         query_parameter(
+            "direction",
+            &json!({ "type": "string", "enum": ["next", "previous"], "default": "next" }),
+        ),
+        query_parameter(
             "limit",
             &json!({ "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }),
         ),

@@ -47,7 +47,7 @@ node deploy/smoke.mjs http://127.0.0.1:8080
 
 API 以 UID 10001 运行，根文件系统只读，临时目录有界，并使用持久的 `appstruct-files` 卷。PostgreSQL 和 `/metrics` 保持内部。Web 启动会等待 API 就绪。对外发布的 Web 端口默认是 `127.0.0.1:8080`；需要时通过 Compose 环境覆盖 `APPSTRUCT_WEB_BIND` 和 `APPSTRUCT_WEB_PORT`。在部署边缘终止公共 HTTPS。安全 Auth cookie 需要 HTTPS，包括验证登录时。
 
-nginx 提供 SPA 回退、不缓存的 `index.html`、不可变的哈希资源、16 MiB 请求限制，以及对 SSE 的无缓冲 API 响应。缺失资源和未知 API 路由返回 404。更改 File/CSV 限额时，请同步更新代理的请求体限制。API 具有感知数据库的健康检查，并在 Compose 关闭时有 60 秒排空时间。
+nginx 提供 SPA 回退、不缓存的 `index.html`、gzip 压缩、对带哈希 `/static/` 资源的长期不可变缓存，以及 16 MiB 请求限制。只有实时事件流会关闭代理缓冲；普通 JSON API 响应保留代理缓冲。缺失资源和未知 API 路由返回 404。更改 File/CSV 限额时，请同步更新代理的请求体限制。API 具有感知数据库的健康检查，并在 Compose 关闭时有 60 秒排空时间。
 
 将后端二进制和 Web `dist/` 目录作为不可变产物交付。运行迁移的发布作业还需要匹配的 AppStruct CLI、项目根标记、迁移文件和 schema 快照。不要在生产运行时内从可变分支构建。
 

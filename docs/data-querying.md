@@ -26,8 +26,8 @@ when needed to keep the ordering deterministic.
 
 ## Cursor pagination
 
-Supplying `limit` or `cursor` selects cursor mode. Start a traversal with `limit`; pass the returned
-opaque `next_cursor` to continue:
+Supplying `limit`, `cursor`, or `direction` selects cursor mode. Start a traversal with `limit`;
+pass the returned opaque `next_cursor` to continue:
 
 ```text
 GET /api/tasks/?limit=25&filter[status]=todo
@@ -37,14 +37,22 @@ GET /api/tasks/?limit=25&cursor=<next_cursor>&filter[status]=todo
 ```json
 {
   "data": [],
-  "meta": { "limit": 25, "next_cursor": null, "has_more": false }
+  "meta": {
+    "limit": 25,
+    "next_cursor": null,
+    "previous_cursor": null,
+    "has_more": false
+  }
 }
 ```
 
 Cursor mode orders by the resource primary key ascending, fetches at most 100 records, and does not
 run a total-count query. `page`, `page_size`, and `sort` cannot be combined with cursor mode. Cursor
 tokens are versioned Base64URL values and are an API implementation detail; clients must retain
-them unchanged. Restart from the first page after changing search or filter parameters.
+them unchanged. To move backward, send `previous_cursor` as `cursor` with `direction=previous`.
+Restart from the first page after changing search or filter parameters. Generated resource lists use
+this bidirectional cursor mode by default when no explicit sort is active; sorted and trash views
+retain offset pagination.
 
 The generated TypeScript client exposes the modes separately:
 
@@ -54,6 +62,12 @@ const first = await taskApi.listCursor({ limit: 25, filters: { status: "todo" } 
 const next = await taskApi.listCursor({
   limit: 25,
   cursor: first.meta.next_cursor ?? undefined,
+  filters: { status: "todo" },
+});
+const previous = await taskApi.listCursor({
+  limit: 25,
+  cursor: next.meta.previous_cursor ?? undefined,
+  direction: "previous",
   filters: { status: "todo" },
 });
 ```

@@ -63,8 +63,10 @@ export function ResourceList({
     page,
     pageSize,
     sort,
+    cursorMode,
     filterFields,
     updateParam,
+    moveCursor,
   } = url;
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -90,10 +92,11 @@ export function ResourceList({
   const controller = useResourceListController(resource, {
     cacheKey: queryString,
     trashMode,
+    cursorMode,
     query: url.query,
     onChangeSuccess: () => setRowSelection({}),
   });
-  const { records, total } = controller;
+  const { records, total, nextCursor, previousCursor } = controller;
 
   useEffect(() => {
     setSearch(new URLSearchParams(queryString).get("q") ?? "");
@@ -211,7 +214,11 @@ export function ResourceList({
       <div className="page-heading">
         <div>
           <h1>{trashMode ? `${resource.label} trash` : resource.label}</h1>
-          <p>{total} records</p>
+          <p>
+            {cursorMode
+              ? `${records.length} records on this page`
+              : `${total} records`}
+          </p>
         </div>
         <div className="toolbar">
           {resource.softDelete && (
@@ -353,22 +360,28 @@ export function ResourceList({
         restore={restoreOne}
       />
       <div className="pagination">
-        <span>
-          Page {page} of {pages}
-        </span>
+        <span>{cursorMode ? `Page ${page}` : `Page ${page} of ${pages}`}</span>
         <div>
           <button
             className="icon-button"
-            disabled={page <= 1}
-            onClick={() => updateParam("page", String(page - 1))}
+            disabled={cursorMode ? !previousCursor : page <= 1}
+            onClick={() =>
+              cursorMode && previousCursor
+                ? moveCursor(previousCursor, "previous", page - 1)
+                : updateParam("page", String(page - 1))
+            }
             aria-label="Previous page"
           >
             <ChevronLeft size={17} />
           </button>
           <button
             className="icon-button"
-            disabled={page >= pages}
-            onClick={() => updateParam("page", String(page + 1))}
+            disabled={cursorMode ? !nextCursor : page >= pages}
+            onClick={() =>
+              cursorMode && nextCursor
+                ? moveCursor(nextCursor, "next", page + 1)
+                : updateParam("page", String(page + 1))
+            }
             aria-label="Next page"
           >
             <ChevronRight size={17} />

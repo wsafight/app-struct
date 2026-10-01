@@ -96,7 +96,7 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
             #(#filters)*
             #(#relation_filters)*
             #search
-            let cursor_mode = query.cursor.is_some() || query.limit.is_some();
+            let cursor_mode = query.cursor.is_some() || query.limit.is_some() || query.direction.is_some();
             if cursor_mode {
                 if query.page.is_some() || query.page_size.is_some() || query.sort.is_some() {
                     return Err(ApiError::InvalidQuery(
@@ -109,33 +109,62 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
                         "`limit` must be between 1 and 100".to_owned()
                     ));
                 }
+                let previous = match query.direction.as_deref() {
+                    None | Some("next") => false,
+                    Some("previous") if query.cursor.is_some() => true,
+                    Some("previous") => {
+                        return Err(ApiError::InvalidQuery(
+                            "`direction=previous` requires a cursor".to_owned()
+                        ));
+                    }
+                    Some(_) => {
+                        return Err(ApiError::InvalidQuery(
+                            "`direction` must be `next` or `previous`".to_owned()
+                        ));
+                    }
+                };
+                let has_cursor = query.cursor.is_some();
                 if let Some(cursor) = query.cursor.as_deref() {
                     let raw_cursor = decode_cursor(cursor)
                         .ok_or_else(|| ApiError::InvalidQuery("invalid cursor".to_owned()))?;
                     let cursor_value = #cursor_value;
-                    select = select.filter(#module::Column::#primary.gt(cursor_value));
+                    select = if previous {
+                        select.filter(#module::Column::#primary.lt(cursor_value))
+                    } else {
+                        select.filter(#module::Column::#primary.gt(cursor_value))
+                    };
                 }
-                let mut data = select
-                    .order_by_asc(#module::Column::#primary)
-                    .limit(limit + 1)
-                    .all(&state.database)
-                    .await?;
-                let has_more = data.len() > usize::try_from(limit).unwrap_or(usize::MAX);
-                if has_more {
+                let page = if previous {
+                    select.order_by_desc(#module::Column::#primary)
+                } else {
+                    select.order_by_asc(#module::Column::#primary)
+                };
+                let mut data = page.limit(limit + 1).all(&state.database).await?;
+                let has_extra = data.len() > usize::try_from(limit).unwrap_or(usize::MAX);
+                if has_extra {
                     data.pop();
                 }
-                let next_cursor = has_more.then(|| {
-                    data.last()
-                        .map(|model| encode_cursor(&model.#primary_name.to_string()))
-                        .expect("a cursor page with more rows is not empty")
-                });
+                if previous { data.reverse(); }
+                let has_previous = if previous { has_extra } else { has_cursor };
+                let has_next = if previous { has_cursor } else { has_extra };
+                let previous_cursor = has_previous.then(|| data.first())
+                    .flatten()
+                    .map(|model| encode_cursor(&model.#primary_name.to_string()));
+                let next_cursor = has_next.then(|| data.last())
+                    .flatten()
+                    .map(|model| encode_cursor(&model.#primary_name.to_string()));
                 let data = data
                     .into_iter()
                     .map(|model| redact_model(&context, model))
                     .collect::<Result<Vec<_>, _>>()?;
                 return Ok(Json(ListResponse {
                     data,
-                    meta: ListMeta::Cursor { limit, next_cursor, has_more },
+                    meta: ListMeta::Cursor {
+                        limit,
+                        next_cursor,
+                        previous_cursor,
+                        has_more: has_next,
+                    },
                 }));
             }
             let page = query.page.unwrap_or(1);

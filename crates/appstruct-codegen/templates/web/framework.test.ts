@@ -37,6 +37,8 @@ describe("validateResourceSearch", () => {
       validateResourceSearch({
         page: "10000",
         page_size: "50",
+        cursor: "djE6cHJvamVjdC0x",
+        direction: "previous",
         sort: "-created_at",
         q: "quarterly report",
         trash: 1,
@@ -49,6 +51,8 @@ describe("validateResourceSearch", () => {
     ).toEqual({
       page: 10000,
       page_size: 50,
+      cursor: "djE6cHJvamVjdC0x",
+      direction: "previous",
       sort: "-created_at",
       q: "quarterly report",
       trash: "1",
@@ -65,6 +69,8 @@ describe("validateResourceSearch", () => {
       validateResourceSearch({
         page: "1",
         page_size: 25,
+        cursor: "not+a+cursor",
+        direction: "sideways",
         sort: [],
         q: "",
         trash: "true",

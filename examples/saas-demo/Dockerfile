@@ -6,7 +6,10 @@ COPY generated/backend ./generated/backend
 COPY generated/server ./generated/server
 COPY app ./app
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo build --release --locked --manifest-path generated/server/Cargo.toml
+    --mount=type=cache,target=/build/target \
+    CARGO_TARGET_DIR=/build/target \
+    cargo build --release --locked --manifest-path generated/server/Cargo.toml \
+    && cp /build/target/release/appstruct-generated-server /build/appstruct
 
 FROM debian:bookworm-slim
 
@@ -16,7 +19,7 @@ RUN apt-get update \
     && useradd --system --create-home --uid 10001 appstruct
 
 WORKDIR /app
-COPY --from=backend-build /build/generated/server/target/release/appstruct-generated-server /usr/local/bin/appstruct
+COPY --from=backend-build /build/appstruct /usr/local/bin/appstruct
 
 RUN chmod 0755 /usr/local/bin/appstruct \
     && mkdir -p /app/.appstruct/files \

@@ -63,8 +63,9 @@ readiness. The published Web port defaults to `127.0.0.1:8080`; override `APPSTR
 `APPSTRUCT_WEB_PORT` through the Compose environment when required. Terminate public HTTPS at the
 deployment edge. Secure Auth cookies require HTTPS, including when verifying login.
 
-nginx provides SPA fallback, uncached `index.html`, immutable hashed assets, a 16 MiB request limit,
-and unbuffered API responses for SSE. Missing assets and unknown API routes return 404. Update the
+nginx provides SPA fallback, uncached `index.html`, gzip compression, immutable hashed `/static/`
+assets, and a 16 MiB request limit. Only the realtime event stream disables proxy buffering;
+regular JSON API responses retain it. Missing assets and unknown API routes return 404. Update the
 proxy body limit alongside application File/CSV limits when changing those budgets. The API has
 a database-aware health check and 60 seconds to drain during Compose shutdown.
 

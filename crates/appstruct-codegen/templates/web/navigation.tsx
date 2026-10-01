@@ -148,6 +148,8 @@ export type RuntimeRoute = RuntimeRouteBase &
 export interface ResourceSearch {
   page?: number;
   page_size?: number;
+  cursor?: string;
+  direction?: "next" | "previous";
   sort?: string;
   q?: string;
   columns?: string;
@@ -163,6 +165,14 @@ export function validateResourceSearch(
   const pageSize = searchInteger(search.page_size, 1, 100);
   if (page !== undefined && page !== 1) result.page = page;
   if (pageSize !== undefined && pageSize !== 25) result.page_size = pageSize;
+  if (
+    typeof search.cursor === "string" &&
+    search.cursor.length <= 2_000 &&
+    /^[A-Za-z0-9_-]+$/.test(search.cursor)
+  ) {
+    result.cursor = search.cursor;
+    if (search.direction === "previous") result.direction = "previous";
+  }
   for (const key of ["sort", "q"] as const) {
     if (typeof search[key] === "string" && search[key])
       result[key] = search[key];
