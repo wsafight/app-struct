@@ -10,6 +10,7 @@ mod build;
 mod cache;
 mod capabilities;
 mod db;
+mod deploy;
 mod development;
 mod doctor;
 mod environment;
@@ -80,6 +81,11 @@ enum Command {
     Db {
         #[command(subcommand)]
         command: db::DbCommand,
+    },
+    /// Verify immutable artifacts before promotion to another environment.
+    Deploy {
+        #[command(subcommand)]
+        command: deploy::DeployCommand,
     },
     /// Validate the App Spec and build normalized IR in memory.
     Check {
@@ -187,6 +193,7 @@ fn run(cli: Cli) -> ExitCode {
             no_open,
         } => development::run(&project, api_port, web_port, !no_open),
         Command::Db { command } => db::run(&project, &command),
+        Command::Deploy { command } => deploy::run(&project, &command),
         Command::Check { deny_warnings } => run_check(&project, cli.format, deny_warnings),
         Command::Generate { check, timings } => {
             generation::run_with_timings(&project, check, timings)

@@ -15,7 +15,7 @@
 | --- | --- | --- |
 | M0 | 已完成 | 多文件 YAML、带位置诊断、规范化 Typed IR、canonical golden 和最小生成物编译 |
 | M1 | 已完成 | PostgreSQL schema、SeaORM/Axum CRUD、OpenAPI、TypeScript client、React 列表与表单 |
-| 重构 | 已完成 | Compiler 和 Backend Generator 按职责拆分，Rust 源文件由测试限制为最多 400 行 |
+| 重构 | 已完成 | Compiler 和 Backend Generator 按职责拆分；Clippy 约束函数复杂度与长度，800 行文件上限只作为极端情况兜底 |
 | M2 | 已完成 | 默认值、唯一/枚举/数值校验、关系与反向关系、分页/过滤/搜索/排序、详情页、RelationSelect 和 schema diff 风险阻断 |
 | M3 | 已完成 | Value Object、Hook、Command、Query、Policy、Rust/React registry、SHA-256 ownership manifest 和安全目录交换 |
 | 一致性加固 | 已完成 | 显式写事务、事务内 Hook connection、final-state Policy、revision/ETag 乐观并发和冲突恢复 UI |
@@ -34,7 +34,7 @@
 | TP 升级事务 | 已完成 | staging workspace 全量生成/构建/测试、源文件并发检测及 lock/generated 联合 journal 提交与恢复 |
 | TP 发布准备 | 已完成 | crates.io 元数据与本地 package 验证、macOS/Linux tag 构建、压缩包及 SHA-256 |
 | Runtime/Module 边界 | 已完成 | 独立 `appstruct-runtime` 与 `appstruct-module-sdk`、官方 capability graph、生成 server composition root |
-| 内部契约加固 | 已完成 | Runtime/Module 版本、IR v7-v11 兼容迁移、本地 manifest Artifact 隔离、增量缓存、布局 v1/v2 和故障恢复注入测试 |
+| 内部契约加固 | 已完成 | Runtime/Module 版本、IR v7-v17 兼容迁移、本地 manifest Artifact 隔离、增量缓存、布局 v1/v2 和故障恢复注入测试；版本矩阵见 `docs/compatibility.zh-CN.md` |
 
 M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
@@ -168,21 +168,15 @@ App Spec 经过解析后形成 Typed IR。数据库、后端、OpenAPI 和 UI �
 
 ### 5.1 主要用户
 
-#### Rust 全栈或后端开发者
+#### 维护现有 PostgreSQL 的 Rust 后端团队
 
-需要快速交付管理后台、内部工具或 SaaS MVP，希望保留 Rust 类型安全和性能，并能编写复杂业务逻辑。
-
-#### 小型产品团队
-
-团队人数有限，希望减少前后端基础设施重复建设，将时间投入在业务差异化上。
-
-#### 平台工程团队
-
-需要为组织内多个业务系统提供统一的数据访问、权限、审计和 UI 规范。
+需要把已有 PostgreSQL schema 快速变成带权限、审计和运维界面的内部管理应用，并希望保留 Rust 类型安全、可审查迁移和复杂业务逻辑扩展能力。首要获客旅程是 `appstruct db pull`、补充访问规则、生成应用、验证迁移并部署；新建 SaaS 仍是支持场景，但不与该入口争夺产品叙事。
 
 ### 5.2 次要用户
 
 - 需要快速制作业务原型的技术产品经理
+- 从零开发垂直 SaaS 的小型产品团队
+- 为组织内多个业务系统提供统一规范的平台工程团队
 - 为客户交付定制后台的咨询和外包团队
 - 希望以配置形式沉淀行业模型的解决方案团队
 
@@ -196,19 +190,17 @@ App Spec 经过解析后形成 Typed IR。数据库、后端、OpenAPI 和 UI �
 
 ## 6. 典型使用场景
 
-### 场景 A：搭建内部管理系统
+### 场景 A：为已有 PostgreSQL 生成安全管理应用
+
+开发者导入现有 schema，审阅 App Spec 草稿，补充权限和页面规则后，生成带审计与运维界面的应用。
+
+### 场景 B：搭建内部管理系统
 
 开发者定义客户、订单、产品和发票实体，配置列表、表单和角色权限，在数分钟内得到可登录的管理后台。
 
-### 场景 B：开发垂直 SaaS MVP
+### 场景 C：开发垂直 SaaS MVP
 
 开发者启用组织租户、用户邀请、订阅和审计模块，再为少数核心流程编写自定义 Rust Command 和 React 页面。
-
-### 场景 C：为已有数据库生成管理界面
-
-开发者导入 PostgreSQL schema，AppStruct 生成初始 App Spec。开发者补充标签、权限和 UI 规则后生成后台应用。
-
-此能力不在首个 MVP 中，但数据模型必须为未来反向生成保留空间。
 
 ## 7. 核心用户旅程
 
@@ -1028,7 +1020,7 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 | 配置问题可诊断性 | 常见错误无需阅读生成代码即可定位 |
 | 示例升级成功率 | 框架小版本升级后示例应用自动迁移并通过测试 |
 
-进入公开 Beta 后再补充：活跃项目数、生成成功率、升级失败率、模块采用率和从初始化到首次部署的时间。
+技术预览期间通过版本化访谈记录和本地基准验证首次运行时间；不在未说明用途、保留期和退出方式的情况下采集匿名遥测。进入公开 Beta 后再决定是否引入 opt-in 事件，并补充：活跃项目数、`db pull` 到首次生成的完成率、生成成功率、升级失败率、模块采用率和从初始化到首次部署的时间。
 
 ## 21. 路线图
 

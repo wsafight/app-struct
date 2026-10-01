@@ -81,6 +81,11 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             rust_template(include_str!("../templates/backend/error.rs"))?,
             ArtifactKind::RustSource,
         ),
+        Artifact::text(
+            "backend/src/logging.rs",
+            rust_template(include_str!("../templates/backend/logging.rs"))?,
+            ArtifactKind::RustSource,
+        ),
         runtime::metrics_artifact()?,
         Artifact::text(
             "backend/src/entities/mod.rs",
@@ -219,6 +224,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod error;
         mod file;
         mod jobs;
+        mod logging;
         mod mail;
         mod metrics;
         mod openapi;
@@ -229,6 +235,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod webhooks;
 
         pub use error::{ApiError, FieldViolation};
+        pub use logging::{LoggingError, init_tracing};
         pub use appstruct_runtime::{
             Actor, BackgroundTaskExit, BackgroundTaskExitKind, BackgroundTaskObserver,
             BulkDeleteInput, BulkFailure, BulkResult, BulkUpdateInput, CSV_EXPORT_PAGE_SIZE,

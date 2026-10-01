@@ -10,6 +10,7 @@
 /target/
 **/.appstruct/cache/
 **/.appstruct/logs/
+**/.appstruct/release-manifest.json
 **/.appstruct/generation.lock
 **/.appstruct/generation.journal
 **/.appstruct/update.lock

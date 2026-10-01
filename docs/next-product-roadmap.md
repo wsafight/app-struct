@@ -1,15 +1,16 @@
 # AppStruct Next Product Roadmap
 
-> Status: active implementation (Phase A is complete; Phase B correctness and operations are mostly complete)
-> Date: 2026-08-30
+> Status: active implementation (Phases A and B are complete; Phase C admits evidence-backed delivery work only)
+> Date: 2026-10-01
 > Scope: product work after the M0-M6 technical preview baseline
 
 ## 1. Outcome
 
 AppStruct already has a reliable application compiler, migration workflow, generated REST API,
-React CRUD runtime, authentication, tenant isolation, audit, mail, jobs, and file modules. The next
-product phase should make those foundations useful for existing databases and repeated operational
-work rather than expanding the supported technology matrix.
+React CRUD runtime, authentication, tenant isolation, audit, mail, jobs, and file modules. The
+primary product entry is now fixed as "existing PostgreSQL to a secure admin application with
+authorization, audit, and operations UI." The next phase should improve completion of that journey
+rather than expand the supported technology matrix.
 
 The recommended order is:
 
@@ -42,18 +43,19 @@ richer report/dashboard query plans, and cursor traversal with user-selected sor
 ### 2.3 Admin productivity
 
 The Web runtime now has explicit bulk operations, saved views, import/export, soft delete, restore,
-revision-safe inline scalar editing, and audit-backed history with field-level diffs. Remaining
-productivity gaps are record-scoped history navigation and a more complete reusable headless
+revision-safe inline scalar editing, and paginated record history with field-level diffs inside
+detail pages. The remaining productivity gap is a more complete reusable headless
 form/URL controller for custom screens. Generated list/detail pages and custom page props now share
 the first headless controller slice for query keys, permission gates, request state, refetching, and
 mutation invalidation.
 
 ### 2.4 Operational administration
 
-The implemented modules expose infrastructure capabilities but only limited operational UI. An
-Admin module still needs organization/session operations, mail capture, file usage, and
-record-scoped audit navigation; those improvements are independent of the opt-in Billing v1
-module.
+Admin provides user session revocation, organization membership and invitations, mail delivery,
+file metadata, Jobs, Schedules, Webhooks, Billing events, and global audit pages. Resource detail
+pages provide record-scoped audit navigation. The next operations priority is deterministic release
+manifests and `appstruct deploy verify` so Staging and Production promote the same immutable
+artifacts, rather than another generic console.
 
 ### 2.5 Automation and ecosystem
 
@@ -87,6 +89,7 @@ remains out of scope.
 - [x] OAuth/OIDC.
 - [x] Personal API tokens.
 - [x] Jobs, mail, file, user, tenant, and audit administration pages (overview and module links).
+- [x] User session revocation, organization membership/invitation operations, and record history navigation.
 - [x] Admin job inspection, dead-letter retry, and terminal-job replay.
 - [x] Admin webhook delivery inspection, dead-letter retry, and terminal-delivery replay.
 - [x] Interval schedules with skip-missed execution and stale-definition disable.
@@ -97,10 +100,13 @@ remains out of scope.
 
 - [x] Remote module registry lifecycle (`install`, `update`, `verify`, `uninstall`, and `list`) with
   `appstruct.modules.lock`, signature verification, offline cache validation, and compatibility checks.
-- Deployment adapters and environment promotion without a mandatory hosted control plane.
+- [x] Deterministic release manifests and pre-promotion artifact verification without a mandatory hosted control plane.
+- Platform-specific deployment adapters, admitted only after three pilots repeat the same platform workflow.
 - Billing and subscription operations (Stripe Billing v1 is supported; metered usage remains out of scope).
-- Visual schema, permission, page, and migration editor that produces reviewable App Spec diffs.
-- Project-local agent instructions and a policy-governed MCP adapter.
+- Visual schema, permission, page, and migration editor that produces reviewable App Spec diffs
+  (deferred until interviews identify text review as a top-three abandonment cause).
+- Project-local agent instructions and a policy-governed MCP adapter (deferred until core CLI/API
+  contracts are stable and three real projects request the same automation journey).
 
 ### Next contract freeze
 
@@ -112,14 +118,17 @@ The next data and Web runtime slice must settle its public contracts before impl
 2. Sorted cursor tokens bind the ordered sort specification and typed key values, define null
    ordering, and always include the primary key as the final tie-breaker. A cursor from a different
    filter or sort contract must be rejected.
-3. Server-backed saved views record an owner, resource, revision-guarded query state, and `private`
-   or tenant-scoped `team` visibility. Team views are creator-writable and organization-readable;
-   outside tenant mode only private and browser-local views are available.
-4. The headless controller becomes complete only when it owns URL query parsing plus form
+3. The headless controller becomes complete only when it owns URL query parsing plus form
    validation, field errors, revision conflicts, and unsaved-change state. Generated pages and
    custom pages must consume the same controller contract.
 
 Cursor mode remains primary-key ordered, and custom forms continue to own their form and URL state.
+
+Composite keys, cross-schema relations, computed fields, deeper traversal, and arbitrary-sort
+cursors do not enter the IR merely because real databases may need them. Each requires samples from
+three real projects, a recorded failed journey, an explanation of why existing extension points are
+insufficient, and a compatibility/authorization contract draft. Without that evidence, improve
+warnings, review, and manual-modeling guidance first.
 
 ## 4. First Slice: `appstruct db pull`
 

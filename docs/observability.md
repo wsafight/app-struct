@@ -1,5 +1,13 @@
 # Metrics And Database Workloads
 
+Generated backends emit text `tracing` logs by default. Set `APPSTRUCT_LOG_FORMAT=json` for
+newline-delimited structured JSON; `RUST_LOG` controls filtering in either format. HTTP spans carry
+bounded `request_id` and `method` fields, and the request ID is also returned in `X-Request-Id`.
+Route, status, and latency are represented by the bounded metrics below so record IDs, query
+strings, and tenant IDs do not become high-cardinality log or metric fields. This version does not
+embed an OTLP exporter; deployments can collect JSON logs until an optional Runtime exporter
+contract is frozen.
+
 Every generated backend serves Prometheus text at `/metrics`. Counters and histograms are
 process-local and reset on restart. Scrape each replica; the endpoint does not query PostgreSQL.
 Keep it on the internal network. The production Web proxy does not expose it.

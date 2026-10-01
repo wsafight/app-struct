@@ -22,7 +22,8 @@ pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, 
     let lifecycle = lifecycle_source();
     Ok(quote! {
         use axum::{
-            Router, extract::State, http::{HeaderMap, StatusCode}, response::IntoResponse,
+            Router, body::Body, extract::State,
+            http::{HeaderMap, Request, StatusCode}, response::IntoResponse,
             routing::get,
         };
         use sea_orm::DatabaseConnection;
@@ -250,7 +251,8 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
                 .route("/metrics", get(metrics))
                 .route("/openapi.json", get(openapi)).layer(cors)
                 .layer(axum::middleware::from_fn(metrics::observe_http))
-                .layer(PropagateRequestIdLayer::x_request_id()).layer(TraceLayer::new_for_http())
+                .layer(PropagateRequestIdLayer::x_request_id())
+                .layer(TraceLayer::new_for_http().make_span_with(http_request_span))
                 .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid));
             let router = apply_security_headers(router);
             router.with_state(AppState {
@@ -272,6 +274,11 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
         }
         async fn openapi() -> impl IntoResponse {
             ([(axum::http::header::CONTENT_TYPE, "application/json")], openapi::OPENAPI_JSON)
+        }
+        fn http_request_span(request: &Request<Body>) -> tracing::Span {
+            let request_id = request.headers().get("x-request-id")
+                .and_then(|value| value.to_str().ok()).unwrap_or("invalid");
+            tracing::info_span!("http.request", request_id, method = %request.method())
         }
     }
 }

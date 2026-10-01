@@ -80,8 +80,9 @@ impl<'schema> RenderContext<'schema> {
         for table in &schema.tables {
             if table.primary_key.len() != 1 {
                 warnings.push(format!(
-                    "table `{}` was omitted because it has {} primary-key columns; AppStruct requires exactly one",
+                    "table `{}` was omitted because its primary key [{}] has {} columns; AppStruct requires one scalar key, so add a supported surrogate key before importing",
                     table.name,
+                    table.primary_key.join(", "),
                     table.primary_key.len()
                 ));
                 continue;
@@ -384,10 +385,51 @@ fn usable_relations<'schema>(
             }
         } else {
             warnings.push(format!(
-                "foreign key `{}` could not be represented as an AppStruct relation",
-                key.name
+                "foreign key `{}` was kept as scalar field(s), not a relation: {}",
+                key.name,
+                unusable_relation_reason(schema, entities, &tables, key)
             ));
         }
     }
     relations
+}
+
+fn unusable_relation_reason(
+    schema: &IntrospectedSchema,
+    entities: &BTreeMap<&str, String>,
+    tables: &BTreeMap<&str, &IntrospectedTable>,
+    key: &IntrospectedForeignKey,
+) -> String {
+    if key.source_columns.len() != 1 || key.target_columns.len() != 1 {
+        return format!(
+            "composite mapping [{}] -> [{}] is not supported; keep the imported scalar fields and model the association in application code",
+            key.source_columns.join(", "),
+            key.target_columns.join(", ")
+        );
+    }
+    if key.target_schema != schema.name {
+        return format!(
+            "target `{}.{}` is outside imported schema `{}`; import that schema separately and model the association in application code",
+            key.target_schema, key.target_table, schema.name
+        );
+    }
+    if !entities.contains_key(key.source_table.as_str()) {
+        return format!("source table `{}` was omitted", key.source_table);
+    }
+    if !entities.contains_key(key.target_table.as_str()) {
+        return format!("target table `{}` was omitted", key.target_table);
+    }
+    if key.on_delete == "set_default" {
+        return "ON DELETE SET DEFAULT is not supported".to_owned();
+    }
+    if tables
+        .get(key.target_table.as_str())
+        .is_some_and(|table| table.primary_key != key.target_columns)
+    {
+        return format!(
+            "target column `{}` is not the target entity primary key",
+            key.target_columns[0]
+        );
+    }
+    "the database relation does not match the generated entity contract".to_owned()
 }

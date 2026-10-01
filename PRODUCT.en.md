@@ -16,7 +16,7 @@ As of 2026-08-30, the repository has completed M0 through M6, and after M1 it co
 | --- | --- | --- |
 | M0 | Complete | Multi-file YAML, location-aware diagnostics, normalized Typed IR, canonical golden tests, and compilation of a minimal generated artifact |
 | M1 | Complete | PostgreSQL schema, SeaORM/Axum CRUD, OpenAPI, TypeScript client, React lists and forms |
-| Refactor | Complete | Compiler and Backend Generator split by responsibility; tests cap Rust source files at 400 lines |
+| Refactor | Complete | Compiler and Backend Generator split by responsibility; Clippy constrains function complexity/length and an 800-line file cap is only an emergency backstop |
 | M2 | Complete | Defaults, unique/enum/numeric validation, relations and inverse relations, pagination/filter/search/sort, detail pages, RelationSelect, and schema-diff risk blocking |
 | M3 | Complete | Value Object, Hook, Command, Query, Policy, Rust/React registries, SHA-256 ownership manifest, and safe directory swap |
 | Consistency hardening | Complete | Explicit write transactions, in-transaction Hook connections, final-state Policy, revision/ETag optimistic concurrency, and conflict-recovery UI |
@@ -35,7 +35,7 @@ As of 2026-08-30, the repository has completed M0 through M6, and after M1 it co
 | TP upgrade transaction | Complete | Full generate/build/test in a staging workspace, source-file concurrency detection, and joint lock/generated journal commit and recovery |
 | TP release readiness | Complete | crates.io metadata and local package verification, macOS/Linux tag builds, archives, and SHA-256 |
 | Runtime/Module boundary | Complete | Standalone `appstruct-runtime` and `appstruct-module-sdk`, official capability graph, generated server composition root |
-| Internal contract hardening | Complete | Runtime/Module versions, IR v7-v11 compatibility migrations, isolated local-manifest Artifacts, incremental cache, layout v1/v2, and crash-recovery injection tests |
+| Internal contract hardening | Complete | Runtime/Module versions, IR v7-v17 compatibility migrations, isolated local-manifest Artifacts, incremental cache, layout v1/v2, and crash-recovery injection tests; see `docs/compatibility.md` |
 
 M2 `migrate plan` remains a read-only diff preview. `migrate dev --accept` accepts only `NonDestructive + Online` changes and commits the migration draft and schema snapshot as staging files. Migration Runner now tracks execution state across on-disk migrations, the snapshot, and the target database: when `DATABASE_URL` is set, dev continues to apply; otherwise migrations stay pending. `migrate apply/status` neither generate nor modify files from the Spec.
 
@@ -169,21 +169,19 @@ Developers can start with a single entity and enable Auth, RBAC, Tenant, Audit, 
 
 ### 5.1 Primary Users
 
-#### Rust Full-Stack or Backend Developers
+#### Rust Backend Teams Maintaining Existing PostgreSQL
 
-Need to ship an admin console, internal tool, or SaaS MVP quickly, while keeping Rust type safety and performance and writing complex business logic.
-
-#### Small Product Teams
-
-Have limited headcount and want to spend less time rebuilding frontend/backend infrastructure, and more time on business differentiation.
-
-#### Platform Engineering Teams
-
-Need unified data access, permission, audit, and UI conventions for multiple business systems in an organization.
+Need to turn an existing PostgreSQL schema into an internal admin application with authorization,
+audit, and operations UI while retaining Rust type safety, reviewable migrations, and extension
+points for complex business logic. The primary acquisition journey is `appstruct db pull`, access
+policy review, generation, migration verification, and deployment. Greenfield SaaS remains
+supported, but does not compete with this entry point in the product narrative.
 
 ### 5.2 Secondary Users
 
 - Technical product managers who need business prototypes quickly
+- Small product teams building a vertical SaaS from scratch
+- Platform engineering teams standardizing multiple internal business applications
 - Consulting and outsourcing teams that deliver custom admin consoles for clients
 - Solutions teams that want to capture industry models as configuration
 
@@ -197,19 +195,19 @@ Need unified data access, permission, audit, and UI conventions for multiple bus
 
 ## 6. Typical Use Cases
 
-### Scenario A: Build an Internal Admin System
+### Scenario A: Generate a Secure Admin Application for Existing PostgreSQL
+
+Developers import an existing schema, review the App Spec draft, add authorization and page rules,
+then generate an application with audit and operations UI.
+
+### Scenario B: Build an Internal Admin System
 
 Developers define Customer, Order, Product, and Invoice entities, configure lists, forms, and role permissions, and get a login-ready admin console in minutes.
 
-### Scenario B: Build a Vertical SaaS MVP
+### Scenario C: Build a Vertical SaaS MVP
 
 Developers enable organization Tenant, user invitation, subscription, and Audit modules, then write custom Rust Commands and React pages for a few core flows.
 
-### Scenario C: Generate an Admin UI for an Existing Database
-
-Developers import a PostgreSQL schema. AppStruct generates an initial App Spec. Developers add labels, permissions, and UI rules, then generate the admin application.
-
-This capability is not in the first MVP, but the data model must leave room for future reverse generation.
 
 ## 7. Core User Journeys
 
@@ -1047,7 +1045,11 @@ The MVP stage first validates developer value. Sign-up volume is not a core metr
 | Diagnosability of configuration problems | Common errors can be located without reading generated code |
 | Example upgrade success rate | After a framework minor upgrade, the example application migrates automatically and passes tests |
 
-After public Beta, add: active project count, generate success rate, upgrade failure rate, module adoption rate, and time from initialization to first deploy.
+During the technical preview, use versioned interview notes and local benchmarks to validate time to
+first run. Do not collect anonymous telemetry without documenting purpose, retention, and opt-out.
+At public Beta, decide whether to add opt-in events and then track active projects, `db pull` to
+first-generation completion, generate success, upgrade failure, module adoption, and time from
+initialization to first deploy.
 
 ## 21. Roadmap
 

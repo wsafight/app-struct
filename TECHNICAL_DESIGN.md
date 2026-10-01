@@ -23,7 +23,7 @@
 
 ### 1.1 当前落地状态
 
-当前实现已经通过 M0 至 M6 验收。编译链保持 `App Spec -> Surface -> Typed IR -> Generators` 单向数据流；M1 后的重构将 Compiler 拆分为加载、命名、字段选项、校验、访问规则和 lowering，将 Backend Generator 拆分为 API、Entity、查询、校验和 manifest，`source_size` 测试对 Rust 源文件执行 400 行上限。
+当前实现已经通过 M0 至 M6 验收。编译链保持 `App Spec -> Surface -> Typed IR -> Generators` 单向数据流；M1 后的重构将 Compiler 拆分为加载、命名、字段选项、校验、访问规则和 lowering，将 Backend Generator 拆分为 API、Entity、查询、校验和 manifest。维护性门禁以 deny-by-default Clippy 检查函数复杂度和长度，禁止 blanket lint bypass，并用 800 行文件上限拦截极端模块；文件行数不作为职责拆分的单一指标。
 
 M2 新增独立的 `appstruct-migrate` crate。它从 IR 提取规范化 PostgreSQL schema，持久化确定性 JSON snapshot，按 schema 风险与执行风险分类 diff，并只为 `NonDestructive + Online` 计划生成 SQL。删除表/列、重命名、类型或主键变化、非空收紧、唯一约束变化、已有表新增外键等变更会在 snapshot 写入前阻断。迁移文件与 snapshot 使用 staging 文件提交，局部提交失败时回滚本地新文件。
 
@@ -49,7 +49,7 @@ M5 确定性、性能和浏览器门禁已实现。CLI 集成测试在两个独�
 
 M6 已完成。Tenant、Audit、Mail、Jobs 和 File Module 以及 `appstruct/saas@1` Preset 已进入 Compiler：Surface 配置先展开官方默认模块映射，再递归合并用户映射覆盖，最后降低到版本化 `PresetIr` 和模块 IR。IR 中的 `modules` 包含每个启用模块的来源、精确版本、provides/requires capability、确定性启动顺序和隔离静态 Artifact。Compiler 对 `appstruct.lock` 中的 AppStruct 版本、Preset 名称/版本/内容摘要及精确模块版本集合执行失败关闭校验；CLI 可用 `preset show [--expanded]` 检查契约。`saas` Template 与 `examples/saas-demo` 提供锁定 Preset、managed PostgreSQL、开发 Mail/File 配置和 Tenant/Audit 化的 Project/Task 骨架；专用 external PostgreSQL/Chromium E2E 验证五个模块表、用户旅程、租户隔离、Audit 和桌面/移动布局。
 
-内部契约加固已完成。IR v7-v10 可在内存迁移到 v11，旧 IR 的数据库迁移策略安全降级为 unmanaged；未来版本和语义不安全的旧模块图失败关闭。根 `module_manifests` 只加载 `modules/` 内的本地 TOML，拒绝 traversal、symlink、非 UTF-8 和超限文件；本地 Artifact 输出到模块专属 generated namespace，本地 Runtime starter 为 no-op。`appstruct.lock` 的 `project_layout_version` 明确区分 v1 generated backend 与 v2 server composition root，目录探测仅用于显式 update 迁移未版本化旧项目。生成和 dev build/install 使用内容缓存但仍执行 ownership 校验；Module Runtime 发出结构化 lifecycle phase，生成后端用 tracing 记录启动、失败、回滚和停止。generation transaction 的测试 failpoint 覆盖备份后与安装后恢复。
+内部契约加固已完成。IR v7-v16 可在内存迁移到当前 v17，旧 IR 的数据库迁移策略安全降级为 unmanaged；未来版本和语义不安全的旧模块图失败关闭。权威版本范围定义在 `appstruct-contracts::CONTRACT_MATRIX`，并由测试同步到 `docs/compatibility.md` 和 `docs/compatibility.zh-CN.md`。根 `module_manifests` 只加载 `modules/` 内的本地 TOML，拒绝 traversal、symlink、非 UTF-8 和超限文件；本地 Artifact 输出到模块专属 generated namespace，本地 Runtime starter 为 no-op。`appstruct.lock` 的 `project_layout_version` 明确区分 v1 generated backend 与 v2 server composition root，目录探测仅用于显式 update 迁移未版本化旧项目。生成和 dev build/install 使用内容缓存但仍执行 ownership 校验；Module Runtime 发出结构化 lifecycle phase，生成后端用 tracing 记录启动、失败、回滚和停止。generation transaction 的测试 failpoint 覆盖备份后与安装后恢复。
 
 Technical Preview 契约加固已完成。Compiler 内嵌 Draft 2020-12 JSON Schema，`appstruct schema` 无需项目即可输出；编译报告保留非致命 warning，当前 `AS3070` 检测匿名写操作，`check --deny-warnings` 为 CI 提供失败策略。`appstruct update` 同时持有 generation/update lock，在项目内 staging workspace 写候选 lock、全量编译 Spec、生成、执行 release Rust/Web 构建和后端测试，再比对用户文件哈希；最终用独立 journal 联合交换 `appstruct.lock` 与 ownership 管理的 `generated/`。崩溃恢复要么回滚两者，要么完成已安装候选，普通 generate 遇到 update 遗留状态时失败关闭。
 
@@ -212,7 +212,7 @@ MVP 前不为每个 Generator 建立独立 crate。只有当编译时间、依�
 - typed service 装配、Module 启停和资源清理协议
 - Generator 扩展权限与 Artifact ownership 约束
 
-当前 crate 提供 manifest 类型、静态 Artifact 声明和 capability graph 解析；Compiler 只加载项目 `modules/` 内的本地 manifest，Codegen 将其 Artifact 隔离到 `generated/modules/`。本地模块不注入 IR fragment 或可执行代码；远程 artifact 分发、签名和第三方兼容矩阵仍属于后续 Module API 工作。
+当前 crate 提供 manifest 类型、静态 Artifact 声明和 capability graph 解析；Compiler 加载项目 `modules/` 内的本地 manifest，Codegen 将其 Artifact 隔离到 `generated/modules/`。远程 registry 已支持安装、更新、校验、卸载、离线缓存、签名验证和锁定兼容范围。无论来源，本地与远程模块都不能注入任意 IR fragment 或动态加载可执行 Rust 代码；这两项仍属于未来独立安全模型的范围。
 
 ## 6. 生成应用结构
 
@@ -1513,14 +1513,15 @@ appstruct update
 
 生成后端默认使用 `tracing`：
 
-- 可由 subscriber 选择 text/JSON 的结构化日志
-- request ID span
-- route、status、latency 和 actor/tenant 的安全标识
+- `APPSTRUCT_LOG_FORMAT=text|json` 选择文本或逐行 JSON，非法值失败关闭
+- HTTP span 使用 request ID 与 method，不记录完整 URI 或查询字符串
+- route、status 与 latency 使用有界进程指标；业务事件按需记录 actor/tenant 安全标识
 - Module `starting/started/failed/rolling_back/rolled_back/stopping/stopped` phase
-- 数据库慢查询 span，不记录敏感参数
 - `/health/live` 与 `/health/ready`
 
-OpenTelemetry 接口在 Runtime 中预留 feature，不作为 MVP 默认依赖。
+当前不内置 OpenTelemetry exporter 或数据库慢查询 span，部署侧可采集 JSON 日志和
+Prometheus 指标。可选 OTLP 接口必须先冻结资源属性、采样、敏感字段和失败降级契约，不作为
+MVP 默认依赖。
 
 ## 25. 测试策略
 
@@ -1680,9 +1681,14 @@ Billing 和完整运营 Admin 在对应模块达到生产安全标准后加入�
 | 10 实体配置变更到生成完成 | 小于 1 s，MVP 允许完整规划 |
 | 100 实体完整生成 | 小于 10 s |
 | CLI 无操作检查 | 小于 300 ms，缓存命中后 |
+| 脚手架/冷生成/热生成 | 小于 5 s / 30 s / 3 s，开发机基准 |
+| 冷生产构建/热生产构建 | 小于 15 min / 2 min，开发机基准 |
+| 单项目构建缓存/生成目录 | 小于 8 GiB / 1 GiB |
 | 默认列表 API | 本地数据库 p95 小于 200 ms，不含网络 |
 
-性能测试使用固定硬件和数据集记录，目标是回归门槛而不是跨机器绝对承诺。
+Compiler/Generator 门禁由 Rust 测试执行；完整开发路径由
+`scripts/run-developer-experience-benchmark.sh` 在一次性项目中执行并输出 JSON。性能测试使用
+固定硬件和数据集记录，目标是回归门槛而不是跨机器绝对承诺。
 
 ## 29. 已知风险
 
@@ -1704,7 +1710,7 @@ OpenAPI、Rust API 和 UI 必须在同一次 IR 编译中生成。禁止从运�
 
 ### 29.5 模块协议过早泛化
 
-MVP 只执行 monorepo 官方模块代码；项目本地 manifest 仅能贡献 capability 和隔离 UTF-8 静态 Artifact，starter 为 no-op。远程分发、签名、可执行第三方模块和非锁步兼容矩阵必须在独立安全模型稳定后再开放。
+MVP 只执行 monorepo 官方模块代码；项目本地或远程 registry manifest 仅能贡献 capability 和隔离 UTF-8 静态 Artifact，starter 为 no-op。远程下载、签名与锁定兼容检查已经实现；可执行第三方模块、任意 IR fragment 和非锁步运行时兼容仍需先建立独立安全模型。
 
 ### 29.6 SaaS Template 范围膨胀
 
@@ -1716,7 +1722,7 @@ MVP 只执行 monorepo 官方模块代码；项目本地 manifest 仅能贡献 c
 
 1. 大型项目是否需要远程或包级 Spec 依赖。
 2. Session 是否增加 Redis Provider。
-3. Module artifact 的远程分发、签名和兼容矩阵。
+3. 可执行第三方 Module 的沙箱、IR fragment 权限和非锁步运行时兼容矩阵。
 4. `.appstruct/schema.snapshot.json` 的跨版本兼容迁移策略。
 5. 游标分页与批量写入的授权、缓存和迁移语义。
 

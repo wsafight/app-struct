@@ -61,19 +61,34 @@ pub(crate) fn run(project: &Path) -> ExitCode {
         );
     }
     let backend = format!(".appstruct/cache/backend-target/release/{binary}");
+    let manifest = match crate::deploy::write_manifest(project, Path::new(&backend)) {
+        Ok(path) => path,
+        Err(error) => {
+            return crate::report::fail(
+                "AS6004",
+                crate::report::ErrorCategory::Build,
+                format!("cannot write release manifest: {error}"),
+                crate::report::ExitClass::Environment,
+            );
+        }
+    };
     if crate::report::is_json() {
         crate::report::success(&serde_json::json!({
             "command": "build",
             "backend": backend,
             "web": "generated/web/dist",
+            "manifest": manifest.strip_prefix(project).unwrap_or(&manifest),
         }));
     } else {
         println!("Production build completed:");
         println!("- backend: {backend}");
         println!("- web: generated/web/dist");
+        println!("- manifest: {MANIFEST_OUTPUT}");
     }
     ExitCode::SUCCESS
 }
+
+const MANIFEST_OUTPUT: &str = ".appstruct/release-manifest.json";
 
 pub(crate) fn verify_update(project: &Path) -> io::Result<()> {
     let environment = ProjectEnvironment::load(project)?;

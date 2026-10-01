@@ -31,7 +31,15 @@ A successful build produces:
 generated/web/dist/
 migrations/
 .appstruct/schema.snapshot.json
+.appstruct/release-manifest.json
 ```
+
+`appstruct build` finishes by writing a deterministic release manifest containing SHA-256 hashes
+and sizes for the backend binary, Web bundle, migrations, schema snapshot, generated ownership
+manifest, and project lock. Transfer the manifest with the artifacts and run
+`appstruct deploy verify` in Staging or Production before migrations or startup. Missing, changed,
+or unsafe artifact paths block promotion. The manifest contains no environment values or secrets,
+so one build can be promoted across environments.
 
 Legacy projects without `app/backend` produce `appstruct-generated-backend` instead.
 
@@ -88,6 +96,7 @@ The backend reads configuration from its process environment:
 | `APPSTRUCT_DB_MAX_LIFETIME_SECS` | optional | connection max lifetime, default 1800 |
 | `APPSTRUCT_BIND` | optional | listen address, default `127.0.0.1:3000` |
 | `RUST_LOG` | optional | tracing filter |
+| `APPSTRUCT_LOG_FORMAT` | optional | `text` (default) or newline-delimited `json`; other values block startup |
 | `APPSTRUCT_ENV` | set to `production` for Auth applications | enables production Auth defaults |
 | `APPSTRUCT_ALLOWED_ORIGIN` | required when `APPSTRUCT_ENV=production` for Auth; optional CORS allowlist otherwise | exact allowed browser origin |
 | `APPSTRUCT_FRONTEND_URL` | required when `APPSTRUCT_ENV=production` | public Web origin |
@@ -110,12 +119,13 @@ or load balancer and use a TLS-protected PostgreSQL connection as required by th
 Run each release against one immutable artifact set:
 
 1. Back up the database according to the service recovery policy.
-2. Set the production `DATABASE_URL` without printing it.
-3. Run `appstruct --project <release-root> migrate status`.
-4. Run `appstruct --project <release-root> migrate apply` as a dedicated release job.
-5. Start the new backend binary with its runtime environment.
-6. Publish `generated/web/dist/` with SPA fallback to `index.html`.
-7. Check `GET /health/live`, `GET /health/ready`, `GET /openapi.json`, login when enabled, and
+2. Run `appstruct --project <release-root> deploy verify` to match promoted artifacts to the build manifest.
+3. Set the production `DATABASE_URL` without printing it.
+4. Run `appstruct --project <release-root> migrate status`.
+5. Run `appstruct --project <release-root> migrate apply` as a dedicated release job.
+6. Start the new backend binary with its runtime environment.
+7. Publish `generated/web/dist/` with SPA fallback to `index.html`.
+8. Check `GET /health/live`, `GET /health/ready`, `GET /openapi.json`, login when enabled, and
    one authorized CRUD journey before retiring the previous release.
 
 Migration apply uses an advisory lock, validates ordered history and checksums, and checks live

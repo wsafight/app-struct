@@ -25,7 +25,13 @@ appstruct generate --check
 generated/web/dist/
 migrations/
 .appstruct/schema.snapshot.json
+.appstruct/release-manifest.json
 ```
+
+`appstruct build` 最后会生成确定性的发布清单，记录后端二进制、Web 包、迁移、schema snapshot、
+生成 ownership manifest 和项目锁文件的 SHA-256 与大小。把清单和产物一起传到 Staging 或
+Production，并在迁移或启动前执行 `appstruct deploy verify`；任何缺失、修改或路径异常都会
+阻断晋级。清单不包含环境变量和密钥，同一构建可在不同环境复用。
 
 没有 `app/backend` 的遗留项目会改为产出 `appstruct-generated-backend`。
 
@@ -66,6 +72,7 @@ nginx 提供 SPA 回退、不缓存的 `index.html`、gzip 压缩、对带哈希
 | `APPSTRUCT_DB_MAX_LIFETIME_SECS` | 可选 | 连接最大生存期，默认 1800 |
 | `APPSTRUCT_BIND` | 可选 | 监听地址，默认 `127.0.0.1:3000` |
 | `RUST_LOG` | 可选 | tracing 过滤器 |
+| `APPSTRUCT_LOG_FORMAT` | 可选 | `text`（默认）或逐行 JSON 日志；其他值会阻断启动 |
 | `APPSTRUCT_ENV` | Auth 应用设为 `production` | 启用生产 Auth 默认值 |
 | `APPSTRUCT_ALLOWED_ORIGIN` | Auth 在 `APPSTRUCT_ENV=production` 时必需；否则为可选 CORS 允许列表 | 精确允许的浏览器 origin |
 | `APPSTRUCT_FRONTEND_URL` | `APPSTRUCT_ENV=production` 时必需 | 公共 Web origin |
@@ -86,12 +93,13 @@ nginx 提供 SPA 回退、不缓存的 `index.html`、gzip 压缩、对带哈希
 每次发布都针对一套不可变产物执行：
 
 1. 按服务恢复策略备份数据库。
-2. 设置生产 `DATABASE_URL`，不要打印它。
-3. 运行 `appstruct --project <release-root> migrate status`。
-4. 将 `appstruct --project <release-root> migrate apply` 作为专用发布作业运行。
-5. 用其运行时环境启动新的后端二进制。
-6. 发布 `generated/web/dist/`，并对未知路径做 SPA 回退到 `index.html`。
-7. 在退役先前发布之前，检查 `GET /health/live`、`GET /health/ready`、`GET /openapi.json`、启用时的登录，以及一次已授权的 CRUD 旅程。
+2. 运行 `appstruct --project <release-root> deploy verify`，确认晋级产物与构建清单一致。
+3. 设置生产 `DATABASE_URL`，不要打印它。
+4. 运行 `appstruct --project <release-root> migrate status`。
+5. 将 `appstruct --project <release-root> migrate apply` 作为专用发布作业运行。
+6. 用其运行时环境启动新的后端二进制。
+7. 发布 `generated/web/dist/`，并对未知路径做 SPA 回退到 `index.html`。
+8. 在退役先前发布之前，检查 `GET /health/live`、`GET /health/ready`、`GET /openapi.json`、启用时的登录，以及一次已授权的 CRUD 旅程。
 
 迁移 apply 使用 advisory lock，校验有序历史和校验和，并在所有待处理迁移完成后检查实时 catalog 漂移。脏的非事务迁移、校验和不匹配、历史缺口或漂移会阻断发布，需要调查。
 

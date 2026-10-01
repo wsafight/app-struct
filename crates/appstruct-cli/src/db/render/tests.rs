@@ -146,6 +146,55 @@ fn imports_domain_base_types_and_omits_incompatible_columns() {
     );
 }
 
+#[test]
+fn explains_composite_keys_and_cross_schema_relations() {
+    let schema = IntrospectedSchema {
+        name: "public".to_owned(),
+        tables: vec![
+            IntrospectedTable {
+                name: "memberships".to_owned(),
+                columns: vec![
+                    column("organization_id", "uuid", false),
+                    column("user_id", "uuid", false),
+                ],
+                primary_key: vec!["organization_id".to_owned(), "user_id".to_owned()],
+                unique_constraints: Vec::new(),
+                indexes: Vec::new(),
+            },
+            IntrospectedTable {
+                name: "projects".to_owned(),
+                columns: vec![
+                    column("id", "uuid", false),
+                    column("account_id", "uuid", false),
+                ],
+                primary_key: vec!["id".to_owned()],
+                unique_constraints: Vec::new(),
+                indexes: Vec::new(),
+            },
+        ],
+        foreign_keys: vec![IntrospectedForeignKey {
+            name: "projects_account_fkey".to_owned(),
+            source_table: "projects".to_owned(),
+            source_columns: vec!["account_id".to_owned()],
+            target_schema: "identity".to_owned(),
+            target_table: "accounts".to_owned(),
+            target_columns: vec!["id".to_owned()],
+            on_delete: "restrict".to_owned(),
+        }],
+    };
+
+    let draft = render(&schema);
+    assert!(draft.warnings.iter().any(|warning| {
+        warning.contains("primary key [organization_id, user_id]")
+            && warning.contains("surrogate key")
+    }));
+    assert!(draft.warnings.iter().any(|warning| {
+        warning.contains("projects_account_fkey")
+            && warning.contains("identity.accounts")
+            && warning.contains("kept as scalar")
+    }));
+}
+
 fn fixture() -> IntrospectedSchema {
     let mut state = column("state", "USER-DEFINED", false);
     state.udt_schema = "public".to_owned();

@@ -49,7 +49,7 @@ M5 determinism, performance, and browser gates are implemented. CLI integration 
 
 M6 is complete. Tenant, Audit, Mail, Jobs, and File modules plus the `appstruct/saas@1` Preset are in the Compiler. Surface configuration first expands official default module maps, then recursively merges user map overrides, and finally lowers to versioned `PresetIr` and module IR. IR `modules` records each enabled module's source, exact version, provides/requires capabilities, deterministic startup order, and isolated static Artifacts. The Compiler fail-closes on AppStruct version, Preset name/version/content digest, and the exact module version set in `appstruct.lock`. CLI `preset show [--expanded]` inspects the contract. The `saas` Template and `examples/saas-demo` provide a locked Preset, managed PostgreSQL, development Mail/File configuration, and a Tenant/Audit Project/Task skeleton. Dedicated external PostgreSQL/Chromium E2E verifies the five module tables, user journeys, tenant isolation, Audit, and desktop/mobile layouts.
 
-Internal contract hardening is complete. IR v7-v10 can migrate in memory to v11; old IR database migration policy safely degrades to unmanaged. Future versions and semantically unsafe old module graphs fail closed. Root `module_manifests` loads only local TOML under `modules/`, and rejects traversal, symlink, non-UTF-8, and oversized files. Local Artifacts write into the module-owned generated namespace; the local Runtime starter is a no-op. `appstruct.lock` `project_layout_version` distinguishes v1 generated backend from v2 server composition root; directory probing is used only by explicit update to migrate unversioned old projects. Generation and dev build/install use content caches but still run ownership checks. Module Runtime emits structured lifecycle phases; the generated backend records start, failure, rollback, and stop with tracing. Generation-transaction test failpoints cover recovery after backup and after install.
+Internal contract hardening is complete. IR v7-v16 can migrate in memory to current v17; old IR database migration policy safely degrades to unmanaged. Future versions and semantically unsafe old module graphs fail closed. Authoritative ranges live in `appstruct-contracts::CONTRACT_MATRIX`, with tests synchronizing `docs/compatibility.md` and `docs/compatibility.zh-CN.md`. Root `module_manifests` loads only local TOML under `modules/`, and rejects traversal, symlink, non-UTF-8, and oversized files. Local Artifacts write into the module-owned generated namespace; the local Runtime starter is a no-op. `appstruct.lock` `project_layout_version` distinguishes v1 generated backend from v2 server composition root; directory probing is used only by explicit update to migrate unversioned old projects. Generation and dev build/install use content caches but still run ownership checks. Module Runtime emits structured lifecycle phases; the generated backend records start, failure, rollback, and stop with tracing. Generation-transaction test failpoints cover recovery after backup and after install.
 
 Technical Preview contract hardening is complete. The Compiler embeds Draft 2020-12 JSON Schema; `appstruct schema` can emit it without a project. Compile reports keep non-fatal warnings; currently `AS3070` detects anonymous write operations, and `check --deny-warnings` gives CI a fail policy. `appstruct update` holds both generation and update locks, writes a candidate lock in an in-project staging workspace, compiles the full Spec, generates, runs release Rust/Web builds and backend tests, then compares user-file hashes. It finally jointly swaps `appstruct.lock` and ownership-managed `generated/` with a dedicated journal. Crash recovery either rolls both back or finishes an already-installed candidate. Ordinary generate fail-closes if it sees leftover update state.
 
@@ -212,7 +212,7 @@ Do not split a crate per Generator before MVP. Split `appstruct-codegen` only wh
 - Typed service assembly, Module start/stop, and resource-cleanup protocol
 - Generator extension permissions and Artifact ownership constraints
 
-The current crate supplies manifest types, static Artifact declarations, and capability-graph resolution. The Compiler loads only local manifests under the project `modules/` directory; Codegen isolates their Artifacts under `generated/modules/`. Local modules do not inject IR fragments or executable code. Remote artifact distribution, signing, and third-party compatibility matrices remain later Module API work.
+The current crate supplies manifest types, static Artifact declarations, and capability-graph resolution. The Compiler loads local manifests under project `modules/`; Codegen isolates Artifacts under `generated/modules/`. The remote registry supports install, update, verify, uninstall, offline cache validation, signature verification, and locked compatibility ranges. Regardless of source, modules cannot inject arbitrary IR fragments or dynamically load executable Rust; those remain future work requiring a separate security model.
 
 ## 6. Generated Application Layout
 
@@ -1451,14 +1451,16 @@ The current Technical Preview does not automatically rewrite Spec, Template, mig
 
 The generated backend uses `tracing` by default:
 
-- Structured logs in text/JSON, chosen by the subscriber
-- request ID span
-- Safe identifiers for route, status, latency, and actor/tenant
+- `APPSTRUCT_LOG_FORMAT=text|json` selects text or newline-delimited JSON and invalid values fail closed
+- HTTP spans carry request ID and method without full URIs or query strings
+- Route, status, and latency use bounded process metrics; domain events add safe actor/tenant identifiers where needed
 - Module `starting/started/failed/rolling_back/rolled_back/stopping/stopped` phases
-- Database slow-query spans without sensitive parameters
 - `/health/live` and `/health/ready`
 
-An OpenTelemetry interface is reserved as a Runtime feature. It is not an MVP default dependency.
+The current runtime does not embed an OpenTelemetry exporter or database slow-query spans.
+Deployments can collect JSON logs and Prometheus metrics. An optional OTLP interface must first
+freeze resource attributes, sampling, sensitive fields, and failure degradation, and is not an MVP
+default dependency.
 
 ## 25. Testing Strategy
 
@@ -1618,9 +1620,15 @@ Billing and a full operations Admin join the complete SaaS Template after the co
 | Config change to generation complete for 10 entities | under 1 s; MVP may fully replan |
 | Full generation for 100 entities | under 10 s |
 | CLI no-op check | under 300 ms after a cache hit |
+| Scaffold / cold generate / warm generate | under 5 s / 30 s / 3 s on a developer benchmark host |
+| Cold production build / warm production build | under 15 min / 2 min on a developer benchmark host |
+| Per-project build cache / generated tree | under 8 GiB / 1 GiB |
 | Default list API | local-database p95 under 200 ms, excluding network |
 
-Performance tests are recorded on fixed hardware and datasets. The target is a regression threshold, not an absolute cross-machine promise.
+Rust tests enforce Compiler/Generator budgets. `scripts/run-developer-experience-benchmark.sh` runs
+the complete build path in a disposable project and emits JSON. Performance tests are recorded on
+fixed hardware and datasets. The target is a regression threshold, not an absolute cross-machine
+promise.
 
 ## 29. Known Risks
 
@@ -1642,7 +1650,7 @@ OpenAPI, Rust API, and UI must be generated in the same IR compile. Fetching Ope
 
 ### 29.5 Premature Module-Protocol Generalization
 
-MVP only executes official monorepo module code. Project-local manifests may contribute only capabilities and isolated UTF-8 static Artifacts; starters are no-ops. Remote distribution, signing, executable third-party modules, and non-lockstep compatibility matrices must wait until an independent security model is stable.
+MVP only executes official monorepo module code. Project-local or remote-registry manifests may contribute only capabilities and isolated UTF-8 static Artifacts; starters are no-ops. Remote download, signatures, and locked compatibility checks are implemented. Executable third-party modules, arbitrary IR fragments, and non-lockstep runtime compatibility still require an independent security model.
 
 ### 29.6 SaaS Template Scope Creep
 
@@ -1654,7 +1662,7 @@ These later questions need separate ADRs. First-version protocols that have alre
 
 1. Whether large projects need remote or package-level Spec dependencies.
 2. Whether Session adds a Redis Provider.
-3. Remote distribution, signing, and compatibility matrices for Module artifacts.
+3. Sandboxing, IR-fragment permissions, and non-lockstep runtime compatibility for executable third-party Modules.
 4. Cross-version compatibility migration strategy for `.appstruct/schema.snapshot.json`.
 5. Authorization, cache, and migration semantics for cursor pagination and bulk writes.
 

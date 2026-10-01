@@ -296,7 +296,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 110);
+    assert_eq!(artifacts.len(), 111);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -663,7 +663,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 93);
+    assert_eq!(artifacts.len(), 94);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")
@@ -693,8 +693,7 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     let auth = artifact_text(artifacts, "backend/src/auth.rs");
     assert!(auth.contains("CorsLayer::permissive()"));
     assert!(auth.contains("APPSTRUCT_ENV"));
-    let main = artifact_text(artifacts, "backend/src/main.rs");
-    assert!(main.contains("connect_database(database_url)"));
+    assert_logging_contract(artifacts, backend);
     assert!(backend.contains("pub const GENERATED_RUNTIME_API_VERSION: u32 = 4"));
     assert!(backend.contains("startup_plan().start(&mut context).await?"));
     assert!(backend.contains("state.health.is_ready() && state.database.ping().await.is_ok()"));
@@ -764,6 +763,20 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     );
     assert!(openapi["paths"]["/api/projects/{id}"]["patch"]["responses"]["412"].is_object());
     assert!(openapi["paths"]["/api/projects/{id}"]["delete"]["responses"]["428"].is_object());
+}
+
+fn assert_logging_contract(artifacts: &[Artifact], backend: &str) {
+    let main = artifact_text(artifacts, "backend/src/main.rs");
+    assert!(main.contains("connect_database(database_url)"));
+    assert!(main.contains("init_tracing()?"));
+    let logging = artifact_text(artifacts, "backend/src/logging.rs");
+    assert!(logging.contains("APPSTRUCT_LOG_FORMAT"));
+    assert!(logging.contains(".json()"));
+    assert!(backend.contains("make_span_with(http_request_span)"));
+    assert!(backend.contains("http_request_span"));
+    assert!(backend.contains("\"http.request\""));
+    assert!(backend.contains("request_id"));
+    assert!(backend.contains("method = %"));
 }
 
 fn assert_chart_contract(artifacts: &[Artifact]) {

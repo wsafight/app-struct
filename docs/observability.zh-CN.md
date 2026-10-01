@@ -1,5 +1,11 @@
 # 指标与数据库工作负载
 
+生成后端默认输出文本 `tracing` 日志。设置 `APPSTRUCT_LOG_FORMAT=json` 可切换为逐行结构化
+JSON；`RUST_LOG` 在两种格式中都控制过滤。HTTP span 记录受控的 `request_id` 和 `method`，
+请求 ID 同时返回在 `X-Request-Id`。路由、状态和延迟由下面的有界指标表达，避免把记录 ID、
+查询字符串或租户 ID放入高基数日志/指标字段。当前版本不内置 OTLP exporter；需要集中链路时
+由部署侧收集 JSON 日志，直到 Runtime 的可选 exporter 契约冻结。
+
 每个生成的后端都在 `/metrics` 提供 Prometheus 文本。计数器和直方图是进程本地的，重启时重置。抓取每个副本；该端点不查询 PostgreSQL。把它保持在内部网络上。生产 Web 代理不会暴露它。
 
 | 指标 | 含义 |

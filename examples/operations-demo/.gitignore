@@ -8,6 +8,7 @@ generated/web/node_modules/
 generated/web/dist/
 .appstruct/cache/
 .appstruct/logs/
+.appstruct/release-manifest.json
 modules/.registry/
 .appstruct/generation.lock
 .appstruct/generation.journal
