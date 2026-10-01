@@ -1,5 +1,7 @@
 // Browser origin validation used by generated Auth configuration.
 
+use url::Url;
+
 /// Validates an exact HTTP(S) origin used for CORS, CSRF, and frontend links.
 ///
 /// # Errors
@@ -17,16 +19,25 @@ pub fn validate_browser_origin(name: &str, value: &str) -> Result<String, String
     {
         return Err(format!("{name} must be an ASCII HTTP origin"));
     }
+    let parsed = Url::parse(value).map_err(|_| format!("{name} must be a valid http(s) origin"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(format!("{name} must be an http(s) origin"));
+    }
     let rest = value
-        .strip_prefix("https://")
-        .or_else(|| value.strip_prefix("http://"))
+        .split_once("://")
+        .map(|(_, rest)| rest)
         .ok_or_else(|| format!("{name} must be an http(s) origin"))?;
-    if rest.is_empty() || rest.contains(['/', '?', '#', '@']) {
+    if parsed.host().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || rest.is_empty()
+        || rest.contains(['/', '?', '#', '@'])
+    {
         return Err(format!(
             "{name} must be an origin without credentials, path, query, or fragment"
         ));
     }
-    Ok(value.to_owned())
+    Ok(parsed.origin().ascii_serialization())
 }
 
 #[cfg(test)]
@@ -47,6 +58,10 @@ mod tests {
             validate_browser_origin("ORIGIN", "  http://[::1]:5173  ").unwrap(),
             "http://[::1]:5173"
         );
+        assert_eq!(
+            validate_browser_origin("ORIGIN", "HTTPS://Example.COM:443").unwrap(),
+            "https://example.com"
+        );
     }
 
     #[test]
@@ -59,6 +74,10 @@ mod tests {
             "http://user@host",
             "https://example.com?q=1",
             "http://example.com#frag",
+            "https://:443",
+            "https://example.com:bad",
+            "https://[::1",
+            "https://example.com:443:bad",
         ] {
             assert!(validate_browser_origin("ORIGIN", value).is_err(), "{value}");
         }

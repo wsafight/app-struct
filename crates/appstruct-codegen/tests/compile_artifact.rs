@@ -341,6 +341,8 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(recovery.contains("consume_auth_rate_limit"));
     assert!(recovery.contains("reset:{email}"));
     assert!(recovery.contains("WHERE user_id = $1 AND used_at IS NULL"));
+    assert!(recovery.contains("password reset email delivery failed"));
+    assert!(!recovery.contains("send_password_reset(&state.database, &email, &url).await?"));
     let auth = artifact_text(&artifacts, "web/src/auth/Auth.tsx");
     assert!(auth.contains("const redirecting = useRef(false)"));
     assert!(auth.contains("pathname: location.pathname"));
@@ -458,6 +460,8 @@ fn oauth_enabled_auth_publishes_oidc_contracts() {
     assert!(oauth.contains("provider_config(provider, link_user.is_some())"));
     assert!(oauth.contains("provider_config(provider, linking)"));
     assert!(oauth.contains("strip_suffix(\"/callback\")"));
+    assert!(oauth.contains("state.auth.config.secure_cookie"));
+    assert!(oauth.contains("SameSite=Lax{secure}"));
     assert!(oauth.contains("const SIGNUP_DISABLED_PROVIDERS: &[&str] = &[\"oidc\"]"));
     assert!(oauth.contains("if !signup_allowed(provider)"));
     assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("startOAuth"));

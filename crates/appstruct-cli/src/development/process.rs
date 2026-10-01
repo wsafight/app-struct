@@ -303,9 +303,17 @@ fn terminate(child: &mut Child) {
     #[cfg(unix)]
     {
         let process_group = format!("-{}", child.id());
-        let _ = Command::new("kill")
+        let signaled = Command::new("kill")
             .args(["-TERM", &process_group])
-            .status();
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success());
+        if !signaled {
+            let _ = child.kill();
+            let _ = child.wait();
+            return;
+        }
         for _ in 0..20 {
             let parent_exited = child.try_wait().ok().flatten().is_some();
             if parent_exited && !process_group_alive(&process_group) {
@@ -315,6 +323,8 @@ fn terminate(child: &mut Child) {
         }
         let _ = Command::new("kill")
             .args(["-KILL", &process_group])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status();
         let _ = child.wait();
     }

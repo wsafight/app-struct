@@ -302,7 +302,10 @@ GitHub Actions deploys the documentation site and validates tagged release build
 and PostgreSQL gates locally before tagging. `scripts/run-template-build.sh` checks generated Web
 production dependencies, formatting, tests, types, and the Rsbuild bundle.
 
-`scripts/clean-test-artifacts.sh` removes disposable generated-backend, coverage, and package
+Generated-backend compile tests reclaim their temporary packages while retaining shared dependency
+artifacts. M6 E2E scripts remove their suite-specific target on exit; set
+`APPSTRUCT_KEEP_TEST_TARGETS=1` only when retaining one for debugging. If a run is interrupted before
+cleanup, `scripts/clean-test-artifacts.sh` removes disposable generated-backend, coverage, and package
 targets. Pass `--all` to run `cargo clean` on the whole workspace.
 
 Before committing:

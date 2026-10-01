@@ -76,6 +76,15 @@ m6_cleanup() {
     "") ;;
     *) echo "refusing to remove unexpected path: $temporary_root" >&2 ;;
   esac
+  if [[ "${APPSTRUCT_KEEP_TEST_TARGETS:-0}" != 1 ]]; then
+    case "${m6_backend_target:-}" in
+      "$workspace"/target/m6-e2e-"$m6_suite")
+        [[ ! -d "$m6_backend_target" ]] || rm -r -- "$m6_backend_target"
+        ;;
+      "") ;;
+      *) echo "refusing to remove unexpected target: $m6_backend_target" >&2 ;;
+    esac
+  fi
 }
 
 m6_prepare_fixture() {

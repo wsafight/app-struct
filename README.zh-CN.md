@@ -301,8 +301,10 @@ scripts/run-template-build.sh
 PostgreSQL 检查。
 `scripts/run-template-build.sh` 会检查生成 Web 的生产依赖、格式、测试、类型和构建。
 
-专用生成后端、覆盖率和打包 target 会占用较多空间。`scripts/clean-test-artifacts.sh` 仅清理这些
-可丢弃目录；传入 `--all` 时才会通过 `cargo clean` 清理整个 workspace 构建缓存。
+生成后端编译测试会自动回收临时包，同时保留共享依赖产物。M6 E2E 脚本退出时会删除各自的
+专用 target；仅在调试并需要保留产物时设置 `APPSTRUCT_KEEP_TEST_TARGETS=1`。若执行在清理前被
+强制中断，可用 `scripts/clean-test-artifacts.sh` 删除生成后端、覆盖率和打包的可丢弃 target；
+传入 `--all` 时才会通过 `cargo clean` 清理整个 workspace 构建缓存。
 
 提交前检查工作区：
 

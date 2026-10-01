@@ -87,7 +87,9 @@ async fn request_password_reset(
         )).await?;
         transaction.commit().await?;
         let url = format!("{}/reset-password?token={token}", state.auth.config.frontend_url);
-        state.auth.mail.send_password_reset(&state.database, &email, &url).await?;
+        if let Err(error) = state.auth.mail.send_password_reset(&state.database, &email, &url).await {
+            tracing::warn!(?error, "password reset email delivery failed");
+        }
     }
     Ok(StatusCode::NO_CONTENT)
 }

@@ -50,21 +50,26 @@ struct OAuthCallback {
     state: String,
 }
 
-async fn start_oidc() -> Result<(HeaderMap, Redirect), ApiError> {
-    start_oauth("oidc", None).await
+async fn start_oidc(State(state): State<AppState>) -> Result<(HeaderMap, Redirect), ApiError> {
+    start_oauth("oidc", None, state.auth.config.secure_cookie).await
 }
 
-async fn start_google() -> Result<(HeaderMap, Redirect), ApiError> {
-    start_oauth("google", None).await
+async fn start_google(State(state): State<AppState>) -> Result<(HeaderMap, Redirect), ApiError> {
+    start_oauth("google", None, state.auth.config.secure_cookie).await
 }
 
-async fn start_github() -> Result<(HeaderMap, Redirect), ApiError> {
-    start_oauth("github", None).await
+async fn start_github(State(state): State<AppState>) -> Result<(HeaderMap, Redirect), ApiError> {
+    start_oauth("github", None, state.auth.config.secure_cookie).await
 }
 
-async fn start_oauth(provider: &str, link_user: Option<uuid::Uuid>) -> Result<(HeaderMap, Redirect), ApiError> {
+async fn start_oauth(
+    provider: &str,
+    link_user: Option<uuid::Uuid>,
+    secure_cookie: bool,
+) -> Result<(HeaderMap, Redirect), ApiError> {
     let config = provider_config(provider, link_user.is_some())?;
     let oauth_state = random_token();
+    let secure = if secure_cookie { "; Secure" } else { "" };
     let scope = if provider == "github" {
         "read:user user:email"
     } else {
@@ -82,7 +87,7 @@ async fn start_oauth(provider: &str, link_user: Option<uuid::Uuid>) -> Result<(H
     headers.append(
         axum::http::header::SET_COOKIE,
         format!(
-            "appstruct_oauth_state={oauth_state}; Path=/api/auth/oauth/{provider}; HttpOnly; SameSite=Lax; Max-Age=600"
+            "appstruct_oauth_state={oauth_state}; Path=/api/auth/oauth/{provider}; HttpOnly; SameSite=Lax{secure}; Max-Age=600"
         )
         .parse()
         .map_err(|_| ApiError::Internal)?,
@@ -90,7 +95,7 @@ async fn start_oauth(provider: &str, link_user: Option<uuid::Uuid>) -> Result<(H
     if let Some(user_id) = link_user {
         headers.append(
             axum::http::header::SET_COOKIE,
-            format!("appstruct_oauth_link_user={user_id}; Path=/api/auth/oauth/{provider}/link; HttpOnly; SameSite=Lax; Max-Age=600")
+            format!("appstruct_oauth_link_user={user_id}; Path=/api/auth/oauth/{provider}/link; HttpOnly; SameSite=Lax{secure}; Max-Age=600")
                 .parse().map_err(|_| ApiError::Internal)?,
         );
     }
@@ -149,7 +154,7 @@ async fn start_link(
         .actor(&state.database, headers)
         .await?
         .ok_or(ApiError::Unauthorized)?;
-    start_oauth(provider, Some(actor.id)).await
+    start_oauth(provider, Some(actor.id), state.auth.config.secure_cookie).await
 }
 
 async fn callback_oidc_link(
@@ -279,11 +284,12 @@ async fn link_oauth_account(
     Ok(())
 }
 
-fn clear_link_cookies(provider: &str) -> Result<HeaderMap, ApiError> {
+fn clear_link_cookies(provider: &str, secure_cookie: bool) -> Result<HeaderMap, ApiError> {
+    let secure = if secure_cookie { "; Secure" } else { "" };
     let mut headers = HeaderMap::new();
     for cookie in [
-        format!("appstruct_oauth_state=; Path=/api/auth/oauth/{provider}; Max-Age=0; HttpOnly; SameSite=Lax"),
-        format!("appstruct_oauth_link_user=; Path=/api/auth/oauth/{provider}/link; Max-Age=0; HttpOnly; SameSite=Lax"),
+        format!("appstruct_oauth_state=; Path=/api/auth/oauth/{provider}; Max-Age=0; HttpOnly; SameSite=Lax{secure}"),
+        format!("appstruct_oauth_link_user=; Path=/api/auth/oauth/{provider}/link; Max-Age=0; HttpOnly; SameSite=Lax{secure}"),
     ] {
         headers.append(
             axum::http::header::SET_COOKIE,
@@ -384,15 +390,19 @@ async fn oauth_callback(
             return Err(ApiError::InvalidOAuthState);
         }
         link_oauth_account(&state, actor.id, provider, &subject).await?;
-        return Ok((clear_link_cookies(provider)?, Redirect::temporary("/account")));
+        return Ok((
+            clear_link_cookies(provider, state.auth.config.secure_cookie)?,
+            Redirect::temporary("/account"),
+        ));
     }
     let user_id = find_or_create_oauth_user(&state, provider, &subject, &email).await?;
     let (session, csrf) = state.auth.create_session(&state.database, user_id).await?;
     let mut response_headers = state.auth.session_headers(&session, &csrf);
+    let secure = if state.auth.config.secure_cookie { "; Secure" } else { "" };
     response_headers.append(
         axum::http::header::SET_COOKIE,
         format!(
-            "appstruct_oauth_state=; Path=/api/auth/oauth/{provider}; Max-Age=0; HttpOnly; SameSite=Lax"
+            "appstruct_oauth_state=; Path=/api/auth/oauth/{provider}; Max-Age=0; HttpOnly; SameSite=Lax{secure}"
         )
         .parse()
         .map_err(|_| ApiError::Internal)?,
