@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@astrojs/sitemap": "3.7.4",
-    "@lucide/astro": "1.47.0",
+    "@lucide/astro": "1.49.0",
     "astro": "7.3.4",
     "remark": "15.0.1",
     "unist-util-visit": "5.1.0"
