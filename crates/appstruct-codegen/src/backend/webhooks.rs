@@ -26,7 +26,8 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let request_timeout = ir.webhooks.request_timeout_ms;
     render(quote! {
         use hmac::{Hmac, KeyInit, Mac};
-        use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
+        use sqlx::Row as _;
+        use crate::database::{DatabaseExecutor, Database,  DbErr, Sql};
         use serde::Serialize;
         use sha2::Sha256;
         use std::{env, fmt, time::Duration};
@@ -59,7 +60,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             fn from(error: DbErr) -> Self { Self::Database(error) }
         }
 
-        pub(crate) async fn publish<C: ConnectionTrait, T: Serialize>(
+        pub(crate) async fn publish<C: DatabaseExecutor, T: Serialize>(
             database: &C, event: &str, payload: &T, idempotency_key: Option<&str>,
             tenant_id: Option<uuid::Uuid>,
         ) -> Result<WebhookReceipt, WebhookError> {
@@ -79,18 +80,17 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             for endpoint in endpoint_configs().iter().filter(|endpoint| endpoint.accepts(event)) {
                 let id = uuid::Uuid::now_v7();
                 let key = idempotency_key.map(|key| format!("{}:{key}", endpoint.name));
-                let row = database.query_one_raw(Statement::from_sql_and_values(
-                    DbBackend::Postgres,
+                let row = database.fetch_optional(Sql::bind(
                     "INSERT INTO \"_appstruct_webhook_deliveries\" (id, endpoint, event, payload, idempotency_key, tenant_id, status, attempts, max_attempts, backoff_seconds, next_attempt_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, 'pending', 0, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (idempotency_key) DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key RETURNING id",
                     [
                         id.into(), endpoint.name.to_owned().into(), event.to_owned().into(),
                         payload.clone().into(), key.into(), tenant_id.into(),
                         endpoint.max_attempts.into(), endpoint.backoff_seconds.into(),
                     ],
-                )).await?.ok_or_else(|| WebhookError::Database(DbErr::Custom(
+                )).await?.ok_or_else(|| WebhookError::Database(DbErr::Protocol(
                     "webhook publish returned no row".to_owned(),
                 )))?;
-                ids.push(row.try_get("", "id")?);
+                ids.push(row.try_get("id")?);
             }
             Ok(WebhookReceipt { ids })
         }
@@ -101,10 +101,10 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         }
 
         pub struct WebhookWorker {
-            database: DatabaseConnection, client: reqwest::Client, worker_id: String,
+            database: Database, client: reqwest::Client, worker_id: String,
         }
         impl WebhookWorker {
-            pub fn new(database: DatabaseConnection) -> Self {
+            pub fn new(database: Database) -> Self {
                 let client = reqwest::Client::builder()
                     .connect_timeout(Duration::from_millis(#connect_timeout))
                     .read_timeout(Duration::from_millis(#read_timeout))
@@ -233,38 +233,32 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             }
         }
 
-        async fn claim(database: &DatabaseConnection, worker_id: &str) -> Result<Option<Delivery>, WebhookError> {
-            let row = database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "WITH candidate AS (SELECT id FROM \"_appstruct_webhook_deliveries\" WHERE ((status = 'pending' AND next_attempt_at <= CURRENT_TIMESTAMP) OR (status = 'delivering' AND locked_until <= CURRENT_TIMESTAMP)) ORDER BY next_attempt_at, id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE \"_appstruct_webhook_deliveries\" AS delivery SET status = 'delivering', attempts = attempts + 1, locked_by = $1, locked_until = CURRENT_TIMESTAMP + INTERVAL '30 seconds' FROM candidate WHERE delivery.id = candidate.id RETURNING delivery.id, delivery.endpoint, delivery.event, delivery.payload, delivery.attempts, delivery.max_attempts, delivery.backoff_seconds",
+        async fn claim(database: &Database, worker_id: &str) -> Result<Option<Delivery>, WebhookError> {
+            let row = database.fetch_optional(Sql::bind("WITH candidate AS (SELECT id FROM \"_appstruct_webhook_deliveries\" WHERE ((status = 'pending' AND next_attempt_at <= CURRENT_TIMESTAMP) OR (status = 'delivering' AND locked_until <= CURRENT_TIMESTAMP)) ORDER BY next_attempt_at, id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE \"_appstruct_webhook_deliveries\" AS delivery SET status = 'delivering', attempts = attempts + 1, locked_by = $1, locked_until = CURRENT_TIMESTAMP + INTERVAL '30 seconds' FROM candidate WHERE delivery.id = candidate.id RETURNING delivery.id, delivery.endpoint, delivery.event, delivery.payload, delivery.attempts, delivery.max_attempts, delivery.backoff_seconds",
                 [worker_id.to_owned().into()],
             )).await?;
             row.map(delivery_from_row).transpose().map_err(WebhookError::from)
         }
-        fn delivery_from_row(row: sea_orm::QueryResult) -> Result<Delivery, DbErr> {
+        fn delivery_from_row(row: crate::database::PgRow) -> Result<Delivery, DbErr> {
             Ok(Delivery {
-                id: row.try_get("", "id")?, endpoint: row.try_get("", "endpoint")?,
-                event: row.try_get("", "event")?, payload: row.try_get("", "payload")?,
-                attempts: row.try_get("", "attempts")?, max_attempts: row.try_get("", "max_attempts")?,
-                backoff_seconds: row.try_get("", "backoff_seconds")?,
+                id: row.try_get("id")?, endpoint: row.try_get("endpoint")?,
+                event: row.try_get("event")?, payload: row.try_get("payload")?,
+                attempts: row.try_get("attempts")?, max_attempts: row.try_get("max_attempts")?,
+                backoff_seconds: row.try_get("backoff_seconds")?,
             })
         }
-        async fn complete(database: &DatabaseConnection, worker_id: &str, id: uuid::Uuid, status: i32) -> Result<(), WebhookError> {
-            let result = database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_webhook_deliveries\" SET status = 'succeeded', response_status = $3, completed_at = CURRENT_TIMESTAMP, locked_by = NULL, locked_until = NULL, last_error = NULL WHERE id = $1 AND status = 'delivering' AND locked_by = $2",
+        async fn complete(database: &Database, worker_id: &str, id: uuid::Uuid, status: i32) -> Result<(), WebhookError> {
+            let result = database.execute(Sql::bind("UPDATE \"_appstruct_webhook_deliveries\" SET status = 'succeeded', response_status = $3, completed_at = CURRENT_TIMESTAMP, locked_by = NULL, locked_until = NULL, last_error = NULL WHERE id = $1 AND status = 'delivering' AND locked_by = $2",
                 [id.into(), worker_id.to_owned().into(), status.into()],
             )).await?;
             if result.rows_affected() == 1 { Ok(()) } else { Err(WebhookError::LeaseLost) }
         }
-        async fn fail(database: &DatabaseConnection, worker_id: &str, delivery: &Delivery, error: &str) -> Result<(), WebhookError> {
+        async fn fail(database: &Database, worker_id: &str, delivery: &Delivery, error: &str) -> Result<(), WebhookError> {
             let terminal = delivery.attempts >= delivery.max_attempts;
             let status = if terminal { "dead" } else { "pending" };
             let exponent = u32::try_from((delivery.attempts - 1).clamp(0, 30)).unwrap_or(0);
             let delay = delivery.backoff_seconds.saturating_mul(1_i64 << exponent).min(3_600);
-            let result = database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_webhook_deliveries\" SET status = $3, last_error = $4, locked_by = NULL, locked_until = NULL, next_attempt_at = CASE WHEN $3 = 'pending' THEN CURRENT_TIMESTAMP + ($5 * INTERVAL '1 second') ELSE next_attempt_at END, completed_at = CASE WHEN $3 = 'dead' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = $1 AND status = 'delivering' AND locked_by = $2",
+            let result = database.execute(Sql::bind("UPDATE \"_appstruct_webhook_deliveries\" SET status = $3, last_error = $4, locked_by = NULL, locked_until = NULL, next_attempt_at = CASE WHEN $3 = 'pending' THEN CURRENT_TIMESTAMP + ($5 * INTERVAL '1 second') ELSE next_attempt_at END, completed_at = CASE WHEN $3 = 'dead' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = $1 AND status = 'delivering' AND locked_by = $2",
                 [delivery.id.into(), worker_id.to_owned().into(), status.to_owned().into(), error.chars().take(2_000).collect::<String>().into(), delay.into()],
             )).await?;
             if result.rows_affected() == 1 { Ok(()) } else { Err(WebhookError::LeaseLost) }
@@ -302,7 +296,7 @@ fn endpoint_source(ir: &AppIr) -> proc_macro2::TokenStream {
 
 fn disabled_source() -> Result<String, CodegenError> {
     render(quote! {
-        use sea_orm::{ConnectionTrait, DatabaseConnection};
+        use crate::database::{DatabaseExecutor, Database};
         use serde::Serialize;
         use std::fmt;
         #[derive(Clone, Debug, PartialEq, Eq)]
@@ -315,14 +309,14 @@ fn disabled_source() -> Result<String, CodegenError> {
         }
         impl std::error::Error for WebhookError {}
         pub struct WebhookWorker;
-        impl WebhookWorker { pub fn new(_database: DatabaseConnection) -> Self { Self } }
+        impl WebhookWorker { pub fn new(_database: Database) -> Self { Self } }
         pub struct WebhookWorkerHandle;
         #[async_trait::async_trait]
         impl appstruct_runtime::ServiceHandle for WebhookWorkerHandle {
             fn service(&self) -> &'static str { "appstruct/webhooks" }
             async fn shutdown(self: Box<Self>) -> Result<(), appstruct_runtime::ShutdownError> { Ok(()) }
         }
-        pub(crate) async fn publish<C: ConnectionTrait, T: Serialize>(
+        pub(crate) async fn publish<C: DatabaseExecutor, T: Serialize>(
             _database: &C, _event: &str, _payload: &T, _idempotency_key: Option<&str>,
             _tenant_id: Option<uuid::Uuid>,
         ) -> Result<WebhookReceipt, WebhookError> { Err(WebhookError::Disabled) }

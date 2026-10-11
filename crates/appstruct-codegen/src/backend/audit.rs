@@ -33,7 +33,8 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         use crate::{ApiError, AppState, RequestContext};
         use appstruct_runtime::{MAX_LIST_PAGE, list_page_is_valid};
         use axum::{Json, Router, extract::{Query, State}, http::HeaderMap, routing::get};
-        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+        use sqlx::Row as _;
+        use crate::database::{DatabaseExecutor,  Sql};
         use serde::{Deserialize, Serialize};
 
         #record
@@ -96,21 +97,21 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                 .ok_or_else(|| ApiError::InvalidQuery("pagination is too large".to_owned()))?;
             #load
             let data = rows.into_iter().map(event_from_row)
-                .collect::<Result<Vec<_>, sea_orm::DbErr>>()?;
+                .collect::<Result<Vec<_>, sqlx::Error>>()?;
             Ok(Json(ListResponse {
                 data,
                 meta: ListMeta { page, page_size, total: u64::try_from(total).unwrap_or_default() },
             }))
         }
 
-        fn event_from_row(row: sea_orm::QueryResult) -> Result<AuditEvent, sea_orm::DbErr> {
+        fn event_from_row(row: crate::database::PgRow) -> Result<AuditEvent, sqlx::Error> {
             Ok(AuditEvent {
-                id: row.try_get("", "id")?, entity: row.try_get("", "entity")?,
-                record_id: row.try_get("", "record_id")?, operation: row.try_get("", "operation")?,
-                actor_id: row.try_get("", "actor_id")?, tenant_id: row.try_get("", "tenant_id")?,
-                before: row.try_get("", "before")?, after: row.try_get("", "after")?,
-                metadata: row.try_get("", "metadata")?,
-                occurred_at: row.try_get("", "occurred_at")?,
+                id: row.try_get("id")?, entity: row.try_get("entity")?,
+                record_id: row.try_get("record_id")?, operation: row.try_get("operation")?,
+                actor_id: row.try_get("actor_id")?, tenant_id: row.try_get("tenant_id")?,
+                before: row.try_get("before")?, after: row.try_get("after")?,
+                metadata: row.try_get("metadata")?,
+                occurred_at: row.try_get("occurred_at")?,
             })
         }
     })
@@ -129,7 +130,7 @@ fn record_source(workflow: bool) -> proc_macro2::TokenStream {
             metadata: &serde_json::Value,
         ) -> Result<(), ApiError>
         where
-            C: ConnectionTrait,
+            C: DatabaseExecutor,
             T: Serialize,
         {
             let before = before.map(serde_json::to_value).transpose().map_err(|_| ApiError::Internal)?;
@@ -151,7 +152,7 @@ fn record_source(workflow: bool) -> proc_macro2::TokenStream {
             after: Option<&T>,
         ) -> Result<(), ApiError>
         where
-            C: ConnectionTrait,
+            C: DatabaseExecutor,
             T: Serialize,
         {
             let before = before.map(serde_json::to_value).transpose().map_err(|_| ApiError::Internal)?;
@@ -161,7 +162,7 @@ fn record_source(workflow: bool) -> proc_macro2::TokenStream {
 
         #workflow_record
 
-        async fn insert<C: ConnectionTrait>(
+        async fn insert<C: DatabaseExecutor>(
             database: &C,
             context: &RequestContext<'_>,
             entity: &str,
@@ -172,9 +173,7 @@ fn record_source(workflow: bool) -> proc_macro2::TokenStream {
             metadata: Option<serde_json::Value>,
         ) -> Result<(), ApiError> {
             let actor_id = context.actor().map(|actor| actor.id);
-            database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_audit_events\" (id, entity, record_id, operation, actor_id, tenant_id, before, after, metadata, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)",
+            database.execute(Sql::bind("INSERT INTO \"_appstruct_audit_events\" (id, entity, record_id, operation, actor_id, tenant_id, before, after, metadata, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)",
                 [
                     uuid::Uuid::now_v7().into(), entity.to_owned().into(), record_id.into(),
                     operation.to_owned().into(), actor_id.into(), context.tenant().into(),
@@ -189,15 +188,11 @@ fn record_source(workflow: bool) -> proc_macro2::TokenStream {
 fn tenant_load() -> proc_macro2::TokenStream {
     quote! {
         let tenant = context.require_tenant()?;
-        let count = state.database.query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT COUNT(*) AS total FROM \"_appstruct_audit_events\" WHERE tenant_id = $1 AND ($2::text IS NULL OR entity = $2) AND ($3::text IS NULL OR record_id = $3)",
+        let count = state.database.fetch_optional(Sql::bind("SELECT COUNT(*) AS total FROM \"_appstruct_audit_events\" WHERE tenant_id = $1 AND ($2::text IS NULL OR entity = $2) AND ($3::text IS NULL OR record_id = $3)",
             [tenant.into(), query.entity.clone().into(), query.record_id.clone().into()],
         )).await?.ok_or(ApiError::Internal)?;
-        let total: i64 = count.try_get("", "total")?;
-        let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT id, entity, record_id, operation, actor_id, tenant_id, before, after, metadata, occurred_at FROM \"_appstruct_audit_events\" WHERE tenant_id = $1 AND ($2::text IS NULL OR entity = $2) AND ($3::text IS NULL OR record_id = $3) ORDER BY occurred_at DESC, id DESC LIMIT $4 OFFSET $5",
+        let total: i64 = count.try_get("total")?;
+        let rows = state.database.fetch_all(Sql::bind("SELECT id, entity, record_id, operation, actor_id, tenant_id, before, after, metadata, occurred_at FROM \"_appstruct_audit_events\" WHERE tenant_id = $1 AND ($2::text IS NULL OR entity = $2) AND ($3::text IS NULL OR record_id = $3) ORDER BY occurred_at DESC, id DESC LIMIT $4 OFFSET $5",
             [tenant.into(), query.entity.clone().into(), query.record_id.clone().into(), i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
         )).await?;
     }
@@ -205,15 +200,11 @@ fn tenant_load() -> proc_macro2::TokenStream {
 
 fn global_load() -> proc_macro2::TokenStream {
     quote! {
-        let count = state.database.query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT COUNT(*) AS total FROM \"_appstruct_audit_events\" WHERE ($1::text IS NULL OR entity = $1) AND ($2::text IS NULL OR record_id = $2)",
+        let count = state.database.fetch_optional(Sql::bind("SELECT COUNT(*) AS total FROM \"_appstruct_audit_events\" WHERE ($1::text IS NULL OR entity = $1) AND ($2::text IS NULL OR record_id = $2)",
             [query.entity.clone().into(), query.record_id.clone().into()],
         )).await?.ok_or(ApiError::Internal)?;
-        let total: i64 = count.try_get("", "total")?;
-        let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT id, entity, record_id, operation, actor_id, tenant_id, before, after, metadata, occurred_at FROM \"_appstruct_audit_events\" WHERE ($1::text IS NULL OR entity = $1) AND ($2::text IS NULL OR record_id = $2) ORDER BY occurred_at DESC, id DESC LIMIT $3 OFFSET $4",
+        let total: i64 = count.try_get("total")?;
+        let rows = state.database.fetch_all(Sql::bind("SELECT id, entity, record_id, operation, actor_id, tenant_id, before, after, metadata, occurred_at FROM \"_appstruct_audit_events\" WHERE ($1::text IS NULL OR entity = $1) AND ($2::text IS NULL OR record_id = $2) ORDER BY occurred_at DESC, id DESC LIMIT $3 OFFSET $4",
             [query.entity.clone().into(), query.record_id.clone().into(), i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
         )).await?;
     }

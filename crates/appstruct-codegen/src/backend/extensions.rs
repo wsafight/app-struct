@@ -28,9 +28,9 @@ pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
     render(quote! {
         use crate::{Actor, ApiError, TenantId, api, entities};
         use async_trait::async_trait;
-        use sea_orm::{
-            ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr,
-            ExecResult, QueryResult, Statement,
+        use crate::database::{
+            DatabaseExecutor, Database, Transaction,  DbErr,
+            PgQueryResult, PgRow, Sql,
         };
         use std::sync::Arc;
 

@@ -29,7 +29,7 @@ pub(super) fn support(ir: &AppIr, entity: &EntityIr) -> Result<TokenStream, Code
             if let Some(id) = #id {
                 use crate::entities::#target_module;
                 #scope
-                let target = #target_module::Entity::find_by_id(id).filter(access_condition)
+                let target = #target_module::select_by_id(id).filter(access_condition)
                     .lock_shared().one(context).await?.ok_or(ApiError::NotFound)?;
                 if !state.extensions.#policy().can_read(context, &target).await? { return Err(ApiError::NotFound); }
             }

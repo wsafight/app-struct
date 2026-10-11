@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use sea_orm::DbErr;
+use sqlx::Error as DbErr;
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize)]

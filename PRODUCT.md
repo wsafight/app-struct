@@ -14,7 +14,7 @@
 | 里程碑 | 状态 | 已固化能力 |
 | --- | --- | --- |
 | M0 | 已完成 | 多文件 YAML、带位置诊断、规范化 Typed IR、canonical golden 和最小生成物编译 |
-| M1 | 已完成 | PostgreSQL schema、SeaORM/Axum CRUD、OpenAPI、TypeScript client、React 列表与表单 |
+| M1 | 已完成 | PostgreSQL schema、SQLx + sift-query/Axum CRUD、OpenAPI、TypeScript client、React 列表与表单 |
 | 重构 | 已完成 | Compiler 和 Backend Generator 按职责拆分；Clippy 约束函数复杂度与长度，800 行文件上限只作为极端情况兜底 |
 | M2 | 已完成 | 默认值、唯一/枚举/数值校验、关系与反向关系、分页/过滤/搜索/排序、详情页、RelationSelect 和 schema diff 风险阻断 |
 | M3 | 已完成 | Value Object、Hook、Command、Query、Policy、Rust/React registry、SHA-256 ownership manifest 和安全目录交换 |
@@ -40,9 +40,9 @@ M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只�
 
 M3 将用户实现固定在 `app/` 边界，生成目录只保存可重复构建的契约和运行时。Rust 端以一个实现全部必需 Command/Query handler trait 的聚合对象完成类型状态注册，缺少任一 trait 时编译失败；Entity Hook 和 Policy 是有安全默认实现的可选注册项，Policy 同时提供集合级 `can_list` 检查和逐记录读写检查。React 端生成字段组件和自定义页面的必需 registry key；存在引用时，生成入口从用户所有的 `app/web/registry.tsx` 导入实现，并通过 TypeScript `satisfies` 在构建期检查完整性。真实 PostgreSQL 验收已覆盖输入 Hook、归档 Command、指标 Query 和拒绝删除 Policy。
 
-CRUD 写路径已在显式 SeaORM 事务内执行：`before_create/update/delete`、主记录写入和 `after_create/update/delete` 共享事务连接，任一步失败都会放弃事务；`after_commit` 在提交后以普通连接 best-effort 执行，失败只记录日志。Update Policy 同时看到旧记录、类型化 patch 和最终候选记录。每个实体由框架管理 `revision bigint not null default 1`，详情/创建/更新返回 ETag，更新和删除要求 `If-Match`；陈旧 revision 返回 412，生成客户端自动维护 ETag，表单冲突时保留输入并允许重新加载。
+CRUD 写路径已在显式 SQLx 事务内执行：`before_create/update/delete`、主记录写入和 `after_create/update/delete` 共享事务连接，任一步失败都会放弃事务；`after_commit` 在提交后以普通连接 best-effort 执行，失败只记录日志。Update Policy 同时看到旧记录、类型化 patch 和最终候选记录。每个实体由框架管理 `revision bigint not null default 1`，详情/创建/更新返回 ETag，更新和删除要求 `If-Match`；陈旧 revision 返回 412，生成客户端自动维护 ETag，表单冲突时保留输入并允许重新加载。
 
-M4 已将 `modules.auth` 和 `modules.rbac` 纳入 Surface、Typed IR、Compiler 校验与全部生成器。启用认证的应用会生成注册、登录、退出、当前用户和可选密码重置流程，使用 Argon2id 密码哈希、只保存 hash 的 opaque session/reset token、`HttpOnly` session Cookie、CSRF token 和 Origin 校验。账户注册后会签发 24 小时有效的一次性邮箱验证 token，认证响应提供 `email_verified`，登录用户可请求重新发送，确认接口在事务内标记 `email_verified_at` 并消费 token。可选的 `modules.auth.oauth: true` 发布 OIDC authorization-code 登录，使用环境变量配置 provider，短期 state cookie 防重放，按 provider+subject 绑定本地用户且不持久化 provider token。认证用户还可以创建带名称和可选过期时间的个人 API token；Runtime 只保存 SHA-256 hash，支持 Bearer 认证并记录最近使用时间，明文只返回一次。Actor 被注入普通及事务内 `RequestContext`，`public/authenticated/role/owner/any/all` 规则在后端执行；列表和按 ID 读取会将 owner/RBAC 转换为 SeaORM 查询条件。React 生成物包含认证状态、登录/注册/密码重置/邮箱确认页面、OIDC SSO、API token 管理页、路由守卫和退出入口，TypeScript client 默认携带 Cookie 并自动发送 CSRF，OpenAPI 同步发布 Cookie/Bearer security scheme 和启用的 Auth endpoint。
+M4 已将 `modules.auth` 和 `modules.rbac` 纳入 Surface、Typed IR、Compiler 校验与全部生成器。启用认证的应用会生成注册、登录、退出、当前用户和可选密码重置流程，使用 Argon2id 密码哈希、只保存 hash 的 opaque session/reset token、`HttpOnly` session Cookie、CSRF token 和 Origin 校验。账户注册后会签发 24 小时有效的一次性邮箱验证 token，认证响应提供 `email_verified`，登录用户可请求重新发送，确认接口在事务内标记 `email_verified_at` 并消费 token。可选的 `modules.auth.oauth: true` 发布 OIDC authorization-code 登录，使用环境变量配置 provider，短期 state cookie 防重放，按 provider+subject 绑定本地用户且不持久化 provider token。认证用户还可以创建带名称和可选过期时间的个人 API token；Runtime 只保存 SHA-256 hash，支持 Bearer 认证并记录最近使用时间，明文只返回一次。Actor 被注入普通及事务内 `RequestContext`，`public/authenticated/role/owner/any/all` 规则在后端执行；列表和按 ID 读取会将 owner/RBAC 转换为 参数化 SQL 查询条件。React 生成物包含认证状态、登录/注册/密码重置/邮箱确认页面、OIDC SSO、API token 管理页、路由守卫和退出入口，TypeScript client 默认携带 Cookie 并自动发送 CSRF，OpenAPI 同步发布 Cookie/Bearer security scheme 和启用的 Auth endpoint。
 
 社交登录现在支持按应用声明 `modules.auth.providers: [google, github]`，旧的 `oauth: true` 仍表示通用 OIDC。生成应用现在可按 Spec 启用 Stripe Billing v1（订阅、试用、客户门户和签名 Webhook 幂等处理）；使用 `appstruct capabilities --format json` 可查看 Provider 矩阵与必需环境变量。
 
@@ -867,7 +867,7 @@ Template 可以包含初始领域配置、用户可修改的 React 页面、邮�
 | 层 | 默认选择 |
 | --- | --- |
 | 后端 | Axum + Tokio |
-| ORM | SeaORM |
+| 数据库访问 | SQLx + sift-query，关联与聚合使用 SeaQuery |
 | 数据库 | PostgreSQL |
 | OpenAPI | Utoipa |
 | 配置 | Serde + YAML + JSON Schema |
@@ -928,7 +928,7 @@ Template 可以包含初始领域配置、用户可修改的 React 页面、邮�
 - 根入口加领域文件的模块化 YAML App Spec
 - 配置 JSON Schema、显式 `includes` 和 `appstruct check`
 - PostgreSQL 实体和迁移生成
-- Axum + SeaORM CRUD API
+- Axum + SQLx + sift-query CRUD API
 - OpenAPI 和 TypeScript 客户端
 - React 列表、详情、创建和编辑页面
 - 分页、排序、搜索和基础过滤
@@ -1092,7 +1092,7 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 
 风险：同时支持多个 ORM、数据库和前端框架，导致核心契约长期不稳定。
 
-对策：MVP 固定 PostgreSQL、Axum、SeaORM 和 React，先验证产品工作流，再开放适配层。
+对策：MVP 固定 PostgreSQL、Axum、SQLx + sift-query 和 React，先验证产品工作流，再开放适配层。
 
 ### 22.7 Template 与框架升级脱节
 
@@ -1104,7 +1104,7 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 
 以下是历史待决策清单；带“已决策”的项目已经固化在代码和测试中，保留在这里用于追踪决策来源：
 
-1. 已决策：SeaORM 作为标准 CRUD ORM，Repository 保留 SeaQuery/自定义 Query 逃生口。
+1. 已决策：SQLx 执行显式 CRUD 与事务，sift-query 提供类型化查询元数据和过滤校验，SeaQuery 构造关联、聚合及权限范围。
 2. 后续：大型项目是否需要本地 `includes` 之外的远程或包级 Spec 依赖。
 3. 已决策：资源级 Policy 使用生成 trait 和统一 Access IR。
 4. 后续：Session 是否增加 Redis Provider。
@@ -1133,7 +1133,7 @@ MVP 阶段先验证开发者价值，不以注册量作为核心指标。
 - `appstruct.lock` 与数据库 schema snapshot 分别承担依赖锁定和迁移基线。
 - `generated/` 及其确定性 ownership manifest 默认进入版本控制，用户代码不得放入该目录。
 - Module 提供可执行能力，Preset 组合模块，Template 只负责首次创建项目。
-- MVP 固定 PostgreSQL、Axum、SeaORM 和 React。
+- MVP 固定 PostgreSQL、Axum、SQLx + sift-query 和 React。
 - 本地开发默认由 Docker Compose 管理 PostgreSQL，并允许通过 `database.dev.mode: external` 使用已有数据库。
 - 生产数据库变更必须保留可审查迁移文件。
 - Create 权限作用于最终输入，Update 权限可以检查旧记录、patch 和更新后状态；不可见记录按 ID 操作时返回 404。

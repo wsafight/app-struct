@@ -31,9 +31,9 @@ The Migration Runner implements the section 12.4 protocol. `migrate dev --accept
 
 M3 added Value Object, Command, Query, custom page, and field UI component references to IR. The Backend Generator emits DTOs, Entity Hook/Policy traits, Command/Query handler traits, routes, and a typed-state registry. OpenAPI and the TypeScript Generator produce operation contracts and the client from the same IR. The Web Generator emits required component/page keys and, when references exist, makes the generated entry statically import the user's `app/web/registry.tsx`; that registry uses TypeScript `satisfies` for completeness checking. The M3 fixture verifies that a missing Rust handler or React page fails the build, that a complete implementation builds, and that Hook, Command, Query, and Policy behavior works against real PostgreSQL.
 
-CRUD consistency hardening is complete: write paths run in an explicit SeaORM transaction, and in-transaction `RequestContext` delegates Hook/Policy queries to the same `DatabaseTransaction`. Update/Delete lock the target row and compare the `If-Match` revision; Update Policy sees the final candidate state before write. `after_commit` keeps best-effort error isolation. M4 already provides actor context and identity-based data scope; tenant context and tenant isolation still come from M6.
+CRUD consistency hardening is complete: write paths run in an explicit SQLx transaction, and in-transaction `RequestContext` delegates Hook/Policy queries to the same `database::Transaction`. Update/Delete lock the target row and compare the `If-Match` revision; Update Policy sees the final candidate state before write. `after_commit` keeps best-effort error isolation. M4 already provides actor context and identity-based data scope; tenant context and tenant isolation still come from M6.
 
-M4 lowers `modules.auth`/`modules.rbac` to `AuthIr` and canonical `AccessRuleIr`. The Compiler validates Auth User UUID primary keys and required unique email, role declarations, owner-relation targets, and non-empty combinators. The migration schema generates `_appstruct_auth_accounts`, `sessions`, `password_resets`, and the development mail-capture table plus foreign keys, in addition to business tables. The generated backend uses Argon2id, opaque token hashes, revocable/expiring sessions, CSRF/Origin checks, and a narrowed development capture/SMTP sender. Actor is injected into both connection and transaction `RequestContext`; owner/RBAC scope is pushed down as SeaORM `Condition`. OpenAPI, the TypeScript client, and React routes generate Cookie security schemes, enabled endpoints, Cookie/CSRF calls, and auth pages from the same Auth IR. Dedicated PostgreSQL acceptance covers anonymous, owner, admin, CSRF, concurrent preconditions, and password-reset/session-revocation paths.
+M4 lowers `modules.auth`/`modules.rbac` to `AuthIr` and canonical `AccessRuleIr`. The Compiler validates Auth User UUID primary keys and required unique email, role declarations, owner-relation targets, and non-empty combinators. The migration schema generates `_appstruct_auth_accounts`, `sessions`, `password_resets`, and the development mail-capture table plus foreign keys, in addition to business tables. The generated backend uses Argon2id, opaque token hashes, revocable/expiring sessions, CSRF/Origin checks, and a narrowed development capture/SMTP sender. Actor is injected into both connection and transaction `RequestContext`; owner/RBAC scope is pushed down as SeaQuery `Condition`. OpenAPI, the TypeScript client, and React routes generate Cookie security schemes, enabled endpoints, Cookie/CSRF calls, and auth pages from the same Auth IR. Dedicated PostgreSQL acceptance covers anonymous, owner, admin, CSRF, concurrent preconditions, and password-reset/session-revocation paths.
 
 The CLI generation path is split into orchestration, ownership, and transaction modules. `generated/.appstruct-manifest.json` stores Artifact paths, categories, Generator versions, and SHA-256 in deterministic JSON. Generation refuses unknown files or owned files that were edited by hand. `target/`, `node_modules/`, `dist/`, `.vite/`, and Cargo-created `Cargo.lock` are treated as disposable build transients and do not participate in ownership conflicts. A project-level exclusive file lock covers recover, compile, plan, and commit. An append-only journal calls `sync_all` after each directory-swap phase. The next command validates the candidate tree's manifest/hash, then completes the commit or restores the backup. Ambiguous states keep all directories and fail closed.
 
@@ -62,7 +62,7 @@ Operations correctness hardening completed on 2026-08-30. Jobs Schedule uses int
 | Configuration entry | `appstruct.yaml` plus explicit `includes` domain files |
 | Configuration format | YAML; script expressions, merge keys, and implicit directory scans are forbidden |
 | Single source of truth | Canonical, versioned Typed IR |
-| Backend | Axum + Tokio + SeaORM + PostgreSQL |
+| Backend | Axum + Tokio + SQLx + sift-query + PostgreSQL |
 | Rust toolchain | Start development on the local latest stable, then pin `1.99.0` via `rust-toolchain.toml` |
 | API contract | Build OpenAPI directly from IR; Utoipa supplies OpenAPI data models |
 | Frontend | React + TypeScript + Rsbuild/Rspack + Rstest, using a compile-time UI Manifest |
@@ -181,7 +181,7 @@ Do not split a crate per Generator before MVP. Split `appstruct-codegen` only wh
 - Defines stable, serializable IR types
 - Defines strong identifiers such as `EntityId`, `FieldId`, and `TypeRef`
 - Owns canonical sorting, hashing, and IR version migration
-- Does not depend on YAML, Axum, SeaORM, or React
+- Does not depend on YAML, Axum, SQLx + sift-query, or React
 
 ### 5.4 `appstruct-codegen`
 
@@ -553,7 +553,7 @@ pub struct RelationIr {
 
 `RustIdent`, `SqlIdent`, and `ApiName` are separate so one naming rule cannot pollute every output.
 
-Relations are not re-derived by each Generator from field names. The Compiler must explicitly resolve forward edges, inverse edges, cardinality, foreign-key ownership, composite foreign keys, uniqueness, and delete strategy. SeaORM Entity, Repository, Database Schema IR, OpenAPI, and UI RelationInput all consume the same `RelationIr`. Explicit join entities remain ordinary Entity values and are expressed with two relations, so many-to-many does not get a second implicit semantics.
+Relations are not re-derived by each Generator from field names. The Compiler must explicitly resolve forward edges, inverse edges, cardinality, foreign-key ownership, composite foreign keys, uniqueness, and delete strategy. SQLx models and sift-query metadata, Repository, Database Schema IR, OpenAPI, and UI RelationInput all consume the same `RelationIr`. Explicit join entities remain ordinary Entity values and are expressed with two relations, so many-to-many does not get a second implicit semantics.
 
 ### 9.3 Stable Identifiers
 
@@ -624,7 +624,7 @@ Generators return an in-memory Artifact plan and do not write the final director
 
 Generated content includes:
 
-- SeaORM Entity and relation definitions
+- SQLx models, sift-query metadata and explicit SQL joins
 - Create, Update, and Read DTOs
 - Validation types and conversion implementations
 - Axum route and handler glue
@@ -830,7 +830,7 @@ entities:
 
 Module migrations install `_appstruct_tenant_organizations` and `_appstruct_tenant_memberships`. Membership uses composite primary key `(organization_id, user_id)`; both references use `ON DELETE CASCADE`. Organization `created_by` references Auth User with `RESTRICT`. Module endpoints provide the organization list visible to the current actor and organization creation. Creating an organization and the owner membership commit in the same transaction.
 
-The generated backend parses a UUID from `X-AppStruct-Tenant` and validates the actor against the membership table when constructing `RequestContext`. Ordinary non-tenant endpoints may receive `tenant: None`. Tenant-scoped CRUD must call `context.require_tenant()`, then AND `tenant_id = current_tenant` with the Condition produced by AccessRule. Create ActiveModel uses the context tenant directly. Update/Delete first lock the row with the same condition, so IDs from other tenants stay `404`. Both in-transaction and `after_commit` contexts keep the same actor/tenant; Hook and Policy can only read that value.
+The generated backend parses a UUID from `X-AppStruct-Tenant` and validates the actor against the membership table when constructing `RequestContext`. Ordinary non-tenant endpoints may receive `tenant: None`. Tenant-scoped CRUD must call `context.require_tenant()`, then AND `tenant_id = current_tenant` with the Condition produced by AccessRule. Create Model uses the context tenant directly. Update/Delete first lock the row with the same condition, so IDs from other tenants stay `404`. Both in-transaction and `after_commit` contexts keep the same actor/tenant; Hook and Policy can only read that value.
 
 The TypeScript runtime exposes `tenantApi.listOrganizations/createOrganization/select/clear/current`, stores the selected tenant ID in `localStorage`, and attaches the header to all API requests. The UI switcher only selects context; the security boundary remains on the backend. OpenAPI declares the required `X-AppStruct-Tenant` header for tenant-scoped operations and documents Tenant endpoints.
 
@@ -849,7 +849,7 @@ entities:
 
 The Compiler lowers configuration to `AuditIr { enabled, reader_roles }` and `EntityIr.audit_enabled`, and validates that Audit depends on Auth, that reader roles are declared by RBAC, and that `audit: true` appears only when the module is enabled. Migrations install append-only `_appstruct_audit_events` with a UUID primary key, entity/record_id/operation, nullable actor/tenant, nullable before/after JSONB, and `occurred_at`. Actor deletion uses `SET NULL`. When Tenant is available, tenant deletion also uses `SET NULL`, preserving audit records.
 
-The CRUD write pipeline serializes the final Model and writes Audit after successful `after_create/after_update/after_delete` Hooks and before transaction commit: Create is `(null, after)`, Update is `(before, after)`, Delete is `(before, null)`. Event writes use the same `DatabaseTransaction` and `RequestContext`, so a business commit cannot succeed without audit. It does not use best-effort `after_commit`. Generic Audit observes only explicitly marked business entities. It does not record Auth internal tables, password hashes, sessions, Mail bodies, or File contents.
+The CRUD write pipeline serializes the final Model and writes Audit after successful `after_create/after_update/after_delete` Hooks and before transaction commit: Create is `(null, after)`, Update is `(before, after)`, Delete is `(before, null)`. Event writes use the same `database::Transaction` and `RequestContext`, so a business commit cannot succeed without audit. It does not use best-effort `after_commit`. Generic Audit observes only explicitly marked business entities. It does not record Auth internal tables, password hashes, sessions, Mail bodies, or File contents.
 
 `GET /api/audit/events` supports capped pagination ordered by `occurred_at, id` descending. Runtime first verifies that the actor has one of `reader_roles`. When Tenant is enabled it also calls `require_tenant()` and pushes the tenant condition into SQL. The endpoint has no arbitrary entity/record SQL expressions and provides no routes to modify or delete events. OpenAPI and the TypeScript client generate a read-only contract from the same Audit IR.
 
@@ -909,13 +909,13 @@ modules:
 
 The Compiler lowers this to `FileIr`, validates provider, a safe relative local root, a 1 to 100 MiB per-file limit, and a canonical MIME allowlist, then sorts and deduplicates MIME types. Migrations install `_appstruct_files` with a globally unique object key, original name, MIME, size, SHA-256, nullable tenant, and created time. The Tenant foreign key uses `SET NULL`. The generated backend exports object-safe `FileProvider`, injectable `FileState`, `FileMetadata`, and `FileError`; `RequestContext` automatically forwards tenant.
 
-The default adapters use `object_store` LocalFileSystem or AmazonS3Builder. S3 runtime reads `APPSTRUCT_S3_ENDPOINT`, `APPSTRUCT_S3_BUCKET`, `APPSTRUCT_S3_ACCESS_KEY`, `APPSTRUCT_S3_SECRET_KEY`, and an optional region. Cleartext HTTP is allowed only when `APPSTRUCT_S3_ALLOW_HTTP=true`. Object writes are create-only and do not overwrite an existing key. If metadata insert fails, the just-written object is deleted best-effort. Path validation rejects absolute paths, backslashes, NUL, `.`/`..`, empty segments, and non-canonical paths. Text, JSON, and sniffed binary content must match the declared MIME; reads re-check the checksum. get/delete SQL binds tenant with `tenant_id IS NOT DISTINCT FROM`, so cross-tenant access uniformly looks like missing metadata. `RequestContext` passes its own `ConnectionTrait` into metadata operations so metadata writes inside a hook join the current business transaction. Direct `FileState` calls still use its default connection. Delete first calls idempotent object-store delete, then deletes metadata, so a failed metadata delete can be retried without first losing the tracking record for the object.
+The default adapters use `object_store` LocalFileSystem or AmazonS3Builder. S3 runtime reads `APPSTRUCT_S3_ENDPOINT`, `APPSTRUCT_S3_BUCKET`, `APPSTRUCT_S3_ACCESS_KEY`, `APPSTRUCT_S3_SECRET_KEY`, and an optional region. Cleartext HTTP is allowed only when `APPSTRUCT_S3_ALLOW_HTTP=true`. Object writes are create-only and do not overwrite an existing key. If metadata insert fails, the just-written object is deleted best-effort. Path validation rejects absolute paths, backslashes, NUL, `.`/`..`, empty segments, and non-canonical paths. Text, JSON, and sniffed binary content must match the declared MIME; reads re-check the checksum. get/delete SQL binds tenant with `tenant_id IS NOT DISTINCT FROM`, so cross-tenant access uniformly looks like missing metadata. `RequestContext` passes its own `database::DatabaseExecutor` into metadata operations so metadata writes inside a hook join the current business transaction. Direct `FileState` calls still use its default connection. Delete first calls idempotent object-store delete, then deletes metadata, so a failed metadata delete can be retried without first losing the tracking record for the object.
 
 ### 13.3 Repository
 
 The generated Repository is responsible for:
 
-- Converting a allowlisted filter AST into SeaORM Condition
+- Converting a allowlisted filter AST into SeaQuery Condition
 - Applying data scope produced by Policy
 - Pagination, stable sort, and relation loader
 - Mapping database models to response DTOs
@@ -1550,7 +1550,7 @@ Acceptance: two domain files parse into a stable IR, errors locate to line and c
 
 - A single Project entity
 - PostgreSQL schema and migration drafts
-- SeaORM Entity and Axum CRUD
+- SQLx models and sift-query metadata and Axum CRUD
 - OpenAPI and TypeScript client
 - React list and form
 
@@ -1636,9 +1636,9 @@ promise.
 
 High-quality diagnostics need locations, which may require a custom AST-to-Surface-Spec decode layer. M0 must validate this first; it cannot be added after Generators are finished.
 
-### 29.2 SeaORM Generation and Complex Queries
+### 29.2 SQLx + sift-query Generation and Complex Queries
 
-Standard CRUD fits SeaORM, but complex reports and database features may need SeaQuery or SQLx. Repository and custom Query must keep an escape hatch. The Migration Planner does not depend on ORM auto-sync.
+Generated models derive SQLx `FromRow` and sift-query `SearchEntity`. Typed filters are validated by sift-query; SeaQuery composes parameterized relation, authorization and aggregate statements. SQLx executes explicit writes. `database::DatabaseExecutor` shares the pool or transaction with hooks, policies and services. The Migration Planner continues to manage explicit schema migrations. JSON fields in sift-query 0.1 are decode-only; existing JSON equality filters retain bound jsonb comparisons to preserve the HTTP query contract.
 
 ### 29.3 Rust Extension Type Cycles
 

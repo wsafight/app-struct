@@ -26,14 +26,9 @@ pub fn aggregate_support(
     let metric_order_arms = metric_order_arms(entity, module)?;
     let group_order_arms = group::order_arms(ir, entity)?;
     let has_relation_groups = group::has_relation_groups(ir, entity)?;
-    let relation_imports = has_relation_groups.then(|| {
-        quote! { use sea_orm::{JoinType, RelationTrait as _}; }
-    });
     let relation_group_state = has_relation_groups.then(|| {
         quote! { let mut relation_group_selected = false; }
     });
-    let expression_trait =
-        group::uses_expr_trait(ir, entity)?.then(|| quote! { use sea_orm::ExprTrait as _; });
     let handler = aggregate_handler(&AggregateHandlerTokens {
         module,
         policy,
@@ -50,8 +45,6 @@ pub fn aggregate_support(
     });
     Ok(quote! {
         use std::collections::BTreeSet;
-        #expression_trait
-        #relation_imports
 
         #[derive(Debug, Default, Deserialize)]
         pub struct AggregateQuery {
@@ -152,7 +145,7 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
                 ));
             }
             let mut selected_metrics = BTreeSet::new();
-            let mut select = #module::Entity::find();
+            let mut select = #module::select();
             #access_scope
             #(#filters)*
             #(#relation_filters)*

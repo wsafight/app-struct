@@ -45,7 +45,7 @@ pub(super) fn support(
             let id = record_id.to_owned();
             let id = #parse_id;
             #read_scope
-            let model = #module::Entity::find_by_id(id)
+            let model = #module::select_by_id(id)
                 .filter(access_condition)
                 .one(context).await?.ok_or(ApiError::NotFound)?;
             if !state.extensions.#policy().can_read(context, &model).await? {

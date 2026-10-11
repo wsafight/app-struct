@@ -80,7 +80,8 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             http::HeaderMap,
             routing::get,
         };
-        use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
+        use sqlx::Row as _;
+        use crate::database::{DatabaseExecutor,  Sql};
         use serde::{Deserialize, Serialize};
         #attachment_imports
 
@@ -150,8 +151,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             let fetch_limit = i64::try_from(limit + 1).unwrap_or(101);
             let rows = if let Some(cursor) = query.cursor.as_deref() {
                 let (occurred_at, id) = decode_activity_cursor(cursor)?;
-                state.database.query_all_raw(Statement::from_sql_and_values(
-                    DbBackend::Postgres,
+                state.database.fetch_all(Sql::bind(
                     concat!(
                         #entry_select,
                         "WHERE e.tenant_id IS NOT DISTINCT FROM $1 AND e.resource = $2 AND e.record_id = $3 AND (e.occurred_at, e.id) < ($4, $5) ORDER BY e.occurred_at DESC, e.id DESC LIMIT $6"
@@ -159,8 +159,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                     [context.tenant().into(), resource.clone().into(), record_id.clone().into(), occurred_at.into(), id.into(), fetch_limit.into()],
                 )).await?
             } else {
-                state.database.query_all_raw(Statement::from_sql_and_values(
-                    DbBackend::Postgres,
+                state.database.fetch_all(Sql::bind(
                     concat!(
                         #entry_select,
                         "WHERE e.tenant_id IS NOT DISTINCT FROM $1 AND e.resource = $2 AND e.record_id = $3 ORDER BY e.occurred_at DESC, e.id DESC LIMIT $4"
@@ -193,9 +192,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             authorize_target(&state, &context, &resource, &record_id).await?;
             let id = uuid::Uuid::now_v7();
             #attachment_create
-            let row = transaction.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                concat!(
+            let row = transaction.fetch_optional(Sql::bind(concat!(
                     "INSERT INTO \"_appstruct_activity_entries\" (id, resource, record_id, tenant_id, actor_id, kind, body, event, payload, attachment_file_id, attachment_name, attachment_content_type, occurred_at) ",
                     "VALUES ($1, $2, $3, $4, $5, 'comment', $6, NULL, NULL, $7, $8, $9, CURRENT_TIMESTAMP) ",
                     "RETURNING id, resource, record_id, tenant_id, actor_id, kind::text AS kind, body, event, payload, attachment_file_id, attachment_name, attachment_content_type, withdrawn_at, withdrawn_by, governance_reason, occurred_at, NULL::text AS attachment_object_key"
@@ -284,7 +281,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             }
         }
 
-        pub(crate) async fn record_system_event<C: ConnectionTrait>(
+        pub(crate) async fn record_system_event<C: DatabaseExecutor>(
             database: &C, context: &RequestContext<'_>, resource: &str,
             record_id: String, event: &str,
         ) -> Result<(), ApiError> {
@@ -292,20 +289,16 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                 #(#known_resources)|* => {}
                 _ => return Err(ApiError::UnknownActivityResource),
             }
-            database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_activity_entries\" (id, resource, record_id, tenant_id, actor_id, kind, body, event, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, 'system', NULL, $6, NULL, CURRENT_TIMESTAMP)",
+            database.execute(Sql::bind("INSERT INTO \"_appstruct_activity_entries\" (id, resource, record_id, tenant_id, actor_id, kind, body, event, payload, occurred_at) VALUES ($1, $2, $3, $4, $5, 'system', NULL, $6, NULL, CURRENT_TIMESTAMP)",
                 [uuid::Uuid::now_v7().into(), resource.to_owned().into(), record_id.into(), context.tenant().into(), context.actor().map(|actor| actor.id).into(), event.to_owned().into()],
             )).await?;
             Ok(())
         }
 
-        async fn withdraw_entry<C: ConnectionTrait>(
+        async fn withdraw_entry<C: DatabaseExecutor>(
             database: &C, before: &ActivityEntry, actor_id: uuid::Uuid, reason: Option<String>,
         ) -> Result<ActivityEntry, ApiError> {
-            database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_activity_entries\" SET body = NULL, attachment_file_id = NULL, attachment_name = NULL, attachment_content_type = NULL, withdrawn_at = CURRENT_TIMESTAMP, withdrawn_by = $2, governance_reason = $3 WHERE id = $1",
+            database.execute(Sql::bind("UPDATE \"_appstruct_activity_entries\" SET body = NULL, attachment_file_id = NULL, attachment_name = NULL, attachment_content_type = NULL, withdrawn_at = CURRENT_TIMESTAMP, withdrawn_by = $2, governance_reason = $3 WHERE id = $1",
                 [before.id.into(), actor_id.into(), reason.into()],
             )).await?;
             load_entry(
@@ -313,7 +306,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             ).await
         }
 
-        async fn load_entry<C: ConnectionTrait>(
+        async fn load_entry<C: DatabaseExecutor>(
             database: &C, id: uuid::Uuid, tenant_id: Option<uuid::Uuid>,
             resource: &str, record_id: &str, locked: bool,
         ) -> Result<ActivityEntry, ApiError> {
@@ -326,25 +319,24 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                 ),
                 suffix,
             );
-            let row = database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres, sql,
+            let row = database.fetch_optional(Sql::bind(sql,
                 [id.into(), tenant_id.into(), resource.to_owned().into(), record_id.to_owned().into()],
             )).await?.ok_or(ApiError::NotFound)?;
             Ok(entry_from_row(row)?)
         }
 
-        fn entry_from_row(row: sea_orm::QueryResult) -> Result<ActivityEntry, sea_orm::DbErr> {
+        fn entry_from_row(row: crate::database::PgRow) -> Result<ActivityEntry, sqlx::Error> {
             Ok(ActivityEntry {
-                id: row.try_get("", "id")?, resource: row.try_get("", "resource")?,
-                record_id: row.try_get("", "record_id")?, tenant_id: row.try_get("", "tenant_id")?,
-                actor_id: row.try_get("", "actor_id")?, kind: row.try_get("", "kind")?,
-                body: row.try_get("", "body")?, event: row.try_get("", "event")?,
-                payload: row.try_get("", "payload")?, attachment_file_id: row.try_get("", "attachment_file_id")?,
-                attachment_name: row.try_get("", "attachment_name")?,
-                attachment_content_type: row.try_get("", "attachment_content_type")?,
-                withdrawn_at: row.try_get("", "withdrawn_at")?, withdrawn_by: row.try_get("", "withdrawn_by")?,
-                governance_reason: row.try_get("", "governance_reason")?, occurred_at: row.try_get("", "occurred_at")?,
-                attachment_object_key: row.try_get("", "attachment_object_key")?,
+                id: row.try_get("id")?, resource: row.try_get("resource")?,
+                record_id: row.try_get("record_id")?, tenant_id: row.try_get("tenant_id")?,
+                actor_id: row.try_get("actor_id")?, kind: row.try_get("kind")?,
+                body: row.try_get("body")?, event: row.try_get("event")?,
+                payload: row.try_get("payload")?, attachment_file_id: row.try_get("attachment_file_id")?,
+                attachment_name: row.try_get("attachment_name")?,
+                attachment_content_type: row.try_get("attachment_content_type")?,
+                withdrawn_at: row.try_get("withdrawn_at")?, withdrawn_by: row.try_get("withdrawn_by")?,
+                governance_reason: row.try_get("governance_reason")?, occurred_at: row.try_get("occurred_at")?,
+                attachment_object_key: row.try_get("attachment_object_key")?,
             })
         }
 

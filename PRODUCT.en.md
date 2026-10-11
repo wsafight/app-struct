@@ -15,7 +15,7 @@ As of 2026-08-30, the repository has completed M0 through M6, and after M1 it co
 | Milestone | Status | Frozen capabilities |
 | --- | --- | --- |
 | M0 | Complete | Multi-file YAML, location-aware diagnostics, normalized Typed IR, canonical golden tests, and compilation of a minimal generated artifact |
-| M1 | Complete | PostgreSQL schema, SeaORM/Axum CRUD, OpenAPI, TypeScript client, React lists and forms |
+| M1 | Complete | PostgreSQL schema, SQLx + sift-query/Axum CRUD, OpenAPI, TypeScript client, React lists and forms |
 | Refactor | Complete | Compiler and Backend Generator split by responsibility; Clippy constrains function complexity/length and an 800-line file cap is only an emergency backstop |
 | M2 | Complete | Defaults, unique/enum/numeric validation, relations and inverse relations, pagination/filter/search/sort, detail pages, RelationSelect, and schema-diff risk blocking |
 | M3 | Complete | Value Object, Hook, Command, Query, Policy, Rust/React registries, SHA-256 ownership manifest, and safe directory swap |
@@ -41,9 +41,9 @@ M2 `migrate plan` remains a read-only diff preview. `migrate dev --accept` accep
 
 M3 pins user implementations to the `app/` boundary. Generated directories store only repeatable contracts and runtime. On the Rust side, a single aggregate object that implements every required Command/Query handler trait completes typed registration; missing any trait fails compilation. Entity Hook and Policy are optional registrations with safe default implementations. Policy also provides a collection-level `can_list` check and per-record read/write checks. On the React side, generated field components and custom pages require registry keys. When references exist, the generated entry imports implementations from user-owned `app/web/registry.tsx` and checks completeness at build time with TypeScript `satisfies`. Real PostgreSQL acceptance already covers input Hooks, an archive Command, a metrics Query, and a Policy that rejects deletes.
 
-CRUD write paths already run inside an explicit SeaORM transaction: `before_create/update/delete`, the primary record write, and `after_create/update/delete` share the transaction connection. Failure at any step aborts the transaction. `after_commit` runs best-effort on a normal connection after commit; failures are logged only. Update Policy sees the old record, the typed patch, and the final candidate record at the same time. The framework manages `revision bigint not null default 1` on every entity. Detail/create/update responses return ETag. Updates and deletes require `If-Match`. A stale revision returns 412. The generated client maintains ETag automatically. On form conflict, user input is kept and reload is allowed.
+CRUD write paths already run inside an explicit SQLx transaction: `before_create/update/delete`, the primary record write, and `after_create/update/delete` share the transaction connection. Failure at any step aborts the transaction. `after_commit` runs best-effort on a normal connection after commit; failures are logged only. Update Policy sees the old record, the typed patch, and the final candidate record at the same time. The framework manages `revision bigint not null default 1` on every entity. Detail/create/update responses return ETag. Updates and deletes require `If-Match`. A stale revision returns 412. The generated client maintains ETag automatically. On form conflict, user input is kept and reload is allowed.
 
-M4 has folded `modules.auth` and `modules.rbac` into Surface, Typed IR, Compiler validation, and every generator. Auth-enabled apps generate register, login, logout, current-user, and optional password-reset flows. They use Argon2id password hashing, opaque session/reset tokens stored as hashes only, an `HttpOnly` session Cookie, CSRF tokens, and Origin checks. After registration, the app issues a one-time email verification token valid for 24 hours. Auth responses expose `email_verified`. Logged-in users can request a resend. The confirm endpoint marks `email_verified_at` and consumes the token in a transaction. Optional `modules.auth.oauth: true` publishes OIDC authorization-code login. The provider is configured with environment variables. A short-lived state cookie prevents replay. Local users are bound by provider+subject, and provider tokens are not persisted. Authenticated users can also create personal API tokens with a name and optional expiry. Runtime stores only the SHA-256 hash, supports Bearer auth, records last-used time, and returns the plaintext once. Actor is injected into both ordinary and in-transaction `RequestContext`. `public/authenticated/role/owner/any/all` rules execute on the backend. List and read-by-id convert owner/RBAC into SeaORM query conditions. React artifacts include auth state, login/register/password-reset/email-confirm pages, OIDC SSO, an API token management page, route guards, and a logout entry. The TypeScript client sends Cookie by default and CSRF automatically. OpenAPI publishes Cookie/Bearer security schemes and the enabled Auth endpoints.
+M4 has folded `modules.auth` and `modules.rbac` into Surface, Typed IR, Compiler validation, and every generator. Auth-enabled apps generate register, login, logout, current-user, and optional password-reset flows. They use Argon2id password hashing, opaque session/reset tokens stored as hashes only, an `HttpOnly` session Cookie, CSRF tokens, and Origin checks. After registration, the app issues a one-time email verification token valid for 24 hours. Auth responses expose `email_verified`. Logged-in users can request a resend. The confirm endpoint marks `email_verified_at` and consumes the token in a transaction. Optional `modules.auth.oauth: true` publishes OIDC authorization-code login. The provider is configured with environment variables. A short-lived state cookie prevents replay. Local users are bound by provider+subject, and provider tokens are not persisted. Authenticated users can also create personal API tokens with a name and optional expiry. Runtime stores only the SHA-256 hash, supports Bearer auth, records last-used time, and returns the plaintext once. Actor is injected into both ordinary and in-transaction `RequestContext`. `public/authenticated/role/owner/any/all` rules execute on the backend. List and read-by-id convert owner/RBAC into parameterized SQL conditions. React artifacts include auth state, login/register/password-reset/email-confirm pages, OIDC SSO, an API token management page, route guards, and a logout entry. The TypeScript client sends Cookie by default and CSRF automatically. OpenAPI publishes Cookie/Bearer security schemes and the enabled Auth endpoints.
 
 M4 has been accepted against an isolated local PostgreSQL database. Coverage includes anonymous 401, register and Cookie, CSRF 403, owner data isolation, admin cross-owner access, member delete 403, ETag `rev-1/rev-2`, 428 when `If-Match` is missing, 412 on a stale revision, single-use password-reset tokens, revocation of old sessions, and login with the new password. The acceptance database was reclaimed after the tests.
 
@@ -892,7 +892,7 @@ The following is the first-version default stack. It is not a long-term multi-im
 | Layer | Default choice |
 | --- | --- |
 | Backend | Axum + Tokio |
-| ORM | SeaORM |
+| Data access | SQLx + sift-query, with SeaQuery for relations and aggregates |
 | Database | PostgreSQL |
 | OpenAPI | Utoipa |
 | Configuration | Serde + YAML + JSON Schema |
@@ -953,7 +953,7 @@ What the product promises is contracts and capabilities, not that users can free
 - Modular YAML App Spec with a root entry plus domain files
 - Configuration JSON Schema, explicit `includes`, and `appstruct check`
 - PostgreSQL entity and migration generation
-- Axum + SeaORM CRUD API
+- Axum + SQLx + sift-query CRUD API
 - OpenAPI and TypeScript client
 - React list, detail, create, and edit pages
 - Pagination, sorting, search, and basic filtering
@@ -1121,7 +1121,7 @@ Mitigation: Use a stable React Runtime and design system. Treat lists, forms, er
 
 Risk: Supporting multiple ORMs, databases, and frontend frameworks at once keeps the core contract unstable.
 
-Mitigation: MVP pins PostgreSQL, Axum, SeaORM, and React. Validate the product workflow first, then open an adapter layer.
+Mitigation: MVP pins PostgreSQL, Axum, SQLx + sift-query, and React. Validate the product workflow first, then open an adapter layer.
 
 ### 22.7 Templates Drift From Framework Upgrades
 
@@ -1133,7 +1133,7 @@ Mitigation: Templates only copy the user skeleton. Security and runtime capabili
 
 The following is the historical open-decision list. Items marked “Decided” are already frozen in code and tests and remain here to track decision origin:
 
-1. Decided: SeaORM is the standard CRUD ORM. Repository keeps a SeaQuery/custom Query escape hatch.
+1. Decided: SQLx executes explicit CRUD and transactions. sift-query provides typed query metadata and filter validation; SeaQuery composes relations, aggregates and authorization scopes.
 2. Follow-up: Whether large projects need remote or package-level Spec dependencies beyond local `includes`.
 3. Decided: Resource-level Policy uses generated traits and a unified Access IR.
 4. Follow-up: Whether Session adds a Redis Provider.
@@ -1162,7 +1162,7 @@ This document has already decided the following directions:
 - `appstruct.lock` and the database schema snapshot own dependency locking and the migration baseline separately.
 - `generated/` and its deterministic ownership manifest enter version control by default. User code must not be placed in that directory.
 - Module provides executable capabilities, Preset composes modules, and Template is responsible only for first-time project creation.
-- MVP pins PostgreSQL, Axum, SeaORM, and React.
+- MVP pins PostgreSQL, Axum, SQLx + sift-query, and React.
 - Local development manages PostgreSQL with Docker Compose by default, and allows an existing database through `database.dev.mode: external`.
 - Production database changes must keep reviewable migration files.
 - Create permission applies to the final input. Update permission may inspect the old record, patch, and post-update state. Invisible records return 404 on by-ID operations.

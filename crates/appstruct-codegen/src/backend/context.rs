@@ -7,8 +7,8 @@ pub(super) fn contract() -> TokenStream {
     quote! {
         #[derive(Clone, Copy)]
         enum RequestDatabase<'db> {
-            Connection(&'db DatabaseConnection),
-            Transaction(&'db DatabaseTransaction),
+            Connection(&'db Database),
+            Transaction(&'db Transaction),
         }
 
         #[derive(Clone)]
@@ -31,7 +31,7 @@ fn methods() -> TokenStream {
     quote! {
         impl<'db> RequestContext<'db> {
             pub fn connection(
-                database: &'db DatabaseConnection,
+                database: &'db Database,
                 mail: &'db crate::MailState,
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
@@ -40,7 +40,7 @@ fn methods() -> TokenStream {
             }
 
             pub fn transaction(
-                database: &'db DatabaseTransaction,
+                database: &'db Transaction,
                 mail: &'db crate::MailState,
                 actor: Option<Actor>,
                 tenant: Option<TenantId>,
@@ -49,7 +49,7 @@ fn methods() -> TokenStream {
             }
 
             pub fn connection_with_file(
-                database: &'db DatabaseConnection,
+                database: &'db Database,
                 mail: &'db crate::MailState,
                 file: &'db crate::FileState,
                 actor: Option<Actor>,
@@ -59,7 +59,7 @@ fn methods() -> TokenStream {
             }
 
             pub(crate) fn connection_with_services(
-                database: &'db DatabaseConnection,
+                database: &'db Database,
                 mail: &'db crate::MailState,
                 file: &'db crate::FileState,
                 realtime: &'db crate::RealtimeState,
@@ -73,7 +73,7 @@ fn methods() -> TokenStream {
             }
 
             pub(crate) fn transaction_with_file(
-                database: &'db DatabaseTransaction,
+                database: &'db Transaction,
                 mail: &'db crate::MailState,
                 file: &'db crate::FileState,
                 realtime: &'db crate::RealtimeState,
@@ -158,39 +158,32 @@ fn methods() -> TokenStream {
 fn connection_trait() -> TokenStream {
     quote! {
         #[async_trait]
-        impl ConnectionTrait for RequestContext<'_> {
-            fn get_database_backend(&self) -> DbBackend {
+        impl DatabaseExecutor for RequestContext<'_> {
+            async fn execute(&self, statement: Sql) -> Result<PgQueryResult, DbErr> {
                 match self.database {
-                    RequestDatabase::Connection(database) => database.get_database_backend(),
-                    RequestDatabase::Transaction(database) => database.get_database_backend(),
+                    RequestDatabase::Connection(database) => database.execute(statement).await,
+                    RequestDatabase::Transaction(database) => database.execute(statement).await,
                 }
             }
 
-            async fn execute_raw(&self, statement: Statement) -> Result<ExecResult, DbErr> {
-                match self.database {
-                    RequestDatabase::Connection(database) => database.execute_raw(statement).await,
-                    RequestDatabase::Transaction(database) => database.execute_raw(statement).await,
-                }
-            }
-
-            async fn execute_unprepared(&self, sql: &str) -> Result<ExecResult, DbErr> {
+            async fn execute_unprepared(&self, sql: &str) -> Result<PgQueryResult, DbErr> {
                 match self.database {
                     RequestDatabase::Connection(database) => database.execute_unprepared(sql).await,
                     RequestDatabase::Transaction(database) => database.execute_unprepared(sql).await,
                 }
             }
 
-            async fn query_one_raw(&self, statement: Statement) -> Result<Option<QueryResult>, DbErr> {
+            async fn fetch_optional(&self, statement: Sql) -> Result<Option<PgRow>, DbErr> {
                 match self.database {
-                    RequestDatabase::Connection(database) => database.query_one_raw(statement).await,
-                    RequestDatabase::Transaction(database) => database.query_one_raw(statement).await,
+                    RequestDatabase::Connection(database) => database.fetch_optional(statement).await,
+                    RequestDatabase::Transaction(database) => database.fetch_optional(statement).await,
                 }
             }
 
-            async fn query_all_raw(&self, statement: Statement) -> Result<Vec<QueryResult>, DbErr> {
+            async fn fetch_all(&self, statement: Sql) -> Result<Vec<PgRow>, DbErr> {
                 match self.database {
-                    RequestDatabase::Connection(database) => database.query_all_raw(statement).await,
-                    RequestDatabase::Transaction(database) => database.query_all_raw(statement).await,
+                    RequestDatabase::Connection(database) => database.fetch_all(statement).await,
+                    RequestDatabase::Transaction(database) => database.fetch_all(statement).await,
                 }
             }
         }

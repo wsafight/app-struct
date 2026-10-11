@@ -46,8 +46,8 @@ fn assert_provider(
     assert!(file.contains("file key must be a safe relative path"));
     assert!(file.contains("stored object checksum does not match metadata"));
     assert!(file.contains("tenant_id IS NOT DISTINCT FROM"));
-    assert!(file.contains("put_with_connection<C: ConnectionTrait>"));
-    assert!(file.contains("load_metadata<C: ConnectionTrait>"));
+    assert!(file.contains("put_with_connection<C: DatabaseExecutor>"));
+    assert!(file.contains("load_metadata<C: DatabaseExecutor>"));
     let delete = &file[file.find("pub async fn delete").expect("delete handler")..];
     let metadata = delete.find("DELETE FROM").expect("metadata delete");
     let storage = delete.find("self.provider.delete").expect("storage delete");

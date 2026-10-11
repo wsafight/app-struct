@@ -4,7 +4,7 @@ use quote::quote;
 pub(super) fn disabled_source() -> Result<String, CodegenError> {
     render(quote! {
         use async_trait::async_trait;
-        use sea_orm::{ConnectionTrait, DatabaseConnection};
+        use crate::database::{DatabaseExecutor, Database};
         use serde::Serialize;
         use std::{fmt, sync::Arc};
         #[derive(Clone, Debug)] pub struct Job;
@@ -24,9 +24,9 @@ pub(super) fn disabled_source() -> Result<String, CodegenError> {
         }
         pub struct JobWorker;
         impl JobWorker {
-            pub fn new(_database: DatabaseConnection, _handler: Arc<dyn JobHandler>) -> Self { Self }
+            pub fn new(_database: Database, _handler: Arc<dyn JobHandler>) -> Self { Self }
             pub fn for_kind(
-                _database: DatabaseConnection, _handler: Arc<dyn JobHandler>, _kind: &str,
+                _database: Database, _handler: Arc<dyn JobHandler>, _kind: &str,
             ) -> Self { Self }
             pub async fn run_once(&self) -> Result<bool, JobError> { Err(JobError::Disabled) }
             pub fn spawn(self) -> JobWorkerHandle { JobWorkerHandle }
@@ -44,7 +44,7 @@ pub(super) fn disabled_source() -> Result<String, CodegenError> {
                 JobWorkerHandle::shutdown(*self).await
             }
         }
-        pub(crate) async fn enqueue<C: ConnectionTrait, T: Serialize>(
+        pub(crate) async fn enqueue<C: DatabaseExecutor, T: Serialize>(
             _database: &C, _queue: &str, _kind: &str, _payload: &T,
             _idempotency_key: Option<&str>, _run_at: Option<chrono::DateTime<chrono::Utc>>,
             _tenant_id: Option<uuid::Uuid>,

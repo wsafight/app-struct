@@ -26,7 +26,7 @@ pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, 
             http::{HeaderMap, Request, StatusCode}, response::IntoResponse,
             routing::get,
         };
-        use sea_orm::DatabaseConnection;
+        use crate::database::Database;
         use std::{
             future::IntoFuture,
             io,
@@ -53,7 +53,7 @@ fn contract_source() -> TokenStream {
     quote! {
         #[derive(Clone)]
         pub struct AppState {
-            pub database: DatabaseConnection,
+            pub database: Database,
             pub extensions: AppExtensions,
             pub auth: AuthState,
             pub mail: MailState,
@@ -127,7 +127,7 @@ fn application_source() -> TokenStream {
         }
         impl Application {
             pub async fn from_env(
-                database: DatabaseConnection, extensions: AppExtensions,
+                database: Database, extensions: AppExtensions,
             ) -> Result<Self, StartupError> {
                 billing::validate_env()
                     .map_err(|error| StartupError::configuration("appstruct/billing", error))?;
@@ -144,7 +144,7 @@ fn application_source() -> TokenStream {
             }
 
             pub fn with_services(
-                database: DatabaseConnection, extensions: AppExtensions, auth: AuthState,
+                database: Database, extensions: AppExtensions, auth: AuthState,
                 mail: MailState, file: FileState,
             ) -> Self {
                 let mut runtime = ModuleRuntime::default();
@@ -207,7 +207,7 @@ fn application_source() -> TokenStream {
             }
         }
         pub fn router(
-            database: DatabaseConnection, extensions: AppExtensions,
+            database: Database, extensions: AppExtensions,
         ) -> Result<Router, StartupError> {
             let auth = AuthState::from_env()
                 .map_err(|error| StartupError::configuration("auth", error))?;
@@ -215,7 +215,7 @@ fn application_source() -> TokenStream {
         }
 
         pub fn router_with_auth(
-            database: DatabaseConnection, extensions: AppExtensions, auth: AuthState,
+            database: Database, extensions: AppExtensions, auth: AuthState,
         ) -> Result<Router, StartupError> {
             let mail = MailState::from_env(database.clone())
                 .map_err(|error| StartupError::configuration("mail", error))?;
@@ -229,7 +229,7 @@ fn application_source() -> TokenStream {
 fn router_source(routes: &[TokenStream]) -> TokenStream {
     quote! {
         pub fn router_with_services(
-            database: DatabaseConnection, extensions: AppExtensions, auth: AuthState,
+            database: Database, extensions: AppExtensions, auth: AuthState,
             mail: MailState, file: FileState,
         ) -> Router {
             router_with_services_and_health(
@@ -238,7 +238,7 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
         }
 
         fn router_with_services_and_health(
-            database: DatabaseConnection, extensions: AppExtensions, auth: AuthState,
+            database: Database, extensions: AppExtensions, auth: AuthState,
             mail: MailState, file: FileState, health: ApplicationHealth,
         ) -> Router {
             let cors = auth.cors_layer();
@@ -322,7 +322,7 @@ fn start_worker(ir: &AppIr) -> TokenStream {
     if !ir.jobs.enabled {
         return quote! {
             fn start_job_worker(
-                _database: &DatabaseConnection, _extensions: &AppExtensions, _mail: &MailState,
+                _database: &Database, _extensions: &AppExtensions, _mail: &MailState,
                 _file: &FileState,
                 _health: ApplicationHealth,
             ) -> Option<JobWorkerHandle> { None }
@@ -331,7 +331,7 @@ fn start_worker(ir: &AppIr) -> TokenStream {
     if ir.mail.enabled || ir.report.enabled {
         quote! {
             fn start_job_worker(
-                database: &DatabaseConnection, extensions: &AppExtensions, mail: &MailState,
+                database: &Database, extensions: &AppExtensions, mail: &MailState,
                 file: &FileState,
                 health: ApplicationHealth,
             ) -> Option<JobWorkerHandle> {
@@ -345,7 +345,7 @@ fn start_worker(ir: &AppIr) -> TokenStream {
     } else {
         quote! {
             fn start_job_worker(
-                database: &DatabaseConnection, extensions: &AppExtensions, _mail: &MailState,
+                database: &Database, extensions: &AppExtensions, _mail: &MailState,
                 _file: &FileState,
                 health: ApplicationHealth,
             ) -> Option<JobWorkerHandle> {
@@ -362,13 +362,13 @@ fn start_worker(ir: &AppIr) -> TokenStream {
 fn start_webhook_worker(ir: &AppIr) -> TokenStream {
     if ir.webhooks.enabled {
         quote! {
-            fn start_webhook_worker(database: &DatabaseConnection) -> Option<WebhookWorkerHandle> {
+            fn start_webhook_worker(database: &Database) -> Option<WebhookWorkerHandle> {
                 Some(WebhookWorker::new(database.clone()).spawn())
             }
         }
     } else {
         quote! {
-            fn start_webhook_worker(_database: &DatabaseConnection) -> Option<WebhookWorkerHandle> {
+            fn start_webhook_worker(_database: &Database) -> Option<WebhookWorkerHandle> {
                 None
             }
         }

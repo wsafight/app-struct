@@ -38,7 +38,7 @@ pub(super) fn source(ir: &AppIr) -> Option<TokenStream> {
             #report_field
         }
         pub(crate) fn generated_job_handler(
-            database: DatabaseConnection,
+            database: Database,
             mail: crate::MailState,
             file: crate::FileState,
             custom: Option<Arc<dyn JobHandler>>,

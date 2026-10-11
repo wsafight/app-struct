@@ -3,7 +3,8 @@ use super::mail::{AuthMailSender, DevMailSender, DisabledMailSender, SmtpMailSen
 use crate::{Actor, ApiError};
 use axum::http::{HeaderMap, HeaderValue, Method, header};
 use base64::Engine;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sqlx::Row as _;
+use crate::database::{DatabaseExecutor, Database,  Sql};
 use std::env;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
@@ -82,7 +83,7 @@ impl AuthState {
 
     pub async fn actor(
         &self,
-        database: &DatabaseConnection,
+        database: &Database,
         headers: &HeaderMap,
     ) -> Result<Option<Actor>, ApiError> {
         if let Some(token) = cookie_value(headers, SESSION_COOKIE) {
@@ -100,7 +101,7 @@ impl AuthState {
 
     pub async fn actor_for_mutation(
         &self,
-        database: &DatabaseConnection,
+        database: &Database,
         headers: &HeaderMap,
     ) -> Result<Option<Actor>, ApiError> {
         self.validate_origin(headers)?;
@@ -119,7 +120,7 @@ impl AuthState {
 
     async fn actor_from_session(
         &self,
-        database: &DatabaseConnection,
+        database: &Database,
         token: &str,
         csrf_hash: Option<String>,
     ) -> Result<Option<Actor>, ApiError> {
@@ -130,27 +131,25 @@ impl AuthState {
             id = quote_ident(config::USER_ID_COLUMN),
         );
         let Some(row) = database
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                sql,
+            .fetch_optional(Sql::bind(sql,
                 [token_hash(token).into(), csrf_hash.into()],
             ))
             .await?
         else {
             return Ok(None);
         };
-        let roles: serde_json::Value = row.try_get("", "roles")?;
+        let roles: serde_json::Value = row.try_get("roles")?;
         let roles = serde_json::from_value(roles).map_err(|_| ApiError::Internal)?;
         Ok(Some(Actor {
-            id: row.try_get("", "user_id")?,
-            email: row.try_get("", "email")?,
+            id: row.try_get("user_id")?,
+            email: row.try_get("email")?,
             roles,
         }))
     }
 
     async fn actor_from_api_token(
         &self,
-        database: &DatabaseConnection,
+        database: &Database,
         token: &str,
     ) -> Result<Option<Actor>, ApiError> {
         let sql = format!(
@@ -161,35 +160,32 @@ impl AuthState {
         );
         let hash = token_hash(token);
         let Some(row) = database
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                sql,
+            .fetch_optional(Sql::bind(sql,
                 [hash.clone().into()],
             ))
             .await?
         else {
             return Ok(None);
         };
-        if row.try_get::<bool>("", "should_touch")? {
+        if row.try_get::<bool, _>("should_touch")? {
             database
-                .execute_raw(Statement::from_sql_and_values(
-                    DbBackend::Postgres,
+                .execute(Sql::bind(
                     "UPDATE \"_appstruct_auth_api_tokens\" SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = $1 AND (last_used_at IS NULL OR last_used_at < CURRENT_TIMESTAMP - INTERVAL '5 minutes')",
                     [hash.into()],
                 ))
                 .await?;
         }
-        let roles: serde_json::Value = row.try_get("", "roles")?;
+        let roles: serde_json::Value = row.try_get("roles")?;
         Ok(Some(Actor {
-            id: row.try_get("", "user_id")?,
-            email: row.try_get("", "email")?,
+            id: row.try_get("user_id")?,
+            email: row.try_get("email")?,
             roles: serde_json::from_value(roles).map_err(|_| ApiError::Internal)?,
         }))
     }
 
     pub async fn verify_csrf(
         &self,
-        database: &DatabaseConnection,
+        database: &Database,
         headers: &HeaderMap,
     ) -> Result<(), ApiError> {
         self.validate_origin(headers)?;
@@ -209,9 +205,7 @@ impl AuthState {
             .and_then(|value| value.to_str().ok())
             .ok_or(ApiError::InvalidCsrf)?;
         let valid = database
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT 1 FROM \"_appstruct_auth_sessions\" WHERE token_hash = $1 AND csrf_hash = $2 AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP",
+            .fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_auth_sessions\" WHERE token_hash = $1 AND csrf_hash = $2 AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP",
                 [token_hash(&session).into(), token_hash(csrf).into()],
             ))
             .await?
@@ -230,16 +224,14 @@ impl AuthState {
         Ok(())
     }
 
-    pub(crate) async fn consume_auth_rate_limit<C: ConnectionTrait>(
+    pub(crate) async fn consume_auth_rate_limit<C: DatabaseExecutor>(
         &self,
         database: &C,
         key: &str,
     ) -> Result<(), ApiError> {
         cleanup_login_attempts(database).await?;
         let row = database
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                r#"INSERT INTO "_appstruct_auth_login_attempts" ("key", window_started_at, attempts)
+            .fetch_optional(Sql::bind(r#"INSERT INTO "_appstruct_auth_login_attempts" ("key", window_started_at, attempts)
                    VALUES ($1, CURRENT_TIMESTAMP, 1)
                    ON CONFLICT (key) DO UPDATE SET
                      attempts = CASE
@@ -257,22 +249,20 @@ impl AuthState {
             ))
             .await?
             .ok_or(ApiError::Internal)?;
-        let attempts: i32 = row.try_get("", "attempts")?;
+        let attempts: i32 = row.try_get("attempts")?;
         if attempts > 10 {
             return Err(ApiError::TooManyRequests);
         }
         Ok(())
     }
 
-    pub(crate) async fn clear_login_attempts<C: ConnectionTrait>(
+    pub(crate) async fn clear_login_attempts<C: DatabaseExecutor>(
         &self,
         database: &C,
         key: &str,
     ) -> Result<(), ApiError> {
         database
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                r#"DELETE FROM "_appstruct_auth_login_attempts" WHERE "key" = $1"#,
+            .execute(Sql::bind(r#"DELETE FROM "_appstruct_auth_login_attempts" WHERE "key" = $1"#,
                 [key.to_owned().into()],
             ))
             .await?;
@@ -294,7 +284,7 @@ impl AuthState {
             .expose_headers([header::ETAG])
     }
 
-    pub(crate) async fn create_session<C: ConnectionTrait>(
+    pub(crate) async fn create_session<C: DatabaseExecutor>(
         &self,
         database: &C,
         user_id: uuid::Uuid,
@@ -302,9 +292,7 @@ impl AuthState {
         let session = random_token();
         let csrf = random_token();
         database
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_auth_sessions\" (token_hash, user_id, csrf_hash, expires_at, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP + ($4 * INTERVAL '1 hour'), CURRENT_TIMESTAMP)",
+            .execute(Sql::bind("INSERT INTO \"_appstruct_auth_sessions\" (token_hash, user_id, csrf_hash, expires_at, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP + ($4 * INTERVAL '1 hour'), CURRENT_TIMESTAMP)",
                 [
                     token_hash(&session).into(),
                     user_id.into(),
@@ -379,11 +367,9 @@ fn load_public_origin(name: &str, production: bool, fallback: &str) -> Result<St
     }
 }
 
-async fn cleanup_login_attempts<C: ConnectionTrait>(database: &C) -> Result<(), ApiError> {
+async fn cleanup_login_attempts<C: DatabaseExecutor>(database: &C) -> Result<(), ApiError> {
     database
-        .execute_raw(Statement::from_string(
-            DbBackend::Postgres,
-            r#"DELETE FROM "_appstruct_auth_login_attempts"
+        .execute(Sql::new(r#"DELETE FROM "_appstruct_auth_login_attempts"
                WHERE window_started_at <= CURRENT_TIMESTAMP - INTERVAL '1 minute'"#,
         ))
         .await?;

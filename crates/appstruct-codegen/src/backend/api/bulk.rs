@@ -146,11 +146,11 @@ fn trash_handler(context: &BulkContext<'_>) -> TokenStream {
                     "`page` must be at least 1 and `page_size` must be between 1 and 100".to_owned()
                 ));
             }
-            let mut select = #module::Entity::find();
+            let mut select = #module::select();
             #trash_scope
             select = select.order_by_asc(#module::Column::#primary_column);
             let total = select.clone().count(&state.database).await?;
-            let data = select.paginate(&state.database, page_size).fetch_page(page - 1).await?
+            let data = select.limit(page_size).offset((page - 1) * page_size).all(&state.database).await?
                 .into_iter().map(|model| redact_model(&context, model))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Json(ListResponse {

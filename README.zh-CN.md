@@ -3,7 +3,7 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 AppStruct 是一个由配置驱动的 Rust 全栈应用生成器。它把多文件 YAML App Spec 编译为类型化
-中间表示（IR）、PostgreSQL 迁移、Axum/SeaORM 后端、OpenAPI、TypeScript 客户端以及
+中间表示（IR）、PostgreSQL 迁移、Axum/SQLx + sift-query 后端、OpenAPI、TypeScript 客户端以及
 React/Rsbuild Web 应用。
 
 当前仓库处于技术预览阶段。现在需要从源码构建 CLI，尚未发布 crates.io 包或独立安装器。
@@ -190,7 +190,7 @@ Web 运行时采用固定且现代的 React 19 + TypeScript + Rsbuild/Rspack + R
 - Auth、Tenant、Audit、Mail、Jobs、File 模块。
 - 批量操作、CSV 导入导出、保存的列表视图、软删除/恢复、组织邀请、邮箱验证、OAuth/OIDC
   和个人 API Token。
-- 生成 Axum/SeaORM 后端、OpenAPI 文档和 TypeScript 客户端。
+- 生成 Axum/SQLx + sift-query 后端、OpenAPI 文档和 TypeScript 客户端。
 
 ## 常用命令
 

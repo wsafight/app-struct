@@ -32,7 +32,7 @@ fn definitions() -> TokenStream {
 
         struct RealtimeInner {
             sender: broadcast::Sender<RealtimeEvent>,
-            database: Option<DatabaseConnection>,
+            database: Option<Database>,
             source_id: uuid::Uuid,
         }
 
@@ -47,12 +47,12 @@ fn state_impl() -> TokenStream {
             fn default() -> Self { Self::build(None) }
         }
         impl RealtimeState {
-            pub(crate) fn new(database: DatabaseConnection) -> Self {
+            pub(crate) fn new(database: Database) -> Self {
                 let state = Self::build(Some(database));
                 state.spawn_fanout();
                 state
             }
-            fn build(database: Option<DatabaseConnection>) -> Self {
+            fn build(database: Option<Database>) -> Self {
                 let (sender, _) = broadcast::channel(1_024);
                 Self { inner: std::sync::Arc::new(RealtimeInner {
                     sender, database, source_id: uuid::Uuid::now_v7(),
@@ -129,11 +129,9 @@ fn persistence(inferred_resources: &[TokenStream]) -> TokenStream {
         }
 
         async fn persist_event(
-            database: &DatabaseConnection, source_id: uuid::Uuid, event: &RealtimeEvent,
+            database: &Database, source_id: uuid::Uuid, event: &RealtimeEvent,
         ) -> Result<(), DbErr> {
-            database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_realtime_events\" (id, source_id, event, data, resource, record_id, actor_id, tenant_id, occurred_at, resource_model) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+            database.execute(Sql::bind("INSERT INTO \"_appstruct_realtime_events\" (id, source_id, event, data, resource, record_id, actor_id, tenant_id, occurred_at, resource_model) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                 [event.id.into(), source_id.into(), event.event.clone().into(),
                  event.data.clone().into(), event.resource.clone().into(),
                  event.record_id.clone().into(), event.actor_id.into(), event.tenant_id.into(),
@@ -194,30 +192,26 @@ fn fanout() -> TokenStream {
             }
         }
 
-        async fn latest_event_sequence(database: &DatabaseConnection) -> Result<i64, DbErr> {
-            let row = database.query_one_raw(Statement::from_string(
-                DbBackend::Postgres,
-                "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM \"_appstruct_realtime_events\"".to_owned(),
-            )).await?.ok_or_else(|| DbErr::Custom("realtime cursor query returned no row".to_owned()))?;
-            row.try_get("", "sequence")
+        async fn latest_event_sequence(database: &Database) -> Result<i64, DbErr> {
+            let row = database.fetch_optional(Sql::new("SELECT COALESCE(MAX(sequence), 0) AS sequence FROM \"_appstruct_realtime_events\"".to_owned(),
+            )).await?.ok_or_else(|| DbErr::Protocol("realtime cursor query returned no row".to_owned()))?;
+            row.try_get("sequence")
         }
 
         async fn load_events(
-            database: &DatabaseConnection, sequence: i64,
+            database: &Database, sequence: i64,
         ) -> Result<Vec<(i64, uuid::Uuid, RealtimeEvent)>, DbErr> {
-            let rows = database.query_all_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT sequence, id, source_id, event, data, resource, record_id, actor_id, tenant_id, occurred_at, resource_model FROM \"_appstruct_realtime_events\" WHERE sequence > $1 ORDER BY sequence LIMIT 256",
+            let rows = database.fetch_all(Sql::bind("SELECT sequence, id, source_id, event, data, resource, record_id, actor_id, tenant_id, occurred_at, resource_model FROM \"_appstruct_realtime_events\" WHERE sequence > $1 ORDER BY sequence LIMIT 256",
                 [sequence.into()],
             )).await?;
             rows.into_iter().map(|row| Ok((
-                row.try_get("", "sequence")?, row.try_get("", "source_id")?,
+                row.try_get("sequence")?, row.try_get("source_id")?,
                 RealtimeEvent {
-                    id: row.try_get("", "id")?, event: row.try_get("", "event")?,
-                    data: row.try_get("", "data")?, resource: row.try_get("", "resource")?,
-                    record_id: row.try_get("", "record_id")?, actor_id: row.try_get("", "actor_id")?,
-                    tenant_id: row.try_get("", "tenant_id")?, occurred_at: row.try_get("", "occurred_at")?,
-                    resource_model: row.try_get("", "resource_model")?,
+                    id: row.try_get("id")?, event: row.try_get("event")?,
+                    data: row.try_get("data")?, resource: row.try_get("resource")?,
+                    record_id: row.try_get("record_id")?, actor_id: row.try_get("actor_id")?,
+                    tenant_id: row.try_get("tenant_id")?, occurred_at: row.try_get("occurred_at")?,
+                    resource_model: row.try_get("resource_model")?,
                 },
             ))).collect()
         }

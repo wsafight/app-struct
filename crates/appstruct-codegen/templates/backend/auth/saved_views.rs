@@ -4,7 +4,8 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::routing::{get, patch};
 use axum::{Json, Router};
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sqlx::Row as _;
+use crate::database::{DatabaseExecutor,  Sql};
 use serde::{Deserialize, Serialize};
 
 pub(super) fn router() -> Router<AppState> {
@@ -52,9 +53,7 @@ async fn list_views(
     let actor = context.actor().ok_or(ApiError::Unauthorized)?;
     let tenant = context.tenant();
     let scope = scope_key(tenant);
-    let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT id, name, query, visibility, revision, owner_id = $2 AS owned, created_at, updated_at FROM \"_appstruct_saved_views\" WHERE resource = $1 AND scope_key = $3 AND (owner_id = $2 OR (visibility = 'team' AND $4::uuid IS NOT NULL AND tenant_id = $4)) ORDER BY owned DESC, updated_at DESC, id DESC",
+    let rows = state.database.fetch_all(Sql::bind("SELECT id, name, query, visibility, revision, owner_id = $2 AS owned, created_at, updated_at FROM \"_appstruct_saved_views\" WHERE resource = $1 AND scope_key = $3 AND (owner_id = $2 OR (visibility = 'team' AND $4::uuid IS NOT NULL AND tenant_id = $4)) ORDER BY owned DESC, updated_at DESC, id DESC",
         [input.resource.into(), actor.id.into(), scope.into(), tenant.into()],
     )).await?;
     let data = rows.into_iter().map(view_from_row).collect::<Result<Vec<_>, _>>()?;
@@ -71,9 +70,7 @@ async fn create_view(
     let tenant = context.tenant();
     let input = validate_view(input.name, input.query, input.visibility, tenant)?;
     let id = uuid::Uuid::now_v7();
-    let row = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "INSERT INTO \"_appstruct_saved_views\" (id, owner_id, scope_key, tenant_id, resource, name, query, visibility, revision, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id, name, query, visibility, revision, TRUE AS owned, created_at, updated_at",
+    let row = state.database.fetch_optional(Sql::bind("INSERT INTO \"_appstruct_saved_views\" (id, owner_id, scope_key, tenant_id, resource, name, query, visibility, revision, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id, name, query, visibility, revision, TRUE AS owned, created_at, updated_at",
         [
             id.into(), actor.id.into(), scope_key(tenant).into(), tenant.into(),
             resource.into(), input.name.into(), input.query.into(), input.visibility.into(),
@@ -93,9 +90,7 @@ async fn update_view(
     let tenant = context.tenant();
     let input = validate_view(input.name, input.query, input.visibility, tenant)?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
-    let row = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "UPDATE \"_appstruct_saved_views\" SET name = $4, query = $5, visibility = $6, revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND owner_id = $2 AND scope_key = $3 AND revision = $7 RETURNING id, name, query, visibility, revision, TRUE AS owned, created_at, updated_at",
+    let row = state.database.fetch_optional(Sql::bind("UPDATE \"_appstruct_saved_views\" SET name = $4, query = $5, visibility = $6, revision = revision + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND owner_id = $2 AND scope_key = $3 AND revision = $7 RETURNING id, name, query, visibility, revision, TRUE AS owned, created_at, updated_at",
         [
             id.into(), actor.id.into(), scope_key(tenant).into(), input.name.into(),
             input.query.into(), input.visibility.into(), expected.into(),
@@ -116,9 +111,7 @@ async fn delete_view(
     let actor = context.actor().ok_or(ApiError::Unauthorized)?;
     let scope = scope_key(context.tenant());
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
-    let result = state.database.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "DELETE FROM \"_appstruct_saved_views\" WHERE id = $1 AND owner_id = $2 AND scope_key = $3 AND revision = $4",
+    let result = state.database.execute(Sql::bind("DELETE FROM \"_appstruct_saved_views\" WHERE id = $1 AND owner_id = $2 AND scope_key = $3 AND revision = $4",
         [id.into(), actor.id.into(), scope.clone().into(), expected.into()],
     )).await?;
     if result.rows_affected() == 1 { return Ok(StatusCode::NO_CONTENT); }
@@ -166,22 +159,20 @@ fn scope_key(tenant: Option<uuid::Uuid>) -> String {
 async fn missing_mutation(
     state: &AppState, id: uuid::Uuid, owner: uuid::Uuid, scope: &str, expected: i64,
 ) -> Result<ApiError, ApiError> {
-    let row = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT revision FROM \"_appstruct_saved_views\" WHERE id = $1 AND owner_id = $2 AND scope_key = $3",
+    let row = state.database.fetch_optional(Sql::bind("SELECT revision FROM \"_appstruct_saved_views\" WHERE id = $1 AND owner_id = $2 AND scope_key = $3",
         [id.into(), owner.into(), scope.to_owned().into()],
     )).await?;
     Ok(match row {
-        Some(row) if row.try_get::<i64>("", "revision")? != expected => ApiError::ConcurrentModification,
+        Some(row) if row.try_get::<i64, _>("revision")? != expected => ApiError::ConcurrentModification,
         _ => ApiError::NotFound,
     })
 }
 
-fn view_from_row(row: sea_orm::QueryResult) -> Result<SavedView, sea_orm::DbErr> {
+fn view_from_row(row: crate::database::PgRow) -> Result<SavedView, sqlx::Error> {
     Ok(SavedView {
-        id: row.try_get("", "id")?, name: row.try_get("", "name")?,
-        query: row.try_get("", "query")?, visibility: row.try_get("", "visibility")?,
-        revision: row.try_get("", "revision")?, owned: row.try_get("", "owned")?,
-        created_at: row.try_get("", "created_at")?, updated_at: row.try_get("", "updated_at")?,
+        id: row.try_get("id")?, name: row.try_get("name")?,
+        query: row.try_get("query")?, visibility: row.try_get("visibility")?,
+        revision: row.try_get("revision")?, owned: row.try_get("owned")?,
+        created_at: row.try_get("created_at")?, updated_at: row.try_get("updated_at")?,
     })
 }

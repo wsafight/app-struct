@@ -39,7 +39,8 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let dispatcher = dispatch::source(ir);
     render(quote! {
         use async_trait::async_trait;
-        use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement, TransactionTrait};
+        use sqlx::Row as _;
+        use crate::database::{DatabaseExecutor, Database,  DbErr, Sql};
         use serde::Serialize;
         use std::{
             env, fmt,
@@ -127,7 +128,7 @@ fn queue_source(ir: &AppIr) -> proc_macro2::TokenStream {
 
 fn enqueue_source() -> proc_macro2::TokenStream {
     quote! {
-        pub(crate) async fn enqueue<C: ConnectionTrait, T: Serialize>(
+        pub(crate) async fn enqueue<C: DatabaseExecutor, T: Serialize>(
             database: &C, queue: &str, kind: &str, payload: &T,
             idempotency_key: Option<&str>,
             run_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -148,19 +149,17 @@ fn enqueue_source() -> proc_macro2::TokenStream {
             let payload = serde_json::to_value(payload)
                 .map_err(|error| JobError::Serialization(error.to_string()))?;
             let id = uuid::Uuid::now_v7();
-            let row = database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_jobs\" (id, queue, kind, payload, idempotency_key, tenant_id, status, attempts, max_attempts, backoff_seconds, run_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, 'queued', 0, $7, $8, COALESCE($9, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP) ON CONFLICT (idempotency_key) DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key RETURNING id, (xmax <> 0) AS deduplicated",
+            let row = database.fetch_optional(Sql::bind("INSERT INTO \"_appstruct_jobs\" (id, queue, kind, payload, idempotency_key, tenant_id, status, attempts, max_attempts, backoff_seconds, run_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, 'queued', 0, $7, $8, COALESCE($9, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP) ON CONFLICT (idempotency_key) DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key RETURNING id, (xmax <> 0) AS deduplicated",
                 [
                     id.into(), queue.to_owned().into(), kind.to_owned().into(), payload.into(),
                     idempotency_key.map(str::to_owned).into(), tenant_id.into(),
                     config.max_attempts.into(), config.backoff_seconds.into(), run_at.into(),
                 ],
-            )).await?.ok_or_else(|| JobError::Database(DbErr::Custom(
+            )).await?.ok_or_else(|| JobError::Database(DbErr::Protocol(
                 "job enqueue returned no row".to_owned()
             )))?;
             Ok(JobReceipt {
-                id: row.try_get("", "id")?, deduplicated: row.try_get("", "deduplicated")?,
+                id: row.try_get("id")?, deduplicated: row.try_get("deduplicated")?,
             })
         }
     }
@@ -174,20 +173,20 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
     let run_once = metrics::run_once(lease_seconds);
     quote! {
         pub struct JobWorker {
-            database: DatabaseConnection,
+            database: Database,
             handler: Arc<dyn JobHandler>,
             worker_id: String,
             kind: Option<String>,
         }
         impl JobWorker {
             #lease
-            pub fn new(database: DatabaseConnection, handler: Arc<dyn JobHandler>) -> Self {
+            pub fn new(database: Database, handler: Arc<dyn JobHandler>) -> Self {
                 Self {
                     database, handler, worker_id: uuid::Uuid::now_v7().to_string(), kind: None,
                 }
             }
             pub fn for_kind(
-                database: DatabaseConnection, handler: Arc<dyn JobHandler>, kind: &str,
+                database: Database, handler: Arc<dyn JobHandler>, kind: &str,
             ) -> Self {
                 Self {
                     database, handler, worker_id: uuid::Uuid::now_v7().to_string(),
@@ -313,12 +312,10 @@ fn persistence_source(report: bool) -> proc_macro2::TokenStream {
         report.then(|| quote! { || !crate::report::retryable_job_error(&job.kind, error) });
     quote! {
         async fn claim(
-            database: &DatabaseConnection, worker_id: &str, lease_seconds: i64,
+            database: &Database, worker_id: &str, lease_seconds: i64,
             kind: Option<&str>,
         ) -> Result<Option<Job>, JobError> {
-            let row = database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "WITH candidate AS (SELECT id FROM \"_appstruct_jobs\" WHERE ((status = 'queued' AND run_at <= CURRENT_TIMESTAMP) OR (status = 'running' AND locked_until <= CURRENT_TIMESTAMP)) AND ($3::text IS NULL OR kind = $3) ORDER BY run_at, id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE \"_appstruct_jobs\" AS job SET status = 'running', attempts = attempts + 1, locked_by = $1, locked_until = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second') FROM candidate WHERE job.id = candidate.id RETURNING job.id, job.queue, job.kind, job.payload, job.tenant_id, job.attempts, job.max_attempts, job.backoff_seconds",
+            let row = database.fetch_optional(Sql::bind("WITH candidate AS (SELECT id FROM \"_appstruct_jobs\" WHERE ((status = 'queued' AND run_at <= CURRENT_TIMESTAMP) OR (status = 'running' AND locked_until <= CURRENT_TIMESTAMP)) AND ($3::text IS NULL OR kind = $3) ORDER BY run_at, id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE \"_appstruct_jobs\" AS job SET status = 'running', attempts = attempts + 1, locked_by = $1, locked_until = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second') FROM candidate WHERE job.id = candidate.id RETURNING job.id, job.queue, job.kind, job.payload, job.tenant_id, job.attempts, job.max_attempts, job.backoff_seconds",
                 [
                     worker_id.to_owned().into(), lease_seconds.into(),
                     kind.map(str::to_owned).into(),
@@ -326,36 +323,32 @@ fn persistence_source(report: bool) -> proc_macro2::TokenStream {
             )).await?;
             row.map(job_from_row).transpose().map_err(JobError::from)
         }
-        fn job_from_row(row: sea_orm::QueryResult) -> Result<Job, DbErr> {
+        fn job_from_row(row: crate::database::PgRow) -> Result<Job, DbErr> {
             Ok(Job {
-                id: row.try_get("", "id")?, queue: row.try_get("", "queue")?,
-                kind: row.try_get("", "kind")?, payload: row.try_get("", "payload")?,
-                tenant_id: row.try_get("", "tenant_id")?, attempts: row.try_get("", "attempts")?,
-                max_attempts: row.try_get("", "max_attempts")?,
-                backoff_seconds: row.try_get("", "backoff_seconds")?,
+                id: row.try_get("id")?, queue: row.try_get("queue")?,
+                kind: row.try_get("kind")?, payload: row.try_get("payload")?,
+                tenant_id: row.try_get("tenant_id")?, attempts: row.try_get("attempts")?,
+                max_attempts: row.try_get("max_attempts")?,
+                backoff_seconds: row.try_get("backoff_seconds")?,
             })
         }
         async fn complete(
-            database: &DatabaseConnection, worker_id: &str, id: uuid::Uuid,
+            database: &Database, worker_id: &str, id: uuid::Uuid,
         ) -> Result<(), JobError> {
-            let result = database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_jobs\" SET status = 'succeeded', completed_at = CURRENT_TIMESTAMP, locked_by = NULL, locked_until = NULL, last_error = NULL WHERE id = $1 AND status = 'running' AND locked_by = $2",
+            let result = database.execute(Sql::bind("UPDATE \"_appstruct_jobs\" SET status = 'succeeded', completed_at = CURRENT_TIMESTAMP, locked_by = NULL, locked_until = NULL, last_error = NULL WHERE id = $1 AND status = 'running' AND locked_by = $2",
                 [id.into(), worker_id.to_owned().into()],
             )).await?;
             if result.rows_affected() == 1 { Ok(()) } else { Err(JobError::LeaseLost) }
         }
         async fn fail(
-            database: &DatabaseConnection, worker_id: &str, job: &Job, error: &str,
+            database: &Database, worker_id: &str, job: &Job, error: &str,
         ) -> Result<(), JobError> {
             let terminal = job.attempts >= job.max_attempts #terminal_report;
             let status = if terminal { "dead" } else { "queued" };
             let exponent = u32::try_from((job.attempts - 1).clamp(0, 30)).unwrap_or(0);
             let delay = job.backoff_seconds.saturating_mul(1_i64 << exponent).min(3_600);
             let error = error.chars().take(2_000).collect::<String>();
-            let result = database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_jobs\" SET status = $3, last_error = $4, locked_by = NULL, locked_until = NULL, run_at = CASE WHEN $3 = 'queued' THEN CURRENT_TIMESTAMP + ($5 * INTERVAL '1 second') ELSE run_at END, completed_at = CASE WHEN $3 = 'dead' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = $1 AND status = 'running' AND locked_by = $2",
+            let result = database.execute(Sql::bind("UPDATE \"_appstruct_jobs\" SET status = $3, last_error = $4, locked_by = NULL, locked_until = NULL, run_at = CASE WHEN $3 = 'queued' THEN CURRENT_TIMESTAMP + ($5 * INTERVAL '1 second') ELSE run_at END, completed_at = CASE WHEN $3 = 'dead' THEN CURRENT_TIMESTAMP ELSE NULL END WHERE id = $1 AND status = 'running' AND locked_by = $2",
                 [
                     job.id.into(), worker_id.to_owned().into(), status.to_owned().into(),
                     error.into(), delay.into(),

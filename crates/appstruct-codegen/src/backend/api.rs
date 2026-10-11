@@ -43,6 +43,10 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         &parse_id,
     )?;
     let aggregate = super::query::aggregate::aggregate_support(ir, entity, &module, &policy)?;
+    let aggregate_source = aggregate.to_string();
+    let expression_trait = (aggregate_source.contains("cast_as")
+        || aggregate_source.contains("equals"))
+    .then(|| quote! { use sea_query::ExprTrait as _; });
     let collections = aggregates::support(ir, entity)?;
     let collection_routes = collections.routes;
     let collection_support = collections.tokens;
@@ -108,7 +112,6 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         .views
         .soft_delete
         .then(|| quote! { .route("/_restore", axum::routing::post(restore)).route("/_trash", get(trash)) });
-    let model_trait = (!entity.views.soft_delete).then(|| quote! { ModelTrait, });
     render(quote! {
         use crate::{AppState, ApiError, FieldViolation, RequestContext, entities::#module};
         use axum::{
@@ -117,10 +120,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
             http::{HeaderMap, StatusCode, header},
             routing::get,
         };
-        use sea_orm::{
-            ActiveModelTrait, ActiveValue::Set, EntityTrait, IntoActiveModel,
-            #model_trait ColumnTrait as _, QuerySelect, TransactionTrait, TryIntoModel,
-        };
+        #expression_trait
         use serde::{Deserialize, Serialize};
         use std::collections::BTreeMap;
 
@@ -248,7 +248,7 @@ fn create_value(entity: &EntityIr, field: &FieldIr) -> Result<Option<TokenStream
             ),
         }
     };
-    Ok(Some(quote! { #name: Set(#value) }))
+    Ok(Some(quote! { #name: #value }))
 }
 
 fn default_expression(field: &FieldIr, default: &str) -> TokenStream {
@@ -302,7 +302,7 @@ fn update_values(entity: &EntityIr) -> Result<Vec<TokenStream>, CodegenError> {
                 quote! { value.clone() }
             };
             Ok(quote! {
-                if let Some(value) = &input.#name { active.#name = Set(#value); }
+                if let Some(value) = &input.#name { active.#name = #value; }
             })
         })
         .collect()

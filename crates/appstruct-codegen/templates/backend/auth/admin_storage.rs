@@ -5,7 +5,8 @@ use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::routing::get;
 use axum::{Json, Router};
-use sea_orm::{ConnectionTrait, DbBackend, Statement};
+use sqlx::Row as _;
+use crate::database::{DatabaseExecutor,  Sql};
 use serde::{Deserialize, Serialize};
 
 pub(super) fn router() -> Router<AppState> {
@@ -83,8 +84,7 @@ async fn list_mail_deliveries(
     let list_sql = format!(
         "SELECT id, provider, template, sender, recipient, subject, tenant_id, created_at FROM \"_appstruct_mail_deliveries\" WHERE {filter} ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3"
     );
-    let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres, list_sql,
+    let rows = state.database.fetch_all(Sql::bind(list_sql,
         [
             search.into(),
             i64::try_from(page_size).unwrap_or(100).into(),
@@ -104,13 +104,11 @@ async fn get_mail_delivery(
     require_admin(&state, &headers).await?;
     ensure_enabled(config::MAIL_ENABLED)?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
-    let row = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT id, provider, template, sender, recipient, subject, tenant_id, created_at, text_body, html_body FROM \"_appstruct_mail_deliveries\" WHERE id = $1",
+    let row = state.database.fetch_optional(Sql::bind("SELECT id, provider, template, sender, recipient, subject, tenant_id, created_at, text_body, html_body FROM \"_appstruct_mail_deliveries\" WHERE id = $1",
         [id.into()],
     )).await?.ok_or(ApiError::NotFound)?;
-    let text_body = row.try_get("", "text_body")?;
-    let html_body = row.try_get("", "html_body")?;
+    let text_body = row.try_get("text_body")?;
+    let html_body = row.try_get("html_body")?;
     Ok(Json(AdminMailDelivery {
         summary: mail_summary_from_row(row)?, text_body, html_body,
     }))
@@ -127,16 +125,14 @@ async fn list_files(
     let totals_sql = format!(
         "SELECT COUNT(*) AS total, COALESCE(SUM(size), 0)::bigint AS total_bytes FROM \"_appstruct_files\" WHERE {filter}"
     );
-    let totals = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres, totals_sql, [search.clone().into()],
+    let totals = state.database.fetch_optional(Sql::bind(totals_sql, [search.clone().into()],
     )).await?.ok_or(ApiError::Internal)?;
-    let total: i64 = totals.try_get("", "total")?;
-    let total_bytes: i64 = totals.try_get("", "total_bytes")?;
+    let total: i64 = totals.try_get("total")?;
+    let total_bytes: i64 = totals.try_get("total_bytes")?;
     let list_sql = format!(
         "SELECT id, object_key, original_name, content_type, size, checksum, tenant_id, created_at FROM \"_appstruct_files\" WHERE {filter} ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3"
     );
-    let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres, list_sql,
+    let rows = state.database.fetch_all(Sql::bind(list_sql,
         [
             search.into(),
             i64::try_from(page_size).unwrap_or(100).into(),
@@ -157,9 +153,7 @@ async fn get_file(
     require_admin(&state, &headers).await?;
     ensure_enabled(config::FILE_ENABLED)?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
-    let row = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT id, object_key, original_name, content_type, size, checksum, tenant_id, created_at FROM \"_appstruct_files\" WHERE id = $1",
+    let row = state.database.fetch_optional(Sql::bind("SELECT id, object_key, original_name, content_type, size, checksum, tenant_id, created_at FROM \"_appstruct_files\" WHERE id = $1",
         [id.into()],
     )).await?.ok_or(ApiError::NotFound)?;
     Ok(Json(file_from_row(row)?))
@@ -180,27 +174,26 @@ fn ensure_enabled(enabled: bool) -> Result<(), ApiError> {
 async fn query_i64(
     state: &AppState, sql: &str, value: Option<String>,
 ) -> Result<i64, ApiError> {
-    let row = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres, sql.to_owned(), [value.into()],
+    let row = state.database.fetch_optional(Sql::bind(sql.to_owned(), [value.into()],
     )).await?.ok_or(ApiError::Internal)?;
-    Ok(row.try_get("", "total")?)
+    Ok(row.try_get("total")?)
 }
 
-fn mail_summary_from_row(row: sea_orm::QueryResult) -> Result<AdminMailSummary, sea_orm::DbErr> {
+fn mail_summary_from_row(row: crate::database::PgRow) -> Result<AdminMailSummary, sqlx::Error> {
     Ok(AdminMailSummary {
-        id: row.try_get("", "id")?, provider: row.try_get("", "provider")?,
-        template: row.try_get("", "template")?, sender: row.try_get("", "sender")?,
-        recipient: row.try_get("", "recipient")?, subject: row.try_get("", "subject")?,
-        tenant_id: row.try_get("", "tenant_id")?, created_at: row.try_get("", "created_at")?,
+        id: row.try_get("id")?, provider: row.try_get("provider")?,
+        template: row.try_get("template")?, sender: row.try_get("sender")?,
+        recipient: row.try_get("recipient")?, subject: row.try_get("subject")?,
+        tenant_id: row.try_get("tenant_id")?, created_at: row.try_get("created_at")?,
     })
 }
 
-fn file_from_row(row: sea_orm::QueryResult) -> Result<AdminFile, sea_orm::DbErr> {
+fn file_from_row(row: crate::database::PgRow) -> Result<AdminFile, sqlx::Error> {
     Ok(AdminFile {
-        id: row.try_get("", "id")?, object_key: row.try_get("", "object_key")?,
-        original_name: row.try_get("", "original_name")?, content_type: row.try_get("", "content_type")?,
-        size: row.try_get::<i64>("", "size")?.try_into().unwrap_or(0),
-        checksum: row.try_get("", "checksum")?, tenant_id: row.try_get("", "tenant_id")?,
-        created_at: row.try_get("", "created_at")?,
+        id: row.try_get("id")?, object_key: row.try_get("object_key")?,
+        original_name: row.try_get("original_name")?, content_type: row.try_get("content_type")?,
+        size: row.try_get::<i64, _>("size")?.try_into().unwrap_or(0),
+        checksum: row.try_get("checksum")?, tenant_id: row.try_get("tenant_id")?,
+        created_at: row.try_get("created_at")?,
     })
 }

@@ -1,5 +1,5 @@
+use appstruct_generated_backend::database::Database;
 use appstruct_generated_backend::{MailError, MailState};
-use sea_orm::Database;
 use std::{collections::BTreeMap, env};
 
 #[tokio::main]
@@ -8,7 +8,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = env::args().nth(1).unwrap_or_else(|| "send".to_owned());
     if mode == "production-check" {
         match MailState::from_env(database) {
-            Err(MailError::Configuration(message)) if message.contains("forbidden") => return Ok(()),
+            Err(MailError::Configuration(message)) if message.contains("forbidden") => {
+                return Ok(());
+            }
             _ => return Err("capture provider was not rejected in production".into()),
         }
     }

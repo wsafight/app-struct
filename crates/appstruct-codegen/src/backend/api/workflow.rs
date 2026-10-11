@@ -227,7 +227,7 @@ pub(super) fn support(
             let context = state.context(&headers).await?;
             let id = #parse_id;
             #read_scope
-            let model = #module::Entity::find_by_id(id)
+            let model = #module::select_by_id(id)
                 .filter(access_condition)
                 .one(&state.database).await?.ok_or(ApiError::NotFound)?;
             if !state.extensions.#policy().can_read(&context, &model).await? {
@@ -265,7 +265,7 @@ pub(super) fn support(
                     &transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant,
                 );
                 #read_scope
-                let before = #module::Entity::find_by_id(id)
+                let before = #module::select_by_id(id)
                     .filter(access_condition)
                     .lock_exclusive()
                     .one(&transaction).await?.ok_or(ApiError::NotFound)?;
@@ -295,10 +295,10 @@ pub(super) fn support(
                 {
                     return Err(ApiError::Forbidden);
                 }
-                let mut active = before.clone().into_active_model();
-                active.#field_name = Set(target.to_owned());
-                active.revision = Set(before.revision.checked_add(1)
-                    .ok_or_else(|| sea_orm::DbErr::Custom("revision overflow".to_owned()))?);
+                let mut active = before.clone();
+                active.#field_name = target.to_owned();
+                active.revision = before.revision.checked_add(1)
+                    .ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
                 let after = active.update(&transaction).await?;
                 state.extensions.#hooks()
                     .after_transition(&context, transition, &before, &input, &after).await?;
@@ -330,11 +330,11 @@ pub(super) fn support(
             before: &#module::Model,
             target: &str,
         ) -> Result<#module::Model, ApiError> {
-            let mut active = before.clone().into_active_model();
-            active.#field_name = Set(target.to_owned());
-            active.revision = Set(before.revision.checked_add(1)
-                .ok_or_else(|| sea_orm::DbErr::Custom("revision overflow".to_owned()))?);
-            Ok(active.try_into_model()?)
+            let mut active = before.clone();
+            active.#field_name = target.to_owned();
+            active.revision = before.revision.checked_add(1)
+                .ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
+            Ok(active)
         }
     };
     Ok(WorkflowSupport {

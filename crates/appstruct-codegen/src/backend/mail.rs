@@ -37,7 +37,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     render(quote! {
         use async_trait::async_trait;
         use lettre::message::Mailbox;
-        use sea_orm::{DatabaseConnection, DbErr};
+        use crate::database::{Database, DbErr};
         use serde::Serialize;
         use std::{collections::BTreeMap, env, fmt, sync::Arc};
         #contract
@@ -185,7 +185,7 @@ fn contract_source(
         pub struct MailState { provider: Arc<dyn MailProvider> }
 
         impl MailState {
-            pub fn from_env(#database: DatabaseConnection) -> Result<Self, MailError> {
+            pub fn from_env(#database: Database) -> Result<Self, MailError> {
                 let provider = #provider;
                 Ok(Self { provider })
             }
@@ -213,16 +213,15 @@ fn contract_source(
 
 fn capture_source() -> proc_macro2::TokenStream {
     quote! {
-        use sea_orm::{ConnectionTrait, DbBackend, Statement};
-        struct CaptureProvider { database: DatabaseConnection }
+        use crate::database::{DatabaseExecutor,  Sql};
+        struct CaptureProvider { database: Database }
 
         #[async_trait]
         impl MailProvider for CaptureProvider {
             fn name(&self) -> &'static str { "capture" }
             async fn deliver(&self, message: &MailMessage) -> Result<MailDelivery, MailError> {
                 let id = uuid::Uuid::now_v7();
-                self.database.execute_raw(Statement::from_sql_and_values(
-                    DbBackend::Postgres,
+                self.database.execute(Sql::bind(
                     "INSERT INTO \"_appstruct_mail_deliveries\" (id, provider, template, sender, recipient, subject, text_body, html_body, tenant_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)",
                     [
                         id.into(), self.name().to_owned().into(), message.template.clone().into(),
@@ -330,7 +329,7 @@ fn resend_source() -> proc_macro2::TokenStream {
 fn disabled_source() -> Result<String, CodegenError> {
     render(quote! {
         use async_trait::async_trait;
-        use sea_orm::DatabaseConnection;
+        use crate::database::Database;
         use std::{collections::BTreeMap, fmt, sync::Arc};
 
         #[derive(Clone, Debug, serde::Serialize)]
@@ -352,7 +351,7 @@ fn disabled_source() -> Result<String, CodegenError> {
         #[derive(Clone, Default)]
         pub struct MailState;
         impl MailState {
-            pub fn from_env(_database: DatabaseConnection) -> Result<Self, MailError> { Ok(Self) }
+            pub fn from_env(_database: Database) -> Result<Self, MailError> { Ok(Self) }
             pub fn with_provider(_provider: Arc<dyn MailProvider>) -> Self { Self }
             pub async fn send_template(
                 &self, _name: &str, _recipient: &str,

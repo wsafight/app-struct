@@ -1,5 +1,5 @@
 pub(super) mod aggregate;
-mod filters;
+pub(super) mod filters;
 pub(super) mod helpers;
 mod relation;
 use super::access;
@@ -31,7 +31,6 @@ pub(super) fn list_support(
     let cursor_value = parsed_value(primary_field, &quote! { raw_cursor.as_str() });
     let primary_name = parse_ident(&primary_field.rust_name)?;
     let access_scope = access::scope(entity, module, &entity.access.list)?;
-    let query_trait = relation::has_filters(ir, entity)?.then(|| quote! { QueryTrait as _, });
     let handler = list_handler(&ListHandlerTokens {
         module,
         policy,
@@ -50,7 +49,7 @@ pub(super) fn list_support(
             ListMeta, ListQuery, ListResponse, MAX_LIST_PAGE, decode_cursor, encode_cursor,
             list_page_is_valid,
         };
-        use sea_orm::{#query_trait Condition, PaginatorTrait, QueryFilter, QueryOrder};
+        use sea_query::Condition;
         #handler
     })
 }
@@ -91,7 +90,7 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
             let context = state.context(&headers).await?;
             if !state.extensions.#policy().can_list(&context).await? { return Err(access_denied(&context)); }
             #filter_validation
-            let mut select = #module::Entity::find();
+            let mut select = #module::select();
             #access_scope
             #(#filters)*
             #(#relation_filters)*
@@ -188,7 +187,7 @@ fn list_handler(tokens: &ListHandlerTokens<'_>) -> TokenStream {
                 select = select.order_by_asc(#module::Column::#primary);
             }
             let total = select.clone().count(&state.database).await?;
-            let data = select.paginate(&state.database, page_size).fetch_page(page - 1).await?
+            let data = select.limit(page_size).offset((page - 1) * page_size).all(&state.database).await?
                 .into_iter()
                 .map(|model| redact_model(&context, model))
                 .collect::<Result<Vec<_>, _>>()?;

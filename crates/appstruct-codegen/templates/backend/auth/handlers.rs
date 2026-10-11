@@ -7,7 +7,8 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
+use sqlx::Row as _;
+use crate::database::{DatabaseExecutor,  Sql};
 use serde::{Deserialize, Serialize};
 
 pub(super) fn router() -> Router<AppState> {
@@ -76,16 +77,12 @@ async fn register(
         email = quote_ident(config::USER_EMAIL_COLUMN),
     );
     transaction
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            insert_user,
+        .execute(Sql::bind(insert_user,
             [user_id.into(), email.email.clone().into()],
         ))
         .await?;
     transaction
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "INSERT INTO \"_appstruct_auth_accounts\" (user_id, password_hash, roles, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
+        .execute(Sql::bind("INSERT INTO \"_appstruct_auth_accounts\" (user_id, password_hash, roles, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
             [
                 user_id.into(),
                 password_hash.into(),
@@ -121,15 +118,13 @@ async fn login(
     );
     let row = state
         .database
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            sql,
+        .fetch_optional(Sql::bind(sql,
             [email.clone().into()],
         ))
         .await?;
     let stored = row
         .as_ref()
-        .and_then(|value| value.try_get::<String>("", "password_hash").ok())
+        .and_then(|value| value.try_get::<String, _>("password_hash").ok())
         .unwrap_or_else(dummy_password_hash);
     let valid = PasswordHash::new(&stored)
         .ok()
@@ -138,13 +133,13 @@ async fn login(
         return Err(ApiError::Unauthorized);
     };
     state.auth.clear_login_attempts(&state.database, &email).await?;
-    let user_id = row.try_get("", "user_id")?;
+    let user_id = row.try_get("user_id")?;
     let email_verified = row
-        .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "email_verified_at")
+        .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("email_verified_at")
         .ok()
         .flatten()
         .is_some();
-    let roles: serde_json::Value = row.try_get("", "roles")?;
+    let roles: serde_json::Value = row.try_get("roles")?;
     let roles = serde_json::from_value(roles).map_err(|_| ApiError::Internal)?;
     let user = Actor { id: user_id, email, roles };
     let (session, csrf) = state.auth.create_session(&state.database, user_id).await?;
@@ -158,9 +153,7 @@ async fn logout(
     state.auth.verify_csrf(&state.database, &headers).await?;
     if let Some(token) = cookie_value(&headers, "appstruct_session") {
         state.database
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_auth_sessions\" SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = $1",
+            .execute(Sql::bind("UPDATE \"_appstruct_auth_sessions\" SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = $1",
                 [token_hash(&token).into()],
             ))
             .await?;
@@ -192,9 +185,7 @@ async fn list_api_tokens(
         .ok_or(ApiError::Unauthorized)?;
     let rows = state
         .database
-        .query_all_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT id, name, created_at, last_used_at, expires_at, revoked_at FROM \"_appstruct_auth_api_tokens\" WHERE user_id = $1 ORDER BY created_at DESC, id DESC",
+        .fetch_all(Sql::bind("SELECT id, name, created_at, last_used_at, expires_at, revoked_at FROM \"_appstruct_auth_api_tokens\" WHERE user_id = $1 ORDER BY created_at DESC, id DESC",
             [actor.id.into()],
         ))
         .await?;
@@ -235,9 +226,7 @@ async fn create_api_token(
         .map(|days| chrono::Utc::now() + chrono::Duration::days(i64::from(days)));
     state
         .database
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "INSERT INTO \"_appstruct_auth_api_tokens\" (id, user_id, token_hash, name, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)",
+        .execute(Sql::bind("INSERT INTO \"_appstruct_auth_api_tokens\" (id, user_id, token_hash, name, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)",
             [
                 id.into(), actor.id.into(), token_hash(&token).into(), name.to_owned().into(),
                 expires_at.into(),
@@ -268,9 +257,7 @@ async fn revoke_api_token(
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
     state
         .database
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "UPDATE \"_appstruct_auth_api_tokens\" SET revoked_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL",
+        .execute(Sql::bind("UPDATE \"_appstruct_auth_api_tokens\" SET revoked_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL",
             [id.into(), actor.id.into()],
         ))
         .await?;
@@ -313,14 +300,14 @@ fn dummy_password_hash() -> String {
     hash_password("invalid-password-value").expect("static password is hashable")
 }
 
-fn api_token_from_row(row: sea_orm::QueryResult) -> Result<ApiToken, sea_orm::DbErr> {
+fn api_token_from_row(row: crate::database::PgRow) -> Result<ApiToken, sqlx::Error> {
     Ok(ApiToken {
-        id: row.try_get("", "id")?,
-        name: row.try_get("", "name")?,
-        created_at: row.try_get("", "created_at")?,
-        last_used_at: row.try_get("", "last_used_at")?,
-        expires_at: row.try_get("", "expires_at")?,
-        revoked_at: row.try_get("", "revoked_at")?,
+        id: row.try_get("id")?,
+        name: row.try_get("name")?,
+        created_at: row.try_get("created_at")?,
+        last_used_at: row.try_get("last_used_at")?,
+        expires_at: row.try_get("expires_at")?,
+        revoked_at: row.try_get("revoked_at")?,
     })
 }
 

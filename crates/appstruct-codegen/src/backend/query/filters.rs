@@ -35,17 +35,25 @@ pub(super) fn filter_rules(
         .iter()
         .filter(|field| field.capabilities.filterable)
     {
-        let column = column_ident(field)?;
+        let sift_field = parse_ident(&field.rust_name.to_uppercase())?;
         let field_name = field.rust_name.as_str();
         let exact_key = LitStr::new(&format!("filter[{}]", field.rust_name), Span::call_site());
         let value = parsed_value(field, &quote! { raw });
+        let predicate = if matches!(field.ty, FieldTypeIr::Json) {
+            // sift-query 0.1 treats JSON as decode-only. Keep existing JSON equality
+            // through a bound PostgreSQL jsonb comparison.
+            let column = column_ident(field)?;
+            quote! { #module::Column::#column.eq(value) }
+        } else {
+            quote! { crate::database::sift_condition(#module::ModelFields::#sift_field, value, sift_query::Operator::Eq)? }
+        };
         rules.push(quote! {
             if let Some(raw) = query.filters.get(#exact_key) {
                 if !field_read_allowed(&context, #field_name) {
                     return Err(access_denied(&context));
                 }
                 let value = #value;
-                select = select.filter(#module::Column::#column.eq(value));
+                select = select.filter(#predicate);
             }
         });
         if supports_range(&field.ty) {
@@ -54,7 +62,7 @@ pub(super) fn filter_rules(
                     &format!("filter[{}][{operator}]", field.rust_name),
                     Span::call_site(),
                 );
-                let method = parse_ident(method)?;
+                let sift_operator = parse_ident(if method == "gte" { "Ge" } else { "Le" })?;
                 let value = parsed_value(field, &quote! { raw });
                 rules.push(quote! {
                     if let Some(raw) = query.filters.get(#key) {
@@ -62,7 +70,7 @@ pub(super) fn filter_rules(
                             return Err(access_denied(&context));
                         }
                         let value = #value;
-                        select = select.filter(#module::Column::#column.#method(value));
+                        select = select.filter(crate::database::sift_condition(#module::ModelFields::#sift_field, value, sift_query::Operator::#sift_operator)?);
                     }
                 });
             }
@@ -125,7 +133,7 @@ pub(super) fn search_rule(
                     appstruct_runtime::MAX_SEARCH_CHARS
                 )));
             }
-            use sea_orm::sea_query::LikeExpr;
+            use sea_query::LikeExpr;
             let pattern = appstruct_runtime::like_contains_pattern(term);
             let mut condition = Condition::any();
             let mut searchable_field_allowed = false;
@@ -203,7 +211,7 @@ pub(super) fn parsed_value(field: &FieldIr, raw: &TokenStream) -> TokenStream {
     }
 }
 
-pub(super) fn supports_range(field_type: &FieldTypeIr) -> bool {
+pub(in crate::backend) fn supports_range(field_type: &FieldTypeIr) -> bool {
     matches!(
         field_type,
         FieldTypeIr::Integer
@@ -214,7 +222,7 @@ pub(super) fn supports_range(field_type: &FieldTypeIr) -> bool {
     )
 }
 
-pub(super) fn primary_key(entity: &EntityIr) -> Result<&FieldIr, CodegenError> {
+pub(in crate::backend) fn primary_key(entity: &EntityIr) -> Result<&FieldIr, CodegenError> {
     entity
         .fields
         .iter()

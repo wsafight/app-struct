@@ -8,9 +8,7 @@ pub(super) fn methods(lease_seconds: i64) -> TokenStream {
             let heartbeat = async {
                 loop {
                     tokio::time::sleep(Duration::from_millis(#interval_ms as u64)).await;
-                    let result = self.database.execute_raw(Statement::from_sql_and_values(
-                        DbBackend::Postgres,
-                        "UPDATE \"_appstruct_jobs\" SET locked_until = clock_timestamp() + ($4 * INTERVAL '1 second') WHERE id = $1 AND status = 'running' AND locked_by = $2 AND attempts = $3 AND locked_until > clock_timestamp()",
+                    let result = self.database.execute(Sql::bind("UPDATE \"_appstruct_jobs\" SET locked_until = clock_timestamp() + ($4 * INTERVAL '1 second') WHERE id = $1 AND status = 'running' AND locked_by = $2 AND attempts = $3 AND locked_until > clock_timestamp()",
                         [job.id.into(), self.worker_id.clone().into(), job.attempts.into(), #lease_seconds.into()],
                     )).await?;
                     if result.rows_affected() != 1 { return Err(JobError::LeaseLost); }

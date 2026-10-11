@@ -53,7 +53,8 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             response::sse::{Event, KeepAlive, Sse},
             routing::get,
         };
-        use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
+        use sqlx::Row as _;
+        use crate::database::{DatabaseExecutor, Database,  DbErr, Sql};
         use serde::{Deserialize, Serialize};
         use std::{convert::Infallible, time::Duration};
         use tokio::sync::broadcast;
@@ -163,9 +164,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                 ApiError::InvalidQuery("realtime resource is required".to_owned())
             })?;
             authorize_resource_scope(&state, &context, resource, query.record_id.as_deref()).await?;
-            let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT connection_id, actor_id, tenant_id, resource, record_id, connected_at, last_seen_at, expires_at FROM \"_appstruct_realtime_presence\" WHERE expires_at > CURRENT_TIMESTAMP AND (($1::uuid IS NULL AND tenant_id IS NULL) OR tenant_id = $1) AND resource = $2 AND (($3::text IS NULL AND record_id IS NULL) OR record_id = $3) ORDER BY connected_at, connection_id LIMIT 500",
+            let rows = state.database.fetch_all(Sql::bind("SELECT connection_id, actor_id, tenant_id, resource, record_id, connected_at, last_seen_at, expires_at FROM \"_appstruct_realtime_presence\" WHERE expires_at > CURRENT_TIMESTAMP AND (($1::uuid IS NULL AND tenant_id IS NULL) OR tenant_id = $1) AND resource = $2 AND (($3::text IS NULL AND record_id IS NULL) OR record_id = $3) ORDER BY connected_at, connection_id LIMIT 500",
                 [context.tenant().into(), query.resource.into(), query.record_id.into()],
             )).await?;
             let data = rows.into_iter().map(presence_from_row)
@@ -235,28 +234,24 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         }
 
         async fn register_presence(
-            database: &DatabaseConnection, connection_id: uuid::Uuid, actor_id: uuid::Uuid,
+            database: &Database, connection_id: uuid::Uuid, actor_id: uuid::Uuid,
             tenant_id: Option<uuid::Uuid>, resource: &str, record_id: Option<&str>,
         ) -> Result<(), DbErr> {
-            database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_realtime_presence\" (connection_id, actor_id, tenant_id, resource, record_id, connected_at, last_seen_at, expires_at) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + ($6 * INTERVAL '1 second'))",
+            database.execute(Sql::bind("INSERT INTO \"_appstruct_realtime_presence\" (connection_id, actor_id, tenant_id, resource, record_id, connected_at, last_seen_at, expires_at) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + ($6 * INTERVAL '1 second'))",
                 [connection_id.into(), actor_id.into(), tenant_id.into(), resource.to_owned().into(), record_id.map(str::to_owned).into(), #ttl_seconds.into()],
             )).await?;
             Ok(())
         }
-        async fn heartbeat_presence(database: &DatabaseConnection, connection_id: uuid::Uuid) -> Result<(), DbErr> {
-            let result = database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_realtime_presence\" SET last_seen_at = CURRENT_TIMESTAMP, expires_at = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second') WHERE connection_id = $1",
+        async fn heartbeat_presence(database: &Database, connection_id: uuid::Uuid) -> Result<(), DbErr> {
+            let result = database.execute(Sql::bind("UPDATE \"_appstruct_realtime_presence\" SET last_seen_at = CURRENT_TIMESTAMP, expires_at = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second') WHERE connection_id = $1",
                 [connection_id.into(), #ttl_seconds.into()],
             )).await?;
             database.execute_unprepared("DELETE FROM \"_appstruct_realtime_presence\" WHERE expires_at <= CURRENT_TIMESTAMP").await?;
-            if result.rows_affected() == 1 { Ok(()) } else { Err(DbErr::Custom("presence lease was lost".to_owned())) }
+            if result.rows_affected() == 1 { Ok(()) } else { Err(DbErr::Protocol("presence lease was lost".to_owned())) }
         }
 
         struct PresenceLease {
-            database: DatabaseConnection, realtime: RealtimeState, connection_id: uuid::Uuid,
+            database: Database, realtime: RealtimeState, connection_id: uuid::Uuid,
             actor_id: uuid::Uuid, tenant_id: Option<uuid::Uuid>, resource: String,
             record_id: Option<String>,
         }
@@ -270,9 +265,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
                 let resource = self.resource.clone();
                 let record_id = self.record_id.clone();
                 tokio::spawn(async move {
-                    let _ = database.execute_raw(Statement::from_sql_and_values(
-                        DbBackend::Postgres,
-                        "DELETE FROM \"_appstruct_realtime_presence\" WHERE connection_id = $1",
+                    let _ = database.execute(Sql::bind("DELETE FROM \"_appstruct_realtime_presence\" WHERE connection_id = $1",
                         [connection_id.into()],
                     )).await;
                     let _ = realtime.publish_scoped(
@@ -301,12 +294,12 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             Event::default().id(event.id.to_string()).event(&event.event)
                 .json_data(&event).unwrap_or_else(|_| Event::default().event("serialization_error"))
         }
-        fn presence_from_row(row: sea_orm::QueryResult) -> Result<PresenceEntry, DbErr> {
+        fn presence_from_row(row: crate::database::PgRow) -> Result<PresenceEntry, DbErr> {
             Ok(PresenceEntry {
-                connection_id: row.try_get("", "connection_id")?, actor_id: row.try_get("", "actor_id")?,
-                tenant_id: row.try_get("", "tenant_id")?, resource: row.try_get("", "resource")?,
-                record_id: row.try_get("", "record_id")?, connected_at: row.try_get("", "connected_at")?,
-                last_seen_at: row.try_get("", "last_seen_at")?, expires_at: row.try_get("", "expires_at")?,
+                connection_id: row.try_get("connection_id")?, actor_id: row.try_get("actor_id")?,
+                tenant_id: row.try_get("tenant_id")?, resource: row.try_get("resource")?,
+                record_id: row.try_get("record_id")?, connected_at: row.try_get("connected_at")?,
+                last_seen_at: row.try_get("last_seen_at")?, expires_at: row.try_get("expires_at")?,
             })
         }
     })
@@ -316,14 +309,14 @@ fn disabled_source() -> Result<String, CodegenError> {
     render(quote! {
         use crate::AppState;
         use axum::Router;
-        use sea_orm::DatabaseConnection;
+        use crate::database::Database;
         use serde::Serialize;
         #[derive(Clone, Debug, Serialize)]
         pub struct RealtimeEvent;
         #[derive(Clone, Default)]
         pub struct RealtimeState;
         impl RealtimeState {
-            pub(crate) fn new(_database: DatabaseConnection) -> Self { Self }
+            pub(crate) fn new(_database: Database) -> Self { Self }
             pub fn publish<T: Serialize>(
                 &self, _event: &str, _data: &T, _actor_id: Option<uuid::Uuid>,
                 _tenant_id: Option<uuid::Uuid>,

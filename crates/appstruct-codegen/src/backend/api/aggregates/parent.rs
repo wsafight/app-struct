@@ -46,7 +46,7 @@ pub(super) fn support(
             let transaction = state.database.begin().await?;
             let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, request.actor().cloned(), request.tenant());
             #scope
-            let parent = #module::Entity::find_by_id(id).filter(access_condition).lock_shared().one(&transaction).await?.ok_or(ApiError::NotFound)?;
+            let parent = #module::select_by_id(id).filter(access_condition).lock_shared().one(&transaction).await?.ok_or(ApiError::NotFound)?;
             if !state.extensions.#policy().can_read(&context, &parent).await? { return Err(ApiError::NotFound); }
             let rows = super::#child_module::aggregate_rows::collection(&state, &context, id, #limit).await?;
             let etag = etag_header(&parent);
@@ -64,13 +64,13 @@ pub(super) fn support(
             let (after, response) = {
                 let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, request.actor().cloned(), request.tenant());
                 #scope
-                let before = #module::Entity::find_by_id(id).filter(access_condition).lock_exclusive().one(&transaction).await?.ok_or(ApiError::NotFound)?;
+                let before = #module::select_by_id(id).filter(access_condition).lock_exclusive().one(&transaction).await?.ok_or(ApiError::NotFound)?;
                 if !state.extensions.#policy().can_read(&context, &before).await? { return Err(ApiError::NotFound); }
                 if before.revision != expected { return Err(ApiError::ConcurrentModification); }
                 #guard
-                let mut active = before.clone().into_active_model();
-                active.revision = Set(before.revision.checked_add(1).ok_or(ApiError::Internal)?);
-                let candidate = active.clone().try_into_model()?;
+                let mut active = before.clone();
+                active.revision = before.revision.checked_add(1).ok_or(ApiError::Internal)?;
+                let candidate = active.clone();
                 if !(#allowed) || !state.extensions.#policy().can_update(&context, &before, &UpdateInput::default(), &candidate).await? {
                     return Err(access_denied(&context));
                 }

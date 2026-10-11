@@ -22,11 +22,9 @@ pub(super) fn run_once(lease_seconds: i64) -> TokenStream {
             observation.finish(match &result {
                 Ok(outcome) => outcome,
                 Err(JobError::LeaseLost) => {
-                    let cancelled = self.database.query_one_raw(Statement::from_sql_and_values(
-                        DbBackend::Postgres,
-                        "SELECT (status = 'cancelled' AND attempts = $2) AS cancelled FROM \"_appstruct_jobs\" WHERE id = $1",
+                    let cancelled = self.database.fetch_optional(Sql::bind("SELECT (status = 'cancelled' AND attempts = $2) AS cancelled FROM \"_appstruct_jobs\" WHERE id = $1",
                         [job.id.into(), job.attempts.into()],
-                    )).await.ok().flatten().and_then(|row| row.try_get::<bool>("", "cancelled").ok()).unwrap_or(false);
+                    )).await.ok().flatten().and_then(|row| row.try_get::<bool, _>("cancelled").ok()).unwrap_or(false);
                     if cancelled { "cancelled" } else { "lease_lost" }
                 },
                 Err(_) => "database_error",

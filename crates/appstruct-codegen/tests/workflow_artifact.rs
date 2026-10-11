@@ -31,7 +31,7 @@ fn workflow_is_generated_as_a_dedicated_mutation_contract() {
         &api[api.find("pub struct UpdateInput").unwrap()..api.find("pub fn router").unwrap()];
     assert!(!create_input.contains("status"));
     assert!(!update_input.contains("status"));
-    assert!(api.contains("status: Set(\"draft\".to_owned())"));
+    assert!(api.contains("status: \"draft\".to_owned()"));
     assert!(api.contains("/{id}/_transitions/{action}"));
     assert!(api.contains("lock_exclusive()"));
     assert!(api.contains("before.revision != expected"));

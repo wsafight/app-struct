@@ -5,7 +5,8 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use hmac::{Hmac, KeyInit, Mac};
-use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
+use sqlx::Row as _;
+use crate::database::{DatabaseExecutor,  Sql};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::Sha256;
@@ -112,22 +113,18 @@ async fn list_admin_billing_events(
         return Err(ApiError::InvalidQuery("page must be between 1 and 10000 and page_size between 1 and 100".to_owned()));
     }
     let offset = (page - 1).checked_mul(page_size).ok_or_else(|| ApiError::InvalidQuery("pagination is too large".to_owned()))?;
-    let count = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT COUNT(*) AS total FROM \"_appstruct_billing_events\"",
+    let count = state.database.fetch_optional(Sql::bind("SELECT COUNT(*) AS total FROM \"_appstruct_billing_events\"",
         [],
-    )).await?.ok_or(ApiError::Internal)?.try_get::<i64>("", "total")?;
-    let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT event_id, event_type, payload, created_at FROM \"_appstruct_billing_events\" ORDER BY created_at DESC, event_id DESC LIMIT $1 OFFSET $2",
+    )).await?.ok_or(ApiError::Internal)?.try_get::<i64, _>("total")?;
+    let rows = state.database.fetch_all(Sql::bind("SELECT event_id, event_type, payload, created_at FROM \"_appstruct_billing_events\" ORDER BY created_at DESC, event_id DESC LIMIT $1 OFFSET $2",
         [i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
     )).await?;
     let data = rows.into_iter().map(|row| Ok(BillingEvent {
-        event_id: row.try_get("", "event_id")?,
-        event_type: row.try_get("", "event_type")?,
-        payload: row.try_get("", "payload")?,
-        created_at: row.try_get("", "created_at")?,
-    })).collect::<Result<Vec<_>, sea_orm::DbErr>>()?;
+        event_id: row.try_get("event_id")?,
+        event_type: row.try_get("event_type")?,
+        payload: row.try_get("payload")?,
+        created_at: row.try_get("created_at")?,
+    })).collect::<Result<Vec<_>, sqlx::Error>>()?;
     Ok(Json(BillingEventList { data, meta: BillingEventMeta { page, page_size, total: u64::try_from(count).unwrap_or(0) } }))
 }
 
@@ -135,28 +132,24 @@ async fn replay_admin_billing_event(
     State(state): State<AppState>, headers: HeaderMap, Path(event_id): Path<String>,
 ) -> Result<Json<BillingEvent>, ApiError> {
     require_billing_admin(&state, &headers, true).await?;
-    let row = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT event_type, payload FROM \"_appstruct_billing_events\" WHERE event_id = $1",
+    let row = state.database.fetch_optional(Sql::bind("SELECT event_type, payload FROM \"_appstruct_billing_events\" WHERE event_id = $1",
         [event_id.clone().into()],
     )).await?.ok_or(ApiError::NotFound)?;
-    let event_type: String = row.try_get("", "event_type")?;
-    let event: Value = row.try_get("", "payload")?;
+    let event_type: String = row.try_get("event_type")?;
+    let event: Value = row.try_get("payload")?;
     let subscription_id = event.pointer("/data/object/id").and_then(Value::as_str)
         .or_else(|| event.pointer("/data/object/subscription").and_then(Value::as_str))
         .filter(|id| id.starts_with("sub_")).ok_or_else(|| ApiError::InvalidQuery("Billing event has no replayable subscription".to_owned()))?;
     let replay_id = format!("{event_id}:replay:{}", uuid::Uuid::now_v7());
     reconcile_subscription(&state, &config()?, &replay_id, &event_type, subscription_id, &event).await?;
-    let replay = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT event_id, event_type, payload, created_at FROM \"_appstruct_billing_events\" WHERE event_id = $1",
+    let replay = state.database.fetch_optional(Sql::bind("SELECT event_id, event_type, payload, created_at FROM \"_appstruct_billing_events\" WHERE event_id = $1",
         [replay_id.into()],
     )).await?.ok_or(ApiError::Internal)?;
     Ok(Json(BillingEvent {
-        event_id: replay.try_get("", "event_id")?,
-        event_type: replay.try_get("", "event_type")?,
-        payload: replay.try_get("", "payload")?,
-        created_at: replay.try_get("", "created_at")?,
+        event_id: replay.try_get("event_id")?,
+        event_type: replay.try_get("event_type")?,
+        payload: replay.try_get("payload")?,
+        created_at: replay.try_get("created_at")?,
     }))
 }
 
@@ -332,9 +325,7 @@ async fn require_owner(state: &AppState, headers: &HeaderMap) -> Result<(uuid::U
     let context = state.mutation_context(headers).await?;
     let actor = context.actor().ok_or(ApiError::Unauthorized)?;
     let organization_id = context.require_tenant()?;
-    let owner = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT 1 FROM \"_appstruct_tenant_memberships\" WHERE organization_id = $1 AND user_id = $2 AND role = 'owner'",
+    let owner = state.database.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_tenant_memberships\" WHERE organization_id = $1 AND user_id = $2 AND role = 'owner'",
         [organization_id.into(), actor.id.into()],
     )).await?.is_some();
     if !owner { return Err(ApiError::Forbidden); }
@@ -342,26 +333,22 @@ async fn require_owner(state: &AppState, headers: &HeaderMap) -> Result<(uuid::U
 }
 
 async fn current_subscription(state: &AppState, organization_id: uuid::Uuid) -> Result<Option<SubscriptionView>, ApiError> {
-    let row = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT plan_id, status, current_period_end, cancel_at_period_end FROM \"_appstruct_billing_subscriptions\" WHERE organization_id = $1 ORDER BY updated_at DESC, id DESC LIMIT 1",
+    let row = state.database.fetch_optional(Sql::bind("SELECT plan_id, status, current_period_end, cancel_at_period_end FROM \"_appstruct_billing_subscriptions\" WHERE organization_id = $1 ORDER BY updated_at DESC, id DESC LIMIT 1",
         [organization_id.into()],
     )).await?;
-    row.map(|row| -> Result<SubscriptionView, sea_orm::DbErr> { Ok(SubscriptionView {
-        plan_id: row.try_get("", "plan_id")?,
-        status: row.try_get("", "status")?,
-        current_period_end: row.try_get("", "current_period_end")?,
-        cancel_at_period_end: row.try_get("", "cancel_at_period_end")?,
+    row.map(|row| -> Result<SubscriptionView, sqlx::Error> { Ok(SubscriptionView {
+        plan_id: row.try_get("plan_id")?,
+        status: row.try_get("status")?,
+        current_period_end: row.try_get("current_period_end")?,
+        cancel_at_period_end: row.try_get("cancel_at_period_end")?,
     }) }).transpose().map_err(Into::into)
 }
 
 async fn customer_id(state: &AppState, organization_id: uuid::Uuid) -> Result<Option<String>, ApiError> {
-    let row = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT provider_customer_id FROM \"_appstruct_billing_customers\" WHERE organization_id = $1",
+    let row = state.database.fetch_optional(Sql::bind("SELECT provider_customer_id FROM \"_appstruct_billing_customers\" WHERE organization_id = $1",
         [organization_id.into()],
     )).await?;
-    row.map(|row| row.try_get("", "provider_customer_id")).transpose().map_err(Into::into)
+    row.map(|row| row.try_get("provider_customer_id")).transpose().map_err(Into::into)
 }
 
 async fn create_customer(state: &AppState, config: &BillingConfig, organization_id: uuid::Uuid, email: &str) -> Result<String, ApiError> {
@@ -371,9 +358,7 @@ async fn create_customer(state: &AppState, config: &BillingConfig, organization_
     ], Some(&format!("appstruct-customer-{organization_id}"))).await?;
     let customer = result.get("id").and_then(Value::as_str).filter(|id| id.starts_with("cus_"))
         .ok_or(ApiError::Internal)?;
-    state.database.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "INSERT INTO \"_appstruct_billing_customers\" (id, organization_id, provider_customer_id, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (organization_id) DO NOTHING",
+    state.database.execute(Sql::bind("INSERT INTO \"_appstruct_billing_customers\" (id, organization_id, provider_customer_id, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (organization_id) DO NOTHING",
         [uuid::Uuid::now_v7().into(), organization_id.into(), customer.into()],
     )).await?;
     customer_id(state, organization_id).await?.ok_or(ApiError::Internal)
@@ -402,14 +387,10 @@ async fn reconcile_subscription(
     subscription_id: &str, event: &Value,
 ) -> Result<(), ApiError> {
     let transaction = state.database.begin().await?;
-    transaction.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT pg_advisory_xact_lock(77145, hashtext($1))",
+    transaction.fetch_optional(Sql::bind("SELECT pg_advisory_xact_lock(77145, hashtext($1))",
         [subscription_id.into()],
     )).await?;
-    let seen = transaction.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT 1 FROM \"_appstruct_billing_events\" WHERE event_id = $1",
+    let seen = transaction.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_billing_events\" WHERE event_id = $1",
         [event_id.into()],
     )).await?.is_some();
     if seen { transaction.commit().await?; return Ok(()); }
@@ -420,9 +401,7 @@ async fn reconcile_subscription(
         .ok_or(ApiError::Internal)?;
     let plan_id = remote.pointer("/metadata/appstruct_plan_id").and_then(Value::as_str)
         .filter(|value| PLANS.iter().any(|plan| plan.id == *value)).ok_or(ApiError::Internal)?;
-    let linked = transaction.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT 1 FROM \"_appstruct_billing_customers\" WHERE organization_id = $1 AND provider_customer_id = $2",
+    let linked = transaction.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_billing_customers\" WHERE organization_id = $1 AND provider_customer_id = $2",
         [organization_id.into(), customer.into()],
     )).await?.is_some();
     if !linked { return Err(ApiError::Internal); }
@@ -432,14 +411,10 @@ async fn reconcile_subscription(
         .and_then(|seconds| chrono::DateTime::<chrono::Utc>::from_timestamp(seconds, 0));
     let cancel_at_period_end = remote.get("cancel_at_period_end").and_then(Value::as_bool).unwrap_or(false);
     let event_created = event.get("created").and_then(Value::as_i64).ok_or(ApiError::Internal)?;
-    transaction.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "INSERT INTO \"_appstruct_billing_subscriptions\" (id, organization_id, provider_subscription_id, plan_id, status, current_period_end, cancel_at_period_end, provider_event_created_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (provider_subscription_id) DO UPDATE SET plan_id = EXCLUDED.plan_id, status = EXCLUDED.status, current_period_end = EXCLUDED.current_period_end, cancel_at_period_end = EXCLUDED.cancel_at_period_end, provider_event_created_at = EXCLUDED.provider_event_created_at, updated_at = CURRENT_TIMESTAMP WHERE \"_appstruct_billing_subscriptions\".provider_event_created_at <= EXCLUDED.provider_event_created_at",
+    transaction.execute(Sql::bind("INSERT INTO \"_appstruct_billing_subscriptions\" (id, organization_id, provider_subscription_id, plan_id, status, current_period_end, cancel_at_period_end, provider_event_created_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (provider_subscription_id) DO UPDATE SET plan_id = EXCLUDED.plan_id, status = EXCLUDED.status, current_period_end = EXCLUDED.current_period_end, cancel_at_period_end = EXCLUDED.cancel_at_period_end, provider_event_created_at = EXCLUDED.provider_event_created_at, updated_at = CURRENT_TIMESTAMP WHERE \"_appstruct_billing_subscriptions\".provider_event_created_at <= EXCLUDED.provider_event_created_at",
         [uuid::Uuid::now_v7().into(), organization_id.into(), subscription_id.into(), plan_id.into(), status.into(), period_end.into(), cancel_at_period_end.into(), event_created.into()],
     )).await?;
-    transaction.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "INSERT INTO \"_appstruct_billing_events\" (event_id, event_type, payload, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
+    transaction.execute(Sql::bind("INSERT INTO \"_appstruct_billing_events\" (event_id, event_type, payload, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
         [event_id.into(), event_type.into(), json!(event).into()],
     )).await?;
     transaction.commit().await?;

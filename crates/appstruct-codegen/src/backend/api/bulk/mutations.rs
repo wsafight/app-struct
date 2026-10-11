@@ -43,7 +43,7 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
                 let savepoint = transaction.begin().await?;
                 let outcome: Result<#module::Model, ApiError> = async {
                     let context = RequestContext::transaction_with_file(&savepoint, &state.mail, &state.file, &state.realtime, actor.clone(), tenant);
-                    let mut select = #module::Entity::find_by_id(id);
+                    let mut select = #module::select_by_id(id);
                     #restore_scope
                     let before = select.lock_exclusive().one(&savepoint).await?.ok_or(ApiError::NotFound)?;
                     if !state.extensions.#policy().can_read(&context, &before).await? {
@@ -56,10 +56,10 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
                     state.extensions.#hooks().before_update(&context, &before, &mut input).await?;
                     authorize_update_fields(&context, &input)?;
                     validate_update(&input)?;
-                    let mut active = before.clone().into_active_model();
-                    active.deleted_at = Set(None);
-                    active.revision = Set(before.revision.checked_add(1).ok_or_else(|| sea_orm::DbErr::Custom("revision overflow".to_owned()))?);
-                    let candidate = active.clone().try_into_model()?;
+                    let mut active = before.clone();
+                    active.deleted_at = None;
+                    active.revision = before.revision.checked_add(1).ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
+                    let candidate = active.clone();
                     if !(#update_allowed) {
                         return Err(access_denied(&context));
                     }
@@ -139,7 +139,7 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
                 let savepoint = transaction.begin().await?;
                 let outcome: Result<#module::Model, ApiError> = async {
                     let context = RequestContext::transaction_with_file(&savepoint, &state.mail, &state.file, &state.realtime, actor.clone(), tenant);
-                    let mut select = #module::Entity::find_by_id(id);
+                    let mut select = #module::select_by_id(id);
                     #read_scope
                     let before = select.lock_exclusive().one(&savepoint).await?.ok_or(ApiError::NotFound)?;
                     if !state.extensions.#policy().can_read(&context, &before).await? {
@@ -152,10 +152,10 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
                     state.extensions.#hooks().before_update(&context, &before, &mut input).await?;
                     authorize_update_fields(&context, &input)?;
                     validate_update(&input)?;
-                    let mut active = before.clone().into_active_model();
+                    let mut active = before.clone();
                     #(#updates)*
-                    active.revision = Set(before.revision.checked_add(1).ok_or_else(|| sea_orm::DbErr::Custom("revision overflow".to_owned()))?);
-                    let candidate = active.clone().try_into_model()?;
+                    active.revision = before.revision.checked_add(1).ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
+                    let candidate = active.clone();
                     if !(#update_allowed) {
                         return Err(access_denied(&context));
                     }
@@ -210,10 +210,10 @@ pub(super) fn delete(context: &BulkContext<'_>) -> TokenStream {
     let delete_event = format!("{module}.deleted");
     let delete_model = if *soft_delete {
         quote! {
-            let mut active = model.clone().into_active_model();
-            active.deleted_at = Set(Some(chrono::Utc::now()));
-            active.revision = Set(model.revision.checked_add(1)
-                .ok_or_else(|| sea_orm::DbErr::Custom("revision overflow".to_owned()))?);
+            let mut active = model.clone();
+            active.deleted_at = Some(chrono::Utc::now());
+            active.revision = model.revision.checked_add(1)
+                .ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
             active.update(&savepoint).await?
         }
     } else {
@@ -247,7 +247,7 @@ pub(super) fn delete(context: &BulkContext<'_>) -> TokenStream {
                 let savepoint = transaction.begin().await?;
                 let outcome: Result<#module::Model, ApiError> = async {
                     let context = RequestContext::transaction_with_file(&savepoint, &state.mail, &state.file, &state.realtime, actor.clone(), tenant);
-                    let mut select = #module::Entity::find_by_id(id);
+                    let mut select = #module::select_by_id(id);
                     #read_scope
                     let model = select.lock_exclusive().one(&savepoint).await?.ok_or(ApiError::NotFound)?;
                     if !state.extensions.#policy().can_read(&context, &model).await? {

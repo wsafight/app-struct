@@ -90,8 +90,8 @@ fn generated_scopes_match_policy_truth_tables() {
     }
     let rules_json = serde_json::to_string(&rules).unwrap();
     let cases = quote! {
-        fn select_case(index: usize, mode: u8, context: &RequestContext<'_>) -> Result<sea_orm::Select<project::Entity>, ApiError> {
-            let mut select = project::Entity::find();
+        fn select_case(index: usize, mode: u8, context: &RequestContext<'_>) -> Result<appstruct_generated_backend::database::Select<project::Model>, ApiError> {
+            let mut select = project::select();
             match (index, mode) { #(#arms)* _ => unreachable!() }
             Ok(select)
         }

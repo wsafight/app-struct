@@ -86,6 +86,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             rust_template(include_str!("../templates/backend/logging.rs"))?,
             ArtifactKind::RustSource,
         ),
+        database_artifact()?,
         runtime::metrics_artifact()?,
         Artifact::text(
             "backend/src/entities/mod.rs",
@@ -118,18 +119,7 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             ArtifactKind::RustSource,
         ),
     ]);
-    artifacts.extend(audit::plan(ir)?);
-    artifacts.extend(activity::plan(ir)?);
-    artifacts.extend(billing::plan(ir)?);
-    artifacts.extend(auth::plan(ir)?);
-    artifacts.extend(file::plan(ir)?);
-    artifacts.extend(jobs::plan(ir)?);
-    artifacts.extend(mail::plan(ir)?);
-    artifacts.extend(realtime::plan(ir)?);
-    artifacts.extend(report::plan(ir)?);
-    artifacts.extend(tenant::plan(ir)?);
-    artifacts.extend(webhooks::plan(ir)?);
-    artifacts.extend(entity_artifacts(ir)?);
+    artifacts.extend(service_artifacts(ir)?);
     Ok(artifacts)
 }
 
@@ -214,6 +204,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
     let runtime = runtime::source(ir, &routes)?;
     let runtime_api_version = appstruct_runtime::RUNTIME_API_VERSION;
     render(quote! {
+        pub mod database;
         pub mod api;
         pub mod entities;
         pub mod extensions;
@@ -340,4 +331,29 @@ pub(super) fn render(tokens: TokenStream) -> Result<String, CodegenError> {
 
 fn rust_template(source: &str) -> Result<String, CodegenError> {
     format_rust(&format!("{}{}", generated_header("//"), source))
+}
+
+fn database_artifact() -> Result<Artifact, CodegenError> {
+    Ok(Artifact::text(
+        "backend/src/database.rs",
+        rust_template(include_str!("../templates/backend/database.rs"))?,
+        ArtifactKind::RustSource,
+    ))
+}
+
+fn service_artifacts(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
+    let mut artifacts = Vec::new();
+    artifacts.extend(audit::plan(ir)?);
+    artifacts.extend(activity::plan(ir)?);
+    artifacts.extend(billing::plan(ir)?);
+    artifacts.extend(auth::plan(ir)?);
+    artifacts.extend(file::plan(ir)?);
+    artifacts.extend(jobs::plan(ir)?);
+    artifacts.extend(mail::plan(ir)?);
+    artifacts.extend(realtime::plan(ir)?);
+    artifacts.extend(report::plan(ir)?);
+    artifacts.extend(tenant::plan(ir)?);
+    artifacts.extend(webhooks::plan(ir)?);
+    artifacts.extend(entity_artifacts(ir)?);
+    Ok(artifacts)
 }

@@ -106,20 +106,20 @@ pub(super) fn source(ir: &AppIr) -> TokenStream {
         #create
         #read
 
-        fn run_from_row(row: sea_orm::QueryResult) -> Result<ReportRun, sea_orm::DbErr> {
+        fn run_from_row(row: crate::database::PgRow) -> Result<ReportRun, sqlx::Error> {
             Ok(ReportRun {
-                id: row.try_get("", "id")?, execution_job_id: row.try_get("", "execution_job_id")?,
-                template: row.try_get("", "template")?,
-                template_version: u32::try_from(row.try_get::<i32>("", "template_version")?)
+                id: row.try_get("id")?, execution_job_id: row.try_get("execution_job_id")?,
+                template: row.try_get("template")?,
+                template_version: u32::try_from(row.try_get::<i32, _>("template_version")?)
                     .unwrap_or_default(),
-                tenant_id: row.try_get("", "tenant_id")?, actor_id: row.try_get("", "actor_id")?,
-                stage: row.try_get("", "stage")?,
-                progress: u32::try_from(row.try_get::<i32>("", "progress")?).unwrap_or_default(),
-                locale: row.try_get("", "locale")?, timezone: row.try_get("", "timezone")?,
-                paper: row.try_get("", "paper")?, orientation: row.try_get("", "orientation")?,
-                result_file_id: row.try_get("", "result_file_id")?,
-                error_code: row.try_get("", "error_code")?, created_at: row.try_get("", "created_at")?,
-                completed_at: row.try_get("", "completed_at")?, expires_at: row.try_get("", "expires_at")?,
+                tenant_id: row.try_get("tenant_id")?, actor_id: row.try_get("actor_id")?,
+                stage: row.try_get("stage")?,
+                progress: u32::try_from(row.try_get::<i32, _>("progress")?).unwrap_or_default(),
+                locale: row.try_get("locale")?, timezone: row.try_get("timezone")?,
+                paper: row.try_get("paper")?, orientation: row.try_get("orientation")?,
+                result_file_id: row.try_get("result_file_id")?,
+                error_code: row.try_get("error_code")?, created_at: row.try_get("created_at")?,
+                completed_at: row.try_get("completed_at")?, expires_at: row.try_get("expires_at")?,
             })
         }
     }

@@ -20,10 +20,10 @@ fn disabled_source() -> Result<String, CodegenError> {
     render(quote! {
         use crate::{Actor, ApiError, AppState, TenantId};
         use axum::{Router, http::HeaderMap};
-        use sea_orm::DatabaseConnection;
+        use crate::database::Database;
 
         pub async fn resolve(
-            _database: &DatabaseConnection,
+            _database: &Database,
             _headers: &HeaderMap,
             _actor: Option<&Actor>,
         ) -> Result<Option<TenantId>, ApiError> { Ok(None) }

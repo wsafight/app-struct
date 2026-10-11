@@ -1,10 +1,9 @@
+use appstruct_generated_backend::database::{Database, DatabaseExecutor, Sql};
 use appstruct_generated_backend::{
     Job, JobHandler, JobHandlerError, JobWorker, MailJobPayload, MailState, RequestContext,
 };
 use async_trait::async_trait;
-use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-};
+use sqlx::Row as _;
 use std::{collections::BTreeMap, env, sync::Arc};
 
 struct TestHandler;
@@ -60,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn assert_concurrent_worker_lanes(
-    database: &DatabaseConnection,
+    database: &Database,
     mail: &MailState,
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -85,7 +84,7 @@ async fn assert_concurrent_worker_lanes(
             if job_state(database, first.id).await? == "succeeded|1"
                 && job_state(database, second.id).await? == "succeeded|1"
             {
-                return Ok::<(), sea_orm::DbErr>(());
+                return Ok::<(), sqlx::Error>(());
             }
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
@@ -96,7 +95,7 @@ async fn assert_concurrent_worker_lanes(
 }
 
 async fn assert_webhook_delivery(
-    database: &DatabaseConnection,
+    database: &Database,
     mail: &MailState,
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -141,7 +140,7 @@ async fn assert_webhook_delivery(
 }
 
 async fn wait_for_delivery(
-    database: &DatabaseConnection,
+    database: &Database,
     id: uuid::Uuid,
     expected: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -155,7 +154,7 @@ async fn wait_for_delivery(
 }
 
 async fn seed_admin_jobs(
-    database: &DatabaseConnection,
+    database: &Database,
     mail: &MailState,
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -196,7 +195,7 @@ async fn seed_admin_jobs(
 }
 
 async fn assert_transactional_enqueue(
-    database: &DatabaseConnection,
+    database: &Database,
     mail: &MailState,
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -218,7 +217,7 @@ async fn assert_transactional_enqueue(
 }
 
 async fn assert_success_and_deduplication(
-    database: &DatabaseConnection,
+    database: &Database,
     mail: &MailState,
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -258,7 +257,7 @@ async fn assert_success_and_deduplication(
 }
 
 async fn assert_retry_and_dead_state(
-    database: &DatabaseConnection,
+    database: &Database,
     mail: &MailState,
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -286,7 +285,7 @@ async fn assert_retry_and_dead_state(
 }
 
 async fn assert_expired_lease_recovery(
-    database: &DatabaseConnection,
+    database: &Database,
     mail: &MailState,
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -308,7 +307,7 @@ async fn assert_expired_lease_recovery(
 }
 
 async fn assert_mail_job(
-    database: &DatabaseConnection,
+    database: &Database,
     mail: &MailState,
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -336,14 +335,14 @@ async fn assert_mail_job(
     Ok(())
 }
 
-async fn clear(database: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
+async fn clear(database: &Database) -> Result<(), sqlx::Error> {
     database
         .execute_unprepared("DELETE FROM \"_appstruct_jobs\"")
         .await?;
     Ok(())
 }
 
-async fn count_jobs(database: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
+async fn count_jobs(database: &Database) -> Result<i64, sqlx::Error> {
     scalar_i64(
         database,
         "SELECT COUNT(*)::bigint AS value FROM \"_appstruct_jobs\"",
@@ -351,7 +350,7 @@ async fn count_jobs(database: &DatabaseConnection) -> Result<i64, sea_orm::DbErr
     .await
 }
 
-async fn capture_count(database: &DatabaseConnection) -> Result<i64, sea_orm::DbErr> {
+async fn capture_count(database: &Database) -> Result<i64, sqlx::Error> {
     scalar_i64(
         database,
         "SELECT COUNT(*)::bigint AS value FROM \"_appstruct_mail_deliveries\"",
@@ -359,55 +358,40 @@ async fn capture_count(database: &DatabaseConnection) -> Result<i64, sea_orm::Db
     .await
 }
 
-async fn last_error_length(
-    database: &DatabaseConnection,
-    id: uuid::Uuid,
-) -> Result<i64, sea_orm::DbErr> {
+async fn last_error_length(database: &Database, id: uuid::Uuid) -> Result<i64, sqlx::Error> {
     scalar_i64(database, &format!(
         "SELECT char_length(last_error)::bigint AS value FROM \"_appstruct_jobs\" WHERE id = '{id}'::uuid"
     )).await
 }
 
-async fn job_state(
-    database: &DatabaseConnection,
-    id: uuid::Uuid,
-) -> Result<String, sea_orm::DbErr> {
+async fn job_state(database: &Database, id: uuid::Uuid) -> Result<String, sqlx::Error> {
     scalar_string(database, &format!(
         "SELECT status || '|' || attempts::text AS value FROM \"_appstruct_jobs\" WHERE id = '{id}'::uuid"
     )).await
 }
 
-async fn job_tenant(
-    database: &DatabaseConnection,
-    id: uuid::Uuid,
-) -> Result<uuid::Uuid, sea_orm::DbErr> {
+async fn job_tenant(database: &Database, id: uuid::Uuid) -> Result<uuid::Uuid, sqlx::Error> {
     let row = query(
         database,
         &format!("SELECT tenant_id AS value FROM \"_appstruct_jobs\" WHERE id = '{id}'::uuid"),
     )
     .await?;
-    row.try_get("", "value")
+    row.try_get("value")
 }
 
-async fn retry_is_delayed(
-    database: &DatabaseConnection,
-    id: uuid::Uuid,
-) -> Result<bool, sea_orm::DbErr> {
+async fn retry_is_delayed(database: &Database, id: uuid::Uuid) -> Result<bool, sqlx::Error> {
     scalar_bool(database, &format!(
         "SELECT run_at > CURRENT_TIMESTAMP AS value FROM \"_appstruct_jobs\" WHERE id = '{id}'::uuid"
     )).await
 }
 
-async fn completed(database: &DatabaseConnection, id: uuid::Uuid) -> Result<bool, sea_orm::DbErr> {
+async fn completed(database: &Database, id: uuid::Uuid) -> Result<bool, sqlx::Error> {
     scalar_bool(database, &format!(
         "SELECT completed_at IS NOT NULL AS value FROM \"_appstruct_jobs\" WHERE id = '{id}'::uuid"
     )).await
 }
 
-async fn delivery_status(
-    database: &DatabaseConnection,
-    id: uuid::Uuid,
-) -> Result<String, sea_orm::DbErr> {
+async fn delivery_status(database: &Database, id: uuid::Uuid) -> Result<String, sqlx::Error> {
     scalar_string(
         database,
         &format!(
@@ -417,42 +401,36 @@ async fn delivery_status(
     .await
 }
 
-async fn delivery_state(
-    database: &DatabaseConnection,
-    id: uuid::Uuid,
-) -> Result<String, sea_orm::DbErr> {
+async fn delivery_state(database: &Database, id: uuid::Uuid) -> Result<String, sqlx::Error> {
     scalar_string(database, &format!(
         "SELECT status || '|' || attempts::text || '|' || COALESCE(response_status::text, '') AS value FROM \"_appstruct_webhook_deliveries\" WHERE id = '{id}'::uuid"
     )).await
 }
 
-async fn delivery_error(
-    database: &DatabaseConnection,
-    id: uuid::Uuid,
-) -> Result<String, sea_orm::DbErr> {
+async fn delivery_error(database: &Database, id: uuid::Uuid) -> Result<String, sqlx::Error> {
     scalar_string(database, &format!(
         "SELECT COALESCE(last_error, '') AS value FROM \"_appstruct_webhook_deliveries\" WHERE id = '{id}'::uuid"
     )).await
 }
 
-async fn scalar_i64(database: &DatabaseConnection, sql: &str) -> Result<i64, sea_orm::DbErr> {
-    query(database, sql).await?.try_get("", "value")
+async fn scalar_i64(database: &Database, sql: &str) -> Result<i64, sqlx::Error> {
+    query(database, sql).await?.try_get("value")
 }
 
-async fn scalar_string(database: &DatabaseConnection, sql: &str) -> Result<String, sea_orm::DbErr> {
-    query(database, sql).await?.try_get("", "value")
+async fn scalar_string(database: &Database, sql: &str) -> Result<String, sqlx::Error> {
+    query(database, sql).await?.try_get("value")
 }
 
-async fn scalar_bool(database: &DatabaseConnection, sql: &str) -> Result<bool, sea_orm::DbErr> {
-    query(database, sql).await?.try_get("", "value")
+async fn scalar_bool(database: &Database, sql: &str) -> Result<bool, sqlx::Error> {
+    query(database, sql).await?.try_get("value")
 }
 
 async fn query(
-    database: &DatabaseConnection,
+    database: &Database,
     sql: &str,
-) -> Result<sea_orm::QueryResult, sea_orm::DbErr> {
+) -> Result<appstruct_generated_backend::database::PgRow, sqlx::Error> {
     database
-        .query_one_raw(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
+        .fetch_optional(Sql::new(sql.to_owned()))
         .await?
-        .ok_or_else(|| sea_orm::DbErr::Custom("query returned no row".to_owned()))
+        .ok_or_else(|| sqlx::Error::Protocol("query returned no row".to_owned()))
 }

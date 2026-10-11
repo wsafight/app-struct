@@ -52,7 +52,8 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         };
         use base64::Engine as _;
         use ring::{aead, rand::{SecureRandom, SystemRandom}};
-        use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
+        use sqlx::Row as _;
+        use crate::database::{DatabaseExecutor,  Sql};
         use serde::{Deserialize, Serialize};
 
         #contract

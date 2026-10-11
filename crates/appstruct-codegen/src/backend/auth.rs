@@ -114,7 +114,7 @@ fn disabled_source() -> Result<String, CodegenError> {
     render(quote! {
         use crate::{Actor, ApiError, AppState};
         use axum::{Router, http::HeaderMap};
-        use sea_orm::DatabaseConnection;
+        use crate::database::Database;
         use tower_http::cors::CorsLayer;
 
         #[derive(Clone, Default)]
@@ -124,17 +124,17 @@ fn disabled_source() -> Result<String, CodegenError> {
             pub fn from_env() -> Result<Self, String> { Ok(Self) }
             pub async fn actor(
                 &self,
-                _database: &DatabaseConnection,
+                _database: &Database,
                 _headers: &HeaderMap,
             ) -> Result<Option<Actor>, ApiError> { Ok(None) }
             pub async fn actor_for_mutation(
                 &self,
-                _database: &DatabaseConnection,
+                _database: &Database,
                 _headers: &HeaderMap,
             ) -> Result<Option<Actor>, ApiError> { Ok(None) }
             pub async fn verify_csrf(
                 &self,
-                _database: &DatabaseConnection,
+                _database: &Database,
                 _headers: &HeaderMap,
             ) -> Result<(), ApiError> { Ok(()) }
             pub fn cors_layer(&self) -> CorsLayer {

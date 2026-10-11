@@ -42,7 +42,7 @@ fn relation_filter_applies_target_access_and_tenant_scope() {
     assert!(related.contains("project::Column::Name.eq(value)"));
     let aggregate = &api[api.find("async fn aggregate").unwrap()..];
     assert!(aggregate.contains("\"project.name\""));
-    assert!(aggregate.contains("task::Relation::Project.def()"));
+    assert!(aggregate.contains("task::TABLE"));
     assert!(aggregate.contains("project::Column::TenantId.eq(context.require_tenant()?)"));
     assert!(aggregate.contains("group_project_name"));
 }
@@ -89,7 +89,7 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     assert!(task_api.contains("Column::Priority.max()"));
     assert!(task_api.contains("group_priority"));
     assert!(task_api.contains("group_project_status"));
-    assert!(task_api.contains("Relation::Project.def()"));
+    assert!(task_api.contains("task::TABLE"));
     assert!(task_api.contains("at most one relation group field is allowed"));
     assert!(task_api.contains("order_by_desc(task::Column::Id.count())"));
     assert!(task_api.contains("order_by_desc(task::Column::Priority.sum())"));

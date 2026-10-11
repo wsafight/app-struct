@@ -18,11 +18,11 @@ fn soft_delete_resources_publish_trash_and_restore_contracts() {
         .unwrap();
     let source = String::from_utf8(api.content.clone()).unwrap();
     assert!(source.contains("/_restore"));
-    assert!(source.contains("active.deleted_at = Set(Some"));
-    assert!(source.contains("active.deleted_at = Set(None"));
+    assert!(source.contains("active.deleted_at = Some"));
+    assert!(source.contains("active.deleted_at = None"));
     assert!(source.contains("Result<Json<ListResponse<serde_json::Value>>, ApiError>"));
     assert!(source.contains("ListMeta::Page"));
-    assert!(source.contains("let mut active = model.clone().into_active_model();"));
+    assert!(source.contains("let mut active = model.clone();"));
     let openapi = artifacts
         .iter()
         .find(|artifact| artifact.relative_path.to_string_lossy() == "openapi/openapi.json")

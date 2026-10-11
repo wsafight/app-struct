@@ -27,7 +27,7 @@ pub(super) fn export(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
             if !state.extensions.#policy().can_list(&context).await? {
                 return Err(access_denied(&context));
             }
-            let mut select = #module::Entity::find(); #list_scope
+            let mut select = #module::select(); #list_scope
             select = select.order_by_asc(#module::Column::#primary_column);
             let total = select.clone().count(&state.database).await?;
             if total > MAX_CSV_EXPORT_ROWS {
@@ -140,7 +140,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                     if !state.extensions.#policy().can_create(&context, &input).await? {
                         return Err(ApiError::Forbidden);
                     }
-                    let active = #module::ActiveModel { #(#create_values,)* #active_default };
+                    let active = #module::Model { #(#create_values,)* #active_default };
                     let model = active.insert(&savepoint).await?;
                     state.extensions.#hooks().after_create(&context, &model).await?;
                     #audit

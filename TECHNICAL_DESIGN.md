@@ -31,9 +31,9 @@ Migration Runner 已实现第 12.4 节协议。`migrate dev --accept` 先原子�
 
 M3 在 IR 中加入 Value Object、Command、Query、自定义页面和字段 UI component 引用。Backend Generator 生成 DTO、Entity Hook/Policy trait、Command/Query handler trait、路由和类型状态 registry；OpenAPI 与 TypeScript Generator 从同一 IR 生成 operation 契约和客户端。Web Generator 生成必需组件/page key，并在存在引用时让生成入口静态导入用户所有的 `app/web/registry.tsx`；该 registry 通过 TypeScript `satisfies` 完整性检查。M3 fixture 同时验证缺少 Rust handler 或 React page 时构建失败、完整实现可构建，并在真实 PostgreSQL 上验证 Hook、Command、Query 和 Policy 行为。
 
-CRUD 一致性加固已完成：写路径在显式 SeaORM 事务中执行，事务内 `RequestContext` 把 Hook/Policy 查询委托到同一 `DatabaseTransaction`；Update/Delete 锁定目标行并比较 `If-Match` revision，Update Policy 在写入前看到最终候选状态。`after_commit` 保持 best-effort 错误隔离。M4 已提供 actor context 和基于身份的数据范围；tenant context 与租户隔离仍由 M6 提供。
+CRUD 一致性加固已完成：写路径在显式 SQLx 事务中执行，事务内 `RequestContext` 把 Hook/Policy 查询委托到同一 `database::Transaction`；Update/Delete 锁定目标行并比较 `If-Match` revision，Update Policy 在写入前看到最终候选状态。`after_commit` 保持 best-effort 错误隔离。M4 已提供 actor context 和基于身份的数据范围；tenant context 与租户隔离仍由 M6 提供。
 
-M4 将 `modules.auth`/`modules.rbac` 降低为 `AuthIr` 和规范化 `AccessRuleIr`，Compiler 校验 Auth User 的 UUID 主键与 required unique email、角色声明、owner relation 目标及非空组合规则。迁移 schema 在业务表之外生成 `_appstruct_auth_accounts`、`sessions`、`password_resets` 和开发邮件捕获表及外键。生成后端使用 Argon2id、opaque token hash、可撤销/过期 session、CSRF/Origin 校验和窄化的开发捕获/SMTP sender；Actor 同时进入 connection/transaction `RequestContext`，owner/RBAC scope 下推为 SeaORM `Condition`。OpenAPI、TypeScript client 和 React 路由从同一 Auth IR 生成 Cookie security scheme、启用的 endpoint、Cookie/CSRF 调用和认证页面。独立 PostgreSQL 验收已覆盖匿名、owner、admin、CSRF、并发前置条件及密码重置/会话撤销路径。
+M4 将 `modules.auth`/`modules.rbac` 降低为 `AuthIr` 和规范化 `AccessRuleIr`，Compiler 校验 Auth User 的 UUID 主键与 required unique email、角色声明、owner relation 目标及非空组合规则。迁移 schema 在业务表之外生成 `_appstruct_auth_accounts`、`sessions`、`password_resets` 和开发邮件捕获表及外键。生成后端使用 Argon2id、opaque token hash、可撤销/过期 session、CSRF/Origin 校验和窄化的开发捕获/SMTP sender；Actor 同时进入 connection/transaction `RequestContext`，owner/RBAC scope 下推为 SeaQuery `Condition`。OpenAPI、TypeScript client 和 React 路由从同一 Auth IR 生成 Cookie security scheme、启用的 endpoint、Cookie/CSRF 调用和认证页面。独立 PostgreSQL 验收已覆盖匿名、owner、admin、CSRF、并发前置条件及密码重置/会话撤销路径。
 
 CLI 生成路径已拆为 orchestration、ownership 和 transaction 模块。`generated/.appstruct-manifest.json` 使用确定性 JSON 保存 Artifact 路径、类别、Generator 版本和 SHA-256；生成前拒绝未知文件或被人工修改的 owned file。`target/`、`node_modules/`、`dist/`、`.vite/` 和 Cargo 自动创建的 `Cargo.lock` 视为可丢弃构建瞬态，不参与 ownership 冲突。项目级排他文件锁覆盖恢复、编译、规划与提交；追加式 journal 在每个目录交换 phase 后 `sync_all`。下一次命令会验证候选树的 manifest/hash，再完成提交或恢复 backup；歧义状态保留全部目录并失败关闭。
 
@@ -62,7 +62,7 @@ Operations correctness 在 2026-08-30 完成加固。Jobs Schedule 采用 interv
 | 配置入口 | `appstruct.yaml` + 显式 `includes` 领域文件 |
 | 配置格式 | YAML，禁止脚本表达式、merge key 和隐式目录扫描 |
 | 单一事实来源 | 规范化、版本化的 Typed IR |
-| 后端 | Axum + Tokio + SeaORM + PostgreSQL |
+| 后端 | Axum + Tokio + SQLx + sift-query + PostgreSQL |
 | Rust 工具链 | 使用本地最新稳定版启动开发，并通过 `rust-toolchain.toml` 固定为 `1.99.0` |
 | API 契约 | 从 IR 直接构建 OpenAPI，Utoipa 提供 OpenAPI 数据模型 |
 | 前端 | React + TypeScript + Rsbuild/Rspack + Rstest，使用编译期 UI Manifest |
@@ -181,7 +181,7 @@ MVP 前不为每个 Generator 建立独立 crate。只有当编译时间、依�
 - 定义稳定、可序列化的 IR 类型
 - 定义 `EntityId`、`FieldId`、`TypeRef` 等强类型标识
 - 负责规范化排序、哈希和 IR 版本迁移
-- 不依赖 YAML、Axum、SeaORM 或 React
+- 不依赖 YAML、Axum、SQLx + sift-query 或 React
 
 ### 5.4 `appstruct-codegen`
 
@@ -552,7 +552,7 @@ pub struct RelationIr {
 
 `RustIdent`、`SqlIdent` 和 `ApiName` 分离，避免一种命名规则污染所有输出。
 
-关系不由各 Generator 根据字段名重新推导。Compiler 必须显式解析正向边、反向边、基数、外键所有权、组成外键、唯一性和删除策略；SeaORM Entity、Repository、Database Schema IR、OpenAPI 和 UI RelationInput 都消费同一 `RelationIr`。显式中间实体仍是普通 Entity，并通过两条关系表达，避免为多对多维护另一套隐式语义。
+关系不由各 Generator 根据字段名重新推导。Compiler 必须显式解析正向边、反向边、基数、外键所有权、组成外键、唯一性和删除策略；SQLx Model 与 sift-query 元数据、Repository、Database Schema IR、OpenAPI 和 UI RelationInput 都消费同一 `RelationIr`。显式中间实体仍是普通 Entity，并通过两条关系表达，避免为多对多维护另一套隐式语义。
 
 ### 9.3 稳定标识
 
@@ -623,7 +623,7 @@ Generator 返回内存中的 Artifact 计划，不直接写最终目录。这使
 
 生成内容包括：
 
-- SeaORM Entity 和 relation 定义
+- SQLx Model 与 sift-query 元数据 和 relation 定义
 - Create、Update、Read DTO
 - 校验类型和转换实现
 - Axum route 与 handler glue
@@ -838,7 +838,7 @@ DTO，也不作为可配置筛选器显示。
 生成后端从 `X-AppStruct-Tenant` 解析 UUID，并在构造 `RequestContext` 时用 membership 表验证 actor。
 普通非租户 endpoint 可以得到 `tenant: None`；tenant-scoped CRUD 必须调用
 `context.require_tenant()`，再将 `tenant_id = current_tenant` 与 AccessRule 产生的 Condition 使用 AND
-组合。Create 的 ActiveModel 直接使用 context tenant；Update/Delete 先用相同条件锁行，因此其他
+组合。Create 的 Model 直接使用 context tenant；Update/Delete 先用相同条件锁行，因此其他
 租户的 ID 保持 `404`。事务内和 `after_commit` context 都保留相同 actor/tenant，Hook 与 Policy
 只能读取该值。
 
@@ -868,7 +868,7 @@ before/after JSONB 和 `occurred_at`。actor 删除使用 `SET NULL`；Tenant �
 
 CRUD write pipeline 在 `after_create/after_update/after_delete` Hook 成功后、事务 commit 前序列化最终
 Model 并写 Audit：Create 为 `(null, after)`，Update 为 `(before, after)`，Delete 为 `(before, null)`。
-事件写入使用同一个 `DatabaseTransaction` 和 `RequestContext`，因此不会出现业务提交但审计缺失；
+事件写入使用同一个 `database::Transaction` 和 `RequestContext`，因此不会出现业务提交但审计缺失；
 它不使用 best-effort `after_commit`。通用 Audit 只观察显式标记的业务 Entity，不记录 Auth 内部表、
 密码 hash、session、Mail body 或 File 内容。
 
@@ -963,7 +963,7 @@ size、SHA-256、nullable tenant 和创建时间；Tenant 外键使用 `SET NULL
 对象写入使用 create-only，不覆盖既有 key；元数据插入失败时 best-effort 删除刚写对象。路径验证拒绝
 absolute、反斜杠、NUL、`.`/`..`、空片段和非规范路径。文本、JSON 和嗅探到的二进制内容必须与声明
 MIME 相符；读取重新校验 checksum。get/delete SQL 使用 `tenant_id IS NOT DISTINCT FROM` 绑定租户，
-跨租户统一表现为元数据不存在。`RequestContext` 将自身的 `ConnectionTrait` 传给 metadata 操作，使 hook
+跨租户统一表现为元数据不存在。`RequestContext` 将自身的 `database::DatabaseExecutor` 传给 metadata 操作，使 hook
 内的 metadata 写入参与当前业务事务；直接调用 `FileState` 时仍使用其默认连接。删除先调用幂等的对象
 存储 delete，再删除 metadata，因此 metadata 删除失败后可重试，而不会先丢失对象的追踪记录。
 
@@ -971,7 +971,7 @@ MIME 相符；读取重新校验 checksum。get/delete SQL 使用 `tenant_id IS 
 
 生成的 Repository 负责：
 
-- 将白名单 filter AST 转换为 SeaORM Condition
+- 将白名单 filter AST 转换为 SeaQuery Condition
 - 应用 Policy 产生的数据范围
 - 分页、稳定排序和 relation loader
 - 将数据库模型映射到响应 DTO
@@ -1611,7 +1611,7 @@ Pull Request 使用最小必要矩阵；主分支和发布构建运行完整示�
 
 - 单个 Project 实体
 - PostgreSQL schema 和迁移草稿
-- SeaORM Entity 和 Axum CRUD
+- SQLx Model 与 sift-query 元数据 和 Axum CRUD
 - OpenAPI 与 TypeScript client
 - React 列表和表单
 
@@ -1696,9 +1696,9 @@ Compiler/Generator 门禁由 Rust 测试执行；完整开发路径由
 
 高质量诊断要求保留位置，可能需要维护自定义 AST 到 Surface Spec 的解码层。M0 必须先验证，不能在 Generator 完成后补做。
 
-### 29.2 SeaORM 生成与复杂查询
+### 29.2 SQLx + sift-query 生成与复杂查询
 
-标准 CRUD 适合 SeaORM，但复杂报表和数据库特性可能需要 SeaQuery 或 SQLx。Repository 和自定义 Query 必须保留逃生口，Migration Planner 不依赖 ORM 自动同步。
+生成模型使用 SQLx `FromRow` 与 sift-query `SearchEntity` 元数据。过滤使用 sift-query 类型化查询校验，关联、权限范围和聚合通过 SeaQuery 构造参数化 SQL，写入直接由 SQLx 执行。`database::DatabaseExecutor` 让 Hook/Policy 和服务复用同一连接或事务；Migration Planner 继续负责显式 schema 迁移。 sift-query 0.1 的 JSON 字段仅用于读取；现有 JSON 等值过滤保留参数化 jsonb 比较，保持 HTTP 查询契约兼容。
 
 ### 29.3 Rust 扩展类型循环
 

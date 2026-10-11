@@ -3,21 +3,21 @@ use async_trait::async_trait;
 use lettre::message::Mailbox;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use crate::database::{DatabaseExecutor, Database,  Sql};
 use std::env;
 
 #[async_trait]
 pub trait AuthMailSender: Send + Sync {
     async fn send_password_reset(
         &self,
-        database: &DatabaseConnection,
+        database: &Database,
         recipient: &str,
         reset_url: &str,
     ) -> Result<(), ApiError>;
 
     async fn send_invitation(
         &self,
-        _database: &DatabaseConnection,
+        _database: &Database,
         _recipient: &str,
         _invitation_url: &str,
     ) -> Result<(), ApiError> {
@@ -26,7 +26,7 @@ pub trait AuthMailSender: Send + Sync {
 
     async fn send_email_verification(
         &self,
-        _database: &DatabaseConnection,
+        _database: &Database,
         _recipient: &str,
         _verification_url: &str,
     ) -> Result<(), ApiError> {
@@ -40,14 +40,12 @@ pub struct DevMailSender;
 impl AuthMailSender for DevMailSender {
     async fn send_password_reset(
         &self,
-        database: &DatabaseConnection,
+        database: &Database,
         recipient: &str,
         reset_url: &str,
     ) -> Result<(), ApiError> {
         database
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_auth_mail_capture\" (id, recipient, subject, body, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)",
+            .execute(Sql::bind("INSERT INTO \"_appstruct_auth_mail_capture\" (id, recipient, subject, body, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)",
                 [
                     uuid::Uuid::now_v7().into(),
                     recipient.to_owned().into(),
@@ -61,14 +59,12 @@ impl AuthMailSender for DevMailSender {
 
     async fn send_invitation(
         &self,
-        database: &DatabaseConnection,
+        database: &Database,
         recipient: &str,
         invitation_url: &str,
     ) -> Result<(), ApiError> {
         database
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_auth_mail_capture\" (id, recipient, subject, body, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)",
+            .execute(Sql::bind("INSERT INTO \"_appstruct_auth_mail_capture\" (id, recipient, subject, body, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)",
                 [
                     uuid::Uuid::now_v7().into(),
                     recipient.to_owned().into(),
@@ -82,14 +78,12 @@ impl AuthMailSender for DevMailSender {
 
     async fn send_email_verification(
         &self,
-        database: &DatabaseConnection,
+        database: &Database,
         recipient: &str,
         verification_url: &str,
     ) -> Result<(), ApiError> {
         database
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_auth_mail_capture\" (id, recipient, subject, body, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)",
+            .execute(Sql::bind("INSERT INTO \"_appstruct_auth_mail_capture\" (id, recipient, subject, body, created_at) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)",
                 [
                     uuid::Uuid::now_v7().into(),
                     recipient.to_owned().into(),
@@ -108,7 +102,7 @@ pub(super) struct DisabledMailSender;
 impl AuthMailSender for DisabledMailSender {
     async fn send_password_reset(
         &self,
-        _database: &DatabaseConnection,
+        _database: &Database,
         _recipient: &str,
         _reset_url: &str,
     ) -> Result<(), ApiError> {
@@ -149,7 +143,7 @@ impl SmtpMailSender {
 impl AuthMailSender for SmtpMailSender {
     async fn send_password_reset(
         &self,
-        _database: &DatabaseConnection,
+        _database: &Database,
         recipient: &str,
         reset_url: &str,
     ) -> Result<(), ApiError> {
@@ -171,7 +165,7 @@ impl AuthMailSender for SmtpMailSender {
 
     async fn send_invitation(
         &self,
-        _database: &DatabaseConnection,
+        _database: &Database,
         recipient: &str,
         invitation_url: &str,
     ) -> Result<(), ApiError> {
@@ -193,7 +187,7 @@ impl AuthMailSender for SmtpMailSender {
 
     async fn send_email_verification(
         &self,
-        _database: &DatabaseConnection,
+        _database: &Database,
         recipient: &str,
         verification_url: &str,
     ) -> Result<(), ApiError> {

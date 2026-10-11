@@ -216,15 +216,25 @@ fn generated_web_uses_the_tanstack_runtime() {
 }
 
 #[test]
-fn one_to_one_relation_generates_has_one_inverse() {
+fn one_to_one_relation_uses_plain_models_and_explicit_foreign_keys() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
     let mut ir = compile_project(&fixture).unwrap();
     ir.relations[0].cardinality = Cardinality::OneToOne;
     let artifacts = plan(&ir).unwrap();
 
+    let schema: Value =
+        serde_json::from_str(artifact_text(&artifacts, "database/schema.json")).unwrap();
+    assert_eq!(
+        schema["foreign_keys"][0]["source_columns"],
+        serde_json::json!(["project_id"])
+    );
+    assert!(
+        artifact_text(&artifacts, "backend/src/entities/task.rs")
+            .contains("pub project_id: uuid::Uuid")
+    );
     assert!(
         artifact_text(&artifacts, "backend/src/entities/project.rs")
-            .contains("pub task: HasOne<super::task::Entity>")
+            .contains("sift_query :: SearchEntity")
     );
 }
 
@@ -272,7 +282,12 @@ fn m3_extensions_require_every_handler_at_compile_time() {
     let generated_manifest = temporary.path().join("generated/backend/Cargo.toml");
     assert_rustfmt(&generated_manifest);
     let generated_package = prepare_generated_package(&generated_manifest).unwrap();
-    assert!(cargo_check(&generated_manifest, true).status.success());
+    let checked = cargo_check(&generated_manifest, true);
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
 
     let server = temporary.path().join("server");
     fs::create_dir_all(server.join("src")).unwrap();
@@ -296,7 +311,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 111);
+    assert_eq!(artifacts.len(), 112);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -576,7 +591,7 @@ fn m6_tenant_contract_generates_a_compilable_backend() {
 
     let api = artifact_text(&artifacts, "backend/src/api/project.rs");
     assert!(api.contains("Column::TenantId.eq(context.require_tenant()?)"));
-    assert!(api.contains("tenant_id: Set(context.require_tenant()?)"));
+    assert!(api.contains("tenant_id: context.require_tenant()?"));
     assert!(!api.contains("pub tenant_id: uuid::Uuid"));
 
     let client = artifact_text(&artifacts, "web/src/generated/client.ts");
@@ -663,7 +678,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 94);
+    assert_eq!(artifacts.len(), 95);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")
@@ -687,9 +702,9 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     );
     let backend = artifact_text(artifacts, "backend/src/lib.rs");
     assert!(backend.contains("pub async fn connect_database"));
-    assert!(backend.contains("ConnectOptions"));
+    assert!(backend.contains("PgPoolOptions"));
     assert!(backend.contains("APPSTRUCT_DB_MAX_CONNECTIONS"));
-    assert!(artifact_text(artifacts, "backend/Cargo.toml").contains("tinyvec = \"=1.13.3\""));
+    assert!(artifact_text(artifacts, "backend/Cargo.toml").contains("sift-query = \"=0.1.0\""));
     let auth = artifact_text(artifacts, "backend/src/auth.rs");
     assert!(auth.contains("CorsLayer::permissive()"));
     assert!(auth.contains("APPSTRUCT_ENV"));
@@ -725,12 +740,11 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     );
     assert_chart_contract(artifacts);
     assert!(
-        artifact_text(artifacts, "backend/src/entities/project.rs")
-            .contains("pub tasks: HasMany<super::task::Entity>")
+        artifact_text(artifacts, "backend/src/entities/project.rs").contains("sqlx :: FromRow")
     );
     assert!(
         artifact_text(artifacts, "backend/src/entities/task.rs")
-            .contains("pub project: BelongsTo<super::project::Entity>")
+            .contains("pub project_id: uuid::Uuid")
     );
     let schema: Value =
         serde_json::from_str(artifact_text(artifacts, "database/schema.json")).unwrap();

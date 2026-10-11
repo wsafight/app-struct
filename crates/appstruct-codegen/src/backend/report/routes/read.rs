@@ -32,16 +32,12 @@ pub(super) fn source(audit: bool) -> TokenStream {
             }
             let all = can_read_all_reports(&context);
             let tenant_id = context.tenant();
-            let count = state.database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT COUNT(*) AS total FROM \"_appstruct_report_runs\" WHERE tenant_id IS NOT DISTINCT FROM $1 AND ($2 OR actor_id = $3)",
+            let count = state.database.fetch_optional(Sql::bind("SELECT COUNT(*) AS total FROM \"_appstruct_report_runs\" WHERE tenant_id IS NOT DISTINCT FROM $1 AND ($2 OR actor_id = $3)",
                 [tenant_id.into(), all.into(), actor_id.into()],
-            )).await?.ok_or(ApiError::Internal)?.try_get::<i64>("", "total")?;
+            )).await?.ok_or(ApiError::Internal)?.try_get::<i64, _>("total")?;
             let offset = (page - 1).checked_mul(page_size)
                 .ok_or_else(|| ApiError::InvalidQuery("report pagination is too large".to_owned()))?;
-            let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                concat!(
+            let rows = state.database.fetch_all(Sql::bind(concat!(
                     "SELECT r.id, r.execution_job_id, t.name AS template, r.template_version, r.tenant_id, r.actor_id, r.stage::text AS stage, r.progress, r.locale, r.timezone, r.paper::text AS paper, r.orientation::text AS orientation, r.result_file_id, r.error_code, r.created_at, r.completed_at, r.expires_at ",
                     "FROM \"_appstruct_report_runs\" r JOIN \"_appstruct_report_templates\" t ON t.id = r.template_id WHERE r.tenant_id IS NOT DISTINCT FROM $1 AND ($2 OR r.actor_id = $3) ORDER BY r.created_at DESC, r.id DESC LIMIT $4 OFFSET $5"
                 ),
@@ -73,15 +69,11 @@ pub(super) fn source(audit: bool) -> TokenStream {
             ensure_run_access(&context, &before)?;
             if !matches!(before.stage.as_str(), "queued" | "rendering") { return Err(ApiError::ReportCancellationConflict); }
             let job_id = before.execution_job_id.ok_or(ApiError::ReportCancellationConflict)?;
-            let result = transaction.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_jobs\" SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, locked_by = NULL, locked_until = NULL WHERE id = $1 AND status IN ('queued', 'running')",
+            let result = transaction.execute(Sql::bind("UPDATE \"_appstruct_jobs\" SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, locked_by = NULL, locked_until = NULL WHERE id = $1 AND status IN ('queued', 'running')",
                 [job_id.into()],
             )).await?;
             if result.rows_affected() != 1 { return Err(ApiError::ReportCancellationConflict); }
-            transaction.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_report_runs\" SET stage = 'cancelled', completed_at = CURRENT_TIMESTAMP, progress = 0 WHERE id = $1",
+            transaction.execute(Sql::bind("UPDATE \"_appstruct_report_runs\" SET stage = 'cancelled', completed_at = CURRENT_TIMESTAMP, progress = 0 WHERE id = $1",
                 [id.into()],
             )).await?;
             let after = load_run(&transaction, id, context.tenant()).await?;
@@ -100,11 +92,9 @@ pub(super) fn source(audit: bool) -> TokenStream {
             if run.stage != "succeeded" || run.expires_at <= chrono::Utc::now() {
                 return Err(ApiError::ReportNotReady);
             }
-            let object_key = state.database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT result_object_key FROM \"_appstruct_report_runs\" WHERE id = $1 AND tenant_id IS NOT DISTINCT FROM $2",
+            let object_key = state.database.fetch_optional(Sql::bind("SELECT result_object_key FROM \"_appstruct_report_runs\" WHERE id = $1 AND tenant_id IS NOT DISTINCT FROM $2",
                 [id.into(), context.tenant().into()],
-            )).await?.ok_or(ApiError::NotFound)?.try_get::<Option<String>>("", "result_object_key")?
+            )).await?.ok_or(ApiError::NotFound)?.try_get::<Option<String>, _>("result_object_key")?
                 .ok_or(ApiError::ReportNotReady)?;
             let (_, content) = state.file.get(&object_key, context.tenant()).await
                 .map_err(|_| ApiError::ReportNotReady)?;
@@ -120,18 +110,18 @@ pub(super) fn source(audit: bool) -> TokenStream {
             Ok(response)
         }
 
-        async fn load_run<C: ConnectionTrait>(
+        async fn load_run<C: DatabaseExecutor>(
             database: &C, id: uuid::Uuid, tenant_id: Option<uuid::Uuid>,
         ) -> Result<ReportRun, ApiError> {
             load_run_query(database, "", [id.into(), tenant_id.into()]).await
         }
-        async fn load_run_locked<C: ConnectionTrait>(
+        async fn load_run_locked<C: DatabaseExecutor>(
             database: &C, id: uuid::Uuid, tenant_id: Option<uuid::Uuid>,
         ) -> Result<ReportRun, ApiError> {
             load_run_query(database, " FOR UPDATE", [id.into(), tenant_id.into()]).await
         }
-        async fn load_run_query<C: ConnectionTrait>(
-            database: &C, suffix: &str, values: [sea_orm::Value; 2],
+        async fn load_run_query<C: DatabaseExecutor>(
+            database: &C, suffix: &str, values: [sea_query::Value; 2],
         ) -> Result<ReportRun, ApiError> {
             let sql = format!(
                 "{}{}",
@@ -141,17 +131,14 @@ pub(super) fn source(audit: bool) -> TokenStream {
                 ),
                 suffix,
             );
-            let row = database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres, sql, values,
+            let row = database.fetch_optional(Sql::bind(sql, values,
             )).await?.ok_or(ApiError::NotFound)?;
             Ok(run_from_row(row)?)
         }
-        async fn load_run_by_scope<C: ConnectionTrait>(
+        async fn load_run_by_scope<C: DatabaseExecutor>(
             database: &C, scope: &str,
         ) -> Result<ReportRun, ApiError> {
-            let row = database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                concat!(
+            let row = database.fetch_optional(Sql::bind(concat!(
                     "SELECT r.id, r.execution_job_id, t.name AS template, r.template_version, r.tenant_id, r.actor_id, r.stage::text AS stage, r.progress, r.locale, r.timezone, r.paper::text AS paper, r.orientation::text AS orientation, r.result_file_id, r.error_code, r.created_at, r.completed_at, r.expires_at ",
                     "FROM \"_appstruct_report_runs\" r JOIN \"_appstruct_report_templates\" t ON t.id = r.template_id WHERE r.idempotency_scope = $1"
                 ),

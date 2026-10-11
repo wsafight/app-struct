@@ -4,13 +4,14 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
+use sqlx::Row as _;
+use crate::database::{DatabaseExecutor, Database,  Sql};
 use serde::{Deserialize, Serialize};
 
 const TENANT_HEADER: &str = "x-appstruct-tenant";
 
 pub async fn resolve(
-    database: &DatabaseConnection,
+    database: &Database,
     headers: &HeaderMap,
     actor: Option<&Actor>,
 ) -> Result<Option<TenantId>, ApiError> {
@@ -24,9 +25,7 @@ pub async fn resolve(
         .ok_or(ApiError::InvalidTenant)?;
     let actor = actor.ok_or(ApiError::Unauthorized)?;
     let member = database
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT 1 FROM \"_appstruct_tenant_memberships\" WHERE organization_id = $1 AND user_id = $2",
+        .fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_tenant_memberships\" WHERE organization_id = $1 AND user_id = $2",
             [tenant.into(), actor.id.into()],
         ))
         .await?
@@ -99,9 +98,7 @@ async fn list_organizations(
         .ok_or(ApiError::Unauthorized)?;
     let rows = state
         .database
-        .query_all_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT o.id, o.name, m.role, o.created_at FROM \"_appstruct_tenant_organizations\" o JOIN \"_appstruct_tenant_memberships\" m ON m.organization_id = o.id WHERE m.user_id = $1 ORDER BY o.name, o.id",
+        .fetch_all(Sql::bind("SELECT o.id, o.name, m.role, o.created_at FROM \"_appstruct_tenant_organizations\" o JOIN \"_appstruct_tenant_memberships\" m ON m.organization_id = o.id WHERE m.user_id = $1 ORDER BY o.name, o.id",
             [actor.id.into()],
         ))
         .await?;
@@ -109,13 +106,13 @@ async fn list_organizations(
         .into_iter()
         .map(|row| {
             Ok(Organization {
-                id: row.try_get("", "id")?,
-                name: row.try_get("", "name")?,
-                role: row.try_get("", "role")?,
-                created_at: row.try_get("", "created_at")?,
+                id: row.try_get("id")?,
+                name: row.try_get("name")?,
+                role: row.try_get("role")?,
+                created_at: row.try_get("created_at")?,
             })
         })
-        .collect::<Result<Vec<_>, sea_orm::DbErr>>()?;
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
     Ok(Json(OrganizationList { data }))
 }
 
@@ -139,16 +136,12 @@ async fn create_organization(
     let id = uuid::Uuid::now_v7();
     let transaction = state.database.begin().await?;
     transaction
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "INSERT INTO \"_appstruct_tenant_organizations\" (id, name, created_by, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
+        .execute(Sql::bind("INSERT INTO \"_appstruct_tenant_organizations\" (id, name, created_by, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
             [id.into(), name.to_owned().into(), actor.id.into()],
         ))
         .await?;
     transaction
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "INSERT INTO \"_appstruct_tenant_memberships\" (organization_id, user_id, role, created_at) VALUES ($1, $2, 'owner', CURRENT_TIMESTAMP)",
+        .execute(Sql::bind("INSERT INTO \"_appstruct_tenant_memberships\" (organization_id, user_id, role, created_at) VALUES ($1, $2, 'owner', CURRENT_TIMESTAMP)",
             [id.into(), actor.id.into()],
         ))
         .await?;
@@ -170,9 +163,7 @@ async fn list_invitations(
 ) -> Result<Json<InvitationList>, ApiError> {
     let (actor, tenant) = current_owner(&state, &headers).await?;
     let _ = actor;
-    let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT id, email, role, expires_at, accepted_at, created_at FROM \"_appstruct_tenant_invitations\" WHERE organization_id = $1 ORDER BY created_at DESC, id DESC",
+    let rows = state.database.fetch_all(Sql::bind("SELECT id, email, role, expires_at, accepted_at, created_at FROM \"_appstruct_tenant_invitations\" WHERE organization_id = $1 ORDER BY created_at DESC, id DESC",
         [tenant.into()],
     )).await?;
     let data = rows.into_iter().map(invitation_from_row).collect::<Result<Vec<_>, _>>()?;
@@ -195,14 +186,10 @@ async fn create_invitation(
     let token = random_token();
     let invitation_id = uuid::Uuid::now_v7();
     let transaction = state.database.begin().await?;
-    transaction.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "DELETE FROM \"_appstruct_tenant_invitations\" WHERE organization_id = $1 AND LOWER(email) = $2 AND accepted_at IS NULL",
+    transaction.execute(Sql::bind("DELETE FROM \"_appstruct_tenant_invitations\" WHERE organization_id = $1 AND LOWER(email) = $2 AND accepted_at IS NULL",
         [tenant.into(), email.clone().into()],
     )).await?;
-    transaction.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "INSERT INTO \"_appstruct_tenant_invitations\" (id, organization_id, email, role, token_hash, expires_at, invited_by, created_at) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP + INTERVAL '7 days', $6, CURRENT_TIMESTAMP)",
+    transaction.execute(Sql::bind("INSERT INTO \"_appstruct_tenant_invitations\" (id, organization_id, email, role, token_hash, expires_at, invited_by, created_at) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP + INTERVAL '7 days', $6, CURRENT_TIMESTAMP)",
         [
             invitation_id.into(), tenant.into(), email.clone().into(), input.role.clone().into(),
             token_hash(&token).into(), actor.id.into(),
@@ -227,9 +214,7 @@ async fn revoke_invitation(
 ) -> Result<StatusCode, ApiError> {
     let (_actor, tenant) = current_owner_for_mutation(&state, &headers).await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
-    state.database.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "DELETE FROM \"_appstruct_tenant_invitations\" WHERE id = $1 AND organization_id = $2 AND accepted_at IS NULL",
+    state.database.execute(Sql::bind("DELETE FROM \"_appstruct_tenant_invitations\" WHERE id = $1 AND organization_id = $2 AND accepted_at IS NULL",
         [id.into(), tenant.into()],
     )).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -243,36 +228,28 @@ async fn accept_invitation(
     let actor = state.auth.actor_for_mutation(&state.database, &headers).await?
         .ok_or(ApiError::Unauthorized)?;
     let transaction = state.database.begin().await?;
-    let row = transaction.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT id, organization_id, email, role FROM \"_appstruct_tenant_invitations\" WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP FOR UPDATE",
+    let row = transaction.fetch_optional(Sql::bind("SELECT id, organization_id, email, role FROM \"_appstruct_tenant_invitations\" WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP FOR UPDATE",
         [token_hash(&token).into()],
     )).await?.ok_or(ApiError::InvalidInvitationToken)?;
-    let invitation_id: uuid::Uuid = row.try_get("", "id")?;
-    let organization_id: uuid::Uuid = row.try_get("", "organization_id")?;
-    let email: String = row.try_get("", "email")?;
-    let role: String = row.try_get("", "role")?;
+    let invitation_id: uuid::Uuid = row.try_get("id")?;
+    let organization_id: uuid::Uuid = row.try_get("organization_id")?;
+    let email: String = row.try_get("email")?;
+    let role: String = row.try_get("role")?;
     if actor.email.to_ascii_lowercase() != email.to_ascii_lowercase() {
         return Err(ApiError::Forbidden);
     }
-    transaction.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "INSERT INTO \"_appstruct_tenant_memberships\" (organization_id, user_id, role, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (organization_id, user_id) DO NOTHING",
+    transaction.execute(Sql::bind("INSERT INTO \"_appstruct_tenant_memberships\" (organization_id, user_id, role, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (organization_id, user_id) DO NOTHING",
             [organization_id.into(), actor.id.into(), role.clone().into()],
     )).await?;
-    transaction.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "UPDATE \"_appstruct_tenant_invitations\" SET accepted_at = CURRENT_TIMESTAMP WHERE id = $1",
+    transaction.execute(Sql::bind("UPDATE \"_appstruct_tenant_invitations\" SET accepted_at = CURRENT_TIMESTAMP WHERE id = $1",
         [invitation_id.into()],
     )).await?;
-    let row = transaction.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT id, name, created_at FROM \"_appstruct_tenant_organizations\" WHERE id = $1",
+    let row = transaction.fetch_optional(Sql::bind("SELECT id, name, created_at FROM \"_appstruct_tenant_organizations\" WHERE id = $1",
         [organization_id.into()],
     )).await?.ok_or(ApiError::NotFound)?;
     let organization = Organization {
-        id: row.try_get("", "id")?, name: row.try_get("", "name")?, role,
-        created_at: row.try_get("", "created_at")?,
+        id: row.try_get("id")?, name: row.try_get("name")?, role,
+        created_at: row.try_get("created_at")?,
     };
     transaction.commit().await?;
     Ok(Json(organization))
@@ -300,19 +277,17 @@ async fn require_owner(
 ) -> Result<(Actor, TenantId), ApiError> {
     let actor = context.actor().cloned().ok_or(ApiError::Unauthorized)?;
     let tenant = context.require_tenant()?;
-    let member = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT 1 FROM \"_appstruct_tenant_memberships\" WHERE organization_id = $1 AND user_id = $2 AND role = 'owner'",
+    let member = state.database.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_tenant_memberships\" WHERE organization_id = $1 AND user_id = $2 AND role = 'owner'",
         [tenant.into(), actor.id.into()],
     )).await?.is_some();
     if member { Ok((actor, tenant)) } else { Err(ApiError::Forbidden) }
 }
 
-fn invitation_from_row(row: sea_orm::QueryResult) -> Result<Invitation, sea_orm::DbErr> {
+fn invitation_from_row(row: crate::database::PgRow) -> Result<Invitation, sqlx::Error> {
     Ok(Invitation {
-        id: row.try_get("", "id")?, email: row.try_get("", "email")?, role: row.try_get("", "role")?,
-        expires_at: row.try_get("", "expires_at")?, accepted_at: row.try_get("", "accepted_at")?,
-        created_at: row.try_get("", "created_at")?,
+        id: row.try_get("id")?, email: row.try_get("email")?, role: row.try_get("role")?,
+        expires_at: row.try_get("expires_at")?, accepted_at: row.try_get("accepted_at")?,
+        created_at: row.try_get("created_at")?,
     })
 }
 

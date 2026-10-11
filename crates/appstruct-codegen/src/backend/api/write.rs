@@ -103,7 +103,7 @@ fn read_handler(
             let context = state.context(&headers).await?;
             let id = #parse_id;
             #read_scope
-            let model = #module::Entity::find_by_id(id)
+            let model = #module::select_by_id(id)
                 .filter(access_condition)
                 .one(&state.database).await?.ok_or(ApiError::NotFound)?;
             if !state.extensions.#policy().can_read(&context, &model).await? {
@@ -152,7 +152,7 @@ fn create_handler(
                 if !state.extensions.#policy().can_create(&context, &input).await? {
                     return Err(ApiError::Forbidden);
                 }
-                let active = #module::ActiveModel { #(#create_values,)* #active_default };
+                let active = #module::Model { #(#create_values,)* #active_default };
                 let model = active.insert(&transaction).await?;
                 state.extensions.#hooks().after_create(&context, &model).await?;
                 #audit
@@ -204,7 +204,7 @@ fn update_handler(
                     &transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant,
                 );
                 #read_scope
-                let before = #module::Entity::find_by_id(id)
+                let before = #module::select_by_id(id)
                     .filter(access_condition)
                     .lock_exclusive()
                     .one(&transaction).await?.ok_or(ApiError::NotFound)?;
@@ -217,11 +217,11 @@ fn update_handler(
                 state.extensions.#hooks().before_update(&context, &before, &mut input).await?;
                 authorize_update_fields(&context, &input)?;
                 validate_update(&input)?;
-                let mut active = before.clone().into_active_model();
+                let mut active = before.clone();
                 #(#updates)*
-                active.revision = Set(before.revision.checked_add(1)
-                    .ok_or_else(|| sea_orm::DbErr::Custom("revision overflow".to_owned()))?);
-                let candidate = active.clone().try_into_model()?;
+                active.revision = before.revision.checked_add(1)
+                    .ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
+                let candidate = active.clone();
                 if !(#update_allowed) {
                     return Err(access_denied(&context));
                 }
@@ -259,10 +259,10 @@ fn delete_handler(
 ) -> TokenStream {
     let delete_model = if soft_delete {
         quote! {
-            let mut active = model.clone().into_active_model();
-            active.deleted_at = Set(Some(chrono::Utc::now()));
-            active.revision = Set(model.revision.checked_add(1)
-                .ok_or_else(|| sea_orm::DbErr::Custom("revision overflow".to_owned()))?);
+            let mut active = model.clone();
+            active.deleted_at = Some(chrono::Utc::now());
+            active.revision = model.revision.checked_add(1)
+                .ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
             active.update(&transaction).await?
         }
     } else {
@@ -289,7 +289,7 @@ fn delete_handler(
                     &transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant,
                 );
                 #read_scope
-                let model = #module::Entity::find_by_id(id)
+                let model = #module::select_by_id(id)
                     .filter(access_condition)
                     .lock_exclusive()
                     .one(&transaction).await?.ok_or(ApiError::NotFound)?;

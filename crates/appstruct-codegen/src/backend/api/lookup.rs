@@ -22,7 +22,7 @@ pub(super) fn support(
                 return Err(ApiError::InvalidQuery("lookup requires between 1 and 100 IDs".to_owned()));
             }
             let ids = raw_ids.into_iter().map(|id| { let id = id.to_owned(); Ok(#parse_id) }).collect::<Result<Vec<_>, ApiError>>()?;
-            let mut select = #module::Entity::find();
+            let mut select = #module::select();
             #scope
             let models = select.filter(#module::Column::#primary.is_in(ids)).all(&state.database).await?;
             let mut records = Vec::with_capacity(models.len());

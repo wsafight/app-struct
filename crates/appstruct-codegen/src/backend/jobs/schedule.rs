@@ -68,23 +68,20 @@ pub(super) fn persistence() -> TokenStream {
             )))
         }
 
-        async fn ensure_schedules(database: &DatabaseConnection) -> Result<(), JobError> {
+        async fn ensure_schedules(database: &Database) -> Result<(), JobError> {
             let transaction = database.begin().await?;
-            let clock = transaction.query_one_raw(Statement::from_string(
-                DbBackend::Postgres,
-                "SELECT CURRENT_TIMESTAMP AS scheduler_now".to_owned(),
-            )).await?.ok_or_else(|| JobError::Database(DbErr::Custom(
+            let clock = transaction.fetch_optional(Sql::new("SELECT CURRENT_TIMESTAMP AS scheduler_now".to_owned(),
+            )).await?.ok_or_else(|| JobError::Database(DbErr::Protocol(
                 "database clock query returned no row".to_owned()
             )))?;
-            let now: chrono::DateTime<chrono::Utc> = clock.try_get("", "scheduler_now")?;
+            let now: chrono::DateTime<chrono::Utc> = clock.try_get("scheduler_now")?;
             for schedule in schedule_configs() {
                 let next_run_at = if schedule.interval_seconds.is_some() {
                     now
                 } else {
                     next_schedule_run(schedule, now)?
                 };
-                transaction.execute_raw(Statement::from_sql_and_values(
-                    DbBackend::Postgres,
+                transaction.execute(Sql::bind(
                     "INSERT INTO \"_appstruct_job_schedules\" AS schedule (id, name, cron, interval_seconds, queue, kind, payload, enabled, paused, next_run_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, FALSE, $8, CURRENT_TIMESTAMP) ON CONFLICT (name) DO UPDATE SET cron = EXCLUDED.cron, interval_seconds = EXCLUDED.interval_seconds, queue = EXCLUDED.queue, kind = EXCLUDED.kind, payload = EXCLUDED.payload, enabled = TRUE, next_run_at = CASE WHEN schedule.enabled AND schedule.cron = EXCLUDED.cron AND schedule.interval_seconds IS NOT DISTINCT FROM EXCLUDED.interval_seconds THEN schedule.next_run_at ELSE EXCLUDED.next_run_at END",
                     [
                         uuid::Uuid::now_v7().into(), schedule.name.to_owned().into(),
@@ -100,8 +97,7 @@ pub(super) fn persistence() -> TokenStream {
                 "UPDATE \"_appstruct_job_schedules\" SET enabled = FALSE WHERE enabled"
             ).await?;
             for schedule in schedule_configs() {
-                transaction.execute_raw(Statement::from_sql_and_values(
-                    DbBackend::Postgres,
+                transaction.execute(Sql::bind(
                     "UPDATE \"_appstruct_job_schedules\" SET enabled = TRUE WHERE name = $1",
                     [schedule.name.to_owned().into()],
                 )).await?;
@@ -110,11 +106,10 @@ pub(super) fn persistence() -> TokenStream {
             Ok(())
         }
 
-        async fn schedule_due(database: &DatabaseConnection) -> Result<(), JobError> {
+        async fn schedule_due(database: &Database) -> Result<(), JobError> {
             for schedule in schedule_configs() {
                 let transaction = database.begin().await?;
-                let row = transaction.query_one_raw(Statement::from_sql_and_values(
-                    DbBackend::Postgres,
+                let row = transaction.fetch_optional(Sql::bind(
                     "SELECT id, next_run_at, CURRENT_TIMESTAMP AS scheduler_now FROM \"_appstruct_job_schedules\" WHERE name = $1 AND enabled AND NOT paused AND next_run_at <= CURRENT_TIMESTAMP FOR UPDATE SKIP LOCKED LIMIT 1",
                     [schedule.name.to_owned().into()],
                 )).await?;
@@ -122,13 +117,12 @@ pub(super) fn persistence() -> TokenStream {
                     transaction.commit().await?;
                     continue;
                 };
-                let schedule_id: uuid::Uuid = row.try_get("", "id")?;
-                let run_at: chrono::DateTime<chrono::Utc> = row.try_get("", "next_run_at")?;
+                let schedule_id: uuid::Uuid = row.try_get("id")?;
+                let run_at: chrono::DateTime<chrono::Utc> = row.try_get("next_run_at")?;
                 let scheduler_now: chrono::DateTime<chrono::Utc> =
-                    row.try_get("", "scheduler_now")?;
+                    row.try_get("scheduler_now")?;
                 let next_run_at = next_schedule_run(schedule, scheduler_now)?;
-                transaction.execute_raw(Statement::from_sql_and_values(
-                    DbBackend::Postgres,
+                transaction.execute(Sql::bind(
                     "UPDATE \"_appstruct_job_schedules\" SET next_run_at = $2, last_run_at = CURRENT_TIMESTAMP WHERE id = $1",
                     [schedule_id.into(), next_run_at.into()],
                 )).await?;

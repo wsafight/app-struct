@@ -3,7 +3,7 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 AppStruct is a configuration-driven Rust full-stack application generator. It compiles a
-multi-file YAML App Spec into a typed IR, PostgreSQL migrations, an Axum/SeaORM backend,
+multi-file YAML App Spec into a typed IR, PostgreSQL migrations, an Axum/SQLx + sift-query backend,
 OpenAPI, a TypeScript client, and a React/Rsbuild application.
 
 The repository is currently a technical preview. It is distributed from a source checkout for now;
@@ -191,7 +191,7 @@ Other contracts live in dedicated guides:
 - Auth, Tenant, Audit, Mail, Jobs, and File modules
 - Bulk operations, saved views, soft delete, invitations, email verification, OAuth/OIDC, and
   personal API tokens
-- Generated Axum/SeaORM backend, OpenAPI, and TypeScript client
+- Generated Axum/SQLx + sift-query backend, OpenAPI, and TypeScript client
 
 ## Commands
 

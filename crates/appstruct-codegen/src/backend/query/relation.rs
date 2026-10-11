@@ -41,7 +41,7 @@ pub(super) fn filter_rules(
                     }
                     use crate::entities::#target_module;
                     let value = #value;
-                    let mut relation_select = #target_module::Entity::find()
+                    let mut relation_select = #target_module::select()
                         .select_only()
                         .column(#target_module::Column::#target_primary);
                     #target_scope
@@ -114,7 +114,7 @@ fn range_rules(tokens: &RangeRuleTokens<'_>) -> Result<Vec<TokenStream>, Codegen
                     }
                     use crate::entities::#target_module;
                     let value = #value;
-                    let mut relation_select = #target_module::Entity::find()
+                    let mut relation_select = #target_module::select()
                         .select_only()
                         .column(#target_module::Column::#target_primary);
                     #target_scope
@@ -159,21 +159,6 @@ pub(super) fn filter_keys(ir: &AppIr, entity: &EntityIr) -> Result<Vec<LitStr>, 
         }
     }
     Ok(keys)
-}
-
-pub(super) fn has_filters(ir: &AppIr, entity: &EntityIr) -> Result<bool, CodegenError> {
-    for field in relation_fields(entity) {
-        let FieldTypeIr::Relation { target } = &field.ty else {
-            continue;
-        };
-        if filterable_fields(find_entity(ir, &target.0)?)
-            .next()
-            .is_some()
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 fn relation_fields(entity: &EntityIr) -> impl Iterator<Item = &appstruct_ir::FieldIr> {

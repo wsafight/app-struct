@@ -46,11 +46,10 @@ pub(super) fn support(
         #input
         #relations
         pub async fn collection(state: &AppState, context: &RequestContext<'_>, parent: uuid::Uuid, limit: u64) -> Result<Vec<serde_json::Value>, ApiError> {
-            use sea_orm::PaginatorTrait as _;
-            let count = #module::Entity::find().filter(#module::Column::#relation_column.eq(parent)).count(context).await?;
+            let count = #module::select().filter(#module::Column::#relation_column.eq(parent)).count(context).await?;
             if count > limit { return Err(invalid("Collection exceeds max_items")); }
             #scope
-            let models = #module::Entity::find().filter(access_condition)
+            let models = #module::select().filter(access_condition)
                 .filter(#module::Column::#relation_column.eq(parent))
                 .order_by_asc(#module::Column::#primary_column).all(context).await?;
             let mut rows = Vec::new();
@@ -63,7 +62,7 @@ pub(super) fn support(
         }
         async fn load(state: &AppState, context: &RequestContext<'_>, parent: uuid::Uuid, id: uuid::Uuid, revision: i64) -> Result<#module::Model, ApiError> {
             #scope
-            let model = #module::Entity::find_by_id(id).filter(access_condition)
+            let model = #module::select_by_id(id).filter(access_condition)
                 .filter(#module::Column::#relation_column.eq(parent)).lock_exclusive()
                 .one(context).await?.ok_or(ApiError::NotFound)?;
             if !state.extensions.#policy().can_read(context, &model).await? { return Err(ApiError::NotFound); }
@@ -80,8 +79,8 @@ pub(super) fn support(
             validate_create(&input)?;
             if !(#create_allowed) { return Err(access_denied(context)); }
             if !state.extensions.#policy().can_create(context, &input).await? { return Err(ApiError::Forbidden); }
-            let active = #module::ActiveModel { #(#creates,)* };
-            let candidate = active.clone().try_into_model()?;
+            let active = #module::Model { #(#creates,)* };
+            let candidate = active.clone();
             if candidate.#relation_name != parent { return Err(invalid("Parent relation cannot change")); }
             validate_relations(state, context, &candidate).await?;
             let model = active.insert(context).await?;
@@ -98,10 +97,10 @@ pub(super) fn support(
             state.extensions.#hooks().before_update(context, &before, &mut input).await?;
             authorize_update_fields(context, &input)?;
             validate_update(&input)?;
-            let mut active = before.clone().into_active_model();
+            let mut active = before.clone();
             #(#updates)*
-            active.revision = Set(before.revision.checked_add(1).ok_or(ApiError::Internal)?);
-            let candidate = active.clone().try_into_model()?;
+            active.revision = before.revision.checked_add(1).ok_or(ApiError::Internal)?;
+            let candidate = active.clone();
             if candidate.#relation_name != parent { return Err(invalid("Parent relation cannot change")); }
             if !(#update_allowed) { return Err(access_denied(context)); }
             if !state.extensions.#policy().can_update(context, &before, &input, &candidate).await? { return Err(ApiError::Forbidden); }

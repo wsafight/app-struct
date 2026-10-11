@@ -1,5 +1,5 @@
+use appstruct_generated_backend::database::{Database, DatabaseExecutor};
 use appstruct_generated_backend::{FileError, FileState, MailState, RequestContext};
-use sea_orm::{ConnectionTrait, Database};
 use std::{env, fs, path::PathBuf};
 
 #[tokio::main]
@@ -26,7 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(metadata.tenant_id, Some(tenant_id));
     assert_eq!(metadata.size, 15);
     assert_eq!(metadata.checksum.len(), 64);
-    assert_eq!(fs::read(root.join("documents/hello.txt"))?, b"hello AppStruct");
+    assert_eq!(
+        fs::read(root.join("documents/hello.txt"))?,
+        b"hello AppStruct"
+    );
 
     let (loaded, content) = context.get_file("documents/hello.txt").await?;
     assert_eq!(loaded.id, metadata.id);
@@ -37,7 +40,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await,
         Err(FileError::Storage(_))
     ));
-    assert_eq!(context.get_file("documents/hello.txt").await?.1, b"hello AppStruct");
+    assert_eq!(
+        context.get_file("documents/hello.txt").await?.1,
+        b"hello AppStruct"
+    );
 
     let other = RequestContext::connection_with_file(
         &database,
@@ -51,7 +57,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(FileError::Database(_))
     ));
 
-    for key in ["../secret", "/tmp/secret", "documents//bad", "documents/./bad", "documents/"] {
+    for key in [
+        "../secret",
+        "/tmp/secret",
+        "documents//bad",
+        "documents/./bad",
+        "documents/",
+    ] {
         assert!(matches!(
             context.put_file(key, "bad.txt", "text/plain", b"bad").await,
             Err(FileError::InvalidKey)
@@ -83,7 +95,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     assert!(matches!(
         context
-            .put_file("documents/large.txt", "large.txt", "text/plain", &vec![b'x'; 1025])
+            .put_file(
+                "documents/large.txt",
+                "large.txt",
+                "text/plain",
+                &vec![b'x'; 1025]
+            )
             .await,
         Err(FileError::TooLarge { .. })
     ));

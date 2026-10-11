@@ -49,9 +49,7 @@ fn status() -> TokenStream {
             })?;
             authorize_resource_scope(&state, &context, resource, Some(&record_id)).await?;
             let key = lock_key(context.tenant(), resource, &record_id);
-            let row = state.database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "SELECT lease_token, actor_id, tenant_id, resource, record_id, acquired_at, expires_at FROM \"_appstruct_realtime_locks\" WHERE lock_key = $1 AND expires_at > CURRENT_TIMESTAMP",
+            let row = state.database.fetch_optional(Sql::bind("SELECT lease_token, actor_id, tenant_id, resource, record_id, acquired_at, expires_at FROM \"_appstruct_realtime_locks\" WHERE lock_key = $1 AND expires_at > CURRENT_TIMESTAMP",
                 [key.into()],
             )).await?;
             let data = row.map(lock_from_row).transpose()?;
@@ -76,9 +74,7 @@ fn acquire() -> TokenStream {
             authorize_resource_scope(&state, &context, resource, Some(&record_id)).await?;
             let key = lock_key(context.tenant(), resource, &record_id);
             let token = uuid::Uuid::now_v7();
-            let row = state.database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_realtime_locks\" AS lease (lock_key, lease_token, actor_id, tenant_id, resource, record_id, acquired_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + ($7 * INTERVAL '1 second')) ON CONFLICT (lock_key) DO UPDATE SET lease_token = EXCLUDED.lease_token, actor_id = EXCLUDED.actor_id, tenant_id = EXCLUDED.tenant_id, resource = EXCLUDED.resource, record_id = EXCLUDED.record_id, acquired_at = CURRENT_TIMESTAMP, expires_at = EXCLUDED.expires_at WHERE lease.expires_at <= CURRENT_TIMESTAMP RETURNING lease_token, actor_id, tenant_id, resource, record_id, acquired_at, expires_at",
+            let row = state.database.fetch_optional(Sql::bind("INSERT INTO \"_appstruct_realtime_locks\" AS lease (lock_key, lease_token, actor_id, tenant_id, resource, record_id, acquired_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + ($7 * INTERVAL '1 second')) ON CONFLICT (lock_key) DO UPDATE SET lease_token = EXCLUDED.lease_token, actor_id = EXCLUDED.actor_id, tenant_id = EXCLUDED.tenant_id, resource = EXCLUDED.resource, record_id = EXCLUDED.record_id, acquired_at = CURRENT_TIMESTAMP, expires_at = EXCLUDED.expires_at WHERE lease.expires_at <= CURRENT_TIMESTAMP RETURNING lease_token, actor_id, tenant_id, resource, record_id, acquired_at, expires_at",
                 [key.into(), token.into(), actor.id.into(), context.tenant().into(),
                  resource.to_owned().into(), record_id.into(), ttl.into()],
             )).await?;
@@ -107,9 +103,7 @@ fn renewal() -> TokenStream {
             })?;
             authorize_resource_scope(&state, &context, resource, Some(&record_id)).await?;
             let key = lock_key(context.tenant(), resource, &record_id);
-            let row = state.database.query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "UPDATE \"_appstruct_realtime_locks\" SET expires_at = CURRENT_TIMESTAMP + ($4 * INTERVAL '1 second') WHERE lock_key = $1 AND lease_token = $2 AND actor_id = $3 AND expires_at > CURRENT_TIMESTAMP RETURNING lease_token, actor_id, tenant_id, resource, record_id, acquired_at, expires_at",
+            let row = state.database.fetch_optional(Sql::bind("UPDATE \"_appstruct_realtime_locks\" SET expires_at = CURRENT_TIMESTAMP + ($4 * INTERVAL '1 second') WHERE lock_key = $1 AND lease_token = $2 AND actor_id = $3 AND expires_at > CURRENT_TIMESTAMP RETURNING lease_token, actor_id, tenant_id, resource, record_id, acquired_at, expires_at",
                 [key.into(), token.into(), actor.id.into(), ttl.into()],
             )).await?;
             let row = row.ok_or_else(|| ApiError::Conflict(
@@ -131,9 +125,7 @@ fn renewal() -> TokenStream {
             })?;
             authorize_resource_scope(&state, &context, resource, Some(&record_id)).await?;
             let key = lock_key(context.tenant(), resource, &record_id);
-            let result = state.database.execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "DELETE FROM \"_appstruct_realtime_locks\" WHERE lock_key = $1 AND lease_token = $2 AND actor_id = $3",
+            let result = state.database.execute(Sql::bind("DELETE FROM \"_appstruct_realtime_locks\" WHERE lock_key = $1 AND lease_token = $2 AND actor_id = $3",
                 [key.into(), token.into(), actor.id.into()],
             )).await?;
             if result.rows_affected() == 1 { Ok(axum::http::StatusCode::NO_CONTENT) }
@@ -163,12 +155,12 @@ fn helpers() -> TokenStream {
             let tenant = tenant_id.map_or_else(|| "global".to_owned(), |id| id.to_string());
             format!("{tenant}|{}:{resource}|{}:{record_id}", resource.len(), record_id.len())
         }
-        fn lock_from_row(row: sea_orm::QueryResult) -> Result<RealtimeLockLease, DbErr> {
+        fn lock_from_row(row: crate::database::PgRow) -> Result<RealtimeLockLease, DbErr> {
             Ok(RealtimeLockLease {
-                lease_token: row.try_get("", "lease_token")?, actor_id: row.try_get("", "actor_id")?,
-                tenant_id: row.try_get("", "tenant_id")?, resource: row.try_get("", "resource")?,
-                record_id: row.try_get("", "record_id")?, acquired_at: row.try_get("", "acquired_at")?,
-                expires_at: row.try_get("", "expires_at")?,
+                lease_token: row.try_get("lease_token")?, actor_id: row.try_get("actor_id")?,
+                tenant_id: row.try_get("tenant_id")?, resource: row.try_get("resource")?,
+                record_id: row.try_get("record_id")?, acquired_at: row.try_get("acquired_at")?,
+                expires_at: row.try_get("expires_at")?,
             })
         }
     }

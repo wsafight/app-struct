@@ -4,7 +4,8 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
+use sqlx::Row as _;
+use crate::database::{DatabaseExecutor,  Sql};
 use serde::{Deserialize, Serialize};
 
 pub(super) fn router() -> Router<AppState> {
@@ -65,15 +66,11 @@ async fn list_deliveries(
     let offset = (page - 1).checked_mul(page_size).ok_or_else(|| {
         ApiError::InvalidQuery("pagination is too large".to_owned())
     })?;
-    let count = state.database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT COUNT(*) AS total FROM \"_appstruct_webhook_deliveries\" WHERE ($1::text IS NULL OR status::text = $1)",
+    let count = state.database.fetch_optional(Sql::bind("SELECT COUNT(*) AS total FROM \"_appstruct_webhook_deliveries\" WHERE ($1::text IS NULL OR status::text = $1)",
         [input.status.clone().into()],
     )).await?.ok_or(ApiError::Internal)?;
-    let total: i64 = count.try_get("", "total")?;
-    let rows = state.database.query_all_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT id, endpoint, event, status::text AS status, tenant_id, attempts, max_attempts, next_attempt_at, response_status, last_error, created_at, completed_at FROM \"_appstruct_webhook_deliveries\" WHERE ($1::text IS NULL OR status::text = $1) ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
+    let total: i64 = count.try_get("total")?;
+    let rows = state.database.fetch_all(Sql::bind("SELECT id, endpoint, event, status::text AS status, tenant_id, attempts, max_attempts, next_attempt_at, response_status, last_error, created_at, completed_at FROM \"_appstruct_webhook_deliveries\" WHERE ($1::text IS NULL OR status::text = $1) ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3",
         [input.status.into(), i64::try_from(page_size).unwrap_or(100).into(), i64::try_from(offset).unwrap_or(i64::MAX).into()],
     )).await?;
     let data = rows.into_iter().map(delivery_from_row).collect::<Result<Vec<_>, _>>()?;
@@ -90,9 +87,7 @@ async fn retry_delivery(
     if lock_status(&transaction, id).await? != "dead" {
         return Err(ApiError::Conflict("Only dead webhook deliveries can be retried".to_owned()));
     }
-    let row = transaction.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "UPDATE \"_appstruct_webhook_deliveries\" SET status = 'pending', attempts = 0, next_attempt_at = CURRENT_TIMESTAMP, locked_by = NULL, locked_until = NULL, response_status = NULL, last_error = NULL, completed_at = NULL WHERE id = $1 RETURNING id, endpoint, event, status::text AS status, tenant_id, attempts, max_attempts, next_attempt_at, response_status, last_error, created_at, completed_at",
+    let row = transaction.fetch_optional(Sql::bind("UPDATE \"_appstruct_webhook_deliveries\" SET status = 'pending', attempts = 0, next_attempt_at = CURRENT_TIMESTAMP, locked_by = NULL, locked_until = NULL, response_status = NULL, last_error = NULL, completed_at = NULL WHERE id = $1 RETURNING id, endpoint, event, status::text AS status, tenant_id, attempts, max_attempts, next_attempt_at, response_status, last_error, created_at, completed_at",
         [id.into()],
     )).await?.ok_or(ApiError::NotFound)?;
     let delivery = delivery_from_row(row)?;
@@ -114,9 +109,7 @@ async fn replay_delivery(
         ));
     }
     let id = uuid::Uuid::now_v7();
-    let row = transaction.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "INSERT INTO \"_appstruct_webhook_deliveries\" (id, endpoint, event, payload, idempotency_key, tenant_id, status, attempts, max_attempts, backoff_seconds, next_attempt_at, created_at) SELECT $1, endpoint, event, payload, NULL, tenant_id, 'pending', 0, max_attempts, backoff_seconds, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM \"_appstruct_webhook_deliveries\" WHERE id = $2 RETURNING id, endpoint, event, status::text AS status, tenant_id, attempts, max_attempts, next_attempt_at, response_status, last_error, created_at, completed_at",
+    let row = transaction.fetch_optional(Sql::bind("INSERT INTO \"_appstruct_webhook_deliveries\" (id, endpoint, event, payload, idempotency_key, tenant_id, status, attempts, max_attempts, backoff_seconds, next_attempt_at, created_at) SELECT $1, endpoint, event, payload, NULL, tenant_id, 'pending', 0, max_attempts, backoff_seconds, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM \"_appstruct_webhook_deliveries\" WHERE id = $2 RETURNING id, endpoint, event, status::text AS status, tenant_id, attempts, max_attempts, next_attempt_at, response_status, last_error, created_at, completed_at",
         [id.into(), source_id.into()],
     )).await?.ok_or(ApiError::NotFound)?;
     let delivery = delivery_from_row(row)?;
@@ -139,24 +132,22 @@ fn ensure_enabled() -> Result<(), ApiError> {
     if config::WEBHOOKS_ENABLED { Ok(()) } else { Err(ApiError::NotFound) }
 }
 
-async fn lock_status<C: ConnectionTrait>(database: &C, id: uuid::Uuid) -> Result<String, ApiError> {
-    let row = database.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Postgres,
-        "SELECT status::text AS status FROM \"_appstruct_webhook_deliveries\" WHERE id = $1 FOR UPDATE",
+async fn lock_status<C: DatabaseExecutor>(database: &C, id: uuid::Uuid) -> Result<String, ApiError> {
+    let row = database.fetch_optional(Sql::bind("SELECT status::text AS status FROM \"_appstruct_webhook_deliveries\" WHERE id = $1 FOR UPDATE",
         [id.into()],
     )).await?.ok_or(ApiError::NotFound)?;
-    Ok(row.try_get("", "status")?)
+    Ok(row.try_get("status")?)
 }
 
-fn delivery_from_row(row: sea_orm::QueryResult) -> Result<AdminWebhookDelivery, sea_orm::DbErr> {
+fn delivery_from_row(row: crate::database::PgRow) -> Result<AdminWebhookDelivery, sqlx::Error> {
     Ok(AdminWebhookDelivery {
-        id: row.try_get("", "id")?, endpoint: row.try_get("", "endpoint")?,
-        event: row.try_get("", "event")?, status: row.try_get("", "status")?,
-        tenant_id: row.try_get("", "tenant_id")?, attempts: row.try_get("", "attempts")?,
-        max_attempts: row.try_get("", "max_attempts")?,
-        next_attempt_at: row.try_get("", "next_attempt_at")?,
-        response_status: row.try_get("", "response_status")?,
-        last_error: row.try_get("", "last_error")?, created_at: row.try_get("", "created_at")?,
-        completed_at: row.try_get("", "completed_at")?,
+        id: row.try_get("id")?, endpoint: row.try_get("endpoint")?,
+        event: row.try_get("event")?, status: row.try_get("status")?,
+        tenant_id: row.try_get("tenant_id")?, attempts: row.try_get("attempts")?,
+        max_attempts: row.try_get("max_attempts")?,
+        next_attempt_at: row.try_get("next_attempt_at")?,
+        response_status: row.try_get("response_status")?,
+        last_error: row.try_get("last_error")?, created_at: row.try_get("created_at")?,
+        completed_at: row.try_get("completed_at")?,
     })
 }

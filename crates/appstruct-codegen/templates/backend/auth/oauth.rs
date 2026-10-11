@@ -7,7 +7,8 @@ use axum::http::HeaderMap;
 use axum::response::Redirect;
 use axum::routing::{delete, get};
 use axum::Router;
-use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
+use sqlx::Row as _;
+use crate::database::{DatabaseExecutor,  Sql};
 use serde::{Deserialize, Serialize};
 
 const ENABLED_PROVIDERS: &[&str] = &[];
@@ -194,20 +195,18 @@ async fn list_accounts(
         .ok_or(ApiError::Unauthorized)?;
     let rows = state
         .database
-        .query_all_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT provider, created_at FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1 ORDER BY created_at, provider",
+        .fetch_all(Sql::bind("SELECT provider, created_at FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1 ORDER BY created_at, provider",
             [actor.id.into()],
         ))
         .await?;
     rows.into_iter()
         .map(|row| {
             Ok(LinkedAccount {
-                provider: row.try_get("", "provider")?,
-                created_at: row.try_get("", "created_at")?,
+                provider: row.try_get("provider")?,
+                created_at: row.try_get("created_at")?,
             })
         })
-        .collect::<Result<Vec<_>, sea_orm::DbErr>>()
+        .collect::<Result<Vec<_>, sqlx::Error>>()
         .map(axum::Json)
         .map_err(ApiError::from)
 }
@@ -225,24 +224,20 @@ async fn unlink_account(
     }
     let transaction = state.database.begin().await?;
     let account = transaction
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT (SELECT COUNT(*) FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1) AS oauth_count, a.password_hash FROM \"_appstruct_auth_accounts\" a WHERE a.user_id = $1",
+        .fetch_optional(Sql::bind("SELECT (SELECT COUNT(*) FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1) AS oauth_count, a.password_hash FROM \"_appstruct_auth_accounts\" a WHERE a.user_id = $1",
             [actor.id.into()],
         ))
         .await?
         .ok_or(ApiError::Internal)?;
-    let count: i64 = account.try_get("", "oauth_count")?;
-    let password_hash: String = account.try_get("", "password_hash")?;
+    let count: i64 = account.try_get("oauth_count")?;
+    let password_hash: String = account.try_get("password_hash")?;
     if count <= 1 && password_hash.is_empty() {
         return Err(ApiError::Conflict(
             "The last linked login method cannot be removed".to_owned(),
         ));
     }
     let deleted = transaction
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "DELETE FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1 AND provider = $2",
+        .execute(Sql::bind("DELETE FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1 AND provider = $2",
             [actor.id.into(), provider.clone().into()],
         ))
         .await?;
@@ -261,9 +256,7 @@ async fn link_oauth_account(
 ) -> Result<(), ApiError> {
     if state
         .database
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT user_id FROM \"_appstruct_auth_oauth_accounts\" WHERE provider = $1 AND subject = $2",
+        .fetch_optional(Sql::bind("SELECT user_id FROM \"_appstruct_auth_oauth_accounts\" WHERE provider = $1 AND subject = $2",
             [provider.to_owned().into(), subject.to_owned().into()],
         ))
         .await?
@@ -275,9 +268,7 @@ async fn link_oauth_account(
     }
     state
         .database
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "INSERT INTO \"_appstruct_auth_oauth_accounts\" (provider, subject, user_id, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
+        .execute(Sql::bind("INSERT INTO \"_appstruct_auth_oauth_accounts\" (provider, subject, user_id, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
             [provider.to_owned().into(), subject.to_owned().into(), user_id.into()],
         ))
         .await?;
@@ -444,20 +435,16 @@ async fn find_or_create_oauth_user(
 ) -> Result<uuid::Uuid, ApiError> {
     if let Some(row) = state
         .database
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT user_id FROM \"_appstruct_auth_oauth_accounts\" WHERE provider = $1 AND subject = $2",
+        .fetch_optional(Sql::bind("SELECT user_id FROM \"_appstruct_auth_oauth_accounts\" WHERE provider = $1 AND subject = $2",
             [provider.to_owned().into(), subject.to_owned().into()],
         ))
         .await?
     {
-        return Ok(row.try_get("", "user_id")?);
+        return Ok(row.try_get("user_id")?);
     }
     let transaction = state.database.begin().await?;
     let user_id = if let Some(row) = transaction
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            format!(
+        .fetch_optional(Sql::bind(format!(
                 "SELECT {id} FROM {users} WHERE LOWER({email}) = $1",
                 id = quote_ident(config::USER_ID_COLUMN),
                 users = quote_ident(config::USER_TABLE),
@@ -467,16 +454,14 @@ async fn find_or_create_oauth_user(
         ))
         .await?
     {
-        row.try_get("", config::USER_ID_COLUMN)?
+        row.try_get(config::USER_ID_COLUMN)?
     } else {
         if !signup_allowed(provider) {
             return Err(ApiError::Forbidden);
         }
         let id = uuid::Uuid::now_v7();
         transaction
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                format!(
+            .execute(Sql::bind(format!(
                     "INSERT INTO {users} ({id}, {email}) VALUES ($1, $2)",
                     users = quote_ident(config::USER_TABLE),
                     id = quote_ident(config::USER_ID_COLUMN),
@@ -486,18 +471,14 @@ async fn find_or_create_oauth_user(
             ))
             .await?;
         transaction
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                "INSERT INTO \"_appstruct_auth_accounts\" (user_id, password_hash, roles, email_verified_at, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            .execute(Sql::bind("INSERT INTO \"_appstruct_auth_accounts\" (user_id, password_hash, roles, email_verified_at, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 [id.into(), "".to_owned().into(), serde_json::json!([config::DEFAULT_ROLE]).into()],
             ))
             .await?;
         id
     };
     transaction
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "INSERT INTO \"_appstruct_auth_oauth_accounts\" (provider, subject, user_id, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
+        .execute(Sql::bind("INSERT INTO \"_appstruct_auth_oauth_accounts\" (provider, subject, user_id, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
             [provider.to_owned().into(), subject.to_owned().into(), user_id.into()],
         ))
         .await?;
