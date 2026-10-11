@@ -17,7 +17,7 @@ pub(super) fn source() -> TokenStream {
             let rendered = environment.render_str(
                 template,
                 minijinja::context! {
-                    input => input,
+                    input => minijinja::value::Serde(input),
                     locale => locale,
                     timezone => timezone,
                     paper => paper,

@@ -70,6 +70,6 @@ mod tests {
         assert_eq!(offsets.byte_offset(3), "a项b".len());
 
         let ascii = CharToByte::with_source("plain ASCII");
-        assert!(ascii.multibyte_boundaries.is_empty());
+        assert_eq!(ascii.multibyte_boundaries, Vec::new());
     }
 }

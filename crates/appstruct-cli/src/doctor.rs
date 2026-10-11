@@ -43,8 +43,8 @@ pub(crate) fn run(project: &Path, json: bool) -> ExitCode {
         }
     };
     let mut checks = vec![
-        tool("rustc", &["--version"], Some("1.98.")),
-        tool("cargo", &["--version"], Some("1.98.")),
+        tool("rustc", &["--version"], Some("1.99.")),
+        tool("cargo", &["--version"], Some("1.99.")),
         tool("rustfmt", &["--version"], None),
         tool("cargo", &["clippy", "--version"], None),
         tool("pnpm", &["--version"], Some(REQUIRED_PNPM)),
@@ -172,7 +172,7 @@ fn next_step(checks: &[DoctorCheck]) -> &'static str {
         None => "Run appstruct dev to start the application.",
         Some(check) => match check.name.as_str() {
             "rustc" | "cargo" | "rustfmt" | "clippy" => {
-                "Run rustup toolchain install 1.98.0 --component clippy,rustfmt, then appstruct doctor."
+                "Run rustup toolchain install 1.99.0 --component clippy,rustfmt, then appstruct doctor."
             }
             "pnpm" => "Install pnpm 11.25.0, then run appstruct doctor.",
             "compose.yaml" => {
@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn tool_check_covers_success_and_missing_binaries() {
-        let rustc = tool("rustc", &["--version"], Some("1.98."));
+        let rustc = tool("rustc", &["--version"], Some("1.99."));
         assert_eq!(rustc.name, "rustc");
         let clippy = tool("cargo", &["clippy", "--version"], None);
         assert_eq!(clippy.name, "clippy");

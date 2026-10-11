@@ -21,10 +21,9 @@ fn required_symbols_are_derived_from_pages_and_field_components() {
 fn fixtures_without_custom_components_require_nothing() {
     let ir = compile_project(&fixture("m0-project")).unwrap();
     assert!(required_symbols(&ir).is_empty());
-    assert!(
-        check_user_symbols(&fixture("m0-project"), &ir)
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        check_user_symbols(&fixture("m0-project"), &ir).unwrap(),
+        Vec::new()
     );
 }
 
@@ -32,8 +31,9 @@ fn fixtures_without_custom_components_require_nothing() {
 fn provided_symbols_satisfy_the_contract() {
     let ir = compile_project(&fixture("m3-project")).unwrap();
     let diagnostics = check_user_symbols(&fixture("m3-project"), &ir).unwrap();
-    assert!(
-        diagnostics.is_empty(),
+    assert_eq!(
+        diagnostics,
+        Vec::new(),
         "expected no diagnostics, got {diagnostics:?}"
     );
 }
@@ -85,7 +85,7 @@ fn unparsable_registry_makes_the_fast_check_inconclusive() {
     .unwrap();
     let ir = compile_project(project.path()).unwrap();
     let diagnostics = check_user_symbols(project.path(), &ir).unwrap();
-    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    assert_eq!(diagnostics, Vec::new(), "{diagnostics:?}");
 }
 
 #[test]

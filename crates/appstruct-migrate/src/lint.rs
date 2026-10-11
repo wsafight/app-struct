@@ -228,7 +228,7 @@ mod tests {
         assert!(issues.iter().any(|issue| issue.code == "AS4202"));
         assert!(issues.iter().any(|issue| issue.code == "AS4203"));
         for change in &plan.changes {
-            assert!(!change_label(&change.change).is_empty());
+            assert_ne!(change_label(&change.change), "");
         }
     }
 }

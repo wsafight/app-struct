@@ -21,19 +21,19 @@ provided inside the container; install them on the host only for the local sourc
 
 | Dependency | Required version | Used for |
 | --- | --- | --- |
-| Rust | 1.98.0 with rustfmt and Clippy | CLI and generated backend |
+| Rust | 1.99.0 with rustfmt and Clippy | CLI and generated backend |
 | PostgreSQL | 17 recommended | migrations and generated API |
 | Node.js | 24 recommended | generated Web application |
 | pnpm | 11.25.0 | locked Web dependency installation |
 | Docker Compose | Current release, optional | `database.dev.mode: managed` only |
 
-The root `rust-toolchain.toml` and every generated project pin Rust 1.98.0. This was the
+The root `rust-toolchain.toml` and every generated project pin Rust 1.99.0. This was the
 local latest Rust version used for the current implementation baseline.
 
 ## Recommended First Run: Dev Container
 
 Install Docker and the VS Code Dev Containers extension, open this repository in VS Code, and
-choose **Reopen in Container**. The container provides Rust 1.98.0, Node.js 24, pnpm 11.25.0,
+choose **Reopen in Container**. The container provides Rust 1.99.0, Node.js 24, pnpm 11.25.0,
 and a PostgreSQL 17 service. It builds `appstruct` during container setup.
 
 In the container terminal, run:
@@ -56,7 +56,7 @@ project is created in `notes/`.
 From the AppStruct repository root:
 
 ```bash
-rustup toolchain install 1.98.0 --component clippy,rustfmt
+rustup toolchain install 1.99.0 --component clippy,rustfmt
 cargo build --release --locked -p appstruct-cli
 ./target/release/appstruct --version
 ```

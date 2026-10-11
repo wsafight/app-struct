@@ -140,7 +140,7 @@ fn lowers_object_oauth_providers_and_validates_their_contract() {
     );
     let ir = compile_project(temporary.path()).unwrap();
     assert_eq!(ir.auth.oauth_providers, vec!["google".to_owned()]);
-    assert!(ir.auth.oauth_signup_disabled.is_empty());
+    assert_eq!(ir.auth.oauth_signup_disabled, Vec::<String>::new());
 
     let signup_disabled = copied_fixture();
     replace(

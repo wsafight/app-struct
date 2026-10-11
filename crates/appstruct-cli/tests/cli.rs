@@ -78,7 +78,7 @@ fn project_discovery_failure_honors_json_format() {
         .unwrap();
 
     assert!(!output.status.success());
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, Vec::<u8>::new());
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["valid"], false);
     assert_eq!(report["diagnostics"][0]["code"], "AS1008");
@@ -89,7 +89,7 @@ fn schema_is_available_without_a_project() {
     let temporary = tempfile::tempdir().unwrap();
     let output = run(temporary.path(), &["schema"]);
     assert!(output.status.success());
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, Vec::<u8>::new());
     let schema: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(
         schema["$schema"],
@@ -382,7 +382,7 @@ fn init_json_requires_all_inputs() {
         .unwrap();
 
     assert_eq!(output.status.code(), Some(2));
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, Vec::<u8>::new());
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["ok"], false);
     assert_eq!(report["error"]["code"], "AS6003");
@@ -411,7 +411,7 @@ fn doctor_json_reports_missing_external_database_configuration() {
     let project = temporary_project("m2-project");
     let output = run(&project, &["doctor", "--format", "json"]);
     assert_eq!(output.status.code(), Some(3));
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, Vec::<u8>::new());
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["healthy"], false);
     assert!(

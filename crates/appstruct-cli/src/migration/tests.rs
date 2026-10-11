@@ -207,7 +207,7 @@ fn change_labels_cover_every_schema_change_kind() {
         },
         SchemaChange::RemoveForeignKey { foreign_key },
     ] {
-        assert!(!change_label(&change).is_empty());
+        assert_ne!(change_label(&change), "");
     }
 }
 

@@ -88,7 +88,7 @@ fn installs_and_compiles_a_signed_remote_module_offline() {
 
     let cache = manifest.parent().unwrap().to_owned();
     lifecycle::uninstall(project.path(), "vendor/analytics").unwrap();
-    assert!(super::read_lock(project.path()).unwrap().modules.is_empty());
+    assert_eq!(super::read_lock(project.path()).unwrap().modules.len(), 0);
     assert!(!cache.exists());
 }
 

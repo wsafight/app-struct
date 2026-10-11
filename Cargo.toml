@@ -16,7 +16,7 @@ resolver = "3"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.98"
+rust-version = "1.99"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/wsafight/app-struct"
@@ -39,12 +39,12 @@ ctrlc = "3.5.2"
 dotenvy = "0.15.7"
 ed25519-dalek = "3.0.0"
 native-tls = "0.2.18"
-minijinja = "=2.24.0"
+minijinja = "=3.0.0"
 notify = "8.2.0"
-oxc_parser = "=0.152.0"
-oxc_span = "=0.152.0"
-oxc_allocator = "=0.152.0"
-oxc_ast = "=0.152.0"
+oxc_parser = "=0.153.0"
+oxc_span = "=0.153.0"
+oxc_allocator = "=0.153.0"
+oxc_ast = "=0.153.0"
 postgres = "0.19.14"
 postgres-native-tls = "0.5.3"
 proc-macro2 = "1.0.107"
@@ -52,16 +52,16 @@ quote = "1.0.47"
 reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "rustls"] }
 saphyr-parser = "0.1.0"
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+serde_json = "1.0.153"
 sha2 = "0.11.0"
 similar = "3.2.0"
-toml = "1.1.6"
-syn = { version = "3.0.6", features = ["full"] }
+toml = "1.1.8"
+syn = { version = "3.0.7", features = ["full"] }
 tempfile = "3.27.0"
-jsonschema = { version = "0.58.2", default-features = false }
+jsonschema = { version = "0.58.6", default-features = false }
 hex = "0.4.3"
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "sync", "time"] }
-uuid = { version = "1.26.1", features = ["serde", "v7"] }
+tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "sync", "time"] }
+uuid = { version = "1.28.0", features = ["serde", "v7"] }
 url = "2.5.8"
 
 [workspace.lints.rust]

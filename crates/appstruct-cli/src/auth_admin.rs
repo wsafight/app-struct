@@ -297,7 +297,7 @@ mod tests {
             serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();
         let user = bootstrap_user(&ir).unwrap();
         let (id, email) = user_columns(user).unwrap();
-        assert!(!id.is_empty());
+        assert_ne!(id, "");
         assert_eq!(email, "email");
 
         let mut missing_email = user.clone();

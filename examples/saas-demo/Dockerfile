@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM rust:1.98.0-bookworm AS backend-build
+FROM rust:1.99.0-bookworm AS backend-build
 WORKDIR /build
 COPY generated/backend ./generated/backend
 COPY generated/server ./generated/server

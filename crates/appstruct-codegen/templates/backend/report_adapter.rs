@@ -63,8 +63,8 @@ pub(super) async fn render(
     template
         .render_captured_to(
             minijinja::context! {
-                input => input, locale => work.locale, timezone => work.timezone,
-                paper => work.paper, orientation => work.orientation,
+                input => minijinja::value::Serde(input), locale => &work.locale, timezone => &work.timezone,
+                paper => &work.paper, orientation => &work.orientation,
             },
             &mut output,
         )

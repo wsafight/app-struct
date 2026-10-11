@@ -27,7 +27,7 @@ fn compiler_and_generator_meet_mvp_performance_budgets() {
         budget_multiplier,
     );
     let ten_artifacts = plan(&ten_ir).unwrap();
-    assert!(!ten_artifacts.is_empty());
+    assert_ne!(ten_artifacts, Vec::new());
     assert_within(
         "10 entity compile and generation",
         started.elapsed(),
@@ -39,7 +39,7 @@ fn compiler_and_generator_meet_mvp_performance_budgets() {
     let started = Instant::now();
     let hundred_ir = compile_project(hundred.path()).unwrap();
     let hundred_artifacts = plan(&hundred_ir).unwrap();
-    assert!(!hundred_artifacts.is_empty());
+    assert_ne!(hundred_artifacts, Vec::new());
     assert_within(
         "100 entity compile and generation",
         started.elapsed(),

@@ -61,8 +61,8 @@ fn unrelated_named_reexports_do_not_disable_the_check() {
         "export { helper } from './helper';\nexport const registry = { fields: {}, pages: {} };",
     )
     .unwrap();
-    assert!(provided.field_components.is_empty());
-    assert!(provided.page_components.is_empty());
+    assert_eq!(provided.field_components, std::collections::BTreeSet::new());
+    assert_eq!(provided.page_components, std::collections::BTreeSet::new());
 }
 
 #[test]

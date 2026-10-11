@@ -46,7 +46,7 @@ fn absent_server_block_uses_safe_defaults() {
         ReferrerPolicyIr::StrictOriginWhenCrossOrigin
     );
     assert!(headers.content_security_policy.is_none());
-    assert!(headers.custom.is_empty());
+    assert_eq!(headers.custom, std::collections::BTreeMap::new());
 }
 
 #[test]

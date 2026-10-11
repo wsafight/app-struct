@@ -110,7 +110,7 @@ fn legacy_single_column_foreign_keys_remain_readable() {
 
     let restored = from_json(&serde_json::to_string(&value).unwrap()).unwrap();
     assert_eq!(restored.schema_version, appstruct_migrate::SCHEMA_VERSION);
-    assert!(restored.unique_constraints.is_empty());
+    assert_eq!(restored.unique_constraints, Vec::new());
     assert_eq!(restored.foreign_keys[0].source_columns, ["project_id"]);
 }
 

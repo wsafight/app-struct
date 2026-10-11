@@ -19,7 +19,7 @@ fn generation_errors_honor_global_json_format_before_or_after_command() {
     ] {
         let output = run(&project, &arguments);
         assert_eq!(output.status.code(), Some(1));
-        assert!(output.stderr.is_empty());
+        assert_eq!(output.stderr, Vec::<u8>::new());
         let report: Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(report["ok"], false);
         assert_eq!(report["error"]["code"], "AS5004");

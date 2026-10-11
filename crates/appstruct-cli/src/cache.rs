@@ -115,7 +115,7 @@ mod tests {
         let temporary = tempfile::tempdir().unwrap();
         let path = temporary.path().join("cache/state.json");
         let key = CacheKey::new("generate", "abc".to_owned())
-            .with_tool("rustc", "1.98".to_owned())
+            .with_tool("rustc", "1.99".to_owned())
             .with_environment("env".to_owned());
         store(&path, key.clone(), "value").unwrap();
         assert_eq!(
@@ -138,11 +138,11 @@ mod tests {
         let _ = identity;
         assert!(command_identity(&mut Command::new("false"), "false").is_err());
         let mut echo = Command::new("echo");
-        echo.arg("rustc 1.98.0");
+        echo.arg("rustc 1.99.0");
         assert!(
             command_identity(&mut echo, "echo")
                 .unwrap()
-                .contains("1.98")
+                .contains("1.99")
         );
     }
 }

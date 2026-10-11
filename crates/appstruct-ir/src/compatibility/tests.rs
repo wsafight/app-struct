@@ -10,7 +10,7 @@ fn migrates_module_free_v7_ir() {
     value["modules"] = serde_json::json!([]);
     let migrated = from_compatible_json(&serde_json::to_string(&value).unwrap()).unwrap();
     assert_eq!(migrated.ir_version, IR_VERSION);
-    assert!(migrated.modules.is_empty());
+    assert_eq!(migrated.modules, Vec::new());
 }
 
 #[test]

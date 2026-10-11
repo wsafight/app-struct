@@ -17,18 +17,18 @@ AppStruct 可以从源码检出安装。发布自动化会打包带校验和的 
 
 | 依赖 | 所需版本 | 用途 |
 | --- | --- | --- |
-| Rust | 1.98.0，带 rustfmt 和 Clippy | CLI 和生成的后端 |
+| Rust | 1.99.0，带 rustfmt 和 Clippy | CLI 和生成的后端 |
 | PostgreSQL | 推荐 17 | 迁移和生成的 API |
 | Node.js | 推荐 24 | 生成的 Web 应用 |
 | pnpm | 11.25.0 | 按锁文件安装 Web 依赖 |
 | Docker Compose | 当前版本，可选 | 仅用于 `database.dev.mode: managed` |
 
-仓库根目录的 `rust-toolchain.toml` 以及每个生成的项目都会固定 Rust 1.98.0。这是当前实现基线所使用的本地最新 Rust 版本。
+仓库根目录的 `rust-toolchain.toml` 以及每个生成的项目都会固定 Rust 1.99.0。这是当前实现基线所使用的本地最新 Rust 版本。
 
 ## 推荐首次运行路径：Dev Container
 
 安装 Docker 和 VS Code 的 Dev Containers 扩展，在 VS Code 中打开本仓库并选择
-**Reopen in Container**。容器提供 Rust 1.98.0、Node.js 24、pnpm 11.25.0 和 PostgreSQL 17，
+**Reopen in Container**。容器提供 Rust 1.99.0、Node.js 24、pnpm 11.25.0 和 PostgreSQL 17，
 并在创建时构建 `appstruct`。
 
 在容器终端中运行：
@@ -50,7 +50,7 @@ API 使用转发的 3000 端口。请从仓库根目录执行命令；示例项�
 从 AppStruct 仓库根目录执行：
 
 ```bash
-rustup toolchain install 1.98.0 --component clippy,rustfmt
+rustup toolchain install 1.99.0 --component clippy,rustfmt
 cargo build --release --locked -p appstruct-cli
 ./target/release/appstruct --version
 ```

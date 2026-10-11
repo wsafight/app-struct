@@ -15,14 +15,14 @@
   },
   "dependencies": {
     "@astrojs/sitemap": "3.7.4",
-    "@lucide/astro": "1.47.0",
-    "astro": "7.3.4",
+    "@lucide/astro": "1.55.0",
+    "astro": "7.3.8",
     "remark": "15.0.1",
     "unist-util-visit": "5.1.0"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.64.0",
     "cheerio": "1.2.0",
     "pagefind": "1.5.2",
     "typescript": "6.0.3"

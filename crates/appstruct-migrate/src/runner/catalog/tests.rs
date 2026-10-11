@@ -30,7 +30,7 @@ fn postgres_worker_partial_index_syntax_does_not_report_drift() {
         )]);
         let mut issues = Vec::new();
         compare_indexes(&expected, &actual, &mut issues);
-        assert!(issues.is_empty(), "status {status}: {issues:?}");
+        assert_eq!(issues, Vec::<String>::new(), "status {status}: {issues:?}");
     }
 }
 
@@ -197,7 +197,7 @@ fn compare_foreign_keys_covers_on_delete_variants() {
     ]);
     let mut issues = Vec::new();
     compare_foreign_keys(&expected, &actual, &mut issues);
-    assert!(issues.is_empty(), "{issues:?}");
+    assert_eq!(issues, Vec::<String>::new(), "{issues:?}");
 
     issues.clear();
     compare_foreign_keys(&expected, &BTreeSet::new(), &mut issues);
@@ -330,7 +330,7 @@ fn compare_enum_check_accepts_matching_literals_and_rejects_drift() {
         &checks,
         &mut issues,
     );
-    assert!(issues.is_empty(), "{issues:?}");
+    assert_eq!(issues, Vec::<String>::new(), "{issues:?}");
 
     compare_enum_check(
         "notes",

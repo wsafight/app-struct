@@ -18,7 +18,7 @@ Admin 运维概览和受保护的 Jobs 重试/重放操作。生成应用可以�
 
 | 依赖 | 版本 | 用途 |
 | --- | --- | --- |
-| Rust | 1.98.0，带 rustfmt 和 Clippy | CLI 和生成的后端 |
+| Rust | 1.99.0，带 rustfmt 和 Clippy | CLI 和生成的后端 |
 | PostgreSQL | 推荐 17 | 迁移和生成的 API |
 | Node.js | 推荐 24 | 生成的 Web 应用 |
 | pnpm | 11.25.0 | 按锁文件安装 Web 依赖 |
@@ -32,7 +32,7 @@ Admin 运维概览和受保护的 Jobs 重试/重放操作。生成应用可以�
 在仓库根目录执行：
 
 ```bash
-rustup toolchain install 1.98.0 --component clippy,rustfmt
+rustup toolchain install 1.99.0 --component clippy,rustfmt
 cargo build --release --locked -p appstruct-cli
 ./target/release/appstruct --version
 ```

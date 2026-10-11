@@ -6,7 +6,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         "name = \"appstruct-generated-backend\"\n",
         "version = \"0.0.0\"\n",
         "edition = \"2024\"\n",
-        "rust-version = \"1.98\"\n\n",
+        "rust-version = \"1.99\"\n\n",
         "[features]\n",
         "default = []\n",
         "test-support = []\n\n",
@@ -19,13 +19,13 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         "rust_decimal = { version = \"=1.43.0\", features = [\"serde-with-str\"] }\n",
         "sea-orm = { version = \"=2.0.4\", default-features = false, features = [\"macros\", \"runtime-tokio-rustls\", \"sqlx-postgres\", \"with-chrono\", \"with-json\", \"with-rust_decimal\", \"with-uuid\"] }\n",
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
-        "serde_json = \"=1.0.151\"\n",
+        "serde_json = \"=1.0.153\"\n",
         "tinyvec = \"=1.13.3\"\n",
-        "tokio = { version = \"=1.53.1\", features = [\"io-util\", \"macros\", \"net\", \"rt-multi-thread\", \"signal\", \"sync\", \"time\"] }\n",
+        "tokio = { version = \"=1.53.2\", features = [\"io-util\", \"macros\", \"net\", \"rt-multi-thread\", \"signal\", \"sync\", \"time\"] }\n",
         "tower-http = { version = \"=0.7.1\", features = [\"cors\", \"request-id\", \"set-header\", \"trace\"] }\n",
         "tracing = \"=0.1.44\"\n",
         "tracing-subscriber = { version = \"=0.3.23\", features = [\"env-filter\", \"fmt\", \"json\"] }\n",
-        "uuid = { version = \"=1.26.1\", features = [\"serde\", \"v7\"] }\n",
+        "uuid = { version = \"=1.28.0\", features = [\"serde\", \"v7\"] }\n",
     )
     .to_owned();
     if ir.auth.enabled || ir.mail.enabled {
@@ -62,13 +62,16 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         }
     }
     if ir.mail.enabled {
-        manifest.push_str("minijinja = { version = \"=2.24.0\", features = [\"fuel\"] }\n");
+        manifest
+            .push_str("minijinja = { version = \"=3.0.0\", features = [\"fuel\", \"serde\"] }\n");
     }
     if ir.report.enabled {
         if !ir.mail.enabled {
-            manifest.push_str("minijinja = { version = \"=2.24.0\", features = [\"fuel\"] }\n");
+            manifest.push_str(
+                "minijinja = { version = \"=3.0.0\", features = [\"fuel\", \"serde\"] }\n",
+            );
         }
-        manifest.push_str("jsonschema = \"=0.58.2\"\n");
+        manifest.push_str("jsonschema = \"=0.58.6\"\n");
         manifest.push_str("ring = \"=0.17.14\"\n");
         if ir.report.renderer == appstruct_ir::ReportRendererIr::Chromium {
             manifest.push_str("lopdf = { version = \"=0.45.0\", default-features = false }\n");
@@ -90,17 +93,17 @@ pub(super) fn runtime_cargo() -> &'static str {
         "name = \"appstruct-runtime\"\n",
         "version = \"0.1.0\"\n",
         "edition = \"2024\"\n",
-        "rust-version = \"1.98\"\n\n",
+        "rust-version = \"1.99\"\n\n",
         "[dependencies]\n",
         "appstruct-core = { path = \"../core\" }\n",
         "appstruct-contracts = { path = \"../contracts\" }\n",
         "async-trait = \"=0.1.92\"\n",
         "base64 = \"=0.23.1\"\n",
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
-        "serde_json = \"=1.0.151\"\n",
-        "tokio = { version = \"=1.53.1\", features = [\"rt\", \"time\"] }\n",
+        "serde_json = \"=1.0.153\"\n",
+        "tokio = { version = \"=1.53.2\", features = [\"rt\", \"time\"] }\n",
         "url = \"=2.5.8\"\n",
-        "uuid = { version = \"=1.26.1\", features = [\"serde\", \"v7\"] }\n",
+        "uuid = { version = \"=1.28.0\", features = [\"serde\", \"v7\"] }\n",
     )
 }
 
@@ -110,12 +113,12 @@ pub(super) fn core_cargo() -> &'static str {
         "name = \"appstruct-core\"\n",
         "version = \"0.1.0\"\n",
         "edition = \"2024\"\n",
-        "rust-version = \"1.98\"\n\n",
+        "rust-version = \"1.99\"\n\n",
         "[dependencies]\n",
         "base64 = \"=0.23.1\"\n",
         "hex = \"=0.4.3\"\n",
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
-        "serde_json = \"=1.0.151\"\n",
+        "serde_json = \"=1.0.153\"\n",
         "sha2 = \"=0.11.0\"\n",
     )
 }
@@ -126,7 +129,7 @@ pub(super) fn contracts_cargo() -> &'static str {
         "name = \"appstruct-contracts\"\n",
         "version = \"0.1.0\"\n",
         "edition = \"2024\"\n",
-        "rust-version = \"1.98\"\n",
+        "rust-version = \"1.99\"\n",
     )
 }
 
@@ -136,13 +139,13 @@ pub(super) fn server_cargo() -> &'static str {
         "name = \"appstruct-generated-server\"\n",
         "version = \"0.0.0\"\n",
         "edition = \"2024\"\n",
-        "rust-version = \"1.98\"\n\n",
+        "rust-version = \"1.99\"\n\n",
         "[dependencies]\n",
         "appstruct-app-backend = { path = \"../../app/backend\" }\n",
         "appstruct-generated-backend = { path = \"../backend\" }\n",
         "sea-orm = { version = \"=2.0.4\", default-features = false, features = [\"runtime-tokio-rustls\", \"sqlx-postgres\"] }\n",
         "tinyvec = \"=1.13.3\"\n",
-        "tokio = { version = \"=1.53.1\", features = [\"macros\", \"net\", \"rt-multi-thread\"] }\n",
+        "tokio = { version = \"=1.53.2\", features = [\"macros\", \"net\", \"rt-multi-thread\"] }\n",
         "tracing = \"=0.1.44\"\n",
         "\n[profile.release]\n",
         "strip = \"symbols\"\n",

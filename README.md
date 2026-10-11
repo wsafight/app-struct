@@ -21,7 +21,7 @@ non-container path.
 
 | Dependency | Version | Used for |
 | --- | --- | --- |
-| Rust | 1.98.0 with rustfmt and Clippy | CLI and generated backend |
+| Rust | 1.99.0 with rustfmt and Clippy | CLI and generated backend |
 | PostgreSQL | 17 recommended | migrations and generated API |
 | Node.js | 24 recommended | generated Web application |
 | pnpm | 11.25.0 | locked Web dependency installation |
@@ -36,7 +36,7 @@ pnpm lockfile so installs and builds stay reproducible. Release installers are d
 From the repository root:
 
 ```bash
-rustup toolchain install 1.98.0 --component clippy,rustfmt
+rustup toolchain install 1.99.0 --component clippy,rustfmt
 cargo build --release --locked -p appstruct-cli
 ./target/release/appstruct --version
 ```
