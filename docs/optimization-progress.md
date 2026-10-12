@@ -53,3 +53,11 @@ test database and Capture rendering; it is not a Linux Chromium deployment accep
 Management lists retain page pagination and exact totals; report changes preserve the current list page. Existing databases still require manual schema and migration-history alignment; automatic baseline adoption is unavailable.
 
 Validation passed: 463 workspace Rust tests, 55 generated Web tests, rustfmt, Clippy with warnings denied, TypeScript, ESLint, Prettier, production build and generated-tree snapshots. Real PostgreSQL query regression covers JSON import retries, UTC year boundaries, tenant/field authorization, page totals, cursors, filters and exports, with no migration drift. Dashboard initialization and read-only database pull were also verified.
+
+## 2026-10-12 Generated Admin UI
+
+Unified the light sidebar, green primary actions, color tokens, spacing, corner radii and typography. Resource navigation gains icons, groups and current-page breadcrumbs, with account and sign-out controls at the bottom of the sidebar. Search, filters, saved views and column options share a control panel; reports have their own section.
+
+Tables gain hover and selection states, enum/boolean badges and wider action columns. Forms, authentication, charts, CSV previews and dialogs share the visual system; failure reasons wrap inside dialogs. Mobile layouts retain local table scrolling, horizontal navigation and single-column forms, with reduced indentation for deep filter groups. Focus indicators and reduced-motion preferences remain supported. Lists retain page pagination and exact totals.
+
+Validation: minimal/dashboard/saas generated Web projects passed 51/54/55 tests respectively, TypeScript, ESLint, Prettier and production builds. Eighteen generation contract tests, three generated-tree snapshot tests, rustfmt and Clippy with warnings denied passed. No browser is available in this session, so desktop/mobile screenshot acceptance was not performed.

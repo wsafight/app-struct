@@ -382,7 +382,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(!auth.contains("<Navigate to=\"/login\""));
     let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
     assert!(layout.contains("sidebar-account"));
-    assert_eq!(layout.matches("aria-label=\"Sign out\"").count(), 2);
+    assert_eq!(layout.matches("aria-label=\"Sign out\"").count(), 1);
     assert!(layout.contains("<span>Project Hub</span>"));
     assert!(layout.contains("await auth.logout();"));
     assert!(!layout.contains("useNavigate"));

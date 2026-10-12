@@ -229,7 +229,7 @@ export function ResourceList({
   const busy = controller.changing;
   if (!controller.canList) return <AccessDenied />;
   return (
-    <main className="page">
+    <main className="page resource-list-page">
       {csv.importFile && (
         <CsvImportDialog
           resource={resource}
@@ -306,45 +306,47 @@ export function ResourceList({
           )}
         </div>
       </div>
-      {!trashMode && (
-        <div className="list-controls">
-          {resource.fields.some(
-            (field) =>
-              field.searchable &&
-              canAccessRule(field.readAccess ?? { mode: "public" }, actor),
-          ) && (
-            <form className="search-control" onSubmit={submitSearch}>
-              <Search size={16} />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                aria-label="Search"
-                placeholder="Search"
-              />
-            </form>
-          )}
-          <ResourceFilters
-            resource={resource}
-            fields={filterFields}
-            resources={resources}
-            searchParams={searchParams}
-            updateParam={updateParam}
-            updateParams={url.updateParams}
-          />
-        </div>
-      )}
-      <SavedViews
-        resourceId={resource.id}
-        actorId={actor?.id}
-        onError={setActionError}
-      />
-      <ViewOptions
-        fields={listFields}
-        visibleFieldNames={visibleFields.map((field) => field.name)}
-        pageSize={pageSize}
-        onColumnsChange={changeColumns}
-        onPageSizeChange={(value) => updateParam("page_size", String(value))}
-      />
+      <section className="resource-controls" aria-label="List controls">
+        {!trashMode && (
+          <div className="list-controls">
+            {resource.fields.some(
+              (field) =>
+                field.searchable &&
+                canAccessRule(field.readAccess ?? { mode: "public" }, actor),
+            ) && (
+              <form className="search-control" onSubmit={submitSearch}>
+                <Search size={16} />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  aria-label="Search"
+                  placeholder="Search"
+                />
+              </form>
+            )}
+            <ResourceFilters
+              resource={resource}
+              fields={filterFields}
+              resources={resources}
+              searchParams={searchParams}
+              updateParam={updateParam}
+              updateParams={url.updateParams}
+            />
+          </div>
+        )}
+        <SavedViews
+          resourceId={resource.id}
+          actorId={actor?.id}
+          onError={setActionError}
+        />
+        <ViewOptions
+          fields={listFields}
+          visibleFieldNames={visibleFields.map((field) => field.name)}
+          pageSize={pageSize}
+          onColumnsChange={changeColumns}
+          onPageSizeChange={(value) => updateParam("page_size", String(value))}
+        />
+      </section>
       {!trashMode && (
         <ResourceInsights
           resource={resource}

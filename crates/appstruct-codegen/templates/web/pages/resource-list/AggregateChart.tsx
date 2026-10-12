@@ -19,13 +19,21 @@ interface ChartRow {
 }
 
 const chartColors = [
-  "#167565",
-  "#286690",
-  "#a45b2a",
-  "#7a4d8b",
-  "#477238",
-  "#a43d4f",
+  "var(--color-accent)",
+  "#547da1",
+  "#bd965a",
+  "#9d80ad",
+  "#76996f",
+  "#b86d76",
 ];
+
+const tooltipStyle = {
+  background: "var(--color-surface)",
+  border: "1px solid var(--color-border)",
+  borderRadius: 10,
+  boxShadow: "0 8px 24px rgb(27 47 34 / 10%)",
+  fontSize: 12,
+};
 
 /**
  * Bar and donut rendering for resource summaries.
@@ -78,8 +86,12 @@ export function AggregateChart({
                 />
               ))}
             </Pie>
-            <Tooltip />
-            <Legend />
+            <Tooltip contentStyle={tooltipStyle} />
+            <Legend
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ fontSize: 12, paddingTop: 12 }}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -107,12 +119,19 @@ export function AggregateChart({
           />
           {horizontal ? (
             <>
-              <XAxis type="number" />
+              <XAxis
+                type="number"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12 }}
+              />
               <YAxis
                 dataKey="dimension"
                 type="category"
                 width={140}
                 tick={{ fontSize: 12 }}
+                axisLine={false}
+                tickLine={false}
               />
             </>
           ) : (
@@ -121,16 +140,26 @@ export function AggregateChart({
                 dataKey="dimension"
                 type="category"
                 tick={{ fontSize: 12 }}
+                axisLine={false}
+                tickLine={false}
               />
-              <YAxis type="number" />
+              <YAxis
+                type="number"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12 }}
+              />
             </>
           )}
-          <Tooltip />
+          <Tooltip
+            contentStyle={tooltipStyle}
+            cursor={{ fill: "var(--color-surface-soft)" }}
+          />
           <Bar
             dataKey="value"
             name={metricLabel}
             fill="var(--color-accent)"
-            radius={horizontal ? [0, 3, 3, 0] : [3, 3, 0, 0]}
+            radius={horizontal ? [0, 5, 5, 0] : [5, 5, 0, 0]}
             isAnimationActive={false}
             onClick={(_, index) => onSelect?.(index)}
           />

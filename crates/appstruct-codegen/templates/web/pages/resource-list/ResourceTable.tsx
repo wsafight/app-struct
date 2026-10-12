@@ -144,7 +144,21 @@ export function ResourceTable({
               onSave={(value) => updateField(record, field, value)}
             />
           ) : (
-            <span className={field.semantic ? "semantic-value" : undefined}>
+            <span
+              className={
+                field.semantic
+                  ? "semantic-value"
+                  : ["enum", "boolean"].includes(field.kind) &&
+                      record[field.name] != null
+                    ? "value-pill"
+                    : undefined
+              }
+              data-value={
+                field.kind === "boolean"
+                  ? String(record[field.name])
+                  : undefined
+              }
+            >
               {formatFieldValue(record, field)}
             </span>
           );
@@ -264,7 +278,7 @@ export function ResourceTable({
           )}
           {!pending &&
             table.getRowModel().rows.map((row) => (
-              <tr key={row.id}>
+              <tr key={row.id} data-selected={row.getIsSelected() || undefined}>
                 {row.getAllCells().map((cell) => (
                   <td
                     key={cell.id}

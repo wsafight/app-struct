@@ -63,7 +63,19 @@ export function InlineEditor({
   if (!editing) {
     return (
       <div className="inline-value">
-        <span>{displayValue(record[field.name])}</span>
+        <span
+          className={
+            ["enum", "boolean"].includes(field.kind) &&
+            record[field.name] != null
+              ? "value-pill"
+              : undefined
+          }
+          data-value={
+            field.kind === "boolean" ? String(record[field.name]) : undefined
+          }
+        >
+          {displayValue(record[field.name])}
+        </span>
         <button
           type="button"
           className="inline-edit-button"
