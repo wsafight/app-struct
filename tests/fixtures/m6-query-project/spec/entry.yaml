@@ -1,0 +1,35 @@
+domain: query
+entities:
+  Entry:
+    table: entries
+    tenant: true
+    audit: true
+    fields:
+      id: { type: uuid, primary_key: true, generated: uuid_v7 }
+      title: { type: string, required: true, sortable: true, filterable: true, searchable: true }
+      status: { type: enum, required: true, filterable: true, values: [todo, active, done] }
+      score: { type: integer, sortable: true, filterable: true }
+      amount: { type: bigint, filterable: true, sortable: true }
+      payload: { type: json, filterable: true }
+      secret:
+        type: string
+        filterable: true
+        access:
+          read: { role: admin }
+      created_at: { type: datetime, generated: now, sortable: true }
+    indexes:
+      - name: title_search
+        fields: [title]
+        method: gin
+        operator_class: gin_trgm_ops
+      - name: payload_search
+        fields: [payload]
+        method: gin
+        operator_class: jsonb_ops
+      - fields: [score, id]
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { authenticated: true }

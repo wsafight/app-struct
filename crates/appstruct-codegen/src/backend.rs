@@ -87,6 +87,11 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             ArtifactKind::RustSource,
         ),
         database_artifact()?,
+        Artifact::text(
+            "backend/src/database/query.rs",
+            rust_template(include_str!("../templates/backend/database/query.rs"))?,
+            ArtifactKind::RustSource,
+        ),
         runtime::metrics_artifact()?,
         Artifact::text(
             "backend/src/entities/mod.rs",

@@ -6,6 +6,8 @@ pub use sqlx::{
     postgres::{PgQueryResult, PgRow},
 };
 use sqlx::{PgPool, Postgres, Row};
+mod query;
+pub use query::*;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU64, Ordering},
@@ -29,10 +31,10 @@ impl Sql {
         }
     }
     fn query(
-        &self,
+        &mut self,
     ) -> Result<sqlx::query::Query<'_, Postgres, sqlx::postgres::PgArguments>, DbErr> {
         let mut query = sqlx::query(sqlx::AssertSqlSafe(self.sql.as_str()));
-        for value in self.values.clone() {
+        for value in std::mem::take(&mut self.values) {
             query = match value {
                 Value::Bool(v) => query.bind(v),
                 Value::TinyInt(v) => query.bind(v.map(i16::from)),
@@ -79,10 +81,23 @@ pub trait DatabaseExecutor: Send + Sync {
 #[derive(Clone, Debug)]
 pub struct Database {
     pool: PgPool,
+    cursor: Arc<sift_query::CursorCodec>,
 }
 impl Database {
     pub fn from_pool(pool: PgPool) -> Self {
-        Self { pool }
+        Self { pool, cursor: Arc::new(sift_query::CursorCodec::new(rand::random::<[u8; 32]>()).expect("valid cursor key")) }
+    }
+    pub fn cursor_codec(&self) -> &sift_query::CursorCodec { &self.cursor }
+    pub fn with_cursor_key(mut self, key: impl AsRef<[u8]>) -> Result<Self, DbErr> {
+        self.cursor = Arc::new(sift_query::CursorCodec::new(key).map_err(|error| DbErr::Protocol(error.to_string()))?);
+        Ok(self)
+    }
+    pub fn cursor_key_from_env(self) -> Result<Self, DbErr> {
+        match std::env::var("APPSTRUCT_CURSOR_KEY") {
+            Ok(key) => self.with_cursor_key(key),
+            Err(std::env::VarError::NotPresent) => Ok(self),
+            Err(_) => Err(DbErr::Protocol("APPSTRUCT_CURSOR_KEY must be valid UTF-8".to_owned())),
+        }
     }
     pub async fn ping(&self) -> Result<(), DbErr> {
         sqlx::query("SELECT 1").execute(&self.pool).await?;
@@ -92,7 +107,7 @@ impl Database {
         &self.pool
     }
     pub async fn connect(url: impl AsRef<str>) -> Result<Self, DbErr> {
-        Ok(Self::from_pool(PgPool::connect(url.as_ref()).await?))
+        Self::from_pool(PgPool::connect(url.as_ref()).await?).cursor_key_from_env()
     }
     pub async fn begin(&self) -> Result<Transaction, DbErr> {
         Ok(Transaction {
@@ -107,13 +122,13 @@ impl Database {
 }
 #[async_trait]
 impl DatabaseExecutor for Database {
-    async fn execute(&self, sql: Sql) -> Result<PgQueryResult, DbErr> {
+    async fn execute(&self, mut sql: Sql) -> Result<PgQueryResult, DbErr> {
         sql.query()?.execute(&self.pool).await
     }
-    async fn fetch_optional(&self, sql: Sql) -> Result<Option<PgRow>, DbErr> {
+    async fn fetch_optional(&self, mut sql: Sql) -> Result<Option<PgRow>, DbErr> {
         sql.query()?.fetch_optional(&self.pool).await
     }
-    async fn fetch_all(&self, sql: Sql) -> Result<Vec<PgRow>, DbErr> {
+    async fn fetch_all(&self, mut sql: Sql) -> Result<Vec<PgRow>, DbErr> {
         sql.query()?.fetch_all(&self.pool).await
     }
     async fn execute_unprepared(&self, sql: &str) -> Result<PgQueryResult, DbErr> {
@@ -130,6 +145,18 @@ pub struct Transaction {
     savepoint: Option<String>,
 }
 impl Transaction {
+    pub fn stream_models<P>(self, mut sql: Sql) -> impl futures_core::Stream<Item = Result<P, DbErr>> + Send
+    where P: Send + for<'r> sqlx::FromRow<'r, PgRow> {
+        async_stream::try_stream! {
+            use futures_util::TryStreamExt as _;
+            {
+                let mut connection = self.connection().await?;
+                let mut rows = sql.query()?.fetch(&mut **connection.as_mut().ok_or_else(|| DbErr::Protocol("transaction is closed".to_owned()))?);
+                while let Some(row) = rows.try_next().await? { yield P::from_row(&row)?; }
+            }
+            self.rollback().await?;
+        }
+    }
     async fn connection(
         &self,
     ) -> Result<tokio::sync::MutexGuard<'_, Option<sqlx::Transaction<'static, Postgres>>>, DbErr>
@@ -209,7 +236,7 @@ impl Drop for Transaction {
 }
 #[async_trait]
 impl DatabaseExecutor for Transaction {
-    async fn execute(&self, sql: Sql) -> Result<PgQueryResult, DbErr> {
+    async fn execute(&self, mut sql: Sql) -> Result<PgQueryResult, DbErr> {
         sql.query()?
             .execute(
                 &mut **self
@@ -220,7 +247,7 @@ impl DatabaseExecutor for Transaction {
             )
             .await
     }
-    async fn fetch_optional(&self, sql: Sql) -> Result<Option<PgRow>, DbErr> {
+    async fn fetch_optional(&self, mut sql: Sql) -> Result<Option<PgRow>, DbErr> {
         sql.query()?
             .fetch_optional(
                 &mut **self
@@ -231,7 +258,7 @@ impl DatabaseExecutor for Transaction {
             )
             .await
     }
-    async fn fetch_all(&self, sql: Sql) -> Result<Vec<PgRow>, DbErr> {
+    async fn fetch_all(&self, mut sql: Sql) -> Result<Vec<PgRow>, DbErr> {
         sql.query()?
             .fetch_all(
                 &mut **self
@@ -270,6 +297,22 @@ pub struct Select<M> {
     model: std::marker::PhantomData<M>,
 }
 impl<M> Select<M> {
+    pub fn projection<P>(self) -> Select<P> {
+        Select { query: self.query, model: std::marker::PhantomData }
+    }
+    pub fn order_by(mut self, order: &[sift_query::OrderBy], meta: &'static sift_query::EntityMeta, reverse: bool) -> Self {
+        for item in order {
+            let field = meta.field(item.field).expect("validated ordering");
+            let descending = (item.direction == sift_query::SortOrder::Desc) ^ reverse;
+            let nulls_first = (item.nulls == sift_query::NullOrder::First) ^ reverse;
+            self.query.order_by_expr_with_nulls(
+                sea_query::Expr::col((sea_query::Alias::new(meta.from), sea_query::Alias::new(field.column))).into(),
+                if descending { sea_query::Order::Desc } else { sea_query::Order::Asc },
+                if nulls_first { sea_query::NullOrdering::First } else { sea_query::NullOrdering::Last },
+            );
+        }
+        self
+    }
     pub fn new(table: &str) -> Self {
         Self {
             query: sea_query::Query::select()
@@ -355,6 +398,16 @@ impl<M> Select<M> {
             .try_get("count")?;
         u64::try_from(count).map_err(|e| DbErr::Protocol(e.to_string()))
     }
+    pub async fn bounded_count(&self, db: &impl DatabaseExecutor, maximum: u64) -> Result<u64, DbErr> {
+        let mut source = self.query.clone();
+        source.clear_order_by().limit(maximum.saturating_add(1));
+        let mut query = sea_query::Query::select();
+        query.from_subquery(source, sea_query::Alias::new("bounded_rows"))
+            .expr_as(sea_query::Expr::cust("count(*)"), sea_query::Alias::new("count"));
+        let (sql, values) = query.build(sea_query::PostgresQueryBuilder);
+        let count: i64 = db.fetch_optional(Sql::bind(sql, values.0)).await?.ok_or(DbErr::RowNotFound)?.try_get("count")?;
+        u64::try_from(count).map_err(|error| DbErr::Protocol(error.to_string()))
+    }
     pub fn into_json(self) -> JsonSelect {
         let (sql, values) = self.query.build(sea_query::PostgresQueryBuilder);
         JsonSelect(Sql::bind(
@@ -401,8 +454,7 @@ where
     E: sift_query::SearchEntity,
     T: sift_query::IntoScalarValue,
 {
-    let policy = sift_query::QueryPolicy::default();
-    let builder = sift_query::QueryBuilder::<E>::new(&policy);
+    let builder = sift_query::QueryBuilder::<E>::new(query_policy());
     let builder = match operator {
         sift_query::Operator::Eq => builder.eq(field, value),
         sift_query::Operator::Ge => builder.ge(field, value),

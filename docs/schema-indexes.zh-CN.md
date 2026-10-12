@@ -19,17 +19,25 @@ entities:
 
 `fields` 按 PostgreSQL 索引顺序列出，且必须引用同一实体上已声明的字段。`unique: true` 创建唯一索引；`where` 创建部分索引，并在编译器校验后作为受信任的 SQL 谓词处理。谓词不能包含分号或 SQL 行注释。索引名可选；省略时由实体和字段列表生成。
 
-## 搜索索引
+## 搜索与 JSON 索引
 
-`searchable: true` 使用包含匹配的 `LIKE` 查询（`%term%`）。普通 B-tree 索引无法有效加速大表上的这种模式。对于高基数或高频搜索字段，请安装 PostgreSQL 的 `pg_trgm` 扩展，并在经过审查的手工迁移中创建 GIN 索引：
+在 App Spec 中声明 GIN 方法和 operator class，编译器会直接生成相应迁移：
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX users_name_search_idx
-  ON users USING GIN (name gin_trgm_ops);
+```yaml
+indexes:
+  - name: title_search
+    fields: [title]
+    method: gin
+    operator_class: gin_trgm_ops
+  - name: payload_search
+    fields: [payload]
+    method: gin
+    operator_class: jsonb_ops
 ```
 
-在 App Spec 中声明匹配的 `indexes` 项，并保留字段的 `searchable`。将生成的 B-tree 语句替换为这条经过审查、由运维负责的迁移。AppStruct 的 schema catalog 会比较索引字段、唯一性和 predicate，但有意忽略访问方法和 operator class，因此该 GIN 索引仍会参与 drift 检查。
+`method` 默认 `btree`；`gin` 必须指定 operator class，且不支持 `unique: true`。`gin_trgm_ops` 适用于 string、text 和 enum 字段，生成迁移会创建 `pg_trgm` 扩展，用于加速 `searchable: true` 的子串匹配。`jsonb_ops` 和 `jsonb_path_ops` 适用于 JSON 字段；键存在查询需要 `jsonb_ops`，`jsonb_path_ops` 适用于包含查询。配置与字段类型不兼容时编译失败。
+
+数据库导入和漂移检查包含方法与 operator class，因此同字段的 B-tree 和 GIN 索引会被区分。
 
 ## 迁移
 

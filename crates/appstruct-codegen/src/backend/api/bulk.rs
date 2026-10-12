@@ -12,7 +12,6 @@ pub(super) struct SourceContext<'context> {
     pub primary: &'context Ident,
     pub hooks: &'context Ident,
     pub policy: &'context Ident,
-    pub list_scope: &'context TokenStream,
     pub create_allowed: &'context TokenStream,
     pub delete_allowed: &'context TokenStream,
     pub update_allowed: &'context TokenStream,
@@ -29,7 +28,6 @@ pub(super) struct BulkContext<'context> {
     pub bulk_parse_id: &'context TokenStream,
     pub hooks: &'context Ident,
     pub policy: &'context Ident,
-    pub list_scope: &'context TokenStream,
     pub read_scope: &'context TokenStream,
     pub delete_allowed: &'context TokenStream,
     pub update_allowed: &'context TokenStream,
@@ -54,7 +52,6 @@ pub(super) fn source(
         primary,
         hooks,
         policy,
-        list_scope,
         create_allowed,
         delete_allowed,
         update_allowed,
@@ -80,7 +77,6 @@ pub(super) fn source(
         bulk_parse_id: &bulk_parse_id,
         hooks,
         policy,
-        list_scope,
         read_scope: &read_scope,
         delete_allowed,
         update_allowed,
@@ -103,7 +99,7 @@ pub(super) fn source(
     let trash = context.soft_delete.then(|| trash_handler(&context));
     Ok(quote! {
         use appstruct_runtime::{
-            BulkDeleteInput, BulkResult, BulkUpdateInput, CSV_EXPORT_PAGE_SIZE, MAX_BULK_ITEMS,
+            BulkDeleteInput, BulkResult, BulkUpdateInput, MAX_BULK_ITEMS,
             MAX_CSV_EXPORT_ROWS, MAX_CSV_IMPORT_ROWS, bulk_failure, bulk_request_size_is_valid,
             csv_cell, csv_escape, csv_json_value, parse_csv_rows,
         };

@@ -96,6 +96,7 @@ pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, entity: &Ent
         }),
     );
     add_aggregate_path(paths, ir, entity);
+    add_facet_path(paths, ir, entity);
     lookup::add_path(paths, entity);
     super::bulk::add_paths(paths, ir, entity);
     add_workflow_paths(paths, entity);
@@ -211,7 +212,7 @@ fn add_aggregate_path(paths: &mut Map<String, Value>, ir: &AppIr, entity: &Entit
 pub(super) fn add_schemas(schemas: &mut Map<String, Value>, entity: &EntityIr) {
     schema::add_schemas(schemas, entity);
 }
-fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
+pub(super) fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
     let mut parameters = vec![
         query_parameter(
             "page",
@@ -221,7 +222,7 @@ fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
             "page_size",
             &json!({ "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }),
         ),
-        query_parameter("cursor", &json!({ "type": "string" })),
+        query_parameter("cursor", &json!({ "type": "string", "maxLength": 16384 })),
         query_parameter(
             "direction",
             &json!({ "type": "string", "enum": ["next", "previous"], "default": "next" }),
@@ -232,6 +233,14 @@ fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
         ),
         query_parameter("sort", &json!({ "type": "string" })),
         query_parameter("q", &json!({ "type": "string", "maxLength": 200 })),
+        query_parameter(
+            "where",
+            &json!({ "type": "string", "maxLength": 16384, "description": "JSON filter tree: all/any groups or {field,op,values}. At most 8 levels, 64 nodes and 100 values; only filterable readable scalar fields." }),
+        ),
+        query_parameter(
+            "fields",
+            &json!({ "type": "string", "maxLength": 4096, "description": "Comma-separated readable fields. Omitted fields are not fetched or returned." }),
+        ),
     ];
     for field in entity
         .fields
@@ -324,9 +333,38 @@ fn aggregate_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
     ];
     parameters.extend(list_parameters(ir, entity).into_iter().filter(|parameter| {
         let name = parameter["name"].as_str().unwrap_or_default();
-        name == "q" || name.starts_with("filter[")
+        name == "q" || name == "where" || name.starts_with("filter[")
     }));
     parameters
+}
+
+fn add_facet_path(paths: &mut Map<String, Value>, ir: &AppIr, entity: &EntityIr) {
+    let mut parameters = list_parameters(ir, entity)
+        .into_iter()
+        .filter(|parameter| {
+            let name = parameter["name"].as_str().unwrap_or_default();
+            matches!(name, "q" | "where") || name.starts_with("filter[")
+        })
+        .collect::<Vec<_>>();
+    parameters.push(json!({ "name": "facet", "in": "query", "required": true, "schema": { "type": "string" }, "description": "1 to 5 comma-separated filterable scalar fields" }));
+    parameters.push(query_parameter(
+        "limit",
+        &json!({ "type": "integer", "minimum": 1, "maximum": 20, "default": 10 }),
+    ));
+    if entity.tenant_scoped {
+        parameters.push(tenant::parameter());
+    }
+    paths.insert(format!("/api/{}/_facets", entity.table_name), json!({ "get": {
+        "operationId": format!("facet{}", entity.rust_name), "tags": [&entity.rust_name], "security": auth::security(&entity.access.list), "parameters": parameters,
+        "responses": { "200": response("Top-N facet buckets for the complete authorized filtered result, including SQL NULL and other_count", &json!({
+            "type": "object", "required": ["data"], "properties": { "data": { "type": "object", "additionalProperties": {
+                "type": "object", "required": ["buckets", "other_count"], "properties": {
+                    "other_count": { "type": "integer", "minimum": 0 },
+                    "buckets": { "type": "array", "maxItems": 20, "items": { "type": "object", "required": ["value", "count"], "properties": { "value": {}, "count": { "type": "integer", "minimum": 0 } } } }
+                }
+            } } }
+        })), "400": error_response(), "403": error_response() }
+    } }));
 }
 fn query_parameter(name: &str, schema: &Value) -> Value {
     json!({ "name": name, "in": "query", "required": false, "schema": schema })

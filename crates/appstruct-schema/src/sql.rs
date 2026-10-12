@@ -157,11 +157,31 @@ pub fn add_index(index: &IndexSchema) -> String {
         .predicate
         .as_ref()
         .map_or_else(String::new, |value| format!(" WHERE ({value})"));
+    let extension = if index.operator_class == Some(appstruct_ir::IndexOperatorClass::GinTrgmOps) {
+        "CREATE EXTENSION IF NOT EXISTS pg_trgm;\n"
+    } else {
+        ""
+    };
+    let method = if index.method == appstruct_ir::IndexMethod::Btree {
+        String::new()
+    } else {
+        format!(" USING {}", index.method.sql())
+    };
+    let columns = index
+        .columns
+        .iter()
+        .map(|column| {
+            let class = index
+                .operator_class
+                .map_or_else(String::new, |class| format!(" {}", class.sql()));
+            format!("{}{class}", quote_ident(column))
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
-        "CREATE{unique} INDEX {} ON {} ({}){predicate};\n",
+        "{extension}CREATE{unique} INDEX {} ON {}{method} ({columns}){predicate};\n",
         quote_ident(&index_name(index)),
         quote_ident(&index.table),
-        quote_columns(&index.columns),
     )
 }
 

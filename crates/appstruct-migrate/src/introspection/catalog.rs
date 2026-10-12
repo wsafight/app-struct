@@ -14,6 +14,8 @@ pub(super) struct Index {
     pub name: String,
     pub columns: Vec<String>,
     pub unique: bool,
+    pub method: String,
+    pub operator_class: Option<String>,
     pub predicate: Option<String>,
 }
 
@@ -164,14 +166,18 @@ pub(super) fn indexes(client: &mut Client, schema: &str) -> Result<Vec<Index>, M
             r"SELECT relation.relname AS table_name,
        index_relation.relname AS index_name,
        index_data.indisunique AS is_unique,
+       access_method.amname AS method,
+       CASE WHEN access_method.amname = 'btree' AND operator_class.opcdefault THEN NULL ELSE operator_class.opcname END AS operator_class,
        pg_get_expr(index_data.indpred, index_data.indrelid) AS predicate,
        attribute.attname AS column_name,
        key.position::bigint AS position
 FROM pg_index index_data
 JOIN pg_class relation ON relation.oid = index_data.indrelid
 JOIN pg_class index_relation ON index_relation.oid = index_data.indexrelid
+JOIN pg_am access_method ON access_method.oid = index_relation.relam
 JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
-JOIN LATERAL unnest(index_data.indkey) WITH ORDINALITY AS key(number, position) ON true
+JOIN LATERAL unnest(index_data.indkey::smallint[], index_data.indclass::oid[]) WITH ORDINALITY AS key(number, class_id, position) ON true
+JOIN pg_opclass operator_class ON operator_class.oid = key.class_id
 JOIN pg_attribute attribute
   ON attribute.attrelid = relation.oid AND attribute.attnum = key.number
 WHERE namespace.nspname = $1
@@ -195,24 +201,37 @@ ORDER BY relation.relname, index_relation.relname, key.position",
             })?,
             row.try_get::<_, Option<String>>("predicate")
                 .map_err(|error| database_error("invalid index predicate catalog value", &error))?,
+            text(&row, "method")?,
         );
         let position = row
             .try_get::<_, i64>("position")
             .map_err(|error| database_error("invalid index position", &error))?;
-        grouped
-            .entry(key)
-            .or_default()
-            .push((position, text(&row, "column_name")?));
+        grouped.entry(key).or_default().push((
+            position,
+            text(&row, "column_name")?,
+            optional_text(&row, "operator_class")?,
+        ));
     }
     Ok(grouped
         .into_iter()
-        .map(|((table, name, unique, predicate), mut columns)| {
-            columns.sort_by_key(|(position, _)| *position);
+        .map(|((table, name, unique, predicate, method), mut columns)| {
+            columns.sort_by_key(|(position, _, _)| *position);
+            let classes = columns
+                .iter()
+                .map(|(_, _, class)| class.clone())
+                .collect::<std::collections::BTreeSet<_>>();
+            let operator_class = if classes.len() > 1 {
+                Some("mixed operator classes".to_owned())
+            } else {
+                classes.into_iter().next().flatten()
+            };
             Index {
                 table,
                 name,
-                columns: columns.into_iter().map(|(_, column)| column).collect(),
+                columns: columns.into_iter().map(|(_, column, _)| column).collect(),
                 unique,
+                method,
+                operator_class,
                 predicate: predicate.map(|value| value.trim().to_owned()),
             }
         })

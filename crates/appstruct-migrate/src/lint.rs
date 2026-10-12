@@ -130,6 +130,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn labels_and_risk_classes_cover_every_change_kind() {
         let table = table();
         let column = column();
@@ -143,6 +144,8 @@ mod tests {
             table: "notes".to_owned(),
             columns: vec!["email".to_owned()],
             unique: false,
+            method: appstruct_ir::IndexMethod::Btree,
+            operator_class: None,
             predicate: None,
         };
         let seed = SeedSchema {

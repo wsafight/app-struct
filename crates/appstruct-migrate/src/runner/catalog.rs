@@ -76,6 +76,8 @@ fn compare_indexes(
             table: index.table.clone(),
             columns: index.columns.clone(),
             unique: index.unique,
+            method: index.method.sql().to_owned(),
+            operator_class: index.operator_class.map(|class| class.sql().to_owned()),
             predicate: normalize::index_predicate(index.predicate.as_deref()),
         })
         .collect::<BTreeSet<_>>();

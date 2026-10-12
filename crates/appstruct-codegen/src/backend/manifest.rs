@@ -19,7 +19,11 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         "rust_decimal = { version = \"=1.43.0\", features = [\"serde-with-str\"] }\n",
         "sqlx = { version = \"=0.9.0\", default-features = false, features = [\"runtime-tokio\", \"tls-rustls-ring-webpki\", \"postgres\", \"macros\", \"chrono\", \"json\", \"rust_decimal\", \"uuid\"] }\n",
         "sea-query = { version = \"=1.0.2\", default-features = false, features = [\"derive\", \"thread-safe\", \"backend-postgres\", \"with-chrono\", \"with-json\", \"with-rust_decimal\", \"with-uuid\"] }\n",
-        "sift-query = \"=0.1.0\"\n",
+        "sift-query = { version = \"=0.1.0\", features = [\"postgres-search\"] }\n",
+        "rand = \"=0.10.3\"\n",
+        "async-stream = \"=0.3.6\"\n",
+        "futures-core = \"=0.3.34\"\n",
+        "futures-util = \"=0.3.34\"\n",
         "serde = { version = \"=1.0.229\", features = [\"derive\"] }\n",
         "serde_json = \"=1.0.153\"\n",
         "tokio = { version = \"=1.53.2\", features = [\"io-util\", \"macros\", \"net\", \"rt-multi-thread\", \"signal\", \"sync\", \"time\"] }\n",
@@ -35,7 +39,7 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         );
     }
     if ir.auth.enabled {
-        manifest.push_str(concat!("argon2 = \"=0.6.0\"\n", "rand = \"=0.10.3\"\n",));
+        manifest.push_str("argon2 = \"=0.6.0\"\n");
     }
     if ir.jobs.enabled {
         manifest.push_str("cron = \"=0.17.0\"\n");
@@ -49,10 +53,6 @@ pub(super) fn cargo(ir: &AppIr) -> String {
     if ir.webhooks.enabled || ir.billing.enabled {
         manifest.push_str("hmac = \"=0.13.0\"\n");
         manifest.push_str("sha2 = \"=0.11.0\"\n");
-    }
-    if ir.realtime.enabled {
-        manifest.push_str("async-stream = \"=0.3.6\"\n");
-        manifest.push_str("futures-core = \"=0.3.34\"\n");
     }
     if ir.file.enabled {
         manifest.push_str("infer = \"=0.22.0\"\n");

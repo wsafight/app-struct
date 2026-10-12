@@ -154,6 +154,8 @@ export interface ResourceSearch {
   q?: string;
   columns?: string;
   trash?: "1";
+  pagination?: "cursor";
+  where?: string;
   [key: string]: string | number | undefined;
 }
 
@@ -167,7 +169,7 @@ export function validateResourceSearch(
   if (pageSize !== undefined && pageSize !== 25) result.page_size = pageSize;
   if (
     typeof search.cursor === "string" &&
-    search.cursor.length <= 2_000 &&
+    search.cursor.length <= 16_384 &&
     /^[A-Za-z0-9_-]+$/.test(search.cursor)
   ) {
     result.cursor = search.cursor;
@@ -184,6 +186,15 @@ export function validateResourceSearch(
   )
     result.columns = search.columns;
   if (search.trash === "1" || search.trash === 1) result.trash = "1";
+  if (search.pagination === "cursor") result.pagination = "cursor";
+  if (typeof search.where === "string" && search.where.length <= 16_384) {
+    try {
+      JSON.parse(search.where);
+      result.where = search.where;
+    } catch {
+      /* Discard malformed saved filters. */
+    }
+  }
   for (const [key, value] of Object.entries(search)) {
     if (
       /^filter\[\w+(?:\.\w+)?\](?:\[(?:gte|lte)\])?$/.test(key) &&

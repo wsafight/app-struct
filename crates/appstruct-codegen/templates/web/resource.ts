@@ -11,6 +11,8 @@ import type {
   CollectionResponse,
   ListQuery,
   ListResponse,
+  FacetQuery,
+  FacetResponse,
   WorkflowCapabilities,
 } from "./generated/client";
 import type { AppStructRegistry } from "./generated/registry";
@@ -147,13 +149,18 @@ export interface ResourceApi {
     query?: AggregateQuery,
     options?: { signal?: AbortSignal },
   ): Promise<AggregateResponse>;
+  facets?(
+    query: FacetQuery,
+    options?: { signal?: AbortSignal },
+  ): Promise<FacetResponse>;
   get(id: string, options?: { signal?: AbortSignal }): Promise<ResourceRecord>;
   create(input: ResourceInput): Promise<ResourceRecord>;
   update(id: string, input: ResourceInput): Promise<ResourceRecord>;
   remove(id: string): Promise<void>;
   bulkUpdate(input: BulkUpdateRequest<ResourceInput>): Promise<BulkResult>;
   bulkDelete(input: BulkDeleteRequest): Promise<BulkResult>;
-  exportCsv(): Promise<string>;
+  exportCsv(query?: Omit<ListQuery, "page" | "page_size">): Promise<string>;
+  downloadCsv?(query?: Omit<ListQuery, "page" | "page_size">): Promise<void>;
   importCsv(csv: string): Promise<BulkResult>;
   restore?(input: BulkDeleteRequest): Promise<BulkResult>;
   trash?(

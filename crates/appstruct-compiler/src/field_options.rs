@@ -174,12 +174,10 @@ fn validate_type_specific_options(
             field.span.clone(),
         ));
     }
-    if matches!(field_type, FieldTypeIr::Json)
-        && (field.flags.filterable() || field.flags.sortable())
-    {
+    if matches!(field_type, FieldTypeIr::Json) && field.flags.sortable() {
         diagnostics.push(Diagnostic::error(
             "AS2012",
-            "json fields cannot use default filtering or sorting",
+            "json fields cannot use default sorting",
             field.span.clone(),
         ));
     }

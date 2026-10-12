@@ -83,7 +83,7 @@ fn rejects_invalid_numeric_bound_literals() {
 }
 
 #[test]
-fn rejects_values_target_searchable_and_json_filter_options() {
+fn rejects_values_target_searchable_and_json_sort_options() {
     let values =
         compile_fields("      name:\n        type: string\n        values: [a]\n").unwrap_err();
     assert!(codes(&values).contains(&"AS2012"));
@@ -101,6 +101,18 @@ fn rejects_values_target_searchable_and_json_filter_options() {
     )
     .unwrap_err();
     assert!(codes(&json).contains(&"AS2012"));
+}
+
+#[test]
+fn allows_json_filtering_without_sorting() {
+    let ir = compile_fields("      payload: { type: json, filterable: true }\n").unwrap();
+    let payload = ir.entities[0]
+        .fields
+        .iter()
+        .find(|field| field.rust_name == "payload")
+        .unwrap();
+    assert!(payload.capabilities.filterable);
+    assert!(!payload.capabilities.sortable);
 }
 
 #[test]

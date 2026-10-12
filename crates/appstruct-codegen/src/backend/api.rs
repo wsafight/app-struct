@@ -43,6 +43,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         &parse_id,
     )?;
     let aggregate = super::query::aggregate::aggregate_support(ir, entity, &module, &policy)?;
+    let facets = super::query::facets::support(entity, &module, &policy)?;
     let aggregate_source = aggregate.to_string();
     let expression_trait = (aggregate_source.contains("cast_as")
         || aggregate_source.contains("equals"))
@@ -87,7 +88,6 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
     )?;
     let workflow_routes = workflow.routes;
     let workflow_support = workflow.tokens;
-    let list_scope = super::access::scope(entity, &module, &entity.access.list)?;
     let create_allowed = super::access::create_allowed(entity, &entity.access.create)?;
     let update_allowed = super::access::update_allowed(entity, &entity.access.update)?;
     let delete_allowed = super::access::row_allowed(entity, &entity.access.delete)?;
@@ -98,7 +98,6 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
             primary: &primary,
             hooks: &hooks,
             policy: &policy,
-            list_scope: &list_scope,
             create_allowed: &create_allowed,
             delete_allowed: &delete_allowed,
             update_allowed: &update_allowed,
@@ -132,6 +131,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
             Router::new()
                 .route("/", get(list).post(create))
                 .route("/_aggregate", get(aggregate))
+                .route("/_facets", get(facets))
                 .route("/_lookup", get(lookup))
                 .route("/_bulk", axum::routing::patch(bulk_update).delete(bulk_delete))
                 .route("/_export.csv", get(export_csv))
@@ -145,6 +145,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         #list
         #lookup
         #aggregate
+        #facets
         #collection_support
         #handlers
         #validators

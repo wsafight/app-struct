@@ -12,6 +12,7 @@ pub(super) fn source(_ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenEr
         .iter()
         .map(entity_field)
         .collect::<Result<Vec<_>, _>>()?;
+    let projection = projection_support(entity)?;
     let columns = entity
         .fields
         .iter()
@@ -84,6 +85,7 @@ pub(super) fn source(_ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenEr
         #[derive(Clone, Debug, Default, PartialEq, sqlx::FromRow, sift_query::SearchEntity, Serialize, Deserialize)]
         #[search_entity(from = #table, default_order = #order, stable_order = #order)]
         pub struct Model { #(#fields,)* }
+        #projection
         #[derive(Clone, Copy, Debug, Iden)]
         pub enum Column { #(#columns,)* }
         impl Column {
@@ -122,13 +124,26 @@ fn entity_field(field: &FieldIr) -> Result<TokenStream, CodegenError> {
     let sortable = (field.primary_key || field.capabilities.sortable).then(|| quote! { sortable, });
     let cursor = (field.primary_key && !field.nullable).then(|| quote! { cursor_non_null, });
     let json = matches!(field.ty, FieldTypeIr::Json);
-    let filterable = json.then(|| quote! { filterable = false, });
-    let mut operators = vec![quote! { Eq }];
+    let filterable = field.capabilities.filterable;
+    let custom = json
+        .then(|| quote! { custom_operators = ["json_contains", "json_contained_by", "json_key"], });
+    let mut operators = vec![
+        quote! { Eq },
+        quote! { Ne },
+        quote! { IsNull },
+        quote! { NotNull },
+    ];
     if !json {
-        operators.push(quote! { InList });
+        operators.extend([quote! { InList }, quote! { NotIn }]);
     }
     if super::query::filters::supports_range(&field.ty) {
-        operators.extend([quote! { Ge }, quote! { Le }]);
+        operators.extend([quote! { Gt }, quote! { Ge }, quote! { Lt }, quote! { Le }]);
+    }
+    if matches!(
+        field.ty,
+        FieldTypeIr::String | FieldTypeIr::Text | FieldTypeIr::Enum { .. }
+    ) {
+        operators.extend([quote! { Contain }, quote! { StartWith }, quote! { EndWith }]);
     }
     let scalar = if matches!(field.generated, Some(GeneratedValueIr::Revision)) {
         TokenStream::new()
@@ -137,8 +152,64 @@ fn entity_field(field: &FieldIr) -> Result<TokenStream, CodegenError> {
     };
     Ok(quote! {
         #[sqlx(rename = #column)]
-        #[search_field(column = #column, #sortable #cursor #filterable operators = [#(#operators),*])]
+        #[search_field(column = #column, #sortable #cursor filterable = #filterable, #custom operators = [#(#operators),*])]
         #scalar pub #name: #ty
+    })
+}
+
+fn projection_support(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
+    let mut fields = Vec::new();
+    let mut columns = Vec::new();
+    let mut cursor_values = Vec::new();
+    for field in &entity.fields {
+        let name = parse_ident(&field.rust_name)?;
+        let ty = rust_type(&field.ty);
+        let column = &field.column_name;
+        let key = &field.rust_name;
+        let variant = super::query::helpers::column_ident(field)?;
+        let scalar = super::scalar::attributes(&field.ty, 1);
+        fields.push(quote! {
+            #[sqlx(default, rename = #column)]
+            #scalar pub #name: Option<#ty>
+        });
+        columns.push(quote! { #key => { select = select.column(Column::#variant); } });
+        if !matches!(field.ty, FieldTypeIr::Json) {
+            cursor_values.push(quote! { #key => self.#name.clone().map_or(sift_query::CursorValue::Null, |value| sift_query::CursorValue::Scalar(sift_query::IntoScalarValue::into_scalar_value(value))) });
+        }
+    }
+    Ok(quote! {
+        #[derive(Clone, Debug, sqlx::FromRow, Serialize)]
+        pub struct ProjectedModel { #(#fields,)* }
+        impl ProjectedModel {
+            pub fn cursor_values(&self, order: &[sift_query::OrderBy]) -> Result<Vec<sift_query::CursorValue>, crate::ApiError> {
+                use sift_query::SearchEntity as _;
+                order.iter().map(|item| {
+                    let field = Model::META.field(item.field).ok_or(crate::ApiError::Internal)?;
+                    Ok(match field.public_name {
+                        #(#cursor_values,)*
+                        _ => return Err(crate::ApiError::InvalidQuery("field cannot be used for cursor ordering".to_owned())),
+                    })
+                }).collect()
+            }
+            pub fn json(self, fields: &[String]) -> Result<serde_json::Value, crate::ApiError> {
+                let mut value = serde_json::to_value(self).map_err(|_| crate::ApiError::Internal)?;
+                value.as_object_mut().ok_or(crate::ApiError::Internal)?.retain(|key, _| fields.contains(key));
+                Ok(value)
+            }
+        }
+        pub fn projected(select: Select<Model>, fields: &[String], order: &[sift_query::OrderBy]) -> Result<Select<ProjectedModel>, crate::ApiError> {
+            use sift_query::SearchEntity as _;
+            let mut selected = fields.to_vec();
+            for item in order {
+                let field = Model::META.field(item.field).ok_or(crate::ApiError::Internal)?;
+                if !selected.iter().any(|name| name == field.public_name) { selected.push(field.public_name.to_owned()); }
+            }
+            let mut select = select.select_only();
+            for field in &selected {
+                match field.as_str() { #(#columns,)* _ => return Err(crate::ApiError::Internal) }
+            }
+            Ok(select.projection())
+        }
     })
 }
 fn bind_fields(fields: &[&FieldIr]) -> Result<Vec<TokenStream>, CodegenError> {

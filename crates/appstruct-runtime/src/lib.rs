@@ -32,8 +32,8 @@ pub use lifecycle::{
 };
 pub use origin::validate_browser_origin;
 pub use query::{
-    MAX_LIST_PAGE, MAX_LIST_PAGE_SIZE, MAX_SEARCH_CHARS, like_contains_pattern, list_page_is_valid,
-    search_term_is_valid,
+    FilterExpression, FilterOperator, MAX_LIST_PAGE, MAX_LIST_PAGE_SIZE, MAX_SEARCH_CHARS,
+    like_contains_pattern, list_page_is_valid, search_term_is_valid,
 };
 pub use resource::{
     BulkDeleteInput, BulkFailure, BulkResult, BulkUpdateInput, CSV_EXPORT_PAGE_SIZE, CsvError,

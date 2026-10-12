@@ -214,22 +214,29 @@ function cookieValue(name: string): string | undefined {
 }
 
 fn list_runtime_source() -> &'static str {
-    r#"interface FilterQuery {
+    r#"export type FilterOperator = "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "in" | "not_in" | "is_null" | "not_null" | "contains" | "starts_with" | "ends_with" | "json_contains" | "json_contained_by" | "json_key";
+export type FilterExpression = { all: FilterExpression[] } | { any: FilterExpression[] } | { field: string; op: FilterOperator; values?: string[] };
+
+export interface FilterQuery {
   q?: string;
   filters?: Record<string, string>;
   range_filters?: Record<string, { gte?: string; lte?: string }>;
+  where?: FilterExpression;
 }
 
 export interface ListQuery extends FilterQuery {
   page?: number;
   page_size?: number;
   sort?: string;
+  fields?: string[];
 }
 
 export interface CursorListQuery extends FilterQuery {
   cursor?: string;
   limit?: number;
   direction?: "next" | "previous";
+  sort?: string;
+  fields?: string[];
 }
 
 export interface AggregateQuery extends FilterQuery {
@@ -256,6 +263,17 @@ export interface AggregateResponse {
   meta: { metrics: string[]; group_by: string[]; limit: number; order: "asc" | "desc" };
 }
 
+export interface FacetResponse { data: Record<string, { buckets: { value: unknown; count: number }[]; other_count: number }>; }
+export interface FacetQuery extends FilterQuery { facet: string[]; limit?: number; }
+
+function facetPath(path: string, query: FacetQuery): string {
+  const params = new URLSearchParams();
+  params.set("facet", query.facet.join(","));
+  if (query.limit) params.set("limit", String(query.limit));
+  appendFilterParams(params, query);
+  return `${path}?${params}`;
+}
+
 function listPath(path: string, query: ListQuery | CursorListQuery): string {
   const params = new URLSearchParams();
   if ("page" in query && query.page) params.set("page", String(query.page));
@@ -264,6 +282,7 @@ function listPath(path: string, query: ListQuery | CursorListQuery): string {
   if ("cursor" in query && query.cursor) params.set("cursor", query.cursor);
   if ("limit" in query && query.limit) params.set("limit", String(query.limit));
   if ("direction" in query && query.direction) params.set("direction", query.direction);
+  if (query.fields?.length) params.set("fields", query.fields.join(","));
   appendFilterParams(params, query);
   const search = params.toString();
   return search ? `${path}?${search}` : path;
@@ -282,6 +301,7 @@ function aggregatePath(path: string, query: AggregateQuery): string {
 
 function appendFilterParams(params: URLSearchParams, query: FilterQuery): void {
   if (query.q) params.set("q", query.q);
+  if (query.where) params.set("where", JSON.stringify(query.where));
   for (const [key, value] of Object.entries(query.filters ?? {})) {
     if (value !== "") params.set(`filter[${key}]`, value);
   }

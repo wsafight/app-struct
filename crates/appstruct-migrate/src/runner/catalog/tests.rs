@@ -95,6 +95,8 @@ fn schema_with_index(
             table: table.to_owned(),
             columns: columns.iter().map(|column| (*column).to_owned()).collect(),
             unique,
+            method: appstruct_ir::IndexMethod::Btree,
+            operator_class: None,
             predicate: predicate.map(str::to_owned),
         }],
         seeds: Vec::new(),
@@ -107,6 +109,8 @@ fn index_shape(table: &str, columns: &[&str], unique: bool, predicate: Option<&s
         table: table.to_owned(),
         columns: columns.iter().map(|column| (*column).to_owned()).collect(),
         unique,
+        method: "btree".to_owned(),
+        operator_class: None,
         predicate: predicate.map(str::to_owned),
     }
 }

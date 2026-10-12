@@ -2,7 +2,7 @@ use super::{auth, error_response, request_body, response, schema_ref, tenant};
 use appstruct_ir::{AppIr, EntityIr};
 use serde_json::{Map, Value, json};
 
-pub(super) fn add_paths(paths: &mut Map<String, Value>, _ir: &AppIr, entity: &EntityIr) {
+pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, entity: &EntityIr) {
     let name = &entity.rust_name;
     let base = format!("/api/{}/", entity.table_name);
     let security = auth::security(&entity.access.list);
@@ -10,11 +10,21 @@ pub(super) fn add_paths(paths: &mut Map<String, Value>, _ir: &AppIr, entity: &En
     if entity.tenant_scoped {
         tenant_parameters.push(tenant::parameter());
     }
+    let mut export_parameters = super::entity::list_parameters(ir, entity)
+        .into_iter()
+        .filter(|parameter| {
+            !matches!(
+                parameter["name"].as_str().unwrap_or_default(),
+                "page" | "page_size" | "cursor" | "limit" | "direction"
+            )
+        })
+        .collect::<Vec<_>>();
+    export_parameters.extend(tenant_parameters.clone());
     paths.insert(format!("{base}_bulk"), json!({
         "patch": { "operationId": format!("bulkUpdate{name}"), "tags": [name], "security": auth::security(&entity.access.update), "parameters": tenant_parameters.clone(), "requestBody": request_body(&format!("BulkUpdate{name}Input")), "responses": { "200": response("Bulk update result", &schema_ref("BulkResult")), "403": error_response() } },
         "delete": { "operationId": format!("bulkDelete{name}"), "tags": [name], "security": auth::security(&entity.access.delete), "parameters": tenant_parameters.clone(), "requestBody": request_body("BulkDeleteInput"), "responses": { "200": response("Bulk delete result", &schema_ref("BulkResult")), "403": error_response() } }
     }));
-    paths.insert(format!("{base}_export.csv"), json!({ "get": { "operationId": format!("export{name}Csv"), "tags": [name], "security": security, "parameters": tenant_parameters.clone(), "responses": { "200": { "description": "CSV export", "content": { "text/csv": { "schema": { "type": "string" } } } }, "403": error_response() } } }));
+    paths.insert(format!("{base}_export.csv"), json!({ "get": { "operationId": format!("export{name}Csv"), "tags": [name], "security": security, "parameters": export_parameters, "responses": { "200": { "description": "Streamed CSV of the complete filtered result, limited to 10000 rows in a consistent read-only snapshot", "content": { "text/csv": { "schema": { "type": "string" } } } }, "400": error_response(), "403": error_response() } } }));
     paths.insert(format!("{base}_import.csv"), json!({ "post": { "operationId": format!("import{name}Csv"), "tags": [name], "security": auth::security(&entity.access.create), "parameters": tenant_parameters.clone(), "requestBody": { "required": true, "content": { "text/csv": { "schema": { "type": "string" } } } }, "responses": { "200": response("CSV import result", &schema_ref("BulkResult")), "403": error_response() } } }));
     if entity.views.soft_delete {
         let mut parameters = trash_parameters();

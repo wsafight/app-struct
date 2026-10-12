@@ -130,11 +130,13 @@ pub(super) fn input_schema(entity: &EntityIr, update: bool) -> Value {
 }
 
 fn list_response_schema(entity: &EntityIr) -> Value {
+    let mut item = entity_schema(entity);
+    item["required"] = json!([]);
     json!({
         "type": "object",
         "required": ["data", "meta"],
         "properties": {
-            "data": { "type": "array", "items": schema_ref(&entity.rust_name) },
+            "data": { "type": "array", "items": item },
             "meta": {
                 "type": "object",
                 "oneOf": [

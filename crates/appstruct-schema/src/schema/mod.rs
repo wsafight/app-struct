@@ -96,6 +96,10 @@ pub struct IndexSchema {
     pub table: String,
     pub columns: Vec<String>,
     pub unique: bool,
+    #[serde(default, skip_serializing_if = "appstruct_ir::IndexMethod::is_default")]
+    pub method: appstruct_ir::IndexMethod,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operator_class: Option<appstruct_ir::IndexOperatorClass>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub predicate: Option<String>,
 }
@@ -234,6 +238,8 @@ fn entity_indexes(ir: &AppIr) -> Vec<IndexSchema> {
                     })
                     .collect(),
                 unique: index.unique,
+                method: index.method,
+                operator_class: index.operator_class,
                 predicate: index.predicate.clone(),
             })
         })

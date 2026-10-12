@@ -152,6 +152,8 @@ fn change_labels_cover_every_schema_change_kind() {
         table: "notes".to_owned(),
         columns: vec!["email".to_owned()],
         unique: false,
+        method: appstruct_ir::IndexMethod::Btree,
+        operator_class: None,
         predicate: None,
     };
     let seed = SeedSchema {

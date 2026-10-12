@@ -116,6 +116,8 @@ fn imports_domain_base_types_and_omits_incompatible_columns() {
                 name: "idx_projects_tags".to_owned(),
                 columns: vec!["tags".to_owned()],
                 unique: false,
+                method: "btree".to_owned(),
+                operator_class: None,
                 predicate: None,
             }],
         }],

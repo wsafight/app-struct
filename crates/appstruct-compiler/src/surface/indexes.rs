@@ -3,8 +3,9 @@ use super::value::{
     ensure_known_keys, expect_bool, expect_mapping, expect_scalar_string, expect_sequence,
     expect_string, required,
 };
-use crate::yaml::Node;
-use appstruct_ir::Diagnostic;
+use crate::yaml::{MappingEntry, Node};
+use appstruct_ir::{Diagnostic, IndexMethod, IndexOperatorClass};
+use std::collections::BTreeMap;
 
 pub(super) fn decode_indexes(node: &Node) -> Result<Vec<SurfaceIndex>, Diagnostic> {
     expect_sequence(node, "entity `indexes`")?
@@ -13,7 +14,14 @@ pub(super) fn decode_indexes(node: &Node) -> Result<Vec<SurfaceIndex>, Diagnosti
             let mapping = expect_mapping(item, "index definition")?;
             ensure_known_keys(
                 mapping,
-                &["name", "fields", "unique", "where"],
+                &[
+                    "name",
+                    "fields",
+                    "unique",
+                    "where",
+                    "method",
+                    "operator_class",
+                ],
                 "index definition",
             )?;
             let fields = required(mapping, "fields", &item.span)?;
@@ -60,6 +68,8 @@ pub(super) fn decode_indexes(node: &Node) -> Result<Vec<SurfaceIndex>, Diagnosti
                 ));
             }
             Ok(SurfaceIndex {
+                method: decode_method(mapping)?,
+                operator_class: decode_operator_class(mapping)?,
                 name: mapping
                     .get("name")
                     .map(|entry| expect_string(&entry.value, "index `name`"))
@@ -71,4 +81,51 @@ pub(super) fn decode_indexes(node: &Node) -> Result<Vec<SurfaceIndex>, Diagnosti
             })
         })
         .collect()
+}
+
+fn decode_method(mapping: &BTreeMap<String, MappingEntry>) -> Result<IndexMethod, Diagnostic> {
+    Ok(
+        match mapping
+            .get("method")
+            .map(|entry| expect_string(&entry.value, "index method"))
+            .transpose()?
+        {
+            None => IndexMethod::Btree,
+            Some(value) if value.value == "btree" => IndexMethod::Btree,
+            Some(value) if value.value == "gin" => IndexMethod::Gin,
+            Some(value) => {
+                return Err(Diagnostic::error(
+                    "AS1007",
+                    "index method must be btree or gin",
+                    value.span,
+                ));
+            }
+        },
+    )
+}
+
+fn decode_operator_class(
+    mapping: &BTreeMap<String, MappingEntry>,
+) -> Result<Option<IndexOperatorClass>, Diagnostic> {
+    Ok(
+        match mapping
+            .get("operator_class")
+            .map(|entry| expect_string(&entry.value, "index operator_class"))
+            .transpose()?
+        {
+            None => None,
+            Some(value) if value.value == "gin_trgm_ops" => Some(IndexOperatorClass::GinTrgmOps),
+            Some(value) if value.value == "jsonb_ops" => Some(IndexOperatorClass::JsonbOps),
+            Some(value) if value.value == "jsonb_path_ops" => {
+                Some(IndexOperatorClass::JsonbPathOps)
+            }
+            Some(value) => {
+                return Err(Diagnostic::error(
+                    "AS1007",
+                    "unsupported index operator_class",
+                    value.span,
+                ));
+            }
+        },
+    )
 }

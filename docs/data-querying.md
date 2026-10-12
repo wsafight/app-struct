@@ -46,13 +46,19 @@ GET /api/tasks/?limit=25&cursor=<next_cursor>&filter[status]=todo
 }
 ```
 
-Cursor mode orders by the resource primary key ascending, fetches at most 100 records, and does not
-run a total-count query. `page`, `page_size`, and `sort` cannot be combined with cursor mode. Cursor
-tokens are versioned Base64URL values and are an API implementation detail; clients must retain
-them unchanged. To move backward, send `previous_cursor` as `cursor` with `direction=previous`.
-Restart from the first page after changing search or filter parameters. Generated resource lists use
-this bidirectional cursor mode by default when no explicit sort is active; sorted and trash views
-retain offset pagination.
+Cursor mode accepts comma-separated sorts such as `sort=-created_at,title`, appending the primary
+key as a stable tie-breaker. At most four sort fields, including the primary key, are accepted.
+PostgreSQL null ordering is preserved in both traversal directions. The API fetches at most 100
+records without a total-count query. `page` and `page_size` cannot be combined with cursor mode.
+Tokens are signed, versioned Base64URL values bound to the entity and sort order. Clients must retain
+them unchanged and restart after changing filters or sorting. Configure `APPSTRUCT_CURSOR_KEY` with
+at least 32 bytes and share it across server instances to preserve cursors across restarts; otherwise
+a random process-local key is used. Tokens are capped at 16 KiB; if the sort values exceed that
+limit, use page-number pagination.
+
+Generated management tables use page-number pagination and exact totals by default, including sorted
+lists. The Web URL can explicitly opt into cursor traversal with `pagination=cursor`. Trash keeps
+page-number pagination. To move backward, send `previous_cursor` as `cursor` with `direction=previous`.
 
 The generated TypeScript client exposes the modes separately:
 
@@ -71,6 +77,57 @@ const previous = await taskApi.listCursor({
   filters: { status: "todo" },
 });
 ```
+
+## Advanced filters and projection
+
+The `where` parameter is a JSON tree, URL-encoded in requests. Each leaf contains a public field
+name, an operator and textual values. Combine leaves with `all` (AND) or `any` (OR):
+
+```ts
+const page = await taskApi.list({
+  where: { all: [
+    { field: "status", op: "in", values: ["todo", "active"] },
+    { any: [
+      { field: "priority", op: "gte", values: ["3"] },
+      { field: "priority", op: "is_null" },
+    ] },
+  ] },
+  fields: ["id", "title", "status"],
+});
+```
+
+Operators include `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `is_null`, `not_null`,
+`contains`, `starts_with`, and `ends_with`. JSON fields declared `filterable: true` also support
+`json_contains` (`@>`), `json_contained_by` (`<@`) and `json_key` (`?`). JSON values are encoded as
+JSON text inside the `values` array; `json_key` accepts a key name. JSON fields cannot be sorted.
+Null operators accept no values. IN operators accept one to 100 values; other operators require one.
+Trees are limited to eight levels, 64 nodes, 100 total values and 16 KiB. sift-query checks field
+types and operators before SQL generation, and values are bound as parameters. Every leaf must be
+filterable and readable. Relation paths remain available through the existing `filter[...]` syntax.
+
+`fields=id,title,status` restricts SQL projection and response properties. Ordering fields are
+fetched internally when necessary, without adding them to the response. Unknown, duplicate or
+unreadable requested fields fail. Without `fields`, all readable fields are returned. The generated
+table requests visible columns together with the key, revision and workflow state. List and cursor
+client rows use `Partial<Model>` because projected properties may be absent; OpenAPI reflects this.
+
+## Facet counts
+
+`GET /api/tasks/_facets?facet=status,priority&limit=10` returns Top-N value counts for one to five
+filterable, readable scalar fields. JSON is excluded. `limit` defaults to 10 and ranges from one to
+20. Search, ordinary filters and `where` use the same scope as the list. Counts use a single
+repeatable-read snapshot, include null values and order by count descending, then value ascending.
+Bigint and decimal bucket values retain their string representation.
+
+```json
+{ "data": { "status": {
+  "buckets": [{ "value": "todo", "count": 12 }],
+  "other_count": 3
+} } }
+```
+
+`other_count` counts rows outside the returned buckets. Generated enum and boolean filters show
+these counts. The TypeScript API exposes `taskApi.facets({ facet: ["status"], where: ... })`.
 
 ## Relation filters
 

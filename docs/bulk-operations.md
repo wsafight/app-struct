@@ -26,6 +26,8 @@ ignores generated columns, validates each row through the normal create contract
 successful rows together while reporting row-level failures. Realtime events and `after_commit`
 hooks run only after the outer transaction commits.
 
+CSV export streams rows from a repeatable-read, read-only PostgreSQL snapshot in 64 KiB chunks. It accepts the current search, filters, `where`, `sort`, and `fields`; pagination parameters are rejected because export includes the complete filtered result. Results above 10,000 rows fail before streaming starts, and database statements have a 30-second timeout. Browsers supporting the file picker write chunks directly to the selected file; other browsers use a Blob download.
+
 ## See also
 
 - [Entity workflows](workflows.md) — workflow fields are omitted from bulk and CSV inputs

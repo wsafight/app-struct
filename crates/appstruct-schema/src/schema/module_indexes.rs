@@ -238,6 +238,8 @@ fn index(id: &str, table: &str, columns: &[&str], predicate: Option<&str>) -> In
         table: table.to_owned(),
         columns: columns.iter().map(|column| (*column).to_owned()).collect(),
         unique: false,
+        method: appstruct_ir::IndexMethod::Btree,
+        operator_class: None,
         predicate: predicate.map(str::to_owned),
     }
 }

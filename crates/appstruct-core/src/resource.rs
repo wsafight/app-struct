@@ -20,6 +20,9 @@ pub struct ListQuery {
     pub direction: Option<String>,
     pub sort: Option<String>,
     pub q: Option<String>,
+    #[serde(rename = "where")]
+    pub expression: Option<String>,
+    pub fields: Option<String>,
     #[serde(flatten)]
     pub filters: BTreeMap<String, String>,
 }

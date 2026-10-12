@@ -126,8 +126,53 @@ pub struct IndexIr {
     pub entity: EntityId,
     pub fields: Vec<FieldId>,
     pub unique: bool,
+    #[serde(default, skip_serializing_if = "IndexMethod::is_default")]
+    pub method: IndexMethod,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operator_class: Option<IndexOperatorClass>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub predicate: Option<String>,
+}
+
+/// Supported PostgreSQL index access methods.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexMethod {
+    #[default]
+    Btree,
+    Gin,
+}
+impl IndexMethod {
+    #[must_use]
+    pub const fn is_default(&self) -> bool {
+        matches!(self, Self::Btree)
+    }
+    #[must_use]
+    pub const fn sql(self) -> &'static str {
+        match self {
+            Self::Btree => "btree",
+            Self::Gin => "gin",
+        }
+    }
+}
+
+/// Allowlisted operator classes for text substring and JSONB search.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexOperatorClass {
+    GinTrgmOps,
+    JsonbOps,
+    JsonbPathOps,
+}
+impl IndexOperatorClass {
+    #[must_use]
+    pub const fn sql(self) -> &'static str {
+        match self {
+            Self::GinTrgmOps => "gin_trgm_ops",
+            Self::JsonbOps => "jsonb_ops",
+            Self::JsonbPathOps => "jsonb_path_ops",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,5 +1,7 @@
 use super::super::surface::SurfaceEntity;
-use appstruct_ir::{Diagnostic, EntityId, FieldIr, IndexIr};
+use appstruct_ir::{
+    Diagnostic, EntityId, FieldIr, FieldTypeIr, IndexIr, IndexMethod, IndexOperatorClass,
+};
 use std::collections::BTreeSet;
 
 pub(super) fn build_indexes(
@@ -70,11 +72,33 @@ pub(super) fn build_indexes(
         if field_ids.len() != index.fields.len() || field_ids.is_empty() {
             continue;
         }
+        let compatible = match (index.method, index.operator_class) {
+            (IndexMethod::Btree, None) => true,
+            (IndexMethod::Gin, Some(class)) if !index.unique => fields
+                .iter()
+                .filter(|field| field_ids.contains(&field.id))
+                .all(|field| match class {
+                    IndexOperatorClass::GinTrgmOps => matches!(
+                        field.ty,
+                        FieldTypeIr::String | FieldTypeIr::Text | FieldTypeIr::Enum { .. }
+                    ),
+                    IndexOperatorClass::JsonbOps | IndexOperatorClass::JsonbPathOps => {
+                        matches!(field.ty, FieldTypeIr::Json)
+                    }
+                }),
+            _ => false,
+        };
+        if !compatible {
+            diagnostics.push(Diagnostic::error("AS2054", "GIN indexes require a compatible operator_class and cannot be unique; B-tree indexes do not accept operator_class", index.span.clone()));
+            continue;
+        }
         indexes.push(IndexIr {
             id,
             entity: entity_id.clone(),
             fields: field_ids,
             unique: index.unique,
+            method: index.method,
+            operator_class: index.operator_class,
             predicate: index.where_clause.as_ref().map(|value| value.value.clone()),
         });
     }

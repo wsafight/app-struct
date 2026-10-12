@@ -13,6 +13,53 @@ pub(super) fn runtime_source() -> &'static str {
   return response.text();
 }
 
+interface CsvWritable { write(chunk: Uint8Array): Promise<void>; close(): Promise<void>; abort(): Promise<void>; }
+type CsvPicker = (options: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<{ createWritable(): Promise<CsvWritable> }>;
+
+async function downloadResourceCsv(path: string, filename: string): Promise<void> {
+  const picker = (window as unknown as { showSaveFilePicker?: CsvPicker }).showSaveFilePicker;
+  let output: CsvWritable | undefined;
+  if (picker) {
+    try {
+      const file = await picker.call(window, { suggestedName: filename, types: [{ description: "CSV", accept: { "text/csv": [".csv"] } }] });
+      output = await file.createWritable();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      throw error;
+    }
+  }
+  const controller = new AbortController();
+  try {
+    const response = await fetch(`${API_BASE}${path}`, { headers: requestHeaders(), credentials: "include", signal: controller.signal });
+    if (!response.ok) throw new ApiError(response.status, "HTTP_ERROR", `Request failed with status ${response.status}`);
+    if (output) {
+      if (response.body) {
+        const reader = response.body.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            await output.write(value);
+          }
+        } finally { reader.releaseLock(); }
+      } else {
+        await output.write(new Uint8Array(await response.arrayBuffer()));
+      }
+      await output.close();
+    } else {
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = filename; link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  } catch (error) {
+    controller.abort();
+    await output?.abort();
+    throw error;
+  }
+}
+
 export interface BulkFailure { id: string; code: string; message: string; }
 export interface BulkResult { succeeded: string[]; failed: BulkFailure[]; }
 export interface BulkUpdateRequest<T> { ids: string[]; patch: T; expected_revisions: Record<string, number>; }

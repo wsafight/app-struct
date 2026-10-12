@@ -93,7 +93,21 @@ export function ResourceList({
     cacheKey: queryString,
     trashMode,
     cursorMode,
-    query: url.query,
+    query: {
+      ...url.query,
+      fields: resource.fields
+        .filter(
+          (field) =>
+            field.name === resource.primaryKey ||
+            field.name === "revision" ||
+            field.name === resource.workflow?.field ||
+            visibleFields.some((visible) => visible.name === field.name),
+        )
+        .filter((field) =>
+          canAccessRule(field.readAccess ?? { mode: "public" }, actor),
+        )
+        .map((field) => field.name),
+    },
     onChangeSuccess: () => setRowSelection({}),
   });
   const { records, total, nextCursor, previousCursor } = controller;
@@ -177,7 +191,17 @@ export function ResourceList({
     });
   }
 
-  const csv = useCsvTransfer({ resource, runChange, onError: setActionError });
+  const csv = useCsvTransfer({
+    resource,
+    runChange,
+    onError: setActionError,
+    query: {
+      ...buildResourceFilterQuery(filterFields, searchParams),
+      q: searchParams.get("q") || undefined,
+      sort: sort || undefined,
+      fields: visibleFields.map((field) => field.name),
+    },
+  });
   const bulk = useBulkActions({
     resource,
     records,
@@ -201,6 +225,7 @@ export function ResourceList({
       : "");
   const hasFilters =
     Boolean(searchParams.get("q")?.trim()) ||
+    Boolean(searchParams.get("where")) ||
     Array.from(searchParams.keys()).some((key) => key.startsWith("filter["));
   const emptyMessage = trashMode
     ? "Trash is empty"
@@ -296,6 +321,7 @@ export function ResourceList({
             </form>
           )}
           <ResourceFilters
+            resource={resource}
             fields={filterFields}
             resources={resources}
             searchParams={searchParams}

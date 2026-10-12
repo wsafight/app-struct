@@ -68,6 +68,23 @@ fn generated_fixture_is_a_compilable_rust_crate() {
 }
 
 #[test]
+fn advanced_query_fixture_is_a_compilable_rust_crate() {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-query-project");
+    let artifacts = plan(&compile_project(&fixture).unwrap()).unwrap();
+    let temporary = tempfile::tempdir().unwrap();
+    write_artifacts(temporary.path(), &artifacts);
+    let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest);
+    let checked = cargo_check(&manifest, true);
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+}
+
+#[test]
 fn resources_publish_bulk_and_csv_contracts() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m2-project");
     let artifacts = plan(&compile_project(&fixture).unwrap()).unwrap();
@@ -78,7 +95,8 @@ fn resources_publish_bulk_and_csv_contracts() {
     assert!(api.contains("expected_revisions"));
     assert!(api.contains("bulk_request_size_is_valid"));
     assert!(api.contains("MAX_CSV_IMPORT_ROWS"));
-    assert!(api.contains("CSV_EXPORT_PAGE_SIZE"));
+    let compact = api.split_whitespace().collect::<String>();
+    assert!(compact.contains("stream_models::<project::ProjectedModel>"));
     assert!(api.contains("before_validate_create(&context, &mut input)"));
     assert!(api.contains("let mut created = Vec::new()"));
     assert!(api.contains("let savepoint = transaction.begin().await?"));
@@ -311,7 +329,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 112);
+    assert_eq!(artifacts.len(), 113);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -677,8 +695,9 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
     );
 }
 
+#[allow(clippy::too_many_lines)]
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 95);
+    assert_eq!(artifacts.len(), 96);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")
@@ -704,7 +723,10 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     assert!(backend.contains("pub async fn connect_database"));
     assert!(backend.contains("PgPoolOptions"));
     assert!(backend.contains("APPSTRUCT_DB_MAX_CONNECTIONS"));
-    assert!(artifact_text(artifacts, "backend/Cargo.toml").contains("sift-query = \"=0.1.0\""));
+    assert!(
+        artifact_text(artifacts, "backend/Cargo.toml")
+            .contains("sift-query = { version = \"=0.1.0\"")
+    );
     let auth = artifact_text(artifacts, "backend/src/auth.rs");
     assert!(auth.contains("CorsLayer::permissive()"));
     assert!(auth.contains("APPSTRUCT_ENV"));

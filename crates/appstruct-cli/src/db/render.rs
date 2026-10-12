@@ -158,6 +158,8 @@ impl<'schema> RenderContext<'schema> {
                         name: format!("{}_{}_unique", table.name, unique.join("_")),
                         columns: unique.clone(),
                         unique: true,
+                        method: "btree".to_owned(),
+                        operator_class: None,
                         predicate: None,
                     },
                     &field_names,
@@ -192,6 +194,17 @@ impl<'schema> RenderContext<'schema> {
         index: &IntrospectedIndex,
         field_names: &BTreeMap<&str, String>,
     ) {
+        let supported = matches!(
+            (index.method.as_str(), index.operator_class.as_deref()),
+            ("btree", None) | ("gin", Some("gin_trgm_ops" | "jsonb_ops" | "jsonb_path_ops"))
+        );
+        if !supported {
+            self.warnings.push(format!(
+                "index `{}` uses unsupported method/operator classes and needs review",
+                index.name
+            ));
+            return;
+        }
         let Some(fields) = index
             .columns
             .iter()
@@ -215,6 +228,12 @@ impl<'schema> RenderContext<'schema> {
             .collect::<Vec<_>>()
             .join(", ");
         let _ = writeln!(output, "        fields: [{rendered_fields}]");
+        if index.method != "btree" {
+            let _ = writeln!(output, "        method: {}", index.method);
+        }
+        if let Some(class) = &index.operator_class {
+            let _ = writeln!(output, "        operator_class: {class}");
+        }
         if index.unique {
             output.push_str("        unique: true\n");
         }

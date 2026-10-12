@@ -19,8 +19,8 @@ pub use naming::{
     is_app_name, is_rust_field_name, is_rust_type_name, is_sql_name, pluralize, to_snake_case,
 };
 pub use query::{
-    MAX_LIST_PAGE, MAX_LIST_PAGE_SIZE, MAX_SEARCH_CHARS, like_contains_pattern, list_page_is_valid,
-    search_term_is_valid,
+    FilterExpression, FilterOperator, MAX_LIST_PAGE, MAX_LIST_PAGE_SIZE, MAX_SEARCH_CHARS,
+    like_contains_pattern, list_page_is_valid, search_term_is_valid,
 };
 pub use resource::{
     BulkDeleteInput, BulkFailure, BulkResult, BulkUpdateInput, CSV_EXPORT_PAGE_SIZE, CsvError,

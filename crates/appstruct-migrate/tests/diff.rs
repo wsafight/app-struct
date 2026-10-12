@@ -190,6 +190,8 @@ fn composite_and_partial_indexes_are_diffed_and_rendered() {
         table: "projects".to_owned(),
         columns: vec!["name".to_owned(), "status".to_owned()],
         unique: true,
+        method: appstruct_ir::IndexMethod::Btree,
+        operator_class: None,
         predicate: Some("status = 'active'".to_owned()),
     });
     let plan = diff(&before, &after);
@@ -246,6 +248,8 @@ fn index_and_seed_replacements_are_diffed() {
         table: "projects".to_owned(),
         columns: vec!["name".to_owned()],
         unique: false,
+        method: appstruct_ir::IndexMethod::Btree,
+        operator_class: None,
         predicate: None,
     });
     let mut changed = before.clone();

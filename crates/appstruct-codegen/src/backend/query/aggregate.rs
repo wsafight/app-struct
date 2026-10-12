@@ -1,7 +1,6 @@
 mod group;
 
-use super::relation;
-use super::{column_ident, filter_keys, filter_rules, primary_key, search_rule};
+use super::{column_ident, primary_key};
 use crate::CodegenError;
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr};
 use proc_macro2::{Span, TokenStream};
@@ -14,13 +13,6 @@ pub fn aggregate_support(
     module: &syn::Ident,
     policy: &syn::Ident,
 ) -> Result<TokenStream, CodegenError> {
-    let mut keys = filter_keys(entity);
-    keys.extend(relation::filter_keys(ir, entity)?);
-    let filter_validation = super::filter_validation(&keys);
-    let filters = filter_rules(entity, module)?;
-    let relation_filters = relation::filter_rules(ir, entity, module)?;
-    let search = search_rule(entity, module)?;
-    let access_scope = super::access::scope(entity, module, &entity.access.list)?;
     let metric_arms = metric_arms(entity, module)?;
     let group_arms = group::arms(ir, entity, module)?;
     let metric_order_arms = metric_order_arms(entity, module)?;
@@ -30,13 +22,7 @@ pub fn aggregate_support(
         quote! { let mut relation_group_selected = false; }
     });
     let handler = aggregate_handler(&AggregateHandlerTokens {
-        module,
         policy,
-        filter_validation: &filter_validation,
-        access_scope: &access_scope,
-        filters: &filters,
-        relation_filters: &relation_filters,
-        search: &search,
         metric_arms: &metric_arms,
         group_arms: &group_arms,
         metric_order_arms: &metric_order_arms,
@@ -53,6 +39,8 @@ pub fn aggregate_support(
             limit: Option<u64>,
             order: Option<String>,
             q: Option<String>,
+            #[serde(rename = "where")]
+            expression: Option<String>,
             #[serde(flatten)]
             filters: BTreeMap<String, String>,
         }
@@ -76,13 +64,7 @@ pub fn aggregate_support(
 }
 
 struct AggregateHandlerTokens<'a> {
-    module: &'a syn::Ident,
     policy: &'a syn::Ident,
-    filter_validation: &'a TokenStream,
-    access_scope: &'a TokenStream,
-    filters: &'a [TokenStream],
-    relation_filters: &'a [TokenStream],
-    search: &'a TokenStream,
     metric_arms: &'a [TokenStream],
     group_arms: &'a [TokenStream],
     metric_order_arms: &'a [TokenStream],
@@ -93,13 +75,7 @@ struct AggregateHandlerTokens<'a> {
 #[allow(clippy::too_many_lines)]
 fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
     let AggregateHandlerTokens {
-        module,
         policy,
-        filter_validation,
-        access_scope,
-        filters,
-        relation_filters,
-        search,
         metric_arms,
         group_arms,
         metric_order_arms,
@@ -116,7 +92,6 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
             if !state.extensions.#policy().can_list(&context).await? {
                 return Err(access_denied(&context));
             }
-            #filter_validation
             let limit = query.limit.unwrap_or(100);
             if !(1..=500).contains(&limit) {
                 return Err(ApiError::InvalidQuery(
@@ -145,12 +120,8 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
                 ));
             }
             let mut selected_metrics = BTreeSet::new();
-            let mut select = #module::select();
-            #access_scope
-            #(#filters)*
-            #(#relation_filters)*
-            #search
-            let mut select = select.select_only();
+            let resource_query = ListQuery { q: query.q.clone(), expression: query.expression.clone(), filters: query.filters.clone(), ..Default::default() };
+            let mut select = filtered_select(&context, &resource_query)?.select_only();
             for metric in &metrics {
                 if !selected_metrics.insert(*metric) {
                     return Err(ApiError::InvalidQuery(format!("duplicate aggregate metric `{metric}`")));

@@ -3,62 +3,47 @@ use appstruct_ir::{EntityIr, FieldTypeIr};
 use proc_macro2::TokenStream;
 use quote::quote;
 
-pub(super) fn export(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStream {
-    let BulkContext {
-        module,
-        policy,
-        list_scope,
-        primary_column,
-        ..
-    } = context;
-    let headers = entity
-        .fields
-        .iter()
-        .map(|field| field.api_name.as_str())
-        .collect::<Vec<_>>();
-    let fields = entity
-        .fields
-        .iter()
-        .map(|field| field.rust_name.as_str())
-        .collect::<Vec<_>>();
+pub(super) fn export(_entity: &EntityIr, context: &BulkContext<'_>) -> TokenStream {
+    let BulkContext { module, policy, .. } = context;
     quote! {
-        async fn export_csv(State(state): State<AppState>, headers: HeaderMap) -> Result<([(header::HeaderName, String); 1], String), ApiError> {
+        async fn export_csv(
+            State(state): State<AppState>, headers: HeaderMap,
+            axum::extract::Query(query): axum::extract::Query<ListQuery>,
+        ) -> Result<axum::response::Response, ApiError> {
+            use axum::response::IntoResponse as _;
+            use sift_query::SearchEntity as _;
+            use futures_util::TryStreamExt as _;
+            if query.page.is_some() || query.page_size.is_some() || query.cursor.is_some() || query.limit.is_some() || query.direction.is_some() {
+                return Err(ApiError::InvalidQuery("CSV exports the complete filtered result; pagination is not accepted".to_owned()));
+            }
             let context = state.context(&headers).await?;
-            if !state.extensions.#policy().can_list(&context).await? {
-                return Err(access_denied(&context));
+            if !state.extensions.#policy().can_list(&context).await? { return Err(access_denied(&context)); }
+            let select = filtered_select(&context, &query)?;
+            let fields = selected_fields(&context, query.fields.as_deref())?;
+            let order = crate::database::resource_order::<#module::Model>(query.sort.as_deref(), |field| field_read_allowed(&context, field))?;
+            let transaction = state.database.begin().await?;
+            transaction.execute_unprepared("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY").await?;
+            transaction.execute_unprepared("SET LOCAL statement_timeout = '30s'; SET LOCAL idle_in_transaction_session_timeout = '30s'").await?;
+            if select.bounded_count(&transaction, MAX_CSV_EXPORT_ROWS).await? > MAX_CSV_EXPORT_ROWS {
+                return Err(ApiError::InvalidQuery(format!("CSV export is limited to {MAX_CSV_EXPORT_ROWS} rows")));
             }
-            let mut select = #module::select(); #list_scope
-            select = select.order_by_asc(#module::Column::#primary_column);
-            let total = select.clone().count(&state.database).await?;
-            if total > MAX_CSV_EXPORT_ROWS {
-                return Err(ApiError::InvalidQuery(format!(
-                    "CSV export is limited to {MAX_CSV_EXPORT_ROWS} rows"
-                )));
-            }
-            let columns = [#((#headers, #fields)),*]
-                .into_iter()
-                .filter(|(_, field)| field_read_allowed(&context, field))
-                .collect::<Vec<_>>();
-            let mut csv = String::with_capacity(8_192);
-            csv.push_str(&columns.iter().map(|(name, _)| csv_escape(name)).collect::<Vec<_>>().join(","));
-            csv.push('\n');
-            let mut offset = 0;
-            while offset < total {
-                let models = select.clone().offset(offset).limit(CSV_EXPORT_PAGE_SIZE).all(&state.database).await?;
-                for model in models {
-                    let value = redact_model(&context, model)?;
-                    let object = value.as_object().ok_or(ApiError::Internal)?;
-                    let row = columns
-                        .iter()
-                        .map(|(_, field)| object.get(*field).map(csv_cell).unwrap_or_default())
-                        .collect::<Vec<_>>();
-                    csv.push_str(&row.iter().map(|value| csv_escape(value)).collect::<Vec<_>>().join(","));
-                    csv.push('\n');
+            let statement = #module::projected(select.order_by(&order, &#module::Model::META, false).limit(MAX_CSV_EXPORT_ROWS), &fields, &order)?.statement();
+            let stream: std::pin::Pin<Box<dyn futures_core::Stream<Item = Result<Vec<u8>, std::io::Error>> + Send>> = Box::pin(async_stream::try_stream! {
+                let mut rows = std::pin::pin!(transaction.stream_models::<#module::ProjectedModel>(statement));
+                let mut chunk = fields.iter().map(|field| csv_escape(field)).collect::<Vec<_>>().join(",");
+                chunk.push('\n');
+                yield std::mem::take(&mut chunk).into_bytes();
+                while let Some(row) = rows.try_next().await.map_err(std::io::Error::other)? {
+                    let value = row.json(&fields).map_err(|_| std::io::Error::other("CSV serialization failed"))?;
+                    let object = value.as_object().ok_or_else(|| std::io::Error::other("invalid CSV row"))?;
+                    chunk.push_str(&fields.iter().map(|field| csv_escape(&object.get(field).map(csv_cell).unwrap_or_default())).collect::<Vec<_>>().join(","));
+                    chunk.push('\n');
+                    if chunk.len() >= 65_536 { yield std::mem::take(&mut chunk).into_bytes(); }
                 }
-                offset += CSV_EXPORT_PAGE_SIZE;
-            }
-            let _ = context;
-            Ok(([(header::CONTENT_TYPE, "text/csv; charset=utf-8".to_owned())], csv))
+                if !chunk.is_empty() { yield chunk.into_bytes(); }
+            });
+            let body = axum::body::Body::from_stream(stream);
+            Ok(([(header::CONTENT_TYPE, "text/csv; charset=utf-8"), (header::CONTENT_DISPOSITION, "attachment; filename=export.csv")], body).into_response())
         }
     }
 }

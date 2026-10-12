@@ -40,7 +40,11 @@ GET /api/tasks/?limit=25&cursor=<next_cursor>&filter[status]=todo
 }
 ```
 
-游标模式按资源主键升序排序，最多获取 100 条记录，并且不运行总数查询。`page`、`page_size` 和 `sort` 不能与游标模式组合。游标令牌是带版本的 Base64URL 值，属于 API 实现细节；客户端必须原样保留。向前翻页使用 `next_cursor`；向后翻页时把 `previous_cursor` 作为 `cursor` 并传入 `direction=previous`。更改搜索或过滤参数后，从第一页重新开始。生成的资源列表在没有显式排序时默认使用双向游标；排序列表和回收站继续使用偏移分页。
+游标模式接受 `sort=-created_at,title` 这样的多列排序，自动追加主键作为稳定排序条件。包含主键在内最多四列；前后翻页都保留 PostgreSQL 的空值排序。每次最多获取 100 条记录，不执行总数查询。`page` 和 `page_size` 不能与游标模式组合。
+
+游标是绑定实体和排序规则的签名 Base64URL 令牌，客户端必须原样保留。更改筛选或排序后从第一页重新开始。设置至少 32 字节的 `APPSTRUCT_CURSOR_KEY`，并在服务实例间共享，可以让游标在重启后继续有效；未配置时使用进程随机密钥。令牌上限为 16 KiB；排序值超过上限时使用页码分页。
+
+**管理表格默认使用页码分页和精确总数，包括排序后的列表。** Web URL 可以用 `pagination=cursor` 显式启用游标遍历；回收站仍使用页码。向后翻页时把 `previous_cursor` 作为 `cursor`，并传入 `direction=previous`。
 
 生成的 TypeScript 客户端分别暴露这两种模式：
 
@@ -59,6 +63,42 @@ const previous = await taskApi.listCursor({
   filters: { status: "todo" },
 });
 ```
+
+## 高级筛选与字段投影
+
+`where` 参数是请求中经过 URL 编码的 JSON 树。每个条件使用公开字段名、操作符和文本值，通过 `all`（AND）或 `any`（OR）组合：
+
+```ts
+const page = await taskApi.list({
+  where: { all: [
+    { field: "status", op: "in", values: ["todo", "active"] },
+    { any: [
+      { field: "priority", op: "gte", values: ["3"] },
+      { field: "priority", op: "is_null" },
+    ] },
+  ] },
+  fields: ["id", "title", "status"],
+});
+```
+
+支持 `eq`、`ne`、`gt`、`gte`、`lt`、`lte`、`in`、`not_in`、`is_null`、`not_null`、`contains`、`starts_with` 和 `ends_with`。声明 `filterable: true` 的 JSON 字段还支持 `json_contains`（`@>`）、`json_contained_by`（`<@`）和 `json_key`（`?`）。JSON 值使用 `values` 数组中的 JSON 文本；`json_key` 接受键名。JSON 字段不能排序。
+
+空值操作符不接受值；IN 接受 1–100 个值，其余操作符要求一个值。筛选树最多 8 层、64 个节点、100 个值和 16 KiB。sift-query 校验类型和操作符，SQL 使用绑定参数。所有条件字段都必须可筛选且有读取权限；关系路径继续使用原有的 `filter[...]` 语法。
+
+`fields=id,title,status` 限制数据库读取的列和响应属性。排序字段按需内部补充读取，不会因此出现在响应里。未知、重复或无权限的字段会被拒绝；省略 `fields` 时返回所有可读字段。管理表格请求可见列，同时补充主键、版本号和工作流状态。列表和游标客户端使用 `Partial<Model>` 表示可能省略的属性，OpenAPI 同步反映这一契约。
+
+## 筛选统计
+
+`GET /api/tasks/_facets?facet=status,priority&limit=10` 返回 1–5 个可筛选、可读标量字段的 Top-N 分桶；不支持 JSON。`limit` 默认 10，范围为 1–20。搜索、普通筛选和 `where` 与列表使用相同的权限及租户范围。统计使用同一个 repeatable-read 快照，包含空值，先按数量降序再按值升序排列。bigint、decimal 分桶值保留字符串表示。
+
+```json
+{ "data": { "status": {
+  "buckets": [{ "value": "todo", "count": 12 }],
+  "other_count": 3
+} } }
+```
+
+`other_count` 是返回分桶之外的行数。管理页面会显示枚举和布尔字段的统计。TypeScript API 提供 `taskApi.facets({ facet: ["status"], where: ... })`。
 
 ## 关系过滤器
 

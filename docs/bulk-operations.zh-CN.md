@@ -17,6 +17,8 @@ POST /api/<table>/_import.csv
 
 CSV 导出使用 API 字段名并包含表头行。CSV 导入接受相同名称，忽略生成列，通过常规创建契约校验每一行，并在提交成功行的同时报告行级失败。Realtime 事件和 `after_commit` 钩子只在外层事务提交后运行。
 
+CSV 导出在 PostgreSQL 的 repeatable-read 只读快照中流式读取，并以 64 KiB 分块发送。支持当前搜索、筛选、`where`、`sort` 和 `fields`；导出完整筛选结果，因此拒绝分页参数。超过 10,000 行会在发送表头前失败，数据库语句超时为 30 秒。支持文件保存 API 的浏览器直接分块写入选定文件，其余浏览器使用 Blob 下载。
+
 ## 下一步
 
 - [实体工作流](workflows.zh-CN.md)：工作流字段不会进入批量与 CSV 输入

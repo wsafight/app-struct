@@ -23,22 +23,30 @@ entity. `unique: true` creates a unique index; `where` creates a partial index a
 trusted SQL predicate after compiler validation. Predicates cannot contain semicolons or SQL line
 comments. Index names are optional; omitted names are generated from the entity and field list.
 
-## Search indexes
+## Search and JSON indexes
 
-`searchable: true` uses a substring `LIKE` query (`%term%`). A regular B-tree index will not speed
-up that pattern on a large table. For high-cardinality or frequently searched fields, install
-PostgreSQL's `pg_trgm` extension and create a GIN index in a reviewed manual migration:
+Declare the GIN method and operator class in the App Spec to generate the corresponding migration:
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX users_name_search_idx
-  ON users USING GIN (name gin_trgm_ops);
+```yaml
+indexes:
+  - name: title_search
+    fields: [title]
+    method: gin
+    operator_class: gin_trgm_ops
+  - name: payload_search
+    fields: [payload]
+    method: gin
+    operator_class: jsonb_ops
 ```
 
-Declare a matching `indexes` entry in the App Spec and keep the field `searchable`. Replace the
-generated B-tree statement with this reviewed operator-owned migration. AppStruct's schema catalog
-compares indexed columns, uniqueness, and predicate, while intentionally ignoring the access method
-and operator class, so the GIN index remains covered by drift checks.
+`method` defaults to `btree`. `gin` requires an operator class and cannot be unique. `gin_trgm_ops`
+supports string, text and enum fields; migrations create the `pg_trgm` extension to accelerate
+substring queries on `searchable: true` fields. `jsonb_ops` and `jsonb_path_ops` support JSON fields.
+Use `jsonb_ops` for key-existence queries; `jsonb_path_ops` supports containment queries. Incompatible
+field types fail compilation.
+
+Database import and drift checks include the method and operator class, distinguishing B-tree and
+GIN indexes on the same columns.
 
 ## Migrations
 

@@ -1715,3 +1715,36 @@ a {
     min-width: 680px;
   }
 }
+
+.advanced-filters {
+  flex-basis: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+}
+.advanced-filters summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.advanced-filter-row,
+.advanced-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.advanced-filter-row input,
+.advanced-filter-row select {
+  min-width: 8rem;
+  flex: 1;
+}
+
+.facet-counts {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}

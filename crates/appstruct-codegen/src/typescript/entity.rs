@@ -3,6 +3,7 @@ use appstruct_ir::{AppIr, EntityIr};
 pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
     let variable = lower_camel(&entity.rust_name);
     let model = &entity.rust_name;
+    let table = &entity.table_name;
     let path = format!("/api/{}/", entity.table_name);
     let collections = super::collections::client(entity, &path);
     let restore = if entity.views.soft_delete {
@@ -44,12 +45,13 @@ pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
     });
     format!(
         r#"export const {variable}Api = {{
-  list: (query: ListQuery = {{}}, options: RequestOptions = {{}}) => request<ListResponse<{model}>>(listPath("{path}", query), options),
+  list: (query: ListQuery = {{}}, options: RequestOptions = {{}}) => request<ListResponse<Partial<{model}>>>(listPath("{path}", query), options),
   lookup: (ids: string[], options: RequestOptions = {{}}) => request<{model}[]>("{path}_lookup?" + new URLSearchParams({{ ids: ids.join(",") }}), options),
   listCursor: (query: CursorListQuery = {{}}, options: RequestOptions = {{}}) =>
-    request<CursorListResponse<{model}>>(listPath("{path}", {{ limit: 25, ...query }}), options),
+    request<CursorListResponse<Partial<{model}>>>(listPath("{path}", {{ limit: 25, ...query }}), options),
   aggregate: (query: AggregateQuery = {{}}, options: RequestOptions = {{}}) =>
     request<AggregateResponse>(aggregatePath("{path}_aggregate", query), options),
+  facets: (query: FacetQuery, options: RequestOptions = {{}}) => request<FacetResponse>(facetPath("{path}_facets", query), options),
   get: (id: string, options: RequestOptions = {{}}) => {{
     const member = `{path}${{encodeURIComponent(id)}}`;
     return request<{model}>(member, options, member);
@@ -66,7 +68,8 @@ pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
   }},
   bulkUpdate: (input: BulkUpdateRequest<Update{model}Input>) => request<BulkResult>("{path}_bulk", {{ method: "PATCH", body: JSON.stringify(input) }}),
   bulkDelete: (input: BulkDeleteRequest) => request<BulkResult>("{path}_bulk", {{ method: "DELETE", body: JSON.stringify(input) }}),
-  exportCsv: () => requestText("{path}_export.csv"),
+  exportCsv: (query: Omit<ListQuery, "page" | "page_size"> = {{}}) => requestText(listPath("{path}_export.csv", query)),
+  downloadCsv: (query: Omit<ListQuery, "page" | "page_size"> = {{}}) => downloadResourceCsv(listPath("{path}_export.csv", query), "{table}.csv"),
   importCsv: (csv: string) => request<BulkResult>("{path}_import.csv", {{ method: "POST", headers: {{ "Content-Type": "text/csv" }}, body: csv }}),
 {restore}{workflow}{collections}}};
 "#

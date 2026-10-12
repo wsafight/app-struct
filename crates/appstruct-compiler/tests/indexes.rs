@@ -50,3 +50,43 @@ fn rejects_unsafe_partial_index_predicates() {
     let diagnostics = compile_project(project.path()).unwrap_err();
     assert_eq!(diagnostics[0].code, "AS1013");
 }
+
+#[test]
+fn search_indexes_are_typed_and_round_trip_into_migrations() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/m6-query-project");
+    let ir = compile_project(&fixture).unwrap();
+    let indexes = &ir
+        .entities
+        .iter()
+        .find(|entity| entity.rust_name == "Entry")
+        .unwrap()
+        .indexes;
+    assert_eq!(
+        indexes
+            .iter()
+            .filter(|index| index.method == appstruct_ir::IndexMethod::Gin)
+            .count(),
+        2
+    );
+    assert!(indexes.iter().any(|index| index.operator_class == Some(appstruct_ir::IndexOperatorClass::GinTrgmOps)));
+    assert!(
+        indexes
+            .iter()
+            .any(|index| index.operator_class == Some(appstruct_ir::IndexOperatorClass::JsonbOps))
+    );
+    let project = tempfile::tempdir().unwrap();
+    fs::create_dir(project.path().join("spec")).unwrap();
+    for name in ["appstruct.yaml", "spec/identity.yaml", "spec/entry.yaml"] {
+        fs::copy(fixture.join(name), project.path().join(name)).unwrap();
+    }
+    let spec = fs::read_to_string(project.path().join("spec/entry.yaml")).unwrap();
+    for invalid in [
+        spec.replace("gin_trgm_ops", "jsonb_ops"),
+        spec.replace("method: gin", "method: hash"),
+        spec.replace("method: gin", "method: gin\n        unique: true"),
+    ] {
+        fs::write(project.path().join("spec/entry.yaml"), invalid).unwrap();
+        assert!(compile_project(project.path()).is_err());
+    }
+}

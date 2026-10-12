@@ -121,7 +121,7 @@ fn connect_database_source() -> TokenStream {
                 .max_lifetime(Duration::from_secs(env_positive_u64("APPSTRUCT_DB_MAX_LIFETIME_SECS", 1800)))
                 .connect(&database_url.into()))
                 .await.map_err(|_| sqlx::Error::PoolTimedOut)??;
-            Ok(Database::from_pool(pool))
+            Database::from_pool(pool).cursor_key_from_env()
         }
 
         fn env_positive_u32(name: &str, default: u32) -> u32 {

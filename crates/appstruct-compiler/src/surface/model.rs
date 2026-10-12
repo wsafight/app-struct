@@ -169,6 +169,8 @@ pub(crate) struct SurfaceIndex {
     pub name: Option<Located<String>>,
     pub fields: Vec<Located<String>>,
     pub unique: bool,
+    pub method: appstruct_ir::IndexMethod,
+    pub operator_class: Option<appstruct_ir::IndexOperatorClass>,
     pub where_clause: Option<Located<String>>,
     pub span: SourceSpan,
 }

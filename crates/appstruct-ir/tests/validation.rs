@@ -188,6 +188,8 @@ fn rejects_index_seed_and_relation_shape_errors() {
             entity: EntityId("app::Missing".to_owned()),
             fields: Vec::new(),
             unique: false,
+            method: appstruct_ir::IndexMethod::Btree,
+            operator_class: None,
             predicate: Some("x; y".to_owned()),
         });
         ir.entities[0].indexes.push(appstruct_ir::IndexIr {
@@ -195,6 +197,8 @@ fn rejects_index_seed_and_relation_shape_errors() {
             entity: entity_id,
             fields: vec![field_id.clone(), field_id],
             unique: false,
+            method: appstruct_ir::IndexMethod::Btree,
+            operator_class: None,
             predicate: None,
         });
     }

@@ -1,6 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, rs } from "@rstest/core";
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import * as resourceActual from "./resource" with { rstest: "importActual" };
 import {
@@ -11,6 +19,8 @@ import { useRelationOptions } from "./relation-options";
 import { recordLabel } from "./relations";
 import type { FieldDefinition, ResourceDefinition } from "./resource";
 import { parseResourceQuery } from "./url-controller";
+import { ResourceFilters } from "./pages/ResourceFilters";
+import { useCsvTransfer } from "./pages/resource-list/useCsvTransfer";
 
 rs.mock("./resource", () => ({
   ...resourceActual,
@@ -178,14 +188,159 @@ describe("headless controllers", () => {
     );
     expect(parsed.page).toBe(1);
     expect(parsed.pageSize).toBe(25);
-    expect(parsed.cursorMode).toBe(true);
-    expect("limit" in parsed.query ? parsed.query.limit : undefined).toBe(25);
+    expect(parsed.cursorMode).toBe(false);
+    expect(
+      "page_size" in parsed.query ? parsed.query.page_size : undefined,
+    ).toBe(25);
     expect(parsed.query.range_filters.amount.gte).toBe("0.1");
     invoice.displayField = "number";
     expect(recordLabel(invoice, { id: "one", number: "INV-001" })).toBe(
       "INV-001",
     );
     expect(recordLabel(invoice, { id: "one" })).toBe("one");
+  });
+
+  it("uses signed cursor pagination only when explicitly requested, including sorting", () => {
+    const parsed = parseResourceQuery(
+      resource(),
+      [amount],
+      new URLSearchParams("pagination=cursor&sort=-amount"),
+    );
+    expect(parsed.cursorMode).toBe(true);
+    expect(parsed.query.sort).toBe("-amount");
+    expect("limit" in parsed.query ? parsed.query.limit : undefined).toBe(25);
+  });
+
+  it("preserves page numbers and nested advanced filters in sorted views", () => {
+    const expression = {
+      any: [
+        { field: "amount", op: "gte", values: ["0"] },
+        { all: [{ field: "amount", op: "is_null" }] },
+      ],
+    };
+    const parsed = parseResourceQuery(
+      resource(),
+      [amount],
+      new URLSearchParams({
+        page: "3",
+        sort: "-amount",
+        where: JSON.stringify(expression),
+      }),
+    );
+    expect(parsed.cursorMode).toBe(false);
+    expect(parsed.page).toBe(3);
+    expect(parsed.query.where).toEqual(expression);
+  });
+
+  it("applies advanced OR conditions with zero and null values", () => {
+    const updateParam = rs.fn();
+    render(
+      <ResourceFilters
+        fields={[amount]}
+        resources={[]}
+        searchParams={new URLSearchParams()}
+        updateParam={updateParam}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Filter match mode"), {
+      target: { value: "any" },
+    });
+    fireEvent.click(screen.getByText("Add condition"));
+    fireEvent.change(screen.getByLabelText("Condition 1 operator"), {
+      target: { value: "gte" },
+    });
+    fireEvent.change(screen.getByLabelText("Condition 1 value"), {
+      target: { value: "0" },
+    });
+    fireEvent.click(screen.getByText("Add condition"));
+    fireEvent.change(screen.getByLabelText("Condition 2 operator"), {
+      target: { value: "is_null" },
+    });
+    fireEvent.click(screen.getByText("Apply filters"));
+    expect(updateParam).toHaveBeenCalledWith(
+      "where",
+      JSON.stringify({
+        any: [
+          { field: "amount", op: "gte", values: ["0"] },
+          { field: "amount", op: "is_null", values: [] },
+        ],
+      }),
+      false,
+    );
+  });
+
+  it("shows facet counts for the current advanced filter", async () => {
+    const invoice = resource();
+    invoice.api.facets = rs.fn().mockResolvedValue({
+      data: {
+        paid: { buckets: [{ value: true, count: 3 }], other_count: 2 },
+      },
+    });
+    const paid: FieldDefinition = {
+      ...amount,
+      name: "paid",
+      apiName: "paid",
+      label: "Paid",
+      kind: "boolean",
+    };
+    const expression = { field: "amount", op: "gte", values: ["10"] };
+    render(
+      <ResourceFilters
+        resource={invoice}
+        fields={[amount, paid]}
+        resources={[]}
+        searchParams={
+          new URLSearchParams({ where: JSON.stringify(expression) })
+        }
+        updateParam={rs.fn()}
+      />,
+      { wrapper: wrapper() },
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText("Counts for current filters").textContent,
+      ).toContain("true (3) · Other (2)"),
+    );
+    expect(invoice.api.facets).toHaveBeenCalledWith(
+      expect.objectContaining({ facet: ["paid"], where: expression }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("passes filters and projected columns to the streaming CSV download", async () => {
+    const invoice = resource();
+    invoice.api.downloadCsv = rs.fn().mockResolvedValue(undefined);
+    const expression = { field: "amount", op: "gte" as const, values: ["0"] };
+    const { result } = renderHook(
+      () =>
+        useCsvTransfer({
+          resource: invoice,
+          runChange: rs.fn(),
+          onError: rs.fn(),
+          query: {
+            page: 3,
+            fields: ["amount"],
+            where: expression,
+            sort: "-amount",
+          },
+        }),
+      { wrapper: wrapper() },
+    );
+    await act(async () => {
+      result.current.exportCsv();
+    });
+    await waitFor(() => expect(invoice.api.downloadCsv).toHaveBeenCalledOnce());
+    expect(invoice.api.downloadCsv).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fields: ["amount"],
+        where: expression,
+        sort: "-amount",
+      }),
+    );
+    expect(invoice.api.downloadCsv).toHaveBeenCalledWith(
+      expect.not.objectContaining({ page: 3 }),
+    );
+    expect(invoice.api.exportCsv).not.toHaveBeenCalled();
   });
 
   it("keeps relation controls usable when option loading is unauthorized", () => {

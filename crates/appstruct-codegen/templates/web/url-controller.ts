@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { FilterExpression } from "./generated/client";
 import { useSearchParams, validateResourceSearch } from "./navigation";
 import {
   canAccessRule,
@@ -16,7 +17,7 @@ export function parseResourceQuery(
   const pageSize = search.page_size ?? 25;
   const sort = search.sort ?? "";
   const trashMode = resource.softDelete && search.trash === "1";
-  const cursorMode = !trashMode && !sort;
+  const cursorMode = !trashMode && search.pagination === "cursor";
   const cursor = cursorMode ? search.cursor : undefined;
   const page = cursorMode && !cursor ? 1 : (search.page ?? 1);
   const filters = buildResourceFilterQuery(fields, parameters);
@@ -31,6 +32,7 @@ export function parseResourceQuery(
           cursor,
           direction: cursor ? (search.direction ?? "next") : undefined,
           limit: pageSize,
+          sort: sort || undefined,
           q: search.q || undefined,
           ...filters,
         }
@@ -94,11 +96,23 @@ export function useResourceUrlController(resource: ResourceDefinition) {
   };
 }
 
+export function parseFilterExpression(
+  raw: string | null,
+): FilterExpression | undefined {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as FilterExpression;
+  } catch {
+    return undefined;
+  }
+}
+
 export function buildResourceFilterQuery(
   fields: FieldDefinition[],
   searchParams: URLSearchParams,
 ) {
   return {
+    where: parseFilterExpression(searchParams.get("where")),
     filters: Object.fromEntries(
       fields.map((field) => [
         field.name,

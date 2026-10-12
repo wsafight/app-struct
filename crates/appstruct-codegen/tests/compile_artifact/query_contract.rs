@@ -51,6 +51,8 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     let client = artifact_text(artifacts, "web/src/generated/client.ts");
     assert!(client.contains("ListResponse"));
     assert!(client.contains("CursorListResponse"));
+    assert!(client.contains("ListResponse<Partial<Project>>"));
+    assert!(client.contains("CursorListResponse<Partial<Project>>"));
     assert!(client.contains("listCursor"));
     assert!(client.contains("{ limit: 25, ...query }"));
     assert!(client.contains("direction?: \"next\" | \"previous\""));
@@ -73,10 +75,10 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     assert!(project_api.contains("MAX_LIST_PAGE"));
     let resource_runtime = artifact_text(artifacts, "backend/core/src/resource.rs");
     assert!(resource_runtime.contains("URL_SAFE_NO_PAD"));
-    assert!(project_api.contains("decode_cursor(cursor)"));
+    assert!(project_api.contains("decode::<project::Model>"));
     assert!(project_api.contains("limit + 1"));
     assert!(project_api.contains("ListMeta::Cursor"));
-    assert!(project_api.contains("order_by_desc"));
+    assert!(project_api.contains("order_by(&order, &project::Model::META, previous)"));
     assert!(project_api.contains("previous_cursor"));
     let task_api = artifact_text(artifacts, "backend/src/api/task.rs");
     assert!(task_api.contains("filter[project.status]"));
@@ -100,6 +102,10 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     let openapi: Value =
         serde_json::from_str(artifact_text(artifacts, "openapi/openapi.json")).unwrap();
     let meta = &openapi["components"]["schemas"]["ProjectListResponse"]["properties"]["meta"];
+    let item =
+        &openapi["components"]["schemas"]["ProjectListResponse"]["properties"]["data"]["items"];
+    assert_eq!(item["required"], serde_json::json!([]));
+    assert!(item["properties"]["id"].is_object());
     assert_eq!(meta["type"], "object");
     assert_eq!(meta["oneOf"].as_array().unwrap().len(), 2);
     let task_parameters = openapi["paths"]["/api/tasks/"]["get"]["parameters"]
@@ -174,8 +180,12 @@ fn field_access_is_enforced_and_published_to_contracts() {
     assert!(api.contains("authorize_create_fields"));
     assert!(api.contains("actor.has_role(\"admin\")"));
     assert!(api.contains("field_read_allowed(&context, field)"));
-    assert!(api.contains("let value = redact_model(&context, model)?"));
-    assert!(api.contains("object.get(*field).map(csv_cell)"));
+    assert!(api.contains("row.json(&fields)"));
+    assert!(
+        api.split_whitespace()
+            .collect::<String>()
+            .contains("object.get(field).map(csv_cell)")
+    );
     assert!(!api.contains("trim_matches('\\\"')"));
 
     let client = artifact_text(&artifacts, "web/src/generated/client.ts");

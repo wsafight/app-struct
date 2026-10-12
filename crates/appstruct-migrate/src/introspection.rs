@@ -25,6 +25,8 @@ pub struct IntrospectedIndex {
     pub name: String,
     pub columns: Vec<String>,
     pub unique: bool,
+    pub method: String,
+    pub operator_class: Option<String>,
     pub predicate: Option<String>,
 }
 
@@ -111,6 +113,8 @@ fn inspect(client: &mut Client, schema: &str) -> Result<IntrospectedSchema, Migr
                 name: index.name,
                 columns: index.columns,
                 unique: index.unique,
+                method: index.method,
+                operator_class: index.operator_class,
                 predicate: index.predicate,
             });
     }

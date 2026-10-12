@@ -39,14 +39,7 @@ pub(super) fn filter_rules(
         let field_name = field.rust_name.as_str();
         let exact_key = LitStr::new(&format!("filter[{}]", field.rust_name), Span::call_site());
         let value = parsed_value(field, &quote! { raw });
-        let predicate = if matches!(field.ty, FieldTypeIr::Json) {
-            // sift-query 0.1 treats JSON as decode-only. Keep existing JSON equality
-            // through a bound PostgreSQL jsonb comparison.
-            let column = column_ident(field)?;
-            quote! { #module::Column::#column.eq(value) }
-        } else {
-            quote! { crate::database::sift_condition(#module::ModelFields::#sift_field, value, sift_query::Operator::Eq)? }
-        };
+        let predicate = quote! { crate::database::sift_condition(#module::ModelFields::#sift_field, value, sift_query::Operator::Eq)? };
         rules.push(quote! {
             if let Some(raw) = query.filters.get(#exact_key) {
                 if !field_read_allowed(&context, #field_name) {
@@ -149,35 +142,6 @@ pub(super) fn search_rule(
             select = select.filter(condition);
         }
     })
-}
-
-pub(super) fn sort_rules(
-    entity: &EntityIr,
-    module: &syn::Ident,
-) -> Result<Vec<TokenStream>, CodegenError> {
-    entity
-        .fields
-        .iter()
-        .filter(|field| field.primary_key || field.capabilities.sortable)
-        .map(|field| {
-            let name = LitStr::new(&field.rust_name, Span::call_site());
-            let column = column_ident(field)?;
-            let primary = field.primary_key;
-            Ok(quote! {
-                #name => {
-                    if !field_read_allowed(&context, #name) {
-                        return Err(access_denied(&context));
-                    }
-                    select = if descending {
-                        select.order_by_desc(#module::Column::#column)
-                    } else {
-                        select.order_by_asc(#module::Column::#column)
-                    };
-                    primary_sorted |= #primary;
-                }
-            })
-        })
-        .collect()
 }
 
 pub(super) fn parsed_value(field: &FieldIr, raw: &TokenStream) -> TokenStream {

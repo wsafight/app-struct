@@ -1,4 +1,6 @@
-use appstruct_ir::{DatabaseProvider, GeneratedValueIr, OnDeleteIr};
+use appstruct_ir::{
+    DatabaseProvider, GeneratedValueIr, IndexMethod, IndexOperatorClass, OnDeleteIr,
+};
 use appstruct_migrate::{
     ColumnSchema, DatabaseSchema, DatabaseType, DriftStatus, ForeignKeySchema, IndexSchema,
     TableSchema, UniqueConstraintSchema, apply_project, connect_database, initial_migration,
@@ -77,6 +79,8 @@ fn notes_schema() -> DatabaseSchema {
             table: "notes".to_owned(),
             columns: vec!["id".to_owned()],
             unique: false,
+            method: appstruct_ir::IndexMethod::Btree,
+            operator_class: None,
             predicate: Some("status = 'published'".to_owned()),
         }],
         seeds: Vec::new(),
@@ -246,4 +250,75 @@ fn unique_constraints_and_restrict_foreign_keys_are_inspected() {
     );
     let status = status_project(project.path(), &url).unwrap();
     assert_eq!(status.drift, DriftStatus::Clean);
+}
+
+#[test]
+fn gin_indexes_round_trip_and_detect_method_and_operator_class_drift() {
+    let Some(url) = database_url() else {
+        return;
+    };
+    let _lock = lock_database();
+    reset_public(&url);
+    let mut schema = notes_schema();
+    schema.tables[0].columns.push(ColumnSchema {
+        id: "notes.payload".to_owned(),
+        name: "payload".to_owned(),
+        data_type: DatabaseType::Json,
+        nullable: true,
+        primary_key: false,
+        unique: false,
+        default: None,
+        generated: None,
+    });
+    for (name, column, class) in [
+        ("title_search", "title", IndexOperatorClass::GinTrgmOps),
+        ("payload_search", "payload", IndexOperatorClass::JsonbOps),
+    ] {
+        schema.indexes.push(IndexSchema {
+            id: format!("notes::{name}"),
+            table: "notes".to_owned(),
+            columns: vec![column.to_owned()],
+            unique: false,
+            method: IndexMethod::Gin,
+            operator_class: Some(class),
+            predicate: None,
+        });
+    }
+    let project = write_project(&schema);
+    apply_project(project.path(), &url).unwrap();
+    assert_eq!(
+        status_project(project.path(), &url).unwrap().drift,
+        DriftStatus::Clean
+    );
+    let inspected = inspect_database_schema(&url, "public").unwrap();
+    let notes = inspected
+        .tables
+        .iter()
+        .find(|table| table.name == "notes")
+        .unwrap();
+    assert!(
+        notes.indexes.iter().any(|index| index.method == "gin"
+            && index.operator_class.as_deref() == Some("gin_trgm_ops"))
+    );
+    assert!(
+        notes
+            .indexes
+            .iter()
+            .any(|index| index.operator_class.as_deref() == Some("jsonb_ops"))
+    );
+    let mut client = connect_database(&url).unwrap();
+    client
+        .batch_execute(
+            "DROP INDEX idx_title_search; CREATE INDEX idx_title_search ON notes (title)",
+        )
+        .unwrap();
+    assert_ne!(
+        status_project(project.path(), &url).unwrap().drift,
+        DriftStatus::Clean
+    );
+    client.batch_execute("DROP INDEX idx_title_search; CREATE INDEX idx_title_search ON notes USING gin (title gin_trgm_ops); DROP INDEX idx_payload_search; CREATE INDEX idx_payload_search ON notes USING gin (payload jsonb_path_ops)").unwrap();
+    assert_ne!(
+        status_project(project.path(), &url).unwrap().drift,
+        DriftStatus::Clean
+    );
 }

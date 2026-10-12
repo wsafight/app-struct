@@ -1,5 +1,5 @@
 use super::push;
-use crate::EntityIr;
+use crate::{EntityIr, FieldTypeIr, IndexMethod, IndexOperatorClass};
 use std::collections::BTreeSet;
 
 pub(super) fn validate_indexes(
@@ -15,6 +15,32 @@ pub(super) fn validate_indexes(
     let mut index_ids = BTreeSet::new();
     for (index_index, index) in entity.indexes.iter().enumerate() {
         let index_path = format!("{path}.indexes[{index_index}]");
+        let compatible = match (index.method, index.operator_class) {
+            (IndexMethod::Btree, None) => true,
+            (IndexMethod::Gin, Some(class)) if !index.unique => index.fields.iter().all(|id| {
+                entity
+                    .fields
+                    .iter()
+                    .find(|field| field.id == *id)
+                    .is_some_and(|field| match class {
+                        IndexOperatorClass::GinTrgmOps => matches!(
+                            field.ty,
+                            FieldTypeIr::String | FieldTypeIr::Text | FieldTypeIr::Enum { .. }
+                        ),
+                        IndexOperatorClass::JsonbOps | IndexOperatorClass::JsonbPathOps => {
+                            matches!(field.ty, FieldTypeIr::Json)
+                        }
+                    })
+            }),
+            _ => false,
+        };
+        if !compatible {
+            push(
+                errors,
+                format!("{index_path}.method"),
+                "index method/operator_class is incompatible with its fields or uniqueness",
+            );
+        }
         if index.entity != entity.id {
             push(
                 errors,
