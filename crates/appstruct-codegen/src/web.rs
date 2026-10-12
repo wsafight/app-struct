@@ -100,6 +100,10 @@ fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             "web/src/interaction.test.tsx",
             include_str!("../templates/web/interaction.test.tsx").to_owned(),
         ),
+        (
+            "web/src/product-workflows.test.tsx",
+            include_str!("../templates/web/product-workflows.test.tsx").to_owned(),
+        ),
         ("web/src/app/App.tsx", app::source(ir)),
         (
             "web/src/app/ResourceRoutes.tsx",
@@ -119,35 +123,18 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
     } else {
         include_str!("../templates/web/realtime/useRealtimeResourceDisabled.ts")
     };
-    let mut detail_imports = Vec::new();
-    let mut detail_extras = Vec::new();
-    if ir.audit.enabled {
-        detail_imports.push("import { RecordHistory } from \"../audit/RecordHistory\";");
-        detail_extras.push("{id && <RecordHistory entity={resource.id} recordId={id} />}");
-    }
-    if ir.activity.enabled {
-        detail_imports.push("import { ActivityTimeline } from \"../activity/ActivityTimeline\";");
-        detail_extras.push(
-            "{id && resource.activity && <ActivityTimeline resource={resource} recordId={id} />}",
-        );
-    }
-    let detail_imports = if detail_imports.is_empty() {
-        String::new()
-    } else {
-        format!("\n{}", detail_imports.join("\n"))
-    };
-    let detail_extras = if detail_extras.is_empty() {
-        String::new()
-    } else {
-        format!("\n          {}", detail_extras.join("\n          "))
-    };
-    let resource_detail = include_str!("../templates/web/ResourceDetail.tsx")
-        .replace("__DETAIL_IMPORTS__", &detail_imports)
-        .replace("__DETAIL_EXTRAS__", &detail_extras);
     vec![
         (
             "web/src/pages/ResourceFilters.tsx",
             include_str!("../templates/web/ResourceFilters.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/filter-expression.ts",
+            include_str!("../templates/web/pages/resource-list/filter-expression.ts").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/AdvancedFilters.tsx",
+            include_str!("../templates/web/pages/resource-list/AdvancedFilters.tsx").to_owned(),
         ),
         (
             "web/src/pages/resource-list/BulkActions.tsx",
@@ -160,6 +147,10 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
         (
             "web/src/pages/resource-list/ResourceInsights.tsx",
             include_str!("../templates/web/pages/resource-list/ResourceInsights.tsx").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/report-query.ts",
+            include_str!("../templates/web/pages/resource-list/report-query.ts").to_owned(),
         ),
         (
             "web/src/pages/resource-list/AggregateChart.tsx",
@@ -182,6 +173,14 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             include_str!("../templates/web/pages/resource-list/useCsvTransfer.ts").to_owned(),
         ),
         (
+            "web/src/pages/resource-list/csv-import.ts",
+            include_str!("../templates/web/pages/resource-list/csv-import.ts").to_owned(),
+        ),
+        (
+            "web/src/pages/resource-list/CsvImportDialog.tsx",
+            include_str!("../templates/web/pages/resource-list/CsvImportDialog.tsx").to_owned(),
+        ),
+        (
             "web/src/pages/ResourceForm.tsx",
             include_str!("../templates/web/ResourceForm.tsx").to_owned(),
         ),
@@ -189,7 +188,10 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             "web/src/pages/WorkflowActions.tsx",
             include_str!("../templates/web/WorkflowActions.tsx").to_owned(),
         ),
-        ("web/src/pages/ResourceDetail.tsx", resource_detail),
+        (
+            "web/src/pages/ResourceDetail.tsx",
+            resource_detail_source(ir),
+        ),
         (
             "web/src/realtime/useRealtimeResource.ts",
             realtime_resource.to_owned(),
@@ -207,6 +209,34 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             include_str!("../templates/web/pnpm-lock.yaml").to_owned(),
         ),
     ]
+}
+
+fn resource_detail_source(ir: &AppIr) -> String {
+    let mut detail_imports = Vec::new();
+    let mut detail_extras = Vec::new();
+    if ir.audit.enabled {
+        detail_imports.push("import { RecordHistory } from \"../audit/RecordHistory\";");
+        detail_extras.push("{id && <RecordHistory entity={resource.id} recordId={id} />}");
+    }
+    if ir.activity.enabled {
+        detail_imports.push("import { ActivityTimeline } from \"../activity/ActivityTimeline\";");
+        detail_extras.push(
+            "{id && resource.activity && <ActivityTimeline resource={resource} recordId={id} />}",
+        );
+    }
+    let detail_imports = if detail_imports.is_empty() {
+        String::new()
+    } else {
+        format!("\n{}", detail_imports.join("\n"))
+    };
+    let detail_extras = if detail_extras.is_empty() {
+        String::new()
+    } else {
+        format!("\n          {}", detail_extras.join("\n          "))
+    };
+    include_str!("../templates/web/ResourceDetail.tsx")
+        .replace("__DETAIL_IMPORTS__", &detail_imports)
+        .replace("__DETAIL_EXTRAS__", &detail_extras)
 }
 
 fn tsconfig() -> &'static str {

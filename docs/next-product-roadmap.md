@@ -37,17 +37,16 @@ runtime-incompatible fields. Access rules cannot be inferred from database metad
 
 Generated resources now provide offset/cursor pagination, one-hop relation filters and aggregate
 dimensions, deterministic Top-N grouping, declarative KPI/bar/donut charts, and field-level access.
-Remaining gaps are read-only computed fields, deeper relation traversal, date/time bucketing,
-richer report/dashboard query plans, and cursor traversal with user-selected sort keys.
+Remaining gaps are read-only computed fields and deeper relation traversal, plus
+richer cross-resource dashboards. Nested filters, projection, signed multi-column cursors and UTC day/week/month reports are implemented.
 
 ### 2.3 Admin productivity
 
 The Web runtime now has explicit bulk operations, saved views, import/export, soft delete, restore,
 revision-safe inline scalar editing, and paginated record history with field-level diffs inside
-detail pages. The remaining productivity gap is a more complete reusable headless
-form/URL controller for custom screens. Generated list/detail pages and custom page props now share
-the first headless controller slice for query keys, permission gates, request state, refetching, and
-mutation invalidation.
+detail pages. Generated and custom pages share URL and form controllers, including validation,
+conflicts and drafts. Import and bulk actions support review, per-item results and failed-item retries;
+saved views also retain report settings.
 
 ### 2.4 Operational administration
 
@@ -122,10 +121,9 @@ The next data and Web runtime slice must settle its public contracts before impl
    validation, field errors, revision conflicts, and unsaved-change state. Generated pages and
    custom pages must consume the same controller contract.
 
-Cursor mode remains primary-key ordered, and custom forms continue to own their form and URL state.
+Signed multi-column cursors and shared form/URL controllers are implemented. Management tables retain page pagination and exact totals.
 
-Composite keys, cross-schema relations, computed fields, deeper traversal, and arbitrary-sort
-cursors do not enter the IR merely because real databases may need them. Each requires samples from
+Composite keys, cross-schema relations, computed fields, and deeper traversal do not enter the IR merely because real databases may need them. Each requires samples from
 three real projects, a recorded failed journey, an explanation of why existing extension points are
 insufficient, and a compatibility/authorization contract draft. Without that evidence, improve
 warnings, review, and manual-modeling guidance first.

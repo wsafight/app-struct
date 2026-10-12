@@ -299,7 +299,7 @@ describe("headless controllers", () => {
     await waitFor(() =>
       expect(
         screen.getByLabelText("Counts for current filters").textContent,
-      ).toContain("true (3) · Other (2)"),
+      ).toContain("Yes (3) · Other (2)"),
     );
     expect(invoice.api.facets).toHaveBeenCalledWith(
       expect.objectContaining({ facet: ["paid"], where: expression }),

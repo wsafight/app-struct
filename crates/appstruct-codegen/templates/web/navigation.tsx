@@ -187,6 +187,29 @@ export function validateResourceSearch(
     result.columns = search.columns;
   if (search.trash === "1" || search.trash === 1) result.trash = "1";
   if (search.pagination === "cursor") result.pagination = "cursor";
+  if (search.summary === "1") result.summary = "1";
+  for (const key of [
+    "report_chart",
+    "report_metric",
+    "report_group",
+  ] as const) {
+    if (
+      typeof search[key] === "string" &&
+      search[key].length <= 128 &&
+      /^[\w.:]*$/.test(search[key])
+    )
+      result[key] = search[key];
+  }
+  if (["day", "week", "month"].includes(String(search.report_bucket)))
+    result.report_bucket = String(search.report_bucket);
+  if (
+    ["bar", "horizontal_bar", "donut", "kpi"].includes(
+      String(search.report_type),
+    )
+  )
+    result.report_type = String(search.report_type);
+  const reportLimit = searchInteger(search.report_limit, 1, 500);
+  if (reportLimit !== undefined) result.report_limit = reportLimit;
   if (typeof search.where === "string" && search.where.length <= 16_384) {
     try {
       JSON.parse(search.where);

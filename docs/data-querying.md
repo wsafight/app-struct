@@ -256,3 +256,13 @@ api_key:
 - [Scalar values](scalar-values.md) for bigint, decimal, and datetime JSON
 - [Saved views](saved-views.md) to persist list query state
 - [Relation display](relation-display.md) for batched lookup labels
+
+## Time trends and query workflows
+
+`/_aggregate?metrics=count&group_by=created_at&time_bucket=month` groups by month. The optional time_bucket accepts day/week/month and requires exactly one filterable local date/datetime group with readable access. Datetime uses UTC; weeks start on Monday. Bucket keys are YYYY-MM-DD start dates, and empty periods are omitted.
+
+`order_by=metric|group` chooses metric or dimension order. Regular queries default to descending metric order, while time buckets default to ascending group order. Group ordering requires a dimension. The existing order parameter overrides direction, with the same 500-group bound.
+
+Summary stores metric, dimension, period, chart and limit in the URL and saved views. Changes preserve the current list page. Chart clicks and accessible table links open matching records on page one, preserving existing filters and using half-open time ranges. Aggregates that cannot be represented precisely as chart numbers retain their exact table values.
+
+The nested AND/OR editor preserves saved trees, locates input errors and enforces 8 levels, 64 nodes and 100 values. Facet buckets toggle conditions, including null values. List projections include readable currency and owner dependencies; money CSV exports also include readable currencies.

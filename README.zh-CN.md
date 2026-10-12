@@ -72,6 +72,8 @@ appstruct dev
 
 ### 使用已有 PostgreSQL
 
+已有表结构接入、权限审阅和首次运行流程见[已有数据库指南](docs/existing-database.zh-CN.md)。
+
 `minimal` 模板连接外部数据库：
 
 ```bash

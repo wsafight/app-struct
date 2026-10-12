@@ -171,27 +171,29 @@ export function ResourceTable({
                 <Eye size={16} />
               </Link>
             )}
-            {trashMode ? (
-              <button
-                className="icon-button"
-                onClick={() => void restore(id)}
-                title="Restore"
-                aria-label="Restore"
-              >
-                <RotateCcw size={16} />
-              </button>
-            ) : (
-              canDelete && (
-                <button
-                  className="icon-button danger"
-                  onClick={() => void remove(id)}
-                  title={resource.softDelete ? "Move to trash" : "Delete"}
-                  aria-label={resource.softDelete ? "Move to trash" : "Delete"}
-                >
-                  <Trash2 size={16} />
-                </button>
-              )
-            )}
+            {trashMode
+              ? canAccessResource(resource, "update", actor, record) && (
+                  <button
+                    className="icon-button"
+                    onClick={() => void restore(id)}
+                    title="Restore"
+                    aria-label="Restore"
+                  >
+                    <RotateCcw size={16} />
+                  </button>
+                )
+              : canDelete && (
+                  <button
+                    className="icon-button danger"
+                    onClick={() => void remove(id)}
+                    title={resource.softDelete ? "Move to trash" : "Delete"}
+                    aria-label={
+                      resource.softDelete ? "Move to trash" : "Delete"
+                    }
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
           </div>
         );
       },

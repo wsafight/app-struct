@@ -75,7 +75,19 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
     let field_match = fields.iter().map(|field| {
         let name = field.api_name.as_str();
         let kind = kind(&field.ty);
-        quote! { #name => { object.insert(#name.to_owned(), csv_json_value(raw, #kind)); } }
+        if matches!(field.ty, FieldTypeIr::Json) {
+            quote! { #name => {
+                let value = if raw.is_empty() { serde_json::Value::Null } else {
+                    match serde_json::from_str(raw) {
+                        Ok(value) => value,
+                        Err(_) => { row_error = Some(format!("CSV column `{}` must contain valid JSON", #name)); break; }
+                    }
+                };
+                object.insert(#name.to_owned(), value);
+            } }
+        } else {
+            quote! { #name => { object.insert(#name.to_owned(), csv_json_value(raw, #kind)); } }
+        }
     });
     let audit = super::audit_event(*audit_enabled, entity_id, primary, "create");
     let activity = super::activity_event(*activity_resource, primary, "created");
@@ -90,6 +102,10 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                 return Err(ApiError::InvalidQuery(format!("CSV import is limited to {MAX_CSV_IMPORT_ROWS} rows")));
             }
             let expected = [#(#field_names),*];
+            let unique = header_row.iter().collect::<std::collections::BTreeSet<_>>();
+            if header_row.iter().any(String::is_empty) || unique.len() != header_row.len() {
+                return Err(ApiError::InvalidQuery("CSV headers must be nonempty and unique".to_owned()));
+            }
             if header_row.iter().map(String::as_str).any(|name| !expected.contains(&name)) { return Err(ApiError::InvalidQuery("CSV contains an unknown column".to_owned())); }
             let actor = context.actor().cloned(); let tenant = context.tenant(); let transaction = state.database.begin().await?;
             let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };
@@ -101,7 +117,10 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                     continue;
                 }
                 let mut object = serde_json::Map::new();
+                #[allow(unused_mut)]
+                let mut row_error: Option<String> = None;
                 for (column, raw) in header_row.iter().zip(row.iter()) { match column.as_str() { #(#field_match)* _ => {} } }
+                if let Some(error) = row_error { result.failed.push(bulk_failure(&row_id, "invalid_row", error)); continue; }
                 let mut input: CreateInput = match serde_json::from_value(serde_json::Value::Object(object)) { Ok(input) => input, Err(error) => { result.failed.push(bulk_failure(&row_id, "invalid_row", error.to_string())); continue; } };
                 let preparation: Result<(), ApiError> = async {
                     authorize_create_fields(&context, &input)?;

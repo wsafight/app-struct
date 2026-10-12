@@ -26,6 +26,7 @@ import type {
 import {
   canAccessRule,
   errorMessage,
+  listProjectionFields,
   useCanAccess,
   useResourceActor,
 } from "../resource";
@@ -38,6 +39,7 @@ import { revisionMap } from "./resource-list/revisions";
 import { ResourceTable } from "./resource-list/ResourceTable";
 import { SavedViews } from "./resource-list/SavedViews";
 import { useCsvTransfer } from "./resource-list/useCsvTransfer";
+import { CsvImportDialog } from "./resource-list/CsvImportDialog";
 import {
   defaultVisibleFieldNames,
   resolveVisibleFields,
@@ -58,7 +60,6 @@ export function ResourceList({
   const url = useResourceUrlController(resource);
   const {
     searchParams,
-    queryString,
     trashMode,
     page,
     pageSize,
@@ -89,34 +90,24 @@ export function ResourceList({
     () => resolveVisibleFields(listFields, searchParams.get("columns")),
     [listFields, searchParams],
   );
+  const listCacheKey = listQueryKey(searchParams);
   const controller = useResourceListController(resource, {
-    cacheKey: queryString,
+    cacheKey: listCacheKey,
     trashMode,
     cursorMode,
     query: {
       ...url.query,
-      fields: resource.fields
-        .filter(
-          (field) =>
-            field.name === resource.primaryKey ||
-            field.name === "revision" ||
-            field.name === resource.workflow?.field ||
-            visibleFields.some((visible) => visible.name === field.name),
-        )
-        .filter((field) =>
-          canAccessRule(field.readAccess ?? { mode: "public" }, actor),
-        )
-        .map((field) => field.name),
+      fields: listProjectionFields(resource, visibleFields, actor),
     },
     onChangeSuccess: () => setRowSelection({}),
   });
   const { records, total, nextCursor, previousCursor } = controller;
 
   useEffect(() => {
-    setSearch(new URLSearchParams(queryString).get("q") ?? "");
+    setSearch(new URLSearchParams(listCacheKey).get("q") ?? "");
     setActionError("");
     setRowSelection({});
-  }, [queryString]);
+  }, [listCacheKey]);
   useEffect(() => {
     setRowSelection({});
   }, [controller.dataUpdatedAt]);
@@ -199,7 +190,16 @@ export function ResourceList({
       ...buildResourceFilterQuery(filterFields, searchParams),
       q: searchParams.get("q") || undefined,
       sort: sort || undefined,
-      fields: visibleFields.map((field) => field.name),
+      fields: resource.fields
+        .filter(
+          (field) =>
+            visibleFields.some(
+              (visible) =>
+                visible.name === field.name ||
+                visible.semantic?.currencyField === field.name,
+            ) && canAccessRule(field.readAccess ?? { mode: "public" }, actor),
+        )
+        .map((field) => field.name),
     },
   });
   const bulk = useBulkActions({
@@ -210,12 +210,6 @@ export function ResourceList({
     actor,
     runChange,
     onError: setActionError,
-    confirm: (description, action) =>
-      setConfirmation({
-        title: trashMode ? "Permanently delete records" : "Delete records",
-        description,
-        action,
-      }),
   });
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const error =
@@ -236,6 +230,15 @@ export function ResourceList({
   if (!controller.canList) return <AccessDenied />;
   return (
     <main className="page">
+      {csv.importFile && (
+        <CsvImportDialog
+          resource={resource}
+          file={csv.importFile}
+          runChange={runChange}
+          onError={setActionError}
+          onClose={csv.closeImport}
+        />
+      )}
       <div className="page-heading">
         <div>
           <h1>{trashMode ? `${resource.label} trash` : resource.label}</h1>
@@ -326,6 +329,7 @@ export function ResourceList({
             resources={resources}
             searchParams={searchParams}
             updateParam={updateParam}
+            updateParams={url.updateParams}
           />
         </div>
       )}
@@ -346,13 +350,20 @@ export function ResourceList({
           resource={resource}
           resources={resources}
           fields={filterFields}
+          parameters={searchParams}
+          updateParams={(values) => url.updateParams(values, false)}
           query={{
             q: searchParams.get("q") ?? undefined,
             ...buildResourceFilterQuery(filterFields, searchParams),
           }}
         />
       )}
-      <BulkToolbar actions={bulk} trashMode={trashMode} busy={busy} />
+      <BulkToolbar
+        actions={bulk}
+        trashMode={trashMode}
+        busy={busy}
+        resources={resources}
+      />
       {controller.loadError && records.length > 0 && (
         <AsyncState
           state="error"
@@ -429,6 +440,13 @@ export function ResourceList({
       />
     </main>
   );
+}
+
+function listQueryKey(parameters: URLSearchParams): string {
+  const list = new URLSearchParams(parameters);
+  for (const key of Array.from(list.keys()))
+    if (key === "summary" || key.startsWith("report_")) list.delete(key);
+  return list.toString();
 }
 
 function AccessDenied() {

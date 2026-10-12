@@ -72,6 +72,7 @@ struct PullResult<'path> {
     entity_count: usize,
     warnings: Vec<String>,
     preview: preview::PullPreview,
+    next_steps: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -176,6 +177,7 @@ fn pull(project: &Path, options: PullOptions<'_>) -> ExitCode {
             entity_count: prepared.draft.entity_count,
             warnings: prepared.draft.warnings,
             preview,
+            next_steps: pull_next_steps(relative),
         });
     } else {
         println!(
@@ -187,9 +189,21 @@ fn pull(project: &Path, options: PullOptions<'_>) -> ExitCode {
         for warning in &prepared.draft.warnings {
             crate::report::warning("AS6306", crate::report::ErrorCategory::Database, warning);
         }
-        println!("Review access rules, then add the draft to appstruct.yaml includes");
+        println!("Next:");
+        for step in pull_next_steps(relative) {
+            println!("  {step}");
+        }
     }
     ExitCode::SUCCESS
+}
+
+fn pull_next_steps(output: &Path) -> Vec<String> {
+    vec![
+        format!("Review access rules and warnings in {}, then add the draft to appstruct.yaml includes.", output.display()),
+        "Run appstruct check, appstruct generate, then appstruct migrate plan to review required columns and module tables.".to_owned(),
+        "For a fresh development database, apply reviewed migrations and run appstruct doctor, then appstruct dev.".to_owned(),
+        "An existing schema is not automatically adopted as a migration baseline. Read the Existing PostgreSQL guide in the AppStruct documentation.".to_owned(),
+    ]
 }
 
 fn prepare_pull(

@@ -181,7 +181,9 @@ fn aggregate_response_schema() -> Value {
                     "metrics": { "type": "array", "items": { "type": "string" } },
                     "group_by": { "type": "array", "items": { "type": "string" } },
                     "limit": { "type": "integer", "minimum": 1, "maximum": 500 },
-                    "order": { "type": "string", "enum": ["asc", "desc"] }
+                    "order": { "type": "string", "enum": ["asc", "desc"] },
+                    "order_by": { "type": "string", "enum": ["metric", "group"] },
+                    "time_bucket": { "type": ["string", "null"], "enum": ["day", "week", "month", null] }
                 }
             }
         }

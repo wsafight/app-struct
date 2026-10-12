@@ -38,11 +38,13 @@ export function AggregateChart({
   rows,
   metricLabel,
   groupLabel,
+  onSelect,
 }: {
   type: ChartType;
   rows: ChartRow[];
   metricLabel: string;
   groupLabel: string;
+  onSelect?(index: number): void;
 }) {
   const height =
     type === "horizontal_bar"
@@ -67,6 +69,7 @@ export function AggregateChart({
               outerRadius="76%"
               paddingAngle={1}
               isAnimationActive={false}
+              onClick={(_, index) => onSelect?.(index)}
             >
               {rows.map((row, index) => (
                 <Cell
@@ -129,6 +132,7 @@ export function AggregateChart({
             fill="var(--color-accent)"
             radius={horizontal ? [0, 3, 3, 0] : [3, 3, 0, 0]}
             isAnimationActive={false}
+            onClick={(_, index) => onSelect?.(index)}
           />
         </BarChart>
       </ResponsiveContainer>

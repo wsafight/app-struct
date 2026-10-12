@@ -96,25 +96,40 @@ fn external_checks(project: &Path, environment: &ProjectEnvironment) -> Vec<Doct
             help: Some("set DATABASE_URL or add it to the project .env file".to_owned()),
         }];
     };
-    let (ok, detail) = match appstruct_migrate::status_project(project, &database_url) {
+    let (ok, detail, pending) = match appstruct_migrate::status_project(project, &database_url) {
         Ok(status) => (
             true,
             format!(
                 "reachable; {} applied, {} pending",
                 status.applied, status.pending
             ),
+            Some(status.pending),
         ),
         Err(error) => (
             false,
             format!("connection or migration state failed: {error}"),
+            None,
         ),
     };
-    vec![DoctorCheck {
+    let mut checks = vec![DoctorCheck {
         name: "PostgreSQL".to_owned(),
         ok,
         detail,
         help: (!ok).then(|| "verify DATABASE_URL and run appstruct migrate status".to_owned()),
-    }]
+    }];
+    if let Some(pending) = pending {
+        checks.push(migration_check(pending));
+    }
+    checks
+}
+
+fn migration_check(pending: usize) -> DoctorCheck {
+    DoctorCheck {
+        name: "Migrations".to_owned(),
+        ok: pending == 0,
+        detail: format!("{pending} pending"),
+        help: (pending > 0).then(|| "review with appstruct migrate status; apply the reviewed migrations with appstruct migrate apply, then appstruct doctor".to_owned()),
+    }
 }
 
 fn tool(program: &str, arguments: &[&str], required: Option<&str>) -> DoctorCheck {
@@ -185,6 +200,9 @@ fn next_step(checks: &[DoctorCheck]) -> &'static str {
                 "Set DATABASE_URL in .env, then run appstruct migrate dev --accept."
             }
             "PostgreSQL" => "Check DATABASE_URL and PostgreSQL, then run appstruct migrate status.",
+            "Migrations" => {
+                "Review appstruct migrate status, then apply the reviewed migrations with appstruct migrate apply."
+            }
             _ => "Resolve the failed check, then run appstruct doctor.",
         },
     }
@@ -288,5 +306,14 @@ mod tests {
             help: None,
         }];
         assert!(next_step(&checks).contains("appstruct migrate dev --accept"));
+    }
+
+    #[test]
+    fn pending_migrations_block_readiness_and_point_to_apply() {
+        assert!(migration_check(0).ok);
+        let check = migration_check(2);
+        assert!(!check.ok);
+        assert!(check.help.as_deref().unwrap().contains("migrate apply"));
+        assert!(next_step(&[check]).contains("migrate apply"));
     }
 }

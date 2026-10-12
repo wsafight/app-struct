@@ -40,3 +40,16 @@ multiplier of two; the isolated compiler/generator performance test also passed 
 Operations additionally passes 36 Web tests, lint, formatting, TypeScript, production build, and
 PostgreSQL plus desktop/mobile workflow regression. The local preview uses an external disposable
 test database and Capture rendering; it is not a Linux Chromium deployment acceptance result.
+
+## 2026-10-12 Product Workflows
+
+- [x] List projections include readable currency, owner and action dependencies; money CSV exports retain currency.
+- [x] CSV import adds mapping, editable previews of 25 rows per page, type validation, row results and failed-row retries; the backend parses JSON cells as structured values.
+- [x] Advanced filters support nested AND/OR editing and condition errors; facet buckets support clickable filters and null values.
+- [x] Bulk updates reuse form controls and exact scalar validation, review values and revisions before submission, and show per-record results with failed-record retries.
+- [x] Database pull previews use actual resource paths and provide next steps; doctor checks pending migrations, with a first-run guide.
+- [x] Reports support UTC day/week/month groups, saved-view configuration and drilldown links; values that cannot be charted precisely retain their exact table representation.
+
+Management lists retain page pagination and exact totals; report changes preserve the current list page. Existing databases still require manual schema and migration-history alignment; automatic baseline adoption is unavailable.
+
+Validation passed: 463 workspace Rust tests, 55 generated Web tests, rustfmt, Clippy with warnings denied, TypeScript, ESLint, Prettier, production build and generated-tree snapshots. Real PostgreSQL query regression covers JSON import retries, UTC year boundaries, tenant/field authorization, page totals, cursors, filters and exports, with no migration drift. Dashboard initialization and read-only database pull were also verified.

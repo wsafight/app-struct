@@ -18,6 +18,15 @@ pub fn aggregate_support(
     let metric_order_arms = metric_order_arms(entity, module)?;
     let group_order_arms = group::order_arms(ir, entity)?;
     let has_relation_groups = group::has_relation_groups(ir, entity)?;
+    let time_fields = entity
+        .fields
+        .iter()
+        .filter(|field| {
+            field.capabilities.filterable
+                && matches!(field.ty, FieldTypeIr::Date | FieldTypeIr::Datetime)
+        })
+        .map(|field| field.rust_name.as_str())
+        .collect::<Vec<_>>();
     let relation_group_state = has_relation_groups.then(|| {
         quote! { let mut relation_group_selected = false; }
     });
@@ -28,6 +37,7 @@ pub fn aggregate_support(
         metric_order_arms: &metric_order_arms,
         group_order_arms: &group_order_arms,
         relation_group_state: relation_group_state.as_ref(),
+        time_fields: &time_fields,
     });
     Ok(quote! {
         use std::collections::BTreeSet;
@@ -38,6 +48,8 @@ pub fn aggregate_support(
             group_by: Option<String>,
             limit: Option<u64>,
             order: Option<String>,
+            order_by: Option<String>,
+            time_bucket: Option<String>,
             q: Option<String>,
             #[serde(rename = "where")]
             expression: Option<String>,
@@ -51,6 +63,8 @@ pub fn aggregate_support(
             group_by: Vec<String>,
             limit: u64,
             order: String,
+            order_by: String,
+            time_bucket: Option<String>,
         }
 
         #[derive(Debug, Serialize)]
@@ -70,6 +84,7 @@ struct AggregateHandlerTokens<'a> {
     metric_order_arms: &'a [TokenStream],
     group_order_arms: &'a [TokenStream],
     relation_group_state: Option<&'a TokenStream>,
+    time_fields: &'a [&'a str],
 }
 
 #[allow(clippy::too_many_lines)]
@@ -81,6 +96,7 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
         metric_order_arms,
         group_order_arms,
         relation_group_state,
+        time_fields,
     } = tokens;
     quote! {
         async fn aggregate(
@@ -98,7 +114,15 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
                     "`limit` must be between 1 and 500".to_owned()
                 ));
             }
-            let order = query.order.as_deref().unwrap_or("desc");
+            let time_bucket = query.time_bucket.as_deref();
+            if time_bucket.is_some_and(|unit| !matches!(unit, "day" | "week" | "month")) {
+                return Err(ApiError::InvalidQuery("`time_bucket` must be day, week or month".to_owned()));
+            }
+            let order_by = query.order_by.as_deref().unwrap_or(if time_bucket.is_some() { "group" } else { "metric" });
+            if !matches!(order_by, "metric" | "group") {
+                return Err(ApiError::InvalidQuery("`order_by` must be metric or group".to_owned()));
+            }
+            let order = query.order.as_deref().unwrap_or(if order_by == "group" { "asc" } else { "desc" });
             let descending = match order {
                 "asc" => false,
                 "desc" => true,
@@ -140,6 +164,13 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
                 .filter(|field| !field.is_empty())
                 .collect::<Vec<_>>();
             let mut selected_groups = BTreeSet::new();
+            let time_fields: &[&str] = &[#(#time_fields),*];
+            if time_bucket.is_some() && group_by.iter().filter(|field| time_fields.contains(field)).count() != 1 {
+                return Err(ApiError::InvalidQuery("`time_bucket` requires exactly one local date or datetime group field".to_owned()));
+            }
+            if order_by == "group" && group_by.is_empty() {
+                return Err(ApiError::InvalidQuery("`order_by=group` requires a group field".to_owned()));
+            }
             #relation_group_state
             for field in &group_by {
                 if !selected_groups.insert(*field) {
@@ -150,9 +181,11 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
                     _ => return Err(ApiError::InvalidQuery(format!("group field `{field}` is not allowed"))),
                 }
             }
-            match metrics[0] {
-                #(#metric_order_arms,)*
-                _ => unreachable!("aggregate metrics were validated"),
+            if order_by == "metric" {
+                match metrics[0] {
+                    #(#metric_order_arms,)*
+                    _ => unreachable!("aggregate metrics were validated"),
+                }
             }
             for field in &group_by {
                 match *field {
@@ -172,6 +205,8 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
                     group_by: group_by.into_iter().map(str::to_owned).collect(),
                     limit,
                     order: order.to_owned(),
+                    order_by: order_by.to_owned(),
+                    time_bucket: time_bucket.map(str::to_owned),
                 },
             }))
         }

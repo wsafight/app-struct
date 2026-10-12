@@ -21,19 +21,15 @@ pub(super) fn arms(
             let name = LitStr::new(&field.rust_name, Span::call_site());
             let column = column_ident(field)?;
             let alias = LitStr::new(&format!("group_{}", field.rust_name), Span::call_site());
-            let selected = if matches!(field.ty, FieldTypeIr::Bigint | FieldTypeIr::Decimal) {
-                quote! { sea_query::Expr::col((sea_query::Alias::new(#module::TABLE), #module::Column::#column)).cast_as("text") }
-            } else {
-                quote! { #module::Column::#column }
-            };
+            let selected = group_expression(field, module, &column);
             Ok(quote! {
                 #name => {
                     if !field_read_allowed(&context, #name) {
                         return Err(access_denied(&context));
                     }
-                    select = select
-                        .column_as(#selected, #alias)
-                        .group_by(#module::Column::#column);
+                    let expression: sea_query::SimpleExpr = #selected;
+                    select = select.column_as(expression, #alias)
+                        .group_by(sea_query::Expr::cust((selected_metrics.len() + selected_groups.len()).to_string()));
                 }
             })
         })
@@ -100,6 +96,30 @@ pub(super) fn arms(
     Ok(arms)
 }
 
+fn group_expression(field: &FieldIr, module: &syn::Ident, column: &syn::Ident) -> TokenStream {
+    if matches!(field.ty, FieldTypeIr::Date | FieldTypeIr::Datetime) {
+        let template = if matches!(field.ty, FieldTypeIr::Datetime) {
+            "date_trunc($1, $2 AT TIME ZONE 'UTC')::date"
+        } else {
+            "date_trunc($1, $2::timestamp)::date"
+        };
+        quote! {
+            if let Some(unit) = time_bucket {
+                sea_query::Expr::cust_with_exprs(#template, [
+                    sea_query::Expr::val(unit).into(),
+                    sea_query::Expr::col((sea_query::Alias::new(#module::TABLE), #module::Column::#column)).into(),
+                ])
+            } else {
+                sea_query::Expr::col((sea_query::Alias::new(#module::TABLE), #module::Column::#column)).into()
+            }
+        }
+    } else if matches!(field.ty, FieldTypeIr::Bigint | FieldTypeIr::Decimal) {
+        quote! { sea_query::Expr::col((sea_query::Alias::new(#module::TABLE), #module::Column::#column)).cast_as("text") }
+    } else {
+        quote! { sea_query::SimpleExpr::from(#module::Column::#column) }
+    }
+}
+
 pub(super) fn order_arms(ir: &AppIr, entity: &EntityIr) -> Result<Vec<TokenStream>, CodegenError> {
     let mut arms = entity
         .fields
@@ -147,9 +167,12 @@ fn group_order_arm(name: &str, alias: &str) -> TokenStream {
     let alias = LitStr::new(alias, Span::call_site());
     quote! {
         #name => {
-            select = select.order_by_asc(sea_query::Expr::col(
-                sea_query::Alias::new(#alias)
-            ));
+            let column = sea_query::Expr::col(sea_query::Alias::new(#alias));
+            select = if order_by == "group" && descending {
+                select.order_by_desc(column)
+            } else {
+                select.order_by_asc(column)
+            };
         }
     }
 }

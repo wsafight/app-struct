@@ -16,7 +16,8 @@ entities:
         filterable: true
         access:
           read: { role: admin }
-      created_at: { type: datetime, generated: now, sortable: true }
+      created_at: { type: datetime, generated: now, sortable: true, filterable: true }
+      booked_on: { type: date, filterable: true }
     indexes:
       - name: title_search
         fields: [title]

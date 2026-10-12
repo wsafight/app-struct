@@ -1,8 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { ResourceDefinition } from "../../resource";
 import { errorMessage, triggerDownload } from "../../resource";
 import type { ListQuery } from "../../generated/client";
+import { MAX_IMPORT_BYTES } from "./csv-import";
+import type { CsvImportFile } from "./CsvImportDialog";
 
 interface CsvTransferOptions {
   resource: ResourceDefinition;
@@ -13,11 +15,11 @@ interface CsvTransferOptions {
 
 export function useCsvTransfer({
   resource,
-  runChange,
   onError,
   query = {},
 }: CsvTransferOptions) {
   const importInput = useRef<HTMLInputElement>(null);
+  const [importFile, setImportFile] = useState<CsvImportFile | null>(null);
   const exportMutation = useMutation({
     mutationFn: async () => {
       const filters = {
@@ -47,11 +49,12 @@ export function useCsvTransfer({
   async function importCsv(file?: File) {
     if (!file) return;
     try {
-      await runChange(async () => {
-        const result = await resource.api.importCsv(await file.text());
-        if (result.failed.length)
-          onError(`${result.failed.length} rows could not be imported`);
-      });
+      if (file.size > MAX_IMPORT_BYTES)
+        throw new Error("CSV import is limited to 2 MiB.");
+      setImportFile({ name: file.name, text: await file.text() });
+      onError("");
+    } catch (error) {
+      onError(errorMessage(error));
     } finally {
       if (importInput.current) importInput.current.value = "";
     }
@@ -59,6 +62,8 @@ export function useCsvTransfer({
 
   return {
     importInput,
+    importFile,
+    closeImport: () => setImportFile(null),
     exporting: exportMutation.isPending,
     exportCsv: () => exportMutation.mutate(),
     importCsv,

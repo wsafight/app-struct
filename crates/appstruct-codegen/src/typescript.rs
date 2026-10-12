@@ -244,6 +244,8 @@ export interface AggregateQuery extends FilterQuery {
   group_by?: string[];
   limit?: number;
   order?: "asc" | "desc";
+  order_by?: "metric" | "group";
+  time_bucket?: "day" | "week" | "month";
 }
 
 export interface ListResponse<T> {
@@ -260,7 +262,7 @@ export interface AggregateRow { [key: string]: unknown; }
 
 export interface AggregateResponse {
   data: AggregateRow[];
-  meta: { metrics: string[]; group_by: string[]; limit: number; order: "asc" | "desc" };
+  meta: { metrics: string[]; group_by: string[]; limit: number; order: "asc" | "desc"; order_by?: "metric" | "group"; time_bucket?: "day" | "week" | "month" | null };
 }
 
 export interface FacetResponse { data: Record<string, { buckets: { value: unknown; count: number }[]; other_count: number }>; }
@@ -294,6 +296,8 @@ function aggregatePath(path: string, query: AggregateQuery): string {
   if (query.group_by?.length) params.set("group_by", query.group_by.join(","));
   if (query.limit) params.set("limit", String(query.limit));
   if (query.order) params.set("order", query.order);
+  if (query.order_by) params.set("order_by", query.order_by);
+  if (query.time_bucket) params.set("time_bucket", query.time_bucket);
   appendFilterParams(params, query);
   const search = params.toString();
   return search ? `${path}?${search}` : path;

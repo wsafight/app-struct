@@ -32,3 +32,9 @@ CSV export streams rows from a repeatable-read, read-only PostgreSQL snapshot in
 
 - [Entity workflows](workflows.md) — workflow fields are omitted from bulk and CSV inputs
 - [Saved views](saved-views.md) for list state, not bulk selection
+
+## Web import and bulk workflows
+
+File selection opens mapping and an editable 25-row preview before any writes. The Web import is bounded to 2 MiB and 10,000 rows; required fields and typed values are checked first. Results retain original CSV record numbers and per-row failures. Download or correct remaining rows, then retry only those rows. Backend result ids are zero-based indices in the submitted batch. Headers must be unique; JSON cells are decoded as JSON values, and malformed JSON fails that row.
+
+Bulk selection is limited to the current page. Updates reuse form controls and exact scalar validation. A review displays the patch, record ids and revisions before submission. Results show each failure; retry refreshes accessible records and requires another review of the write. Successful records are excluded from retries.

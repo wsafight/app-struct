@@ -19,7 +19,7 @@ use types::{SpecType, spec_type};
 pub(super) struct Draft {
     pub source: String,
     pub entity_count: usize,
-    pub entity_names: Vec<String>,
+    pub entity_tables: BTreeMap<String, String>,
     pub warnings: Vec<String>,
 }
 
@@ -67,7 +67,11 @@ domain: imported\n\nentities:\n"
     Draft {
         source,
         entity_count: context.entities.len(),
-        entity_names: context.entities.values().cloned().collect(),
+        entity_tables: context
+            .entities
+            .iter()
+            .map(|(table, entity)| (entity.clone(), (*table).to_owned()))
+            .collect(),
         warnings: context.warnings,
     }
 }

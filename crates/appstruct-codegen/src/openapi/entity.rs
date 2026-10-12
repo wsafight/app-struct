@@ -328,8 +328,10 @@ fn aggregate_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
         ),
         query_parameter(
             "order",
-            &json!({ "type": "string", "enum": ["asc", "desc"], "default": "desc" }),
+            &json!({ "type": "string", "enum": ["asc", "desc"], "description": "Defaults to asc for group order and desc for metric order." }),
         ),
+        json!({ "name": "order_by", "in": "query", "schema": { "type": "string", "enum": ["metric", "group"] }, "description": "Orders by the first metric by default, or chronologically by group for time buckets. Group ordering requires group_by." }),
+        json!({ "name": "time_bucket", "in": "query", "schema": { "type": "string", "enum": ["day", "week", "month"] }, "description": "Requires exactly one local date/datetime group. Datetime buckets use UTC; weeks start on Monday. Returns the bucket start as YYYY-MM-DD. Defaults to ascending group order." }),
     ];
     parameters.extend(list_parameters(ir, entity).into_iter().filter(|parameter| {
         let name = parameter["name"].as_str().unwrap_or_default();

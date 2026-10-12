@@ -9,6 +9,15 @@ fn renders_deterministic_entities_relations_and_review_warnings() {
     assert_eq!(first.source, second.source);
     assert_eq!(first.warnings, second.warnings);
     assert_eq!(first.entity_count, 2);
+    let preview = crate::db::preview::build(&first);
+    assert!(
+        preview
+            .entities
+            .iter()
+            .any(|entity| entity.entity == "Project"
+                && entity.page == "/projects"
+                && entity.api == "/api/projects/")
+    );
     assert!(first.source.contains("  Project:\n"));
     assert!(first.source.contains("    table: \"projects\"\n"));
     assert!(first.source.contains("        type: enum\n"));

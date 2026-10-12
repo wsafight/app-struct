@@ -195,3 +195,13 @@ api_key:
 - [标量值](scalar-values.zh-CN.md)：bigint、decimal 与日期时间的 JSON 表示
 - [保存视图](saved-views.zh-CN.md)：持久化列表查询状态
 - [关系展示](relation-display.zh-CN.md)：批量 lookup 标签
+
+## 趋势报表与筛选体验
+
+`/_aggregate?metrics=count&group_by=created_at&time_bucket=month` 按月聚合。`time_bucket` 接受 day/week/month，要求分组中恰好一个本资源的可筛选 date/datetime 字段，并继续检查读权限。Datetime 使用 UTC，周从周一开始，返回 YYYY-MM-DD 周期起点。没有记录的周期不补零。
+
+`order_by=metric|group` 选择指标或分组排序；普通查询默认指标降序，周期查询默认分组升序。组排序要求有分组，`order=asc|desc` 可以覆盖方向，仍受 500 组上限约束。
+
+Web Summary 支持选择指标、分组、周期、图表及组数，配置写入 URL，可以随私有或团队视图保存。改变报表设置保留列表所在页；点击柱形、扇区或表格中的链接进入匹配记录的第一页。周期链接使用包含起点、排除下个周期起点的范围，并保留已有筛选。不能精确表示的大数聚合只展示精确值表格。
+
+高级筛选编辑器支持最多 8 层、64 个节点和 100 个值的嵌套 AND/OR 条件，保留已保存的树结构，错误定位到条件。标量统计项可点击切换条件，包含空值桶。列表字段投影自动补充可读的币种和 owner 等显示/操作依赖，CSV 金额导出也补充可读币种列。

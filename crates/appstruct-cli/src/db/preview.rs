@@ -17,15 +17,12 @@ pub(super) struct PullEntityPreview {
 pub(super) fn build(draft: &Draft) -> PullPreview {
     PullPreview {
         entities: draft
-            .entity_names
+            .entity_tables
             .iter()
-            .map(|entity| {
-                let slug = entity.to_ascii_lowercase();
-                PullEntityPreview {
-                    entity: entity.clone(),
-                    page: format!("/admin/{slug}"),
-                    api: format!("/api/{slug}"),
-                }
+            .map(|(entity, table)| PullEntityPreview {
+                entity: entity.clone(),
+                page: format!("/{table}"),
+                api: format!("/api/{table}/"),
             })
             .collect(),
         migration: "new imported entities will be included in the next migration",
@@ -34,9 +31,11 @@ pub(super) fn build(draft: &Draft) -> PullPreview {
 
 pub(super) fn print(draft: &Draft) {
     println!("Preview:");
-    for entity in &draft.entity_names {
-        let slug = entity.to_ascii_lowercase();
-        println!("  {entity}: page /admin/{slug}, API /api/{slug}");
+    for entity in build(draft).entities {
+        println!(
+            "  {}: page {}, API {}",
+            entity.entity, entity.page, entity.api
+        );
     }
     println!("  Migration: new imported entities will be included in the next migration");
 }

@@ -153,37 +153,58 @@ impl Error for CsvError {}
 ///
 /// # Errors
 ///
-/// Returns [`CsvError`] when a quoted field is not terminated.
+/// Returns [`CsvError`] for an invalid or unterminated quoted field.
 pub fn parse_csv_rows(body: &str) -> Result<Vec<Vec<String>>, CsvError> {
     let mut rows = Vec::new();
     let mut row = Vec::new();
     let mut value = String::new();
     let mut quoted = false;
-    let mut characters = body.chars().peekable();
+    let mut closed = false;
+    let mut characters = body.trim_start_matches('\u{feff}').chars().peekable();
     while let Some(character) = characters.next() {
-        match character {
-            '"' if quoted && characters.peek() == Some(&'"') => {
-                value.push('"');
-                characters.next();
-            }
-            '"' => quoted = !quoted,
-            ',' if !quoted => row.push(std::mem::take(&mut value)),
-            '\n' if !quoted => {
-                row.push(std::mem::take(&mut value));
-                if !row.iter().all(String::is_empty) {
-                    rows.push(std::mem::take(&mut row));
+        if quoted {
+            if character == '"' {
+                if characters.peek() == Some(&'"') {
+                    value.push('"');
+                    characters.next();
+                } else {
+                    quoted = false;
+                    closed = true;
                 }
+            } else {
+                value.push(character);
             }
-            '\r' if !quoted => {}
-            _ => value.push(character),
+        } else {
+            match character {
+                ',' => {
+                    row.push(std::mem::take(&mut value));
+                    closed = false;
+                }
+                '\n' | '\r' => {
+                    if character == '\r' && characters.peek() == Some(&'\n') {
+                        characters.next();
+                    }
+                    row.push(std::mem::take(&mut value));
+                    if row.len() > 1 || !row[0].is_empty() {
+                        rows.push(std::mem::take(&mut row));
+                    } else {
+                        row.clear();
+                    }
+                    closed = false;
+                }
+                '"' if value.is_empty() && !closed => quoted = true,
+                '"' => return Err(CsvError),
+                _ if closed => return Err(CsvError),
+                _ => value.push(character),
+            }
         }
     }
     if quoted {
         return Err(CsvError);
     }
-    if !value.is_empty() || !row.is_empty() {
+    if !value.is_empty() || !row.is_empty() || closed {
         row.push(value);
-        if !row.iter().all(String::is_empty) {
+        if row.len() > 1 || !row[0].is_empty() {
             rows.push(row);
         }
     }
@@ -236,6 +257,22 @@ mod tests {
         let rows = parse_csv_rows("name,note\nAda,\"one, \"\"two\"\"\"\n").unwrap();
         assert_eq!(rows[1], ["Ada", "one, \"two\""]);
         assert!(parse_csv_rows("name\n\"unterminated").is_err());
+    }
+
+    #[test]
+    fn csv_parser_handles_bom_empty_lines_crlf_and_rejects_invalid_quotes() {
+        let rows =
+            parse_csv_rows("\u{feff}\r\nname,note\r\nAda,\"line\r\nnext\"\r\n\r\n,,\r\n").unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                vec!["name", "note"],
+                vec!["Ada", "line\r\nnext"],
+                vec!["", "", ""]
+            ]
+        );
+        assert!(parse_csv_rows("name\n\"closed\"extra").is_err());
+        assert!(parse_csv_rows("name\ninvalid\"quote").is_err());
     }
 
     #[test]

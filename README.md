@@ -82,6 +82,8 @@ capabilities currently follow the selected template. Project creation prints the
 
 ### Existing PostgreSQL
 
+See the [existing database guide](docs/existing-database.md) for catalog import, access review and the first run.
+
 ```bash
 appstruct new notes --template minimal
 cd notes

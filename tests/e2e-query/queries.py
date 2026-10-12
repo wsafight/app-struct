@@ -25,8 +25,8 @@ class Client:
             headers["X-AppStruct-Tenant"] = self.tenant
         body = None
         if data is not None:
-            body = json.dumps(data).encode()
-            headers["Content-Type"] = "application/json"
+            body = data.encode() if isinstance(data, str) else json.dumps(data).encode()
+            headers["Content-Type"] = "text/csv" if isinstance(data, str) else "application/json"
             for cookie in self.cookies:
                 if cookie.name == "appstruct_csrf":
                     headers["X-CSRF-Token"] = cookie.value
@@ -41,7 +41,7 @@ class Client:
         with response:
             raw = response.read()
             assert response.status == status, (path, response.status, raw.decode())
-            return raw.decode() if path.split("?")[0].endswith(".csv") and status == 200 else json.loads(raw)
+            return raw.decode() if path.split("?")[0].endswith("_export.csv") and status == 200 else json.loads(raw)
 
 
 client = Client(sys.argv[1])
@@ -136,7 +136,43 @@ assert client.request("/api/entries/_facets", {"facet": "status"})["data"]["stat
 assert len(list(csv.reader(io.StringIO(client.request("/api/entries/_export.csv"))))) == 1
 client.tenant = alpha
 
+# Time buckets retain tenant and field authorization and use UTC boundaries.
+for unit in ["day", "week", "month"]:
+    result = client.request("/api/entries/_aggregate", {"group_by": "created_at", "time_bucket": unit})
+    assert sum(row["count"] for row in result["data"]) == 15
+    assert result["meta"]["order_by"] == "group" and result["meta"]["order"] == "asc"
+    assert result["meta"]["time_bucket"] == unit
+for query in [{"group_by": "status", "time_bucket": "day"}, {"group_by": "secret", "time_bucket": "month"}, {"group_by": "created_at", "time_bucket": "hour"}, {"order_by": "group"}, {"order_by": "invalid"}]:
+    client.request("/api/entries/_aggregate", query, status=400)
+client.tenant = beta
+assert client.request("/api/entries/_aggregate", {"group_by": "created_at", "time_bucket": "day"})["data"] == []
+client.tenant = alpha
+
+# Import JSON as structured values, isolate invalid cells and reject duplicate headers.
+stream = io.StringIO()
+writer = csv.writer(stream)
+writer.writerow(["title", "status", "amount", "payload", "booked_on"])
+writer.writerow(["Import A", "todo", "9007199254740993", json.dumps({"imported": True}), "2026-12-31"])
+writer.writerow(["Import B", "done", "9007199254740994", "{invalid", "2027-01-01"])
+result = client.request("/api/entries/_import.csv", data=stream.getvalue())
+assert result["succeeded"] == ["0"] and result["failed"][0]["id"] == "1"
+assert result["failed"][0]["code"] == "invalid_row"
+client.request("/api/entries/_import.csv", data="title,title,status\nA,B,todo\n", status=400)
+imported = client.request("/api/entries/", {"q": "Import A"})["data"][0]
+assert imported["payload"] == {"imported": True} and imported["amount"] == "9007199254740993"
+stream = io.StringIO()
+writer = csv.writer(stream)
+writer.writerow(["title", "status", "amount", "payload", "booked_on"])
+writer.writerow(["Import B", "done", "9007199254740994", json.dumps({"imported": True}), "2027-01-01"])
+assert client.request("/api/entries/_import.csv", data=stream.getvalue())["succeeded"] == ["0"]
+assert client.request("/api/entries/", {"q": "Import"})["meta"]["total"] == 2
+trend = client.request("/api/entries/_aggregate", {"group_by": "booked_on", "time_bucket": "month", "q": "Import"})
+assert trend["data"] == [{"count": 1, "group_booked_on": "2026-12-01"}, {"count": 1, "group_booked_on": "2027-01-01"}]
+subprocess.run(["psql", os.environ["APPSTRUCT_E2E_DATABASE_URL"], "-v", "ON_ERROR_STOP=1"], input="UPDATE entries SET created_at = CASE WHEN title = 'Import A' THEN '2026-12-31 23:30:00-02'::timestamptz ELSE '2026-12-31 23:30:00+02'::timestamptz END WHERE title IN ('Import A', 'Import B');", text=True, check=True, stdout=subprocess.DEVNULL)
+trend = client.request("/api/entries/_aggregate", {"group_by": "created_at", "time_bucket": "day", "q": "Import"})
+assert trend["data"] == [{"count": 1, "group_created_at": "2026-12-31"}, {"count": 1, "group_created_at": "2027-01-01"}]
+
 # A result above the export cap must fail before sending the CSV header.
 subprocess.run(["psql", os.environ["APPSTRUCT_E2E_DATABASE_URL"], "-v", "ON_ERROR_STOP=1", "-v", f"tenant={alpha}"], input="INSERT INTO entries (id,title,status,tenant_id,revision) SELECT md5('overflow-' || i::text)::uuid, 'Overflow ' || i, 'todo', :'tenant'::uuid, 1 FROM generate_series(1,10001) i;", text=True, check=True, stdout=subprocess.DEVNULL)
 client.request("/api/entries/_export.csv", status=400)
-print("Query E2E passed: page totals, signed multi-column cursors, JSON filters, facets, CSV and tenant/field access.")
+print("Query E2E passed: page totals, signed cursors, filters, facets, JSON CSV retry, UTC trends and tenant/field access.")

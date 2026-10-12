@@ -81,6 +81,24 @@ export function useResourceUrlController(resource: ResourceDefinition) {
     setSearchParams,
     filterFields,
     updateParam,
+    updateParams(
+      values: Record<string, string | undefined>,
+      resetPagination = true,
+    ) {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        Object.entries(values).forEach(([name, value]) => {
+          if (value) next.set(name, value);
+          else next.delete(name);
+        });
+        if (resetPagination) {
+          next.delete("page");
+          next.delete("cursor");
+          next.delete("direction");
+        }
+        return next;
+      });
+    },
     moveCursor(cursor: string, direction: "next" | "previous", page: number) {
       setSearchParams((current) => {
         const next = new URLSearchParams(current);

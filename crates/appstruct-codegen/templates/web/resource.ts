@@ -230,6 +230,49 @@ export function isSemanticCompanion(
   );
 }
 
+/** Include readable fields required by cell formatting and row actions. */
+export function listProjectionFields(
+  resource: ResourceDefinition,
+  visibleFields: FieldDefinition[],
+  actor: AccessActor | null,
+): string[] {
+  const names = new Set([
+    resource.primaryKey,
+    "revision",
+    resource.workflow?.field,
+    ...visibleFields.map((field) => field.name),
+  ]);
+  function includeRule(rule?: AccessRule) {
+    if (!rule) return;
+    if (rule.mode === "any" || rule.mode === "all") {
+      rule.rules.forEach(includeRule);
+    } else if (rule.mode === "owner") {
+      const logical = rule.field.split(".").at(-1) ?? rule.field;
+      const field =
+        resource.fields.find((field) => field.name === logical) ??
+        resource.fields.find((field) => field.name === `${logical}_id`);
+      if (field) names.add(field.name);
+    }
+  }
+  [
+    resource.access.read,
+    resource.access.update,
+    resource.access.delete,
+  ].forEach(includeRule);
+  for (const field of visibleFields) {
+    if (field.semantic?.kind === "money")
+      names.add(field.semantic.currencyField);
+    includeRule(field.writeAccess);
+  }
+  return resource.fields
+    .filter(
+      (field) =>
+        names.has(field.name) &&
+        canAccessRule(field.readAccess ?? { mode: "public" }, actor),
+    )
+    .map((field) => field.name);
+}
+
 export interface WorkflowInputFieldDefinition {
   name: string;
   label: string;

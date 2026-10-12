@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, ChevronDown, ChevronRight } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
+import Decimal from "decimal.js";
+import { Link, useNavigate } from "../../navigation";
+import { reportDrilldown } from "./report-query";
 import type { AggregateQuery } from "../../generated/client";
 import { resourceQueryKeys } from "../../query";
 import type {
@@ -110,7 +113,15 @@ export function aggregateChartRows(
   for (const row of rows) {
     const raw = row[metricKey];
     const value = typeof raw === "number" ? raw : Number(raw);
-    if (!Number.isFinite(value)) return null;
+    if (raw === null || raw === undefined || !Number.isFinite(value))
+      return null;
+    if (typeof raw === "string") {
+      try {
+        if (!new Decimal(raw).eq(String(value))) return null;
+      } catch {
+        return null;
+      }
+    }
     chartRows.push({
       dimension: formatAggregateValue(row[groupKey]),
       value,
@@ -124,13 +135,18 @@ export function ResourceInsights({
   resources,
   fields,
   query,
+  parameters,
+  updateParams,
 }: {
   resource: ResourceDefinition;
   resources: ResourceDefinition[];
   fields: FieldDefinition[];
-  query: Pick<AggregateQuery, "q" | "filters" | "range_filters">;
+  query: Pick<AggregateQuery, "q" | "filters" | "range_filters" | "where">;
+  parameters: URLSearchParams;
+  updateParams(values: Record<string, string | undefined>): void;
 }) {
   const actor = useResourceActor();
+  const navigate = useNavigate();
   const metrics = aggregateMetricOptions(fields);
   const groups = aggregateGroupOptions(fields, resources, actor);
   const charts = (resource.charts ?? []).filter(
@@ -139,25 +155,62 @@ export function ResourceInsights({
       (!chart.dimension ||
         groups.some((option) => option.value === chart.dimension)),
   );
-  const initialChart = charts[0];
-  const [open, setOpen] = useState(false);
-  const [selectedChart, setSelectedChart] = useState(initialChart?.name ?? "");
-  const [metric, setMetric] = useState(initialChart?.measure ?? "count");
-  const [groupBy, setGroupBy] = useState(initialChart?.dimension ?? "");
-  const [chartType, setChartType] = useState<ChartType>(
-    initialChart?.type ?? "horizontal_bar",
+  const selectedChart = charts.find(
+    (chart) => chart.name === parameters.get("report_chart"),
   );
-  const [limit, setLimit] = useState(initialChart?.limit ?? 20);
+  const initial = selectedChart ?? charts[0];
+  const open = parameters.get("summary") === "1";
+  const requestedMetric =
+    parameters.get("report_metric") ?? initial?.measure ?? "count";
+  const metric = metrics.some((option) => option.value === requestedMetric)
+    ? requestedMetric
+    : "count";
+  const requestedGroup =
+    parameters.get("report_group") ?? initial?.dimension ?? "";
+  const groupBy = groups.some((option) => option.value === requestedGroup)
+    ? requestedGroup
+    : "";
+  const groupField = fields.find((field) => field.name === groupBy);
+  const requestedBucket = parameters.get("report_bucket");
+  const bucket =
+    groupField &&
+    ["date", "datetime"].includes(groupField.kind) &&
+    ["day", "week", "month"].includes(requestedBucket ?? "")
+      ? (requestedBucket as AggregateQuery["time_bucket"])
+      : undefined;
+  const requestedType =
+    parameters.get("report_type") ?? initial?.type ?? "horizontal_bar";
+  const chartType: ChartType = [
+    "bar",
+    "horizontal_bar",
+    "donut",
+    "kpi",
+  ].includes(requestedType)
+    ? (requestedType as ChartType)
+    : "horizontal_bar";
+  const requestedLimit = Number(
+    parameters.get("report_limit") ?? initial?.limit ?? 20,
+  );
+  const limit =
+    Number.isInteger(requestedLimit) &&
+    requestedLimit >= 1 &&
+    requestedLimit <= 500
+      ? requestedLimit
+      : 20;
   const aggregateQuery: AggregateQuery = {
     ...query,
     metrics: [metric],
     group_by: groupBy ? [groupBy] : undefined,
     limit,
-    order: "desc",
+    time_bucket: bucket,
+    order_by: bucket ? "group" : "metric",
+    order: bucket ? "asc" : "desc",
   };
-  const cacheKey = JSON.stringify(aggregateQuery);
   const aggregate = useQuery({
-    queryKey: resourceQueryKeys.aggregate(resource.id, cacheKey),
+    queryKey: resourceQueryKeys.aggregate(
+      resource.id,
+      JSON.stringify(aggregateQuery),
+    ),
     queryFn: ({ signal }) => resource.api.aggregate(aggregateQuery, { signal }),
     enabled: open,
   });
@@ -170,16 +223,17 @@ export function ResourceInsights({
   const chartRows = groupBy
     ? aggregateChartRows(aggregateRows, groupBy, metricKey)
     : null;
-
-  function chooseChart(name: string) {
-    setSelectedChart(name);
-    const chart = charts.find((candidate) => candidate.name === name);
-    if (!chart) return;
-    setMetric(chart.measure);
-    setGroupBy(chart.dimension ?? "");
-    setChartType(chart.type);
-    setLimit(chart.limit);
-  }
+  const drilldowns = aggregateRows.map((row) =>
+    reportDrilldown(
+      parameters,
+      groupBy,
+      row[aggregateGroupKey(groupBy)],
+      bucket,
+      groupField?.kind,
+    ),
+  );
+  const change = (values: Record<string, string | undefined>) =>
+    updateParams({ report_chart: undefined, ...values });
 
   return (
     <section className="resource-insights" aria-label="Resource summary">
@@ -187,7 +241,7 @@ export function ResourceInsights({
         type="button"
         className="insights-toggle"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => updateParams({ summary: open ? undefined : "1" })}
       >
         {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         <BarChart3 size={16} /> Summary
@@ -199,8 +253,23 @@ export function ResourceInsights({
               <label>
                 Chart
                 <select
-                  value={selectedChart}
-                  onChange={(event) => chooseChart(event.target.value)}
+                  aria-label="Report chart"
+                  value={selectedChart?.name ?? ""}
+                  onChange={(event) => {
+                    const chart = charts.find(
+                      (chart) => chart.name === event.target.value,
+                    );
+                    if (chart)
+                      updateParams({
+                        report_chart: chart.name,
+                        report_metric: chart.measure,
+                        report_group: chart.dimension ?? "none",
+                        report_type: chart.type,
+                        report_limit: String(chart.limit),
+                        report_bucket: undefined,
+                      });
+                    else updateParams({ report_chart: undefined });
+                  }}
                 >
                   <option value="">Ad hoc</option>
                   {charts.map((chart) => (
@@ -214,11 +283,11 @@ export function ResourceInsights({
             <label>
               Metric
               <select
+                aria-label="Report metric"
                 value={metric}
-                onChange={(event) => {
-                  setSelectedChart("");
-                  setMetric(event.target.value);
-                }}
+                onChange={(event) =>
+                  change({ report_metric: event.target.value })
+                }
               >
                 {metrics.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -230,13 +299,15 @@ export function ResourceInsights({
             <label>
               Group by
               <select
+                aria-label="Report group"
                 value={groupBy}
-                onChange={(event) => {
-                  setSelectedChart("");
-                  setGroupBy(event.target.value);
-                  setChartType("horizontal_bar");
-                  setLimit(20);
-                }}
+                onChange={(event) =>
+                  change({
+                    report_group: event.target.value || "none",
+                    report_bucket: undefined,
+                    report_type: "horizontal_bar",
+                  })
+                }
               >
                 <option value="">No grouping</option>
                 {groups.map((option) => (
@@ -246,7 +317,68 @@ export function ResourceInsights({
                 ))}
               </select>
             </label>
+            {groupField && ["date", "datetime"].includes(groupField.kind) && (
+              <label>
+                Period
+                <select
+                  aria-label="Report period"
+                  value={bucket ?? ""}
+                  onChange={(event) =>
+                    change({
+                      report_bucket: event.target.value || undefined,
+                      report_type: "bar",
+                    })
+                  }
+                >
+                  <option value="">Exact value</option>
+                  <option value="day">Day</option>
+                  <option value="week">Week</option>
+                  <option value="month">Month</option>
+                </select>
+              </label>
+            )}
+            {groupBy && (
+              <label>
+                Display
+                <select
+                  aria-label="Report display"
+                  value={chartType === "kpi" ? "horizontal_bar" : chartType}
+                  onChange={(event) =>
+                    change({ report_type: event.target.value })
+                  }
+                >
+                  <option value="bar">Bars</option>
+                  <option value="horizontal_bar">Horizontal bars</option>
+                  <option value="donut">Donut</option>
+                </select>
+              </label>
+            )}
+            <label>
+              Groups
+              <select
+                aria-label="Report group limit"
+                value={limit}
+                onChange={(event) =>
+                  change({ report_limit: event.target.value })
+                }
+              >
+                {Array.from(new Set([20, 50, 100, 500, limit]))
+                  .sort((a, b) => a - b)
+                  .map((count) => (
+                    <option key={count} value={count}>
+                      {count}
+                    </option>
+                  ))}
+              </select>
+            </label>
           </div>
+          <p className="report-help">
+            Save this report with Saved views.{" "}
+            {bucket ? "Periods use UTC; weeks start on Monday. " : ""}
+            {groupBy
+              ? `Showing up to ${limit} nonempty groups; choose a date range to focus a trend.`
+              : ""}
+          </p>
           {aggregate.isPending && (
             <div className="empty">Loading summary...</div>
           )}
@@ -255,58 +387,63 @@ export function ResourceInsights({
               {errorMessage(aggregate.error)}
             </div>
           )}
-          {!aggregate.isPending &&
-            !aggregate.error &&
-            groupBy &&
-            chartRows &&
-            chartRows.length > 0 && (
-              <Suspense
-                fallback={<div className="empty">Loading chart...</div>}
-              >
-                <AggregateChart
-                  type={chartType}
-                  rows={chartRows}
-                  metricLabel={metricLabel}
-                  groupLabel={groupLabel}
-                />
-              </Suspense>
-            )}
-          {!aggregate.isPending &&
-            !aggregate.error &&
-            groupBy &&
-            chartRows &&
-            chartRows.length === 0 && (
-              <div className="empty">No summary data</div>
-            )}
-          {!aggregate.isPending &&
-            !aggregate.error &&
-            groupBy &&
-            !chartRows && (
-              <div className="table-frame insights-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{groupLabel}</th>
-                      <th>{metricLabel}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {aggregateRows.map((row, index) => (
-                      <tr
-                        key={`${String(row[aggregateGroupKey(groupBy)])}-${index}`}
-                      >
-                        <td>
-                          {formatAggregateValue(
-                            row[aggregateGroupKey(groupBy)],
-                          )}
-                        </td>
-                        <td>{formatAggregateValue(row[metricKey])}</td>
+          {!aggregate.isPending && !aggregate.error && groupBy && (
+            <>
+              {chartRows && chartRows.length > 0 && (
+                <Suspense
+                  fallback={<div className="empty">Loading chart...</div>}
+                >
+                  <AggregateChart
+                    type={chartType}
+                    rows={chartRows}
+                    metricLabel={metricLabel}
+                    groupLabel={groupLabel}
+                    onSelect={(index) => {
+                      const next = drilldowns[index];
+                      if (next !== undefined)
+                        void navigate(`/${resource.slug}?${next}`);
+                    }}
+                  />
+                </Suspense>
+              )}
+              {!aggregateRows.length ? (
+                <div className="empty">No summary data</div>
+              ) : (
+                <div className="table-frame insights-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{groupLabel}</th>
+                        <th>{metricLabel}</th>
+                        <th>Records</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </thead>
+                    <tbody>
+                      {aggregateRows.map((row, index) => (
+                        <tr key={index}>
+                          <td>
+                            {formatAggregateValue(
+                              row[aggregateGroupKey(groupBy)],
+                            )}
+                          </td>
+                          <td>{formatAggregateValue(row[metricKey])}</td>
+                          <td>
+                            {drilldowns[index] !== undefined && (
+                              <Link
+                                to={`/${resource.slug}?${drilldowns[index]}`}
+                              >
+                                View matching records
+                              </Link>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
           {!aggregate.isPending && !aggregate.error && !groupBy && (
             <div className="insight-value">
               <span>{metricLabel}</span>
