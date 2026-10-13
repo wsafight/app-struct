@@ -15,10 +15,12 @@ function zhSource(source) {
 export const pages = [
   {source:'README.md', translation:'README.zh-CN.md', slug:'start/overview', group:'start', title:{en:'Overview and quick start', zh:'概览与快速开始'}, description:{en:'Build the CLI, create a project, and understand the generated stack.', zh:'构建 CLI、创建项目并了解生成的完整技术栈。'}},
   {source:'docs/installation.md', slug:'start/installation', group:'start', title:{en:'Installation', zh:'安装'}, description:{en:'Install AppStruct from source or a verified release artifact.', zh:'从源码或校验过的发布产物安装 AppStruct。'}},
+  {source:'docs/existing-database.md', slug:'start/existing-database', group:'start', title:{en:'Existing PostgreSQL', zh:'已有 PostgreSQL'}, description:{en:'Import an existing schema and review the first-run migration path.', zh:'导入已有结构，并审阅首次运行的迁移流程。'}},
   {source:'docs/upgrading.md', slug:'start/upgrading', group:'start', title:{en:'Upgrading', zh:'升级'}, description:{en:'Upgrade the CLI, project lock, generated artifacts, and database safely.', zh:'安全升级 CLI、项目锁、生成物与数据库。'}},
 
   {source:'docs/deployment.md', slug:'delivery/deployment', group:'delivery', title:{en:'Deployment', zh:'部署'}, description:{en:'Build immutable artifacts and run migrations as an explicit release step.', zh:'构建不可变产物，并将迁移作为显式发布步骤。'}},
   {source:'docs/releasing.md', slug:'delivery/releasing', group:'delivery', title:{en:'Releasing AppStruct', zh:'发布 AppStruct'}, description:{en:'Cut and verify framework releases with reproducible checks.', zh:'通过可复现检查完成框架版本发布。'}},
+  {source:'docs/continuous-integration.md', slug:'delivery/quality-gates', group:'delivery', title:{en:'Repository quality gates', zh:'仓库质量门禁'}, description:{en:'Run PR and release checks and inspect retained diagnostics.', zh:'执行 PR 与发布检查，并查看保留的诊断产物。'}},
   {source:'docs/migration-lint.md', slug:'delivery/migration-lint', group:'delivery', title:{en:'Migration lint', zh:'迁移检查'}, description:{en:'Review destructive, locking, and unsafe schema changes before shipping.', zh:'在交付前审查破坏性、锁表和不安全的 Schema 变更。'}},
   {source:'docs/module-registry.md', slug:'delivery/module-registry', group:'delivery', title:{en:'Module registry', zh:'模块注册表'}, description:{en:'Resolve signed remote modules with locked versions and digests.', zh:'使用锁定版本与摘要解析签名远程模块。'}},
   {source:'docs/optimization-progress.md', slug:'delivery/optimization', group:'delivery', title:{en:'Delivery optimization', zh:'交付优化'}, description:{en:'Track compiler, generator, and build-time improvements.', zh:'记录编译器、生成器与构建耗时优化。'}},

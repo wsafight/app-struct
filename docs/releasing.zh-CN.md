@@ -72,8 +72,8 @@ appstruct-cli
 ## 准备二进制发布
 
 先运行预检、`scripts/run-template-build.sh` 和 PostgreSQL E2E 矩阵，再创建并推送
-`v<workspace-version>` 标签。标签会触发 Release 工作流：它构建下列原生目标、运行安装器测试、
-校验版本，并创建包含归档、校验和及版本固定安装器的 GitHub 草稿 Release：
+`v<workspace-version>` 标签。标签会触发 Release 工作流：先运行[完整仓库质量门禁](continuous-integration.zh-CN.md)，
+通过后构建下列原生目标、运行安装器测试、校验版本，并创建包含归档、校验和及版本固定安装器的 GitHub 草稿 Release：
 
 ```text
 x86_64-unknown-linux-gnu

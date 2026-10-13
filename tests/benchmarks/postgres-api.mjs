@@ -156,7 +156,10 @@ const cursorList = async () => {
 };
 const aggregateCount = async () => {
   const data = await json("/api/entries/_aggregate?metrics=count", { headers });
-  assert.equal(data.data[0].count, rows);
+  // The mixed phase runs inserts and reads concurrently. Newly inserted rows are
+  // visible until the writer's delete request completes, so the count may exceed
+  // the baseline briefly; it must never fall below the seeded tenant rows.
+  assert(data.data[0].count >= rows);
 };
 const read = async () => {
   const data = await json(`/api/entries/${sample.id}`, { headers });

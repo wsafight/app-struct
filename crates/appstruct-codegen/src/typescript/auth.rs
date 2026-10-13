@@ -14,12 +14,18 @@ function broadcastSessionChange(): void {
 }
 
 function selectTenant(id?: string): void {
+  const storage = browserStorage();
   try {
-    const storage = browserStorage();
-    if (id) storage?.setItem(tenantStorageKey, id);
-    else storage?.removeItem(tenantStorageKey);
+    if (storage) {
+      if (id) storage.setItem(tenantStorageKey, id);
+      else storage.removeItem(tenantStorageKey);
+      tenantOverride = undefined;
+    } else {
+      tenantOverride = id ?? null;
+    }
   } catch {
     // Storage can reject writes in privacy modes or restricted frames.
+    tenantOverride = id ?? null;
   }
   resourceEtags.clear();
 }

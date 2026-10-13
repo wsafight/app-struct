@@ -1,0 +1,219 @@
+name: Quality gates
+
+on:
+  workflow_call:
+    inputs:
+      full:
+        description: Run all PostgreSQL modules, production containers, packaging and benchmarks.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_INCREMENTAL: '0'
+  APPSTRUCT_PERF_BUDGET_MULTIPLIER: '2'
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/setup
+      - run: pnpm install --frozen-lockfile
+      - name: Validate GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=''
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - name: Check shell scripts and E2E cleanup
+        run: |
+          for script in scripts/*.sh; do bash -n "$script"; done
+          bash scripts/test-e2e-cleanup.sh
+      - run: cargo install cargo-deny --locked --version 0.20.2
+      - run: cargo deny check
+
+  templates:
+    name: Template (${{ matrix.template }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        template: [minimal, dashboard, saas]
+    env:
+      APPSTRUCT_TEMPLATE: ${{ matrix.template }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/setup
+      - run: bash scripts/run-template-build.sh
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/setup
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run site:check
+      - run: pnpm run site:build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run site:test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: docs-diagnostics
+          path: site/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  postgres:
+    name: PostgreSQL (${{ matrix.suite }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(inputs.full && '["authorization", "m6-query", "operations", "m5-browser", "m6-tenant", "m6-audit", "m6-mail", "m6-jobs", "m6-file", "m6-saas", "m6-bulk", "chromium-report"]' || '["authorization", "m6-query", "operations"]') }}
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: appstruct
+          POSTGRES_PASSWORD: appstruct-ci
+          POSTGRES_DB: appstruct_ci_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U appstruct -d appstruct_ci_e2e"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      APPSTRUCT_E2E_DATABASE_URL: postgresql://appstruct:appstruct-ci@127.0.0.1:5432/appstruct_ci_e2e?sslmode=disable
+      APPSTRUCT_E2E_LOG_DIR: ${{ github.workspace }}/output/e2e-logs
+      APPSTRUCT_E2E_STARTUP_TIMEOUT: '600'
+      E2E_SUITE: ${{ matrix.suite }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/setup
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y postgresql-client
+      - run: pnpm install --frozen-lockfile
+      - if: matrix.suite == 'operations' || matrix.suite == 'm5-browser' || matrix.suite == 'm6-tenant' || matrix.suite == 'm6-audit' || matrix.suite == 'm6-saas' || matrix.suite == 'chromium-report'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Verify migration and database introspection contracts
+        if: matrix.suite == 'authorization'
+        run: |
+          cargo test --locked -p appstruct-migrate --test postgres
+          cargo test --locked -p appstruct-cli --test db_pull_cli
+      - name: Run PostgreSQL suite
+        run: bash "scripts/run-$E2E_SUITE-e2e.sh"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postgres-${{ matrix.suite }}-diagnostics
+          path: |
+            output/e2e-logs/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deployment:
+    name: Docker deployment
+    if: inputs.full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: appstruct
+          POSTGRES_PASSWORD: appstruct-ci
+          POSTGRES_DB: appstruct_deployment_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U appstruct -d appstruct_deployment_e2e"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      APPSTRUCT_E2E_DATABASE_URL: postgresql://appstruct:appstruct-ci@127.0.0.1:5432/appstruct_deployment_e2e?sslmode=disable
+      APPSTRUCT_E2E_LOG_DIR: ${{ github.workspace }}/output/e2e-logs
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/setup
+      - run: sudo apt-get update && sudo apt-get install --no-install-recommends -y postgresql-client
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: bash scripts/run-deployment-e2e.sh --docker
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployment-diagnostics
+          path: |
+            output/deployment/
+            output/e2e-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  renderer:
+    name: Renderer isolation
+    if: inputs.full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: bash scripts/run-renderer-isolation.sh
+
+  packages:
+    name: Package verification
+    if: inputs.full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/setup
+      - run: bash scripts/verify-packages.sh
+
+  benchmarks:
+    name: Benchmark (${{ matrix.workload }})
+    if: inputs.full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        workload: [developer-experience, postgres]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: appstruct
+          POSTGRES_PASSWORD: appstruct-ci
+          POSTGRES_DB: appstruct_benchmark_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U appstruct -d appstruct_benchmark_e2e"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      APPSTRUCT_E2E_DATABASE_URL: postgresql://appstruct:appstruct-ci@127.0.0.1:5432/appstruct_benchmark_e2e?sslmode=disable
+      APPSTRUCT_E2E_LOG_DIR: ${{ github.workspace }}/output/e2e-logs
+      BENCHMARK_WORKLOAD: ${{ matrix.workload }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/setup
+      - run: sudo apt-get update && sudo apt-get install --no-install-recommends -y postgresql-client
+      - run: bash "scripts/run-$BENCHMARK_WORKLOAD-benchmark.sh"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-${{ matrix.workload }}
+          path: |
+            output/benchmarks/
+            output/e2e-logs/
+          if-no-files-found: ignore
+          retention-days: 30

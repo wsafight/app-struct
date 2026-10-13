@@ -235,6 +235,7 @@ site in `site/` renders both languages; from the workspace root run `pnpm run si
 
 - [Deployment](docs/deployment.md)
 - [Releasing](docs/releasing.md)
+- [Repository quality gates](docs/continuous-integration.md)
 - [Security headers](docs/security-headers.md)
 - [Migration lint](docs/migration-lint.md)
 - [Module registry](docs/module-registry.md)
@@ -300,9 +301,12 @@ scripts/run-template-build.sh
 ```
 
 PostgreSQL browser tests use dedicated databases and the matching `scripts/run-*-e2e.sh` scripts.
-GitHub Actions deploys the documentation site and validates tagged release builds; run template
-and PostgreSQL gates locally before tagging. `scripts/run-template-build.sh` checks generated Web
-production dependencies, formatting, tests, types, and the Rsbuild bundle.
+GitHub Actions checks Rust, all three generated Web templates, documentation and key PostgreSQL
+regressions on pull requests. Main, weekly, manual and tagged-release runs add the full module,
+Docker deployment, renderer isolation, packaging and benchmark gates. See the
+[quality gate matrix and diagnostics guide](docs/continuous-integration.md).
+`scripts/run-template-build.sh` checks generated Web production dependencies, formatting, tests,
+types, and the Rsbuild bundle.
 
 Generated-backend compile tests reclaim their temporary packages while retaining shared dependency
 artifacts. M6 E2E scripts remove their suite-specific target on exit; set

@@ -1,0 +1,24 @@
+name: AppStruct toolchain
+description: Install the repository's Rust, Node.js and pnpm toolchains and restore dependency caches.
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 11.25.0
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      with:
+        node-version: 24
+        cache: pnpm
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: rustup show active-toolchain
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+        key: cargo-dependencies-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
+        restore-keys: |
+          cargo-dependencies-${{ runner.os }}-

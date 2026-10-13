@@ -25,8 +25,23 @@ export const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Keep tenant-scoped server state in a distinct cache namespace. The Tenant
+ * provider still resets active queries during a switch so the UI clears
+ * immediately, while this namespace prevents a late response from the old
+ * organization from populating the cache read by the new organization.
+ */
+export function currentTenantScope(): string {
+  try {
+    return window.localStorage.getItem("appstruct_tenant") ?? "global";
+  } catch {
+    return "global";
+  }
+}
+
 export const resourceQueryKeys = {
-  all: (resourceId: string) => ["resource", resourceId] as const,
+  all: (resourceId: string) =>
+    ["resource", currentTenantScope(), resourceId] as const,
   lists: (resourceId: string) =>
     [...resourceQueryKeys.all(resourceId), "list"] as const,
   list: (resourceId: string, query: string) =>
@@ -50,14 +65,18 @@ export const appQueryKeys = {
       ["tenant", organizationId, "invitations"] as const,
   },
   audit: (page: number, pageSize: number, entity = "", recordId = "") =>
-    ["audit", { page, pageSize, entity, recordId }] as const,
+    [
+      "audit",
+      currentTenantScope(),
+      { page, pageSize, entity, recordId },
+    ] as const,
   activity: (resource: string, recordId: string) =>
-    ["activity", resource, recordId] as const,
+    ["activity", currentTenantScope(), resource, recordId] as const,
   reports: {
-    all: ["reports"] as const,
-    templates: ["reports", "templates"] as const,
+    all: () => ["reports", currentTenantScope()] as const,
+    templates: () => ["reports", currentTenantScope(), "templates"] as const,
     runs: (page: number, pageSize: number) =>
-      ["reports", "runs", { page, pageSize }] as const,
+      ["reports", currentTenantScope(), "runs", { page, pageSize }] as const,
   },
   tokens: ["auth", "tokens"] as const,
   admin: {

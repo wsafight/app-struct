@@ -1,6 +1,8 @@
 pub(super) fn tenant_storage_source() -> &'static str {
     r#"export const tenantStorageKey = "appstruct_tenant";
 
+let tenantOverride: string | null | undefined;
+
 function browserStorage(): Storage | undefined {
   try {
     const storage = window.localStorage;
@@ -15,6 +17,7 @@ function browserStorage(): Storage | undefined {
 }
 
 function currentTenant(): string | undefined {
+  if (tenantOverride !== undefined) return tenantOverride || undefined;
   try {
     return browserStorage()?.getItem(tenantStorageKey) ?? undefined;
   } catch {

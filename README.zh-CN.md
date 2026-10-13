@@ -234,6 +234,7 @@ appstruct update
 
 - [部署](docs/deployment.zh-CN.md)
 - [发布 AppStruct](docs/releasing.zh-CN.md)
+- [仓库质量门禁](docs/continuous-integration.zh-CN.md)
 - [安全响应头](docs/security-headers.zh-CN.md)
 - [迁移检查](docs/migration-lint.zh-CN.md)
 - [模块注册表](docs/module-registry.zh-CN.md)
@@ -299,8 +300,9 @@ scripts/run-template-build.sh
 ```
 
 需要 PostgreSQL 的浏览器测试使用独立测试数据库，并通过对应的 `scripts/run-*-e2e.sh` 脚本
-执行。GitHub Actions 部署文档站点并验证带标签的发布构建；创建标签前仍需在本地运行模板与
-PostgreSQL 检查。
+执行。GitHub Actions 在 Pull Request 中检查 Rust、三套生成 Web 模板、文档与关键 PostgreSQL 回归；
+主分支、每周、手动和标签发布再执行完整模块、Docker 部署、渲染器隔离、打包及性能基准门禁。
+矩阵和诊断方式见[仓库质量门禁](docs/continuous-integration.zh-CN.md)。
 `scripts/run-template-build.sh` 会检查生成 Web 的生产依赖、格式、测试、类型和构建。
 
 生成后端编译测试会自动回收临时包，同时保留共享依赖产物。M6 E2E 脚本退出时会删除各自的

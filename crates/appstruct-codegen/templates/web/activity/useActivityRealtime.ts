@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { subscribeRealtime } from "../generated/client";
-import { appQueryKeys } from "../query";
+import { appQueryKeys, currentTenantScope } from "../query";
 import type { ResourceDefinition } from "../resource";
 
 const MAX_SEEN_EVENTS = 256;
@@ -12,6 +12,7 @@ export function useActivityRealtime(
   recordId: string,
 ): void {
   const queryClient = useQueryClient();
+  const tenantScope = currentTenantScope();
 
   useEffect(() => {
     if (!enabled) return;
@@ -56,5 +57,5 @@ export function useActivityRealtime(
       source.close();
       if (refreshTimer !== undefined) clearTimeout(refreshTimer);
     };
-  }, [enabled, queryClient, recordId, resource]);
+  }, [enabled, queryClient, recordId, resource, tenantScope]);
 }

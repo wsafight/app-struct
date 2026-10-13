@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { subscribeRealtime } from "../generated/client";
-import { resourceQueryKeys } from "../query";
+import { currentTenantScope, resourceQueryKeys } from "../query";
 
 export interface RealtimeResourceOptions {
   enabled: boolean;
@@ -17,6 +17,7 @@ export function useRealtimeResource({
   eventPrefix,
 }: RealtimeResourceOptions): void {
   const queryClient = useQueryClient();
+  const tenantScope = currentTenantScope();
 
   useEffect(() => {
     if (!enabled) return;
@@ -42,5 +43,12 @@ export function useRealtimeResource({
       source.close();
       if (refreshTimer !== undefined) clearTimeout(refreshTimer);
     };
-  }, [enabled, eventPrefix, queryClient, resourceId, resourceSlug]);
+  }, [
+    enabled,
+    eventPrefix,
+    queryClient,
+    resourceId,
+    resourceSlug,
+    tenantScope,
+  ]);
 }

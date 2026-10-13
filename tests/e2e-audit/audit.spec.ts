@@ -16,8 +16,8 @@ test("audit snapshots remain tenant isolated on desktop and mobile", async ({ pa
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Project" })).toBeVisible();
   await page.getByRole("link", { name: "Add" }).click();
-  await page.getByLabel("Name").fill(projectName);
-  await page.getByLabel("Owner").selectOption({ label: email });
+  await page.locator("form.form-frame").getByRole("textbox", { name: /^Name\b/ }).fill(projectName);
+  await page.getByRole("combobox", { name: /^Owner\b/ }).selectOption({ label: email });
   await page.getByRole("button", { name: "Save" }).click();
 
   await page.getByRole("link", { name: "Audit log" }).click();
@@ -25,11 +25,15 @@ test("audit snapshots remain tenant isolated on desktop and mobile", async ({ pa
   await expect(page.getByText("1 events", { exact: true })).toBeVisible();
   await expect(page.getByText("create", { exact: true })).toBeVisible();
   await page.getByText("Change snapshot", { exact: true }).click();
-  await expect(page.getByText(projectName, { exact: false })).toBeVisible();
+  await expect(page.locator(".audit-diff").getByRole("cell", { name: projectName, exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("audit-desktop.png"), fullPage: true });
 
-  page.once("dialog", (dialog) => dialog.accept("Beta UI"));
   await page.getByRole("button", { name: "Create organization" }).click();
+  await page.locator("dialog[open] input").fill("Beta UI");
+  await page
+    .locator("dialog[open]")
+    .getByRole("button", { name: "Create", exact: true })
+    .click();
   await expect(page.getByText("No audit events", { exact: true })).toBeVisible();
   await page.getByRole("combobox", { name: "Current organization" }).selectOption({ label: "Alpha UI" });
   await expect(page.getByText("1 events", { exact: true })).toBeVisible();

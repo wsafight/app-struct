@@ -843,9 +843,10 @@ DTO，也不作为可配置筛选器显示。
 只能读取该值。
 
 TypeScript runtime 暴露 `tenantApi.listOrganizations/createOrganization/select/clear/current`，将选中的
-tenant ID 保存在 `localStorage`，并为所有 API 请求附加 header。UI 切换器只负责选择上下文，安全
-边界仍在后端。OpenAPI 为 tenant-scoped operation 声明必需的 `X-AppStruct-Tenant` header，并描述
-Tenant endpoint。
+tenant ID 保存在 `localStorage`；存储不可用时使用进程内覆盖值，并为所有 API 请求附加 header。
+资源、Audit、Activity 和 Report 的 React Query key 包含当前 tenant scope，实时订阅在切换后重新绑定。
+UI 切换器只负责选择上下文，安全边界仍在后端。OpenAPI 为 tenant-scoped operation 声明必需的
+`X-AppStruct-Tenant` header，并描述 Tenant endpoint。
 
 M6 Audit 契约如下：
 
@@ -1434,7 +1435,7 @@ CI 中检测到非 TTY 时：
 | 用户 React | 交给 Rsbuild HMR |
 | migrations | 不作为 watch 输入；下次启动或其他输入重载时按迁移策略处理 |
 
-实现使用 400 ms polling 指纹，不监听 `generated/`、`.appstruct/cache/` 或构建输出。API 与 Web 默认端口分别为 3000/5173，可由 CLI flag 覆盖；Rsbuild 使用 strict port，端口冲突直接失败。generation 输入和 ownership tree 未变时跳过 Compiler/Codegen/formatter/目录事务；Rust 输入和 debug binary 未变时复用 backend build，Web package/lock 和 `.pnpm` 未变时复用安装。任一 cache state 缺失、损坏或输出缺失都回退完整流程。
+实现优先使用原生文件监听与 150 ms 去抖；原生监听不可用或失败时回退到 250 ms polling 指纹。不监听 `generated/`、`.appstruct/cache/` 或构建输出。API 与 Web 默认端口分别为 3000/5173，可由 CLI flag 覆盖；Rsbuild 使用 strict port，端口冲突直接失败。generation 输入和 ownership tree 未变时跳过 Compiler/Codegen/formatter/目录事务；Rust 输入和 debug binary 未变时复用 backend build，Web package/lock 和 `.pnpm` 未变时复用安装。任一 cache state 缺失、损坏或输出缺失都回退完整流程。
 
 ## 21. 缓存与构建指纹
 
@@ -1592,7 +1593,7 @@ format
   -> package checks
 ```
 
-Pull Request 使用最小必要矩阵；主分支和发布构建运行完整示例与安全扫描。
+Pull Request 运行 Rust、三套生成 Web 模板、文档和关键 PostgreSQL 回归；主分支、每周、手动与发布复用完整门禁，增加全部模块、Docker 部署、渲染器隔离、打包和性能基准。具体矩阵与日志保留见 [仓库质量门禁](docs/continuous-integration.zh-CN.md)。
 
 ## 27. 实施里程碑
 

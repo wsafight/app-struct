@@ -88,8 +88,9 @@ manual maintainer action so a source tag cannot consume registry credentials.
 
 Run the preflight checks, `scripts/run-template-build.sh`, and the PostgreSQL E2E matrix before
 creating and pushing a `v<workspace-version>` tag. The tag triggers the Release workflow, which
-builds and installer-tests these native targets, checks their versions, and creates a draft GitHub
-release with archives, checksums, and pinned installers:
+first runs the [full repository quality gates](continuous-integration.md), then builds and
+installer-tests these native targets, checks their versions, and creates a draft GitHub release
+with archives, checksums, and pinned installers:
 
 ```text
 x86_64-unknown-linux-gnu

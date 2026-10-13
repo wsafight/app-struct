@@ -47,8 +47,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     null;
 
   const clearTenantQueries = useCallback(() => {
-    void queryClient.cancelQueries();
-    queryClient.removeQueries({
+    void queryClient.resetQueries({
       predicate: (query) => {
         const root = query.queryKey[0];
         return root !== appQueryKeys.session[0] && root !== "tenant";

@@ -11,7 +11,10 @@ compose=(docker compose --project-directory "$project" --project-name "appstruct
 m6_cleanup_extra() {
   m6_stop_process "$proxy_pid" TERM || true
   m6_stop_process "$api_pid" TERM || true
-  if [[ -n "$compose_started" ]]; then "${compose[@]}" down --volumes --remove-orphans; fi
+  if [[ -n "$compose_started" ]]; then
+    "${compose[@]}" logs --no-color >"$temporary_root/compose.log" 2>&1 || true
+    "${compose[@]}" down --volumes --remove-orphans
+  fi
 }
 database_name="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c 'SELECT current_database()')"
 case "$database_name" in *test*|*e2e*) ;; *) echo 'Dedicated test database required' >&2; exit 2 ;; esac
@@ -21,11 +24,13 @@ cli="$workspace/target/debug/appstruct"
 "$cli" --project "$temporary_root" new deployment-smoke --template minimal
 mkdir -p "$project/.appstruct/cache" "$m6_backend_target"
 ln -s "$m6_backend_target" "$project/.appstruct/cache/backend-target"
-env -u PUBLIC_API_URL -u VITE_API_URL DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" build
+"$cli" --project "$project" generate
 env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" migrate dev --accept
 env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" migrate apply
 env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" migrate status
+env -u PUBLIC_API_URL -u VITE_API_URL DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" build
 "$cli" --project "$project" generate --check
+"$cli" --project "$project" deploy verify
 if [[ "$mode" == --docker ]]; then
   node --input-type=module - "$project/.env.production" <<'JS'
 import { writeFileSync } from 'node:fs';

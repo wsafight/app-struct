@@ -16,13 +16,11 @@ case "$profile" in
     env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" generate
     env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" migrate dev --accept
     env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$cli" --project "$project" migrate apply
-    if [[ -f "$project/generated/server/Cargo.toml" ]]; then
-      manifest="$project/generated/server/Cargo.toml"
-      backend="$m6_backend_target/release/appstruct-generated-server"
-    else
-      manifest="$project/generated/backend/Cargo.toml"
-      backend="$m6_backend_target/release/appstruct-generated-backend"
-    fi
+    # The lockless bulk fixture uses the legacy backend layout. Codegen also emits a
+    # server manifest, but this fixture has no app/backend composition root to build it.
+    manifest="$project/generated/backend/Cargo.toml"
+    backend="$m6_backend_target/release/appstruct-generated-backend"
+    cargo generate-lockfile --manifest-path "$manifest"
     cargo build --release --locked --manifest-path "$manifest" --target-dir "$m6_backend_target"
     set -m
     env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" APPSTRUCT_BIND="127.0.0.1:$api_port" \

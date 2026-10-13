@@ -11,6 +11,11 @@ m6_init() {
     echo "APPSTRUCT_E2E_DATABASE_URL must name a dedicated PostgreSQL test database" >&2
     exit 2
   fi
+  if [[ -n "${APPSTRUCT_E2E_STARTUP_TIMEOUT:-}" ]] \
+    && ! [[ "$APPSTRUCT_E2E_STARTUP_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+    echo "APPSTRUCT_E2E_STARTUP_TIMEOUT must be a positive integer" >&2
+    exit 2
+  fi
   workspace="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   api_port="${APPSTRUCT_E2E_API_PORT:-$api_default}"
   web_port="${APPSTRUCT_E2E_WEB_PORT:-$web_default}"
@@ -71,6 +76,7 @@ m6_cleanup() {
   if declare -F m6_cleanup_extra >/dev/null; then
     m6_cleanup_extra
   fi
+  m6_preserve_logs
   case "${temporary_root:-}" in
     "$m6_tmp_base"/appstruct-m6-"$m6_suite".*) rm -r "$temporary_root" ;;
     "") ;;
@@ -85,6 +91,18 @@ m6_cleanup() {
       *) echo "refusing to remove unexpected target: $m6_backend_target" >&2 ;;
     esac
   fi
+}
+
+m6_preserve_logs() {
+  [[ -n "${APPSTRUCT_E2E_LOG_DIR:-}" && -d "${temporary_root:-}" ]] || return 0
+  local destination="$APPSTRUCT_E2E_LOG_DIR/$m6_suite" process_log
+  mkdir -p -- "$destination"
+  # Only process logs are retained. The temporary tree also contains environment files,
+  # session cookies, rendered reports and test data, which are not diagnostic artifacts.
+  for process_log in "$temporary_root"/*.log; do
+    [[ -f "$process_log" && ! -L "$process_log" ]] || continue
+    cp -- "$process_log" "$destination/"
+  done
 }
 
 m6_prepare_fixture() {
@@ -106,7 +124,7 @@ m6_start_dev() {
   set -m
   env DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" "$@" \
     "$workspace/target/debug/appstruct" --project "$project" dev \
-    --api-port "$api_port" --web-port "$web_port" >"$log" 2>&1 &
+    --no-open --api-port "$api_port" --web-port "$web_port" >"$log" 2>&1 &
   dev_pid=$!
   set +m
 }
@@ -128,7 +146,8 @@ m6_wait_for_url() {
 }
 
 m6_wait_for_dev() {
-  m6_wait_for_url "http://127.0.0.1:$api_port/health/ready" "$dev_pid" "$log" "${1:-180}" 1
+  m6_wait_for_url "http://127.0.0.1:$api_port/health/ready" "$dev_pid" "$log" \
+    "${APPSTRUCT_E2E_STARTUP_TIMEOUT:-${1:-180}}" 1
 }
 
 m6_typecheck_web() {

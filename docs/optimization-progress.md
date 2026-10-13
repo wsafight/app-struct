@@ -61,3 +61,27 @@ Unified the light sidebar, green primary actions, color tokens, spacing, corner 
 Tables gain hover and selection states, enum/boolean badges and wider action columns. Forms, authentication, charts, CSV previews and dialogs share the visual system; failure reasons wrap inside dialogs. Mobile layouts retain local table scrolling, horizontal navigation and single-column forms, with reduced indentation for deep filter groups. Focus indicators and reduced-motion preferences remain supported. Lists retain page pagination and exact totals.
 
 Validation: minimal/dashboard/saas generated Web projects passed 51/54/55 tests respectively, TypeScript, ESLint, Prettier and production builds. Eighteen generation contract tests, three generated-tree snapshot tests, rustfmt and Clippy with warnings denied passed. No browser is available in this session, so desktop/mobile screenshot acceptance was not performed.
+
+## 2026-10-13 Tenant switching and browser contract hardening
+
+- [x] Tenant changes reset active React Query resources before refetching, so an organization cannot
+  display another organization's cached list, audit, or report data while the new request is pending.
+- [x] Updated tenant, audit, and SaaS browser contracts for the custom organization dialog, scoped
+  resource form controls, current empty-state text, and audit snapshot duplication.
+- [x] Added generated Web tests for both tenant selection and organization creation, including a
+  late response from the previous tenant and preservation of the authenticated session cache.
+
+Validation: Tenant, Audit, SaaS, Mail, Jobs/Schedules/Webhooks/Realtime, File, Bulk, and Chromium
+report PostgreSQL/browser E2E suites passed. The SaaS generated template passed 57 Web tests,
+TypeScript, ESLint, Prettier, production build, and generated-tree snapshots.
+
+## 2026-10-13 Tenant-scoped query namespaces
+
+- [x] Resource, audit, activity, and report query keys now include the selected tenant scope.
+- [x] Realtime resource and activity subscriptions rebind when the tenant changes, so an old
+  organization cannot keep an active event stream after switching contexts.
+- [x] Added generated Web coverage for distinct cache keys across organizations while preserving
+  the existing immediate reset behavior during a switch.
+
+Validation: generated Web framework tests, TypeScript, ESLint, Prettier, production builds, and
+generated-tree snapshots pass for the affected templates.

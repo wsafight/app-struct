@@ -19,7 +19,7 @@ export function ReportPage() {
   const [downloadError, setDownloadError] = useState("");
   const pageSize = 25;
   const templates = useQuery({
-    queryKey: appQueryKeys.reports.templates,
+    queryKey: appQueryKeys.reports.templates(),
     queryFn: () => reportApi.templates(),
   });
   const runs = useQuery({
@@ -43,13 +43,13 @@ export function ReportPage() {
       ),
     onSuccess: async () => {
       setValues({});
-      await client.invalidateQueries({ queryKey: appQueryKeys.reports.all });
+      await client.invalidateQueries({ queryKey: appQueryKeys.reports.all() });
     },
   });
   const cancel = useMutation({
     mutationFn: (id: string) => reportApi.cancel(id),
     onSuccess: () =>
-      client.invalidateQueries({ queryKey: appQueryKeys.reports.all }),
+      client.invalidateQueries({ queryKey: appQueryKeys.reports.all() }),
   });
   const selectedTemplate = useMemo(
     () => templates.data?.find((template) => template.name === selected),
@@ -69,7 +69,7 @@ export function ReportPage() {
       // `void download(run)`, so a rethrow would be an unhandled rejection and the
       // button would appear to do nothing.
       setDownloadError(errorMessage(requestError));
-      await client.invalidateQueries({ queryKey: appQueryKeys.reports.all });
+      await client.invalidateQueries({ queryKey: appQueryKeys.reports.all() });
     }
   }
 

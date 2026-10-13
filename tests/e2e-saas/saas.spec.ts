@@ -18,8 +18,11 @@ test("SaaS template supports tenant work and audit on desktop and mobile", async
   await page.getByRole("link", { name: "Projects" }).click();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await page.getByRole("link", { name: "Add" }).click();
-  await page.getByLabel("Name").fill(projectName);
-  await page.getByLabel("Description").fill("Created from the locked SaaS preset.");
+  await page.locator("form.form-frame").getByRole("textbox", { name: /^Name\b/ }).fill(projectName);
+  await page
+    .locator("form.form-frame")
+    .getByLabel("Description")
+    .fill("Created from the locked SaaS preset.");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText(projectName, { exact: true })).toBeVisible();
 
@@ -36,11 +39,15 @@ test("SaaS template supports tenant work and audit on desktop and mobile", async
   await expect(page.getByText("app::Task", { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("saas-desktop.png"), fullPage: true });
 
-  page.once("dialog", (dialog) => dialog.accept("Beta workspace"));
   await page.getByRole("button", { name: "Create organization" }).click();
+  await page.locator("dialog[open] input").fill("Beta workspace");
+  await page
+    .locator("dialog[open]")
+    .getByRole("button", { name: "Create", exact: true })
+    .click();
   await expect(page.getByText("No audit events", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Projects" }).click();
-  await expect(page.getByText("No records", { exact: true })).toBeVisible();
+  await expect(page.getByText("No records yet", { exact: true })).toBeVisible();
 
   await page.getByRole("combobox", { name: "Current organization" }).selectOption({ label: "Alpha workspace" });
   await expect(page.getByText(projectName, { exact: true })).toBeVisible();

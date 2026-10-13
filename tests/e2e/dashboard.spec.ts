@@ -32,7 +32,7 @@ test("dashboard registration and project lifecycle", async ({
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(
-    page.getByRole("banner").getByText(email, { exact: true }),
+    page.getByRole("complementary").getByText(email, { exact: true }),
   ).toBeVisible();
 
   await page
@@ -41,7 +41,7 @@ test("dashboard registration and project lifecycle", async ({
     .click();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await page.getByRole("link", { name: "Add" }).click();
-  await page.getByLabel("Name").fill(projectName);
+  await page.locator('input[name="name"]').fill(projectName);
   await page
     .getByLabel("Owner *", { exact: true })
     .selectOption({ label: email });
@@ -50,11 +50,11 @@ test("dashboard registration and project lifecycle", async ({
   const row = page.getByRole("row").filter({ hasText: projectName });
   await expect(row).toBeVisible();
   await row.getByRole("link", { name: "View" }).click();
-  await expect(page.getByText(projectName, { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: projectName, exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Edit" }).click();
-  await page.getByLabel("Name").fill(renamedProject);
+  await page.locator('input[name="name"]').fill(renamedProject);
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText(renamedProject, { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: renamedProject, exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
@@ -65,7 +65,7 @@ test("dashboard registration and project lifecycle", async ({
     .getByRole("navigation", { name: "Resources" })
     .getByRole("link", { name: "Projects", exact: true })
     .click();
-  await expect(page.getByText(renamedProject, { exact: true })).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: renamedProject })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("dashboard.png"),
     fullPage: true,

@@ -832,7 +832,7 @@ Module migrations install `_appstruct_tenant_organizations` and `_appstruct_tena
 
 The generated backend parses a UUID from `X-AppStruct-Tenant` and validates the actor against the membership table when constructing `RequestContext`. Ordinary non-tenant endpoints may receive `tenant: None`. Tenant-scoped CRUD must call `context.require_tenant()`, then AND `tenant_id = current_tenant` with the Condition produced by AccessRule. Create Model uses the context tenant directly. Update/Delete first lock the row with the same condition, so IDs from other tenants stay `404`. Both in-transaction and `after_commit` contexts keep the same actor/tenant; Hook and Policy can only read that value.
 
-The TypeScript runtime exposes `tenantApi.listOrganizations/createOrganization/select/clear/current`, stores the selected tenant ID in `localStorage`, and attaches the header to all API requests. The UI switcher only selects context; the security boundary remains on the backend. OpenAPI declares the required `X-AppStruct-Tenant` header for tenant-scoped operations and documents Tenant endpoints.
+The TypeScript runtime exposes `tenantApi.listOrganizations/createOrganization/select/clear/current`, stores the selected tenant ID in `localStorage` (with an in-memory fallback when browser storage is unavailable), and attaches the header to all API requests. Resource, Audit, Activity, and Report React Query keys include the current tenant scope, and realtime subscriptions rebind after a switch. The UI switcher only selects context; the security boundary remains on the backend. OpenAPI declares the required `X-AppStruct-Tenant` header for tenant-scoped operations and documents Tenant endpoints.
 
 The M6 Audit contract is:
 
@@ -1372,7 +1372,7 @@ File-change classification:
 | User React | Hand to Rsbuild HMR |
 | migrations | Not a watch input; handled by migration policy on next start or when other inputs reload |
 
-The implementation uses 400 ms polling fingerprints and does not watch `generated/`, `.appstruct/cache/`, or build output. Default API and Web ports are 3000/5173 and may be overridden by CLI flags. Rsbuild uses a strict port; a port conflict fails immediately. When generation inputs and the ownership tree are unchanged, skip Compiler/Codegen/formatter/directory transaction. When Rust inputs and the debug binary are unchanged, reuse the backend build. When Web package/lock and `.pnpm` are unchanged, reuse the install. Any missing, corrupt, or output-missing cache state falls back to the full flow.
+The implementation prefers native file watching with 150 ms debouncing and falls back to 250 ms polling fingerprints when native watching is unavailable or fails. It does not watch `generated/`, `.appstruct/cache/`, or build output. Default API and Web ports are 3000/5173 and may be overridden by CLI flags. Rsbuild uses a strict port; a port conflict fails immediately. When generation inputs and the ownership tree are unchanged, skip Compiler/Codegen/formatter/directory transaction. When Rust inputs and the debug binary are unchanged, reuse the backend build. When Web package/lock and `.pnpm` are unchanged, reuse the install. Any missing, corrupt, or output-missing cache state falls back to the full flow.
 
 ## 21. Cache and Build Fingerprints
 
@@ -1531,7 +1531,7 @@ format
   -> package checks
 ```
 
-Pull Requests use the smallest necessary matrix. Main-branch and release builds run full examples and security scans.
+Pull requests run Rust, all three generated Web templates, documentation and key PostgreSQL regressions. Main, weekly, manual and release runs reuse full gates, adding every module, Docker deployment, renderer isolation, packaging and benchmarks. See the [quality gate matrix and diagnostics guide](docs/continuous-integration.md).
 
 ## 27. Implementation Milestones
 

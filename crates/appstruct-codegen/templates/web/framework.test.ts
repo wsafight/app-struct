@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@rstest/core";
-import { ApiError, requestHeaders } from "./generated/client";
+import { ApiError, requestHeaders, tenantStorageKey } from "./generated/client";
 import { validateResourceSearch } from "./navigation";
 import {
   buildResourceFilterQuery,
@@ -447,24 +447,49 @@ describe("fieldErrors and errorMessage", () => {
 
 describe("resourceQueryKeys", () => {
   it("nests list and detail keys under the resource", () => {
+    localStorage.removeItem(tenantStorageKey);
     expect(resourceQueryKeys.list("app::Note", "page=1")).toEqual([
       "resource",
+      "global",
       "app::Note",
       "list",
       "page=1",
     ]);
     expect(resourceQueryKeys.detail("app::Note", "abc")).toEqual([
       "resource",
+      "global",
       "app::Note",
       "detail",
       "abc",
     ]);
     expect(resourceQueryKeys.options("app::Note")).toEqual([
       "resource",
+      "global",
       "app::Note",
       "options",
       "",
     ]);
+  });
+
+  it("changes tenant-scoped keys when the selected organization changes", () => {
+    try {
+      localStorage.setItem(tenantStorageKey, "alpha");
+      const alpha = resourceQueryKeys.detail("app::Note", "abc");
+      expect(appQueryKeys.audit(1, 25)).toEqual([
+        "audit",
+        "alpha",
+        { page: 1, pageSize: 25, entity: "", recordId: "" },
+      ]);
+      localStorage.setItem(tenantStorageKey, "beta");
+      expect(resourceQueryKeys.detail("app::Note", "abc")).not.toEqual(alpha);
+      expect(appQueryKeys.reports.templates()).toEqual([
+        "reports",
+        "beta",
+        "templates",
+      ]);
+    } finally {
+      localStorage.removeItem(tenantStorageKey);
+    }
   });
 });
 

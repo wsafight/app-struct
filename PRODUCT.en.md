@@ -1139,7 +1139,7 @@ The following is the historical open-decision list. Items marked “Decided” a
 4. Follow-up: Whether Session adds a Redis Provider.
 5. Follow-up: Freeze scope for third-party Module APIs and remote distribution protocol.
 6. Decided: Module capability graph, provider uniqueness, topological startup order, and reverse-order cleanup.
-7. Partially complete: The current Web resource contract is stable. Generated list/detail pages and custom pages can reuse the same headless Controller query keys, permissions, request state, and mutation invalidation. URL parameters and form/conflict state still need further convergence.
+7. Decided: The Web resource contract is stable. Generated list/detail pages and custom pages reuse the same headless Controller query keys, permissions, request state, mutation invalidation, URL parameters, form validation, conflict state, and draft state.
 8. Decided: CRUD, relations, and Command/Query all go through the backend authorization entry. Bulk operations are implemented and reuse per-record authorization and concurrency control.
 9. Decided: Migration rename/dangerous-change blocking, checksums, non-transactional steps, and drift diagnostic protocol.
 10. Follow-up: IR fragments injectable by third-party Modules and Artifact ownership boundaries.

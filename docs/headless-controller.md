@@ -3,6 +3,7 @@
 Generated list and detail pages use the same headless controller hooks available to custom page
 components. The hooks keep TanStack Query keys, list/read permission gates, loading/error state,
 request cancellation, refetching, and post-mutation invalidation consistent with generated CRUD.
+When Tenant is enabled, resource query keys automatically include the current organization scope.
 
 Custom pages receive the generated resources through `PageComponentProps`:
 
