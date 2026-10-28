@@ -7,9 +7,8 @@ mod runner;
 mod sql;
 
 pub use appstruct_schema::{
-    ColumnSchema, DatabaseSchema, DatabaseType, ForeignKeySchema, IndexSchema,
-    MIN_COMPATIBLE_SCHEMA_VERSION, SCHEMA_VERSION, SeedSchema, SeedValueSchema, TableSchema,
-    UniqueConstraintSchema, extract, from_json, to_json,
+    ColumnSchema, DatabaseSchema, DatabaseType, ForeignKeySchema, IndexSchema, SCHEMA_VERSION,
+    SeedSchema, SeedValueSchema, TableSchema, UniqueConstraintSchema, extract, from_json, to_json,
 };
 pub use diff::{
     ChangeRisk, ExecutionRisk, MigrationPlan, PlannedChange, SchemaChange, SchemaRisk, diff,
@@ -20,7 +19,8 @@ pub use introspection::{
 };
 pub use lint::{LintSeverity, MigrationLint, lint_plan};
 pub use runner::{
-    ApplyReport, DriftStatus, MigrationError, MigrationStatus, apply_project, connect_database,
+    ApplyReport, BaselineStatus, DriftStatus, MigrationError, MigrationStatus, apply_project,
+    baseline_project, connect_database, inspect_baseline, inspect_schema_structure,
     stamp_schema_checksum, status_project,
 };
 pub use sql::{initial_migration, migration_sql};

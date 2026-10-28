@@ -17,6 +17,10 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
 }
 
 fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
+    let lifecycle: proc_macro2::TokenStream =
+        include_str!("../../templates/backend/audit_policy.rs")
+            .parse()
+            .map_err(|error| CodegenError::new(format!("invalid audit policy source: {error}")))?;
     let roles = &ir.audit.reader_roles;
     let allowed = quote! { false #(|| actor.has_role(#roles))* };
     let load = if ir.tenant.enabled {
@@ -38,6 +42,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         use serde::{Deserialize, Serialize};
 
         #record
+        #lifecycle
 
         pub fn router() -> Router<AppState> {
             Router::new().route("/api/audit/events", get(list))
@@ -172,6 +177,9 @@ fn record_source(workflow: bool) -> proc_macro2::TokenStream {
             after: Option<serde_json::Value>,
             metadata: Option<serde_json::Value>,
         ) -> Result<(), ApiError> {
+            let before = lifecycle::redact(entity, before)?;
+            let after = lifecycle::redact(entity, after)?;
+            let metadata = lifecycle::redact(entity, metadata)?;
             let actor_id = context.actor().map(|actor| actor.id);
             database.execute(Sql::bind("INSERT INTO \"_appstruct_audit_events\" (id, entity, record_id, operation, actor_id, tenant_id, before, after, metadata, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)",
                 [
@@ -215,5 +223,6 @@ fn disabled_source() -> Result<String, CodegenError> {
         use crate::AppState;
         use axum::Router;
         pub fn router() -> Router<AppState> { Router::new() }
+        pub fn validate_env() -> Result<(), String> { Ok(()) }
     })
 }

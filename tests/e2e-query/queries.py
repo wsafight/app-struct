@@ -10,6 +10,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 
 class Client:
@@ -25,6 +26,8 @@ class Client:
             headers["X-AppStruct-Tenant"] = self.tenant
         body = None
         if data is not None:
+            if path.endswith("/_import.csv"):
+                headers["Idempotency-Key"] = str(uuid.uuid4())
             body = data.encode() if isinstance(data, str) else json.dumps(data).encode()
             headers["Content-Type"] = "text/csv" if isinstance(data, str) else "application/json"
             for cookie in self.cookies:

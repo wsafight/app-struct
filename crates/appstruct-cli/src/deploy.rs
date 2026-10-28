@@ -320,7 +320,7 @@ mod tests {
     fn release_manifest_rejects_unlisted_and_missing_required_artifacts() {
         let project = tempfile::tempdir().unwrap();
         for (path, content) in [
-            ("appstruct.lock", "project_layout_version = 1\n"),
+            ("appstruct.lock", "project_layout_version = 2\n"),
             ("generated/.appstruct-manifest.json", "{}"),
             ("generated/web/dist/index.html", "web"),
             (

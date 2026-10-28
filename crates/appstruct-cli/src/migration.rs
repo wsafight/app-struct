@@ -13,6 +13,7 @@ mod transaction;
 
 use transaction::MigrationTransaction;
 
+mod baseline;
 mod database;
 mod development;
 #[cfg(test)]
@@ -30,6 +31,12 @@ pub(crate) enum MigrateCommand {
         #[arg(long)]
         accept: bool,
     },
+    /// Inspect an existing database; --accept records its matching initial migration without DDL.
+    Baseline {
+        /// Create baseline files and record migration history after verifying live structure.
+        #[arg(long)]
+        accept: bool,
+    },
     /// Apply pending migration files to the configured PostgreSQL database.
     Apply,
     /// Compare migration files, database history, and the live PostgreSQL schema.
@@ -43,7 +50,21 @@ pub(crate) enum MigrateCommand {
 }
 
 pub(crate) fn run(project: &Path, command: MigrateCommand) -> ExitCode {
-    run_with_database(project, command, None)
+    if matches!(command, MigrateCommand::Plan | MigrateCommand::Lint { .. }) {
+        return run_with_database(project, command, None);
+    }
+    let environment = match crate::environment::ProjectEnvironment::load(project) {
+        Ok(environment) => environment,
+        Err(error) => {
+            return crate::report::fail(
+                "AS4107",
+                crate::report::ErrorCategory::Configuration,
+                error.to_string(),
+                crate::report::ExitClass::Environment,
+            );
+        }
+    };
+    run_with_database(project, command, environment.get("DATABASE_URL").as_deref())
 }
 
 pub(crate) fn run_with_database(
@@ -54,7 +75,10 @@ pub(crate) fn run_with_database(
     match command {
         MigrateCommand::Apply => return database::apply(project, database_url),
         MigrateCommand::Status => return database::status(project, database_url),
-        MigrateCommand::Plan | MigrateCommand::Dev { .. } | MigrateCommand::Lint { .. } => {}
+        MigrateCommand::Plan
+        | MigrateCommand::Dev { .. }
+        | MigrateCommand::Baseline { .. }
+        | MigrateCommand::Lint { .. } => {}
     }
     let target = match appstruct_compiler::compile_project(project) {
         Ok(ir) => match extract(&ir) {
@@ -75,6 +99,9 @@ pub(crate) fn run_with_database(
             );
         }
     };
+    if let MigrateCommand::Baseline { accept } = command {
+        return baseline::run(project, &target, accept, database_url);
+    }
     let before = match read_snapshot(project) {
         Ok(Some(schema)) => schema,
         Ok(None) => empty_schema(),
@@ -109,7 +136,9 @@ pub(crate) fn run_with_database(
             accept_plan(project, &target, &plan, accept, database_url)
         }
         MigrateCommand::Lint { deny_warnings } => render_lint(&plan, deny_warnings),
-        MigrateCommand::Apply | MigrateCommand::Status => unreachable!(),
+        MigrateCommand::Apply | MigrateCommand::Status | MigrateCommand::Baseline { .. } => {
+            unreachable!()
+        }
     }
 }
 

@@ -24,7 +24,7 @@ pub(super) fn source(ir: &AppIr) -> String {
         .collect::<Vec<_>>()
         .join(",\n");
     format!(
-        "{}import type {{ AccessRule, ResourceApi, ResourceDefinition }} from \"../resource\";\n{}\n\nexport const resources: ResourceDefinition[] = [\n{}\n];\n\nexport const auditAccess: AccessRule = {};\n",
+        "{}import {{ fieldLabel }} from \"../ui\";\nimport type {{ AccessRule, ResourceApi, ResourceDefinition }} from \"../resource\";\n{}\n\nexport const resources: ResourceDefinition[] = [\n{}\n];\n\nexport const auditAccess: AccessRule = {};\n",
         generated_header("//"),
         imports,
         indent(&resources, 2),
@@ -276,7 +276,12 @@ fn field_source(entity: &EntityIr, field: &FieldIr) -> String {
     let mut properties = vec![
         format!("name: {:?}", field.rust_name),
         format!("apiName: {:?}", field.api_name),
-        format!("label: {:?}", humanize(&field.api_name)),
+        format!(
+            "get label() {{ return fieldLabel({:?}, {:?}, {:?}); }}",
+            entity.id.0,
+            field.api_name,
+            humanize(&field.api_name)
+        ),
         format!("kind: {:?}", field_kind(&field.ty)),
         format!("required: {}", !field.nullable && field.default.is_none()),
         format!(
@@ -293,6 +298,32 @@ fn field_source(entity: &EntityIr, field: &FieldIr) -> String {
     }
     if let FieldTypeIr::Relation { target } = &field.ty {
         properties.push(format!("relation: {:?}", target.0));
+    }
+    if let Some(limit) = field.validation.min_length {
+        properties.push(format!("minLength: {limit}"));
+    }
+    if let Some(limit) = field.validation.max_length {
+        properties.push(format!("maxLength: {limit}"));
+    }
+    if let Some(rule) = &field.validation.required_when {
+        let source = entity
+            .fields
+            .iter()
+            .find(|other| other.id == rule.field)
+            .expect("validated condition");
+        properties.push(format!(
+            "requiredWhen: {{field: {:?}, equals: {}}}",
+            source.rust_name,
+            serde_json::to_string(&rule.equals).expect("serializable condition")
+        ));
+    }
+    if let Some(id) = &field.validation.greater_than {
+        let source = entity
+            .fields
+            .iter()
+            .find(|other| other.id == *id)
+            .expect("validated comparison");
+        properties.push(format!("greaterThan: {:?}", source.rust_name));
     }
     if let Some(minimum) = &field.validation.minimum {
         properties.push(format!("minimum: {minimum:?}"));

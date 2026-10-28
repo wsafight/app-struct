@@ -83,6 +83,7 @@ pub(super) fn support(
             let candidate = active.clone();
             if candidate.#relation_name != parent { return Err(invalid("Parent relation cannot change")); }
             validate_relations(state, context, &candidate).await?;
+            validate_candidate(&active)?;
             let model = active.insert(context).await?;
             state.extensions.#hooks().after_create(context, &model).await?;
             #create_event
@@ -105,6 +106,7 @@ pub(super) fn support(
             if !(#update_allowed) { return Err(access_denied(context)); }
             if !state.extensions.#policy().can_update(context, &before, &input, &candidate).await? { return Err(ApiError::Forbidden); }
             validate_relations(state, context, &candidate).await?;
+            validate_candidate(&active)?;
             let after = active.update(context).await?;
             state.extensions.#hooks().after_update(context, &before, &after).await?;
             #update_event

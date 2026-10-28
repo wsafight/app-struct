@@ -78,3 +78,18 @@ appstruct migrate status
 - [安装](installation.zh-CN.md)：替换 CLI 二进制
 - [部署](deployment.zh-CN.md)：生产环境的 migrate status / apply
 - [迁移检查](migration-lint.zh-CN.md)：升级计划含破坏性变更时先做只读检查
+
+## 一次性 Template 修复
+
+升级 CLI 后运行只读比较：
+
+```bash
+appstruct template diff
+appstruct template diff --format json > /tmp/appstruct-template-diff.json
+```
+
+命令从锁文件读取模板名称和记录版本，与当前 CLI 的部署文件比较，输出统一 diff；JSON 包含每个文件的新旧 SHA-256、状态和补丁。差异表示相对当前模板的变化，可能同时包含应用自己的定制，不能自动判断哪些是缺陷修复。它只检查 Dockerfile、Compose、`.dockerignore`、`deploy/` 和工具链文件，不覆盖应用、Spec、环境或生成树，也不更改锁文件。
+
+逐段审阅并手工合并适用修复，然后运行 `appstruct build`、`appstruct deploy verify`、`node deploy/smoke.mjs <origin>` 和业务旅程。涉及容器时还应在有 Docker 的环境重建 Compose。保留比较报告和应用提交，便于追溯采用了哪些模板修复。当前仅支持锁中选择 minimal/dashboard/saas 的项目；符号链接路径会被拒绝。
+
+格式读取只支持[当前契约基线](compatibility.zh-CN.md)。update 不转换历史 IR、旧 snapshot 或旧项目布局；使用旧格式的开发目录需要从备份按当前模板重建，数据库历史、校验和及崩溃恢复保护继续保留。

@@ -202,6 +202,10 @@ fn template_files(template: ProjectTemplate) -> &'static [TemplateFile] {
 
 const MINIMAL_FILES: &[TemplateFile] = &[
     TemplateFile {
+        path: "app/web/setup.ts",
+        content: include_str!("../templates/common/web-setup.ts"),
+    },
+    TemplateFile {
         path: "app/backend/Cargo.toml",
         content: include_str!("../templates/common/app-backend.Cargo.toml"),
     },
@@ -260,6 +264,10 @@ const MINIMAL_FILES: &[TemplateFile] = &[
 ];
 
 const DASHBOARD_FILES: &[TemplateFile] = &[
+    TemplateFile {
+        path: "app/web/setup.ts",
+        content: include_str!("../templates/common/web-setup.ts"),
+    },
     TemplateFile {
         path: "app/backend/Cargo.toml",
         content: include_str!("../templates/common/app-backend.Cargo.toml"),
@@ -328,6 +336,10 @@ const DASHBOARD_FILES: &[TemplateFile] = &[
 
 const SAAS_FILES: &[TemplateFile] = &[
     TemplateFile {
+        path: "app/web/setup.ts",
+        content: include_str!("../templates/common/web-setup.ts"),
+    },
+    TemplateFile {
         path: "app/backend/Cargo.toml",
         content: include_str!("../templates/common/app-backend.Cargo.toml"),
     },
@@ -392,3 +404,28 @@ const SAAS_FILES: &[TemplateFile] = &[
         content: include_str!("../templates/saas/spec/work.yaml"),
     },
 ];
+
+/// Delivery files stay user-owned; callers may only compare these template defaults.
+pub(crate) fn delivery_files(template: &str) -> Option<Vec<(&'static str, &'static str)>> {
+    let template = match template {
+        "minimal" => ProjectTemplate::Minimal,
+        "dashboard" => ProjectTemplate::Dashboard,
+        "saas" => ProjectTemplate::Saas,
+        _ => return None,
+    };
+    Some(
+        template_files(template)
+            .iter()
+            .filter(|file| {
+                matches!(
+                    file.path,
+                    "Dockerfile"
+                        | ".dockerignore"
+                        | "compose.production.yaml"
+                        | "rust-toolchain.toml"
+                ) || file.path.starts_with("deploy/")
+            })
+            .map(|file| (file.path, file.content))
+            .collect(),
+    )
+}

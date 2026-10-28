@@ -1,3 +1,5 @@
+import { formatNumber, inputTimeZone, t } from "../ui";
+import { uiText } from "../ui";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -53,10 +55,10 @@ export function ResourceForm({
             <Link className="back-link" to={`/${resource.slug}`}>
               <ArrowLeft size={16} /> {resource.label}
             </Link>
-            <h1>Edit {resource.label}</h1>
+            <h1>{uiText("editRecord", { resource: resource.label })}</h1>
           </div>
         </div>
-        <AsyncState state="loading" message="Loading record" />
+        <AsyncState state="loading" message={uiText("loadingRecord")} />
       </main>
     );
   }
@@ -69,7 +71,7 @@ export function ResourceForm({
             <Link className="back-link" to={`/${resource.slug}`}>
               <ArrowLeft size={16} /> {resource.label}
             </Link>
-            <h1>Edit {resource.label}</h1>
+            <h1>{uiText("editRecord", { resource: resource.label })}</h1>
           </div>
         </div>
         <AsyncState
@@ -89,10 +91,10 @@ export function ResourceForm({
             <Link className="back-link" to={`/${resource.slug}`}>
               <ArrowLeft size={16} /> {resource.label}
             </Link>
-            <h1>Edit {resource.label}</h1>
+            <h1>{uiText("editRecord", { resource: resource.label })}</h1>
           </div>
         </div>
-        <AsyncState state="empty" message="Record not found" />
+        <AsyncState state="empty" message={uiText("recordNotFound")} />
       </main>
     );
   }
@@ -143,15 +145,8 @@ function ResourceFormEditor({
       );
     },
   });
-  const {
-    form,
-    fields,
-    canSubmit,
-    serverErrors,
-    conflict,
-    reloadRecord,
-    clearServerError,
-  } = controller;
+  const { form, fields, canSubmit, serverErrors, conflict, clearServerError } =
+    controller;
   const renderedFields = useMemo(
     () => fields.filter((field) => !isSemanticCompanion(field, fields)),
     [fields],
@@ -160,7 +155,7 @@ function ResourceFormEditor({
     return (
       <main className="page">
         <div className="alert" role="alert">
-          You do not have permission to change this resource.
+          {t("You do not have permission to change this resource.")}
         </div>
       </main>
     );
@@ -179,7 +174,9 @@ function ResourceFormEditor({
             <ArrowLeft size={16} /> {resource.label}
           </Link>
           <h1>
-            {editing ? "Edit" : "Add"} {resource.label}
+            {uiText(editing ? "editRecord" : "addRecord", {
+              resource: resource.label,
+            })}
           </h1>
         </div>
       </div>
@@ -190,15 +187,97 @@ function ResourceFormEditor({
             <button
               type="button"
               className="secondary-button"
-              onClick={() => void reloadRecord()}
+              disabled={controller.comparing}
+              onClick={() => void controller.compareConflict()}
             >
-              <RefreshCw size={16} /> Reload latest
+              <RefreshCw size={16} /> {t("Compare changes")}
             </button>
           )}
         </div>
       )}
+      {controller.comparisonError != null && (
+        <div className="alert" role="alert">
+          {errorMessage(controller.comparisonError)}
+        </div>
+      )}
+      {controller.comparison && (
+        <section aria-label={t("Resolve editing conflict")}>
+          <p>
+            {t(
+              "Compare your draft with the latest record. Choose a value for each conflict, then review and save.",
+            )}
+          </p>
+          <div className="table-frame conflict-comparison">
+            <table>
+              <thead>
+                <tr>
+                  <th> {t("Field")} </th>
+                  <th>{t("Before editing")}</th>
+                  <th>{t("Latest on server")}</th>
+                  <th>{t("My changes")}</th>
+                  <th>{t("Keep")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {controller.comparison.fields
+                  .filter(
+                    (field) =>
+                      field.mine !== field.original ||
+                      field.latest !== field.original,
+                  )
+                  .map((field) => (
+                    <tr key={field.name}>
+                      <th>{field.label}</th>
+                      <td>{String(field.original)}</td>
+                      <td>{String(field.latest)}</td>
+                      <td>{String(field.mine)}</td>
+                      <td>
+                        <select
+                          aria-label={t("Keep value for {0}", {
+                            "0": field.label,
+                          })}
+                          value={field.choice ?? ""}
+                          onChange={(event) =>
+                            controller.chooseConflict(
+                              field.name,
+                              event.target.value as "mine" | "latest",
+                            )
+                          }
+                        >
+                          <option value="" disabled>
+                            {t("Choose value")}
+                          </option>
+                          <option value="mine">{t("My changes")}</option>
+                          <option value="latest">
+                            {t("Latest on server")}
+                          </option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={controller.comparison.fields.some(
+              (field) => !field.choice,
+            )}
+            onClick={controller.applyConflict}
+          >
+            {t("Apply choices to draft")}
+          </button>
+        </section>
+      )}
+      {fields.some((field) => field.kind === "datetime") && (
+        <p className="muted">
+          {t("Times are entered in {0}.", { 0: inputTimeZone() })}
+        </p>
+      )}
       <form
         className="form-frame"
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -220,7 +299,11 @@ function ResourceFormEditor({
             <UnsavedChangesGuard enabled={dirty && !submitting} />
           )}
         </form.Subscribe>
-        <div className="form-grid">
+        <fieldset
+          className="form-grid"
+          disabled={conflict}
+          style={{ border: 0, padding: 0, margin: 0 }}
+        >
           {renderedFields.map((field) => {
             const companion = field.semantic
               ? fields.find(
@@ -286,10 +369,10 @@ function ResourceFormEditor({
               </form.Field>
             );
           })}
-        </div>
+        </fieldset>
         <div className="form-actions">
           <Link className="secondary-button" to={`/${resource.slug}`}>
-            Cancel
+            {uiText("cancel")}
           </Link>
           <form.Subscribe
             selector={(state) => [state.canSubmit, state.isSubmitting] as const}
@@ -297,9 +380,9 @@ function ResourceFormEditor({
             {([ready, submitting]) => (
               <button
                 className="primary-button"
-                disabled={!ready || submitting}
+                disabled={!ready || submitting || conflict}
               >
-                <Save size={17} /> {submitting ? "Saving..." : "Save"}
+                <Save size={17} /> {uiText(submitting ? "saving" : "save")}
               </button>
             )}
           </form.Subscribe>
@@ -314,8 +397,8 @@ export function UnsavedChangesGuard({ enabled }: { enabled: boolean }) {
   return (
     <ConfirmDialog
       open={blocker.blocked}
-      title="Discard unsaved changes?"
-      description="Your changes on this form will be lost."
+      title={t("Discard unsaved changes?")}
+      description={t("Your changes on this form will be lost.")}
       confirmLabel="Discard"
       danger
       onCancel={blocker.reset}
@@ -356,7 +439,7 @@ export function FieldControl({
     if (!companion) {
       return (
         <div className="alert" role="alert">
-          Money field renderer unavailable
+          {t("Money field renderer unavailable")}
         </div>
       );
     }
@@ -376,7 +459,7 @@ export function FieldControl({
         <div className="money-control">
           <select
             id={`${id}-currency`}
-            aria-label={`${field.label} currency`}
+            aria-label={t("{0} currency", { 0: field.label })}
             required={companion.field.required}
             value={String(companion.value ?? "")}
             onBlur={companion.onBlur}
@@ -384,7 +467,7 @@ export function FieldControl({
             aria-invalid={Boolean(companion.error)}
             aria-describedby={errorMessage ? `${id}-error` : undefined}
           >
-            <option value="">Select</option>
+            <option value=""> {t("Select")} </option>
             {companion.field.values?.map((item) => (
               <option key={item}>{item}</option>
             ))}
@@ -435,12 +518,39 @@ export function FieldControl({
           />
         ) : (
           <div className="alert" role="alert">
-            Field renderer unavailable
+            {t("Field renderer unavailable")}
           </div>
         )}
       </div>
     );
   }
+  if (field.kind === "boolean" && !field.required)
+    return (
+      <div className="field">
+        <label htmlFor={id}>{field.label}</label>
+        <select
+          id={id}
+          value={value === "" ? "" : String(value)}
+          onBlur={onBlur}
+          onChange={(event) =>
+            onChange(
+              event.target.value === "" ? "" : event.target.value === "true",
+            )
+          }
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${id}-error` : undefined}
+        >
+          <option value="">{t("None")}</option>
+          <option value="true">{t("Yes")}</option>
+          <option value="false">{t("No")}</option>
+        </select>
+        {error && (
+          <small id={`${id}-error`} className="field-error">
+            {error}
+          </small>
+        )}
+      </div>
+    );
   if (field.kind === "boolean")
     return (
       <label className="checkbox-field">
@@ -495,7 +605,7 @@ export function FieldControl({
       </label>
       {field.kind === "enum" ? (
         <select {...common}>
-          <option value="">Select</option>
+          <option value=""> {t("Select")} </option>
           {field.values?.map((item) => (
             <option key={item}>{item}</option>
           ))}
@@ -568,12 +678,13 @@ function RelationSelect({
         {field.required && <span aria-hidden> *</span>}
       </label>
       <label className="sr-only" htmlFor={`${id}-search`}>
-        Search {field.label}
+        {t("Search")}
+        {field.label}
       </label>
       <input
         id={`${id}-search`}
         value={search}
-        placeholder="Search"
+        placeholder={t("Search")}
         onChange={(event) => {
           setSearch(event.target.value);
           setPage(1);
@@ -590,7 +701,7 @@ function RelationSelect({
         aria-busy={isFetching}
         disabled={isPending && canLoad}
       >
-        <option value="">Select</option>
+        <option value=""> {t("Select")} </option>
         {options.map((record) => {
           const optionValue = String(record[target?.primaryKey ?? "id"]);
           return (
@@ -606,7 +717,7 @@ function RelationSelect({
           className="icon-button"
           disabled={page <= 1}
           onClick={() => setPage(page - 1)}
-          aria-label="Previous options"
+          aria-label={t("Previous options")}
         >
           <ChevronLeft size={14} />
         </button>
@@ -618,15 +729,18 @@ function RelationSelect({
           className="icon-button"
           disabled={page >= pages}
           onClick={() => setPage(page + 1)}
-          aria-label="Next options"
+          aria-label={t("Next options")}
         >
           <ChevronRight size={14} />
         </button>
       </span>
       <span className="sr-only" role="status" aria-live="polite">
         {isFetching
-          ? `Loading ${field.label} options`
-          : `${options.length} ${field.label} options loaded`}
+          ? t("Loading {0} options", { "0": field.label })
+          : t("{0} {1} options loaded", {
+              0: formatNumber(options.length),
+              1: field.label,
+            })}
       </span>
       {(error || loadError) && (
         <small id={errorId} className="field-error">

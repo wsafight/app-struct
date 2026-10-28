@@ -1,3 +1,5 @@
+import { formatDateTime, formatNumber } from "../ui";
+import { t } from "../ui";
 import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { ArrowLeft, Eye, Search, X } from "lucide-react";
@@ -53,11 +55,14 @@ export function AdminMailPage() {
       <AdminBackLink />
       <div className="page-heading storage-heading">
         <div>
-          <h1>Mail deliveries</h1>
-          <p>{mailQuery.data?.meta.total.toLocaleString() ?? 0} captured</p>
+          <h1> {t("Mail deliveries")}</h1>
+          <p>
+            {mailQuery.data ? formatNumber(mailQuery.data.meta.total) : 0}{" "}
+            {t("captured")}
+          </p>
         </div>
         <StorageSearch
-          label="Search mail"
+          label={t("Search mail")}
           value={draftSearch}
           active={Boolean(search)}
           onChange={setDraftSearch}
@@ -70,13 +75,13 @@ export function AdminMailPage() {
         <table>
           <thead>
             <tr>
-              <th>Recipient</th>
-              <th>Subject</th>
-              <th>Template</th>
-              <th>Provider</th>
-              <th>Tenant</th>
-              <th>Created</th>
-              <th aria-label="Actions" />
+              <th>{t("Recipient")}</th>
+              <th> {t("Subject")}</th>
+              <th> {t("Template")} </th>
+              <th>{t("Provider")}</th>
+              <th> {t("Tenant")}</th>
+              <th> {t("Created")} </th>
+              <th aria-label={t("Actions")} />
             </tr>
           </thead>
           <tbody>
@@ -98,8 +103,10 @@ export function AdminMailPage() {
                   <Link
                     className="icon-button icon-link"
                     to={`/admin/mail/${delivery.id}`}
-                    title="View delivery"
-                    aria-label={`View mail to ${delivery.recipient}`}
+                    title={t("View delivery")}
+                    aria-label={t("View mail to {0}", {
+                      "0": delivery.recipient,
+                    })}
                   >
                     <Eye size={15} />
                   </Link>
@@ -109,7 +116,7 @@ export function AdminMailPage() {
           </tbody>
         </table>
         {deliveries.length === 0 && !mailQuery.isPending && (
-          <div className="empty">No mail deliveries found</div>
+          <div className="empty"> {t("No mail deliveries found")}</div>
         )}
       </section>
       <AdminPagination
@@ -138,7 +145,7 @@ export function AdminMailDetailPage() {
   return (
     <main className="page detail-page">
       <Link className="back-link" to="/admin/mail">
-        <ArrowLeft size={15} /> Mail deliveries
+        <ArrowLeft size={15} /> {t("Mail deliveries")}
       </Link>
       <div className="page-heading">
         <div>
@@ -148,25 +155,28 @@ export function AdminMailDetailPage() {
       </div>
       <QueryError message={error} />
       {!delivery && !error && (
-        <div className="auth-loading" aria-label="Loading" />
+        <div className="auth-loading" aria-label={t("Loading")} />
       )}
       {delivery && (
         <>
           <dl className="storage-detail-grid">
-            <Detail label="Recipient" value={delivery.recipient} />
-            <Detail label="Sender" value={delivery.sender} />
-            <Detail label="Template" value={delivery.template} />
-            <Detail label="Provider" value={delivery.provider} />
-            <Detail label="Tenant" value={delivery.tenant_id ?? "Global"} />
-            <Detail label="Delivery ID" value={delivery.id} mono />
+            <Detail label={t("Recipient")} value={delivery.recipient} />
+            <Detail label={t("Sender")} value={delivery.sender} />
+            <Detail label={t("Template")} value={delivery.template} />
+            <Detail label={t("Provider")} value={delivery.provider} />
+            <Detail
+              label={t("Tenant")}
+              value={delivery.tenant_id ?? "Global"}
+            />
+            <Detail label={t("Delivery ID")} value={delivery.id} mono />
           </dl>
           <section className="storage-body-section">
-            <h2>Text body</h2>
+            <h2>{t("Text body")}</h2>
             <pre>{delivery.text_body || "(empty)"}</pre>
           </section>
           {delivery.html_body && (
             <section className="storage-body-section">
-              <h2>HTML source</h2>
+              <h2>{t("HTML source")} </h2>
               <pre>{delivery.html_body}</pre>
             </section>
           )}
@@ -213,14 +223,14 @@ export function AdminFilesPage() {
       <AdminBackLink />
       <div className="page-heading storage-heading">
         <div>
-          <h1>Files</h1>
+          <h1>{t("Files")}</h1>
           <p>
-            {filesQuery.data?.meta.total.toLocaleString() ?? 0} objects,{" "}
-            {formatBytes(filesQuery.data?.total_bytes ?? 0)}
+            {filesQuery.data ? formatNumber(filesQuery.data.meta.total) : 0}{" "}
+            {t("objects,")} {formatBytes(filesQuery.data?.total_bytes ?? 0)}
           </p>
         </div>
         <StorageSearch
-          label="Search files"
+          label={t("Search files")}
           value={draftSearch}
           active={Boolean(search)}
           onChange={setDraftSearch}
@@ -233,13 +243,13 @@ export function AdminFilesPage() {
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Object key</th>
-              <th>Content type</th>
-              <th>Size</th>
-              <th>Tenant</th>
-              <th>Created</th>
-              <th aria-label="Actions" />
+              <th>{t("Name")}</th>
+              <th>{t("Object key")}</th>
+              <th>{t("Content type")}</th>
+              <th>{t("Size")}</th>
+              <th> {t("Tenant")}</th>
+              <th> {t("Created")} </th>
+              <th aria-label={t("Actions")} />
             </tr>
           </thead>
           <tbody>
@@ -263,8 +273,8 @@ export function AdminFilesPage() {
                   <Link
                     className="icon-button icon-link"
                     to={`/admin/files/${file.id}`}
-                    title="View file metadata"
-                    aria-label={`View ${file.original_name}`}
+                    title={t("View file metadata")}
+                    aria-label={t("View {0}", { "0": file.original_name })}
                   >
                     <Eye size={15} />
                   </Link>
@@ -274,7 +284,7 @@ export function AdminFilesPage() {
           </tbody>
         </table>
         {files.length === 0 && !filesQuery.isPending && (
-          <div className="empty">No files found</div>
+          <div className="empty">{t("No files found")}</div>
         )}
       </section>
       <AdminPagination
@@ -303,7 +313,7 @@ export function AdminFileDetailPage() {
   return (
     <main className="page detail-page">
       <Link className="back-link" to="/admin/files">
-        <ArrowLeft size={15} /> Files
+        <ArrowLeft size={15} /> {t("Files")}
       </Link>
       <div className="page-heading">
         <div>
@@ -312,15 +322,20 @@ export function AdminFileDetailPage() {
         </div>
       </div>
       <QueryError message={error} />
-      {!file && !error && <div className="auth-loading" aria-label="Loading" />}
+      {!file && !error && (
+        <div className="auth-loading" aria-label={t("Loading")} />
+      )}
       {file && (
         <dl className="storage-detail-grid">
-          <Detail label="Object key" value={file.object_key} mono wide />
-          <Detail label="Content type" value={file.content_type} />
-          <Detail label="Size" value={`${file.size.toLocaleString()} bytes`} />
-          <Detail label="Tenant" value={file.tenant_id ?? "Global"} />
-          <Detail label="Created" value={formatDate(file.created_at)} />
-          <Detail label="File ID" value={file.id} mono />
+          <Detail label={t("Object key")} value={file.object_key} mono wide />
+          <Detail label={t("Content type")} value={file.content_type} />
+          <Detail
+            label={t("Size")}
+            value={t("{0} bytes", { 0: formatNumber(file.size) })}
+          />
+          <Detail label={t("Tenant")} value={file.tenant_id ?? t("Global")} />
+          <Detail label={t("Created")} value={formatDate(file.created_at)} />
+          <Detail label={t("File ID")} value={file.id} mono />
           <Detail label="SHA-256" value={file.checksum} mono wide />
         </dl>
       )}
@@ -331,7 +346,7 @@ export function AdminFileDetailPage() {
 function AdminBackLink() {
   return (
     <Link className="back-link" to="/admin">
-      <ArrowLeft size={15} /> Administration
+      <ArrowLeft size={15} /> {t("Administration")}
     </Link>
   );
 }
@@ -363,8 +378,8 @@ function StorageSearch({
       <button
         className="icon-button"
         type="submit"
-        title="Search"
-        aria-label="Search"
+        title={t("Search")}
+        aria-label={t("Search")}
       >
         <Search size={16} />
       </button>
@@ -372,8 +387,8 @@ function StorageSearch({
         <button
           className="icon-button"
           type="button"
-          title="Clear search"
-          aria-label="Clear search"
+          title={t("Clear search")}
+          aria-label={t("Clear search")}
           onClick={onClear}
         >
           <X size={16} />
@@ -411,15 +426,15 @@ function QueryError({ message }: { message: string }) {
 }
 
 function shortId(value: string | null): string {
-  return value ? `${value.slice(0, 8)}...` : "Global";
+  return value ? `${value.slice(0, 8)}...` : t("Global");
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleString();
+  return formatDateTime(value);
 }
 
 function formatBytes(value: number): string {
-  if (value < 1024) return `${value.toLocaleString()} B`;
+  if (value < 1024) return `${formatNumber(value)} B`;
   const units = ["KB", "MB", "GB", "TB"];
   let size = value / 1024;
   let unit = 0;
@@ -427,5 +442,5 @@ function formatBytes(value: number): string {
     size /= 1024;
     unit += 1;
   }
-  return `${size.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${units[unit]}`;
+  return `${formatNumber(size, { maximumFractionDigits: 1 })} ${units[unit]}`;
 }

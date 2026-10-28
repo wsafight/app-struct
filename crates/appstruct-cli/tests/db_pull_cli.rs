@@ -134,6 +134,77 @@ struct SchemaGuard {
     schema: String,
 }
 
+#[test]
+fn database_pull_preflight_reports_structure_before_adoption_without_changing_config_or_data() {
+    let Ok(database_url) = std::env::var("APPSTRUCT_E2E_DATABASE_URL") else {
+        return;
+    };
+    let schema = format!(
+        "appstruct_preflight_{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let mut client = appstruct_migrate::connect_database(&database_url).unwrap();
+    client.batch_execute(&format!("CREATE SCHEMA {schema}; CREATE TABLE {schema}.notes (id uuid PRIMARY KEY, title text NOT NULL, payload bytea); INSERT INTO {schema}.notes (id, title) VALUES ('00000000-0000-4000-8000-000000000001', 'keep');")).unwrap();
+    let mut guard = SchemaGuard {
+        client,
+        schema: schema.clone(),
+    };
+    let project = tempfile::tempdir().unwrap();
+    let root = "version: 1\napp: { name: preflight-demo }\ndatabase: { provider: postgres, dev: { mode: external } }\nincludes: []\n";
+    fs::write(project.path().join("appstruct.yaml"), root).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .arg("--project")
+        .arg(project.path())
+        .args([
+            "db", "pull", "--schema", &schema, "--access", "public", "--format", "json",
+        ])
+        .env("DATABASE_URL", &database_url)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let preflight = &report["result"]["preflight"];
+    assert_eq!(preflight["status"], "blocked");
+    assert_eq!(preflight["history_checked"], false);
+    assert_eq!(preflight["missing_revision"], serde_json::json!(["notes"]));
+    assert!(
+        preflight["structure_issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue.as_str().unwrap().contains("revision"))
+    );
+    assert!(
+        preflight["structure_issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue.as_str().unwrap().contains("payload"))
+    );
+    assert_eq!(preflight["include"]["requires_confirmation"], true);
+    assert_eq!(
+        fs::read_to_string(project.path().join("appstruct.yaml")).unwrap(),
+        root
+    );
+    assert!(!project.path().join("migrations").exists());
+    let count: i64 = guard
+        .client
+        .query_one(
+            &format!("SELECT count(*) FROM {schema}.notes WHERE title = 'keep'"),
+            &[],
+        )
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 1);
+}
+
 impl Drop for SchemaGuard {
     fn drop(&mut self) {
         let _ = self

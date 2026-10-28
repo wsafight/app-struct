@@ -93,6 +93,7 @@ pub(super) fn support(
                 }
                 let collection = rows::collection(&state, &context, id, #limit).await?;
                 if !state.extensions.#policy().can_update(&context, &before, &UpdateInput::default(), &candidate).await? { return Err(ApiError::Forbidden); }
+                validate_candidate(&active)?;
                 let after = active.update(&transaction).await?;
                 #audit
                 #activity

@@ -1,4 +1,4 @@
-use super::{DatabaseSchema, MIN_COMPATIBLE_SCHEMA_VERSION, SCHEMA_VERSION};
+use super::{DatabaseSchema, SCHEMA_VERSION};
 
 /// Serialize a canonical schema snapshot.
 ///
@@ -17,18 +17,12 @@ pub fn to_json(schema: &DatabaseSchema) -> Result<String, serde_json::Error> {
 ///
 /// Returns an error if the snapshot is invalid or incompatible JSON.
 pub fn from_json(source: &str) -> Result<DatabaseSchema, serde_json::Error> {
-    let mut schema: DatabaseSchema = serde_json::from_str(source)?;
+    let schema: DatabaseSchema = serde_json::from_str(source)?;
     match schema.schema_version {
         SCHEMA_VERSION => Ok(schema),
-        found if (MIN_COMPATIBLE_SCHEMA_VERSION..SCHEMA_VERSION).contains(&found) => {
-            schema.schema_version = SCHEMA_VERSION;
-            Ok(schema)
-        }
         found => Err(serde_json::Error::io(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!(
-                "unsupported schema snapshot version {found}; supported versions are {MIN_COMPATIBLE_SCHEMA_VERSION} through {SCHEMA_VERSION}"
-            ),
+            format!("unsupported schema snapshot version {found}; expected {SCHEMA_VERSION}"),
         ))),
     }
 }

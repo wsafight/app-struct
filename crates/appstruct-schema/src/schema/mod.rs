@@ -9,6 +9,7 @@ mod audit;
 mod auth;
 mod billing;
 mod file;
+mod imports;
 mod jobs;
 mod mail;
 mod module_indexes;
@@ -19,7 +20,6 @@ mod tenant;
 mod webhooks;
 
 pub const SCHEMA_VERSION: u32 = appstruct_contracts::DATABASE_SCHEMA.current;
-pub const MIN_COMPATIBLE_SCHEMA_VERSION: u32 = appstruct_contracts::DATABASE_SCHEMA.minimum;
 pub use snapshot::{from_json, to_json};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,7 +27,6 @@ pub struct DatabaseSchema {
     pub schema_version: u32,
     pub provider: DatabaseProvider,
     pub tables: Vec<TableSchema>,
-    #[serde(default)]
     pub unique_constraints: Vec<UniqueConstraintSchema>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub indexes: Vec<IndexSchema>,
@@ -74,10 +73,8 @@ pub enum DatabaseType {
 pub struct ForeignKeySchema {
     pub id: String,
     pub source_table: String,
-    #[serde(alias = "source_column", deserialize_with = "one_or_many")]
     pub source_columns: Vec<String>,
     pub target_table: String,
-    #[serde(alias = "target_column", deserialize_with = "one_or_many")]
     pub target_columns: Vec<String>,
     pub unique: bool,
     pub on_delete: OnDeleteIr,
@@ -153,6 +150,7 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         .filter(|entity| entity.tenant_scoped)
         .map(tenant_unique_constraint)
         .collect::<Vec<_>>();
+    tables.push(imports::table());
     let mut indexes = entity_indexes(ir);
     indexes.extend(module_indexes::indexes(ir));
     let seeds = entity_seeds(ir);
@@ -356,23 +354,6 @@ fn foreign_key(ir: &AppIr, relation: &appstruct_ir::RelationIr) -> ForeignKeySch
         unique: relation.unique,
         on_delete: relation.on_delete,
     }
-}
-
-fn one_or_many<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum Columns {
-        One(String),
-        Many(Vec<String>),
-    }
-
-    Ok(match Columns::deserialize(deserializer)? {
-        Columns::One(column) => vec![column],
-        Columns::Many(columns) => columns,
-    })
 }
 
 #[cfg(test)]

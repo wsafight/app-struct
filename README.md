@@ -6,8 +6,8 @@ AppStruct is a configuration-driven Rust full-stack application generator. It co
 multi-file YAML App Spec into a typed IR, PostgreSQL migrations, an Axum/SQLx + sift-query backend,
 OpenAPI, a TypeScript client, and a React/Rsbuild application.
 
-The repository is currently a technical preview. It is distributed from a source checkout for now;
-there is no crates.io package or binary installer yet. M0-M6 are complete, including production
+The repository is currently a technical preview. Build the CLI from this source checkout to use
+the current implementation. M0-M6 are complete, including production
 builds, the coordinated development server, Tenant/Audit/Mail/Jobs/File modules, the locked
 `appstruct/saas@1` preset, transactional project updates, and runnable templates. The SaaS preset
 includes an Admin operations overview and guarded Jobs retry/replay controls. Generated
@@ -183,7 +183,7 @@ Production backend startup never runs migrations; use `migrate status` and an ex
 ## Generated capabilities
 
 The Web runtime is pinned to React 19, TypeScript, Rsbuild/Rspack, and Rstest, with TanStack Query, Router, Table,
-and Form plus Zod. Resource APIs support offset and cursor pagination, filters, sorts, relation
+and Form with shared `valueError` validation. Resource APIs support offset and cursor pagination, filters, sorts, relation
 filters, aggregates, and group-by queries, all under actor, resource, and tenant policy.
 
 Other contracts live in dedicated guides:

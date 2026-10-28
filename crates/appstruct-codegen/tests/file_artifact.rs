@@ -60,7 +60,7 @@ fn assert_provider(
     assert!(extensions.contains("pub async fn get_file"));
     assert!(extensions.contains("pub async fn delete_file"));
     assert!(extensions.contains("put_with_connection("));
-    assert!(extensions.contains("delete_with_connection(self"));
+    assert!(extensions.contains("delete_with_connection(database"));
     let manifest = artifact_text(&artifacts, "backend/Cargo.toml");
     assert!(manifest.contains("object_store"));
     assert_eq!(

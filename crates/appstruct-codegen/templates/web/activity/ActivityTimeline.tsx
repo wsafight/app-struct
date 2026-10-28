@@ -1,3 +1,5 @@
+import { formatDateTime } from "../ui";
+import { t } from "../ui";
 import {
   useInfiniteQuery,
   useMutation,
@@ -116,16 +118,16 @@ export function ActivityTimeline({
   }
 
   return (
-    <section className="activity-timeline" aria-label="Record activity">
+    <section className="activity-timeline" aria-label={t("Record activity")}>
       <div className="activity-heading">
         <MessageSquare size={17} />
-        <h2>Activity</h2>
+        <h2>{t("Activity")}</h2>
       </div>
       <form className="activity-composer" onSubmit={submit}>
         <textarea
           value={comment}
           onChange={(event) => setComment(event.target.value)}
-          placeholder="Add a comment"
+          placeholder={t("Add a comment")}
           rows={3}
         />
         <div className="activity-composer-actions">
@@ -134,7 +136,7 @@ export function ActivityTimeline({
               commentBytes > config.maxCommentBytes ? "limit-error" : ""
             }
           >
-            {commentBytes}/{config.maxCommentBytes} bytes
+            {commentBytes}/{config.maxCommentBytes} {t("bytes")}
           </span>
           {config.attachments && (
             <label className="attachment-picker">
@@ -159,7 +161,7 @@ export function ActivityTimeline({
             ) : (
               <Send size={15} />
             )}
-            Comment
+            {t("Comment")}{" "}
           </button>
         </div>
       </form>
@@ -169,9 +171,11 @@ export function ActivityTimeline({
         </div>
       )}
       <div className="activity-list">
-        {query.isPending && <div className="empty">Loading activity...</div>}
+        {query.isPending && (
+          <div className="empty">{t("Loading activity...")}</div>
+        )}
         {!query.isPending && entries.length === 0 && (
-          <div className="empty">No activity yet</div>
+          <div className="empty"> {t("No activity yet")}</div>
         )}
         {entries.map((entry) => (
           <article
@@ -183,14 +187,16 @@ export function ActivityTimeline({
               <header>
                 <strong>{entry.actor_id ?? "System"}</strong>
                 <time dateTime={entry.occurred_at}>
-                  {new Date(entry.occurred_at).toLocaleString()}
+                  {formatDateTime(entry.occurred_at)}
                 </time>
               </header>
               {entry.withdrawn_at ? (
                 <p className="activity-tombstone">
                   {entry.governance_reason
-                    ? `Removed by a moderator: ${entry.governance_reason}`
-                    : "Comment withdrawn"}
+                    ? t("Removed by a moderator: {0}", {
+                        "0": entry.governance_reason,
+                      })
+                    : t("Comment withdrawn")}
                 </p>
               ) : entry.kind === "system" ? (
                 <p className="activity-system-event">
@@ -215,8 +221,8 @@ export function ActivityTimeline({
                     <button
                       type="button"
                       className="icon-button danger"
-                      title="Withdraw comment"
-                      aria-label="Withdraw comment"
+                      title={t("Withdraw comment")}
+                      aria-label={t("Withdraw comment")}
                       disabled={withdraw.isPending}
                       onClick={() => withdraw.mutate(entry.id)}
                     >
@@ -227,8 +233,8 @@ export function ActivityTimeline({
                     <button
                       type="button"
                       className="icon-button"
-                      title="Moderate comment"
-                      aria-label="Moderate comment"
+                      title={t("Moderate comment")}
+                      aria-label={t("Moderate comment")}
                       onClick={() => {
                         setModerating(entry.id);
                         setReason("");
@@ -251,7 +257,7 @@ export function ActivityTimeline({
                   <input
                     value={reason}
                     onChange={(event) => setReason(event.target.value)}
-                    placeholder="Moderation reason"
+                    placeholder={t("Moderation reason")}
                     maxLength={1000}
                     autoFocus
                   />
@@ -260,14 +266,14 @@ export function ActivityTimeline({
                     className="danger-button"
                     disabled={!reason.trim() || moderate.isPending}
                   >
-                    Remove
+                    {t("Remove")}
                   </button>
                   <button
                     type="button"
                     className="secondary-button"
                     onClick={() => setModerating(null)}
                   >
-                    Cancel
+                    {t("Cancel")}
                   </button>
                 </form>
               )}
@@ -282,7 +288,7 @@ export function ActivityTimeline({
           disabled={query.isFetchingNextPage}
           onClick={() => void query.fetchNextPage()}
         >
-          {query.isFetchingNextPage ? "Loading..." : "Load earlier activity"}
+          {query.isFetchingNextPage ? "Loading..." : t("Load earlier activity")}
         </button>
       )}
     </section>
@@ -290,7 +296,7 @@ export function ActivityTimeline({
 }
 
 function formatEvent(event: string | null): string {
-  if (!event) return "Record updated";
+  if (!event) return t("Record updated");
   return event
     .split(".")
     .map((part) => part.replaceAll("_", " "))
@@ -301,12 +307,12 @@ function fileInputValue(file: File): Promise<ActivityAttachmentInput> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () =>
-      reject(new Error("The attachment could not be read"));
+      reject(new Error(t("The attachment could not be read")));
     reader.onload = () => {
       const result = String(reader.result ?? "");
       const separator = result.indexOf(",");
       if (separator < 0) {
-        reject(new Error("The attachment could not be encoded"));
+        reject(new Error(t("The attachment could not be encoded")));
         return;
       }
       resolve({

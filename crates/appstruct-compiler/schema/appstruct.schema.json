@@ -1176,6 +1176,28 @@
               }
             }
           ]
+        },
+        "required_when": {
+          "type": "object",
+          "required": [
+            "field",
+            "equals"
+          ],
+          "properties": {
+            "field": {
+              "$ref": "#/$defs/fieldName"
+            },
+            "equals": {
+              "type": [
+                "string",
+                "boolean"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "greater_than": {
+          "$ref": "#/$defs/fieldName"
         }
       },
       "additionalProperties": false

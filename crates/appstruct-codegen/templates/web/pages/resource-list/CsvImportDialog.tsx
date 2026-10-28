@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
-import { toApiValue } from "../../field-values";
+import { t } from "../../ui";
+import { useMemo, useRef, useState } from "react";
+import { toApiValue, recordRuleErrors } from "../../field-values";
 import { DialogFrame } from "../../components/Dialog";
-import type { BulkResult } from "../../generated/client";
+import { ApiError, type BulkResult } from "../../generated/client";
 import {
   canAccessRule,
   errorMessage,
@@ -71,6 +72,8 @@ export function CsvImportDialog({
   const [succeeded, setSucceeded] = useState(0);
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
+  const attempt = useRef<{ batch: string; csv: string } | null>(null);
+  const [unresolved, setUnresolved] = useState(false);
   const [page, setPage] = useState(1);
   const mapped = mapping.flatMap((name, column) => {
     const field = fields.find((field) => field.apiName === name);
@@ -80,20 +83,39 @@ export function CsvImportDialog({
     (field) => field.required && !mapping.includes(field.apiName),
   );
   const mappingError = !mapped.length
-    ? "Choose at least one field."
+    ? t("Choose at least one field.")
     : new Set(mapping.filter(Boolean)).size !== mapped.length
-      ? "Map each field only once."
+      ? t("Map each field only once.")
       : missing.length
-        ? `Required fields are missing: ${missing.map((field) => field.label).join(", ")}`
+        ? t("Required fields are missing: {0}", {
+            "0": missing.map((field) => field.label).join(", "),
+          })
         : "";
-  const issues = rows.map((row) =>
-    row.values.length !== headers.length
-      ? "This row has a different number of columns than the header."
-      : mapped
-          .map(({ column, field }) => csvValueError(row.values[column], field))
-          .filter(Boolean)
-          .join("; "),
-  );
+  const issues = rows.map((row) => {
+    if (row.values.length !== headers.length)
+      return t("This row has a different number of columns than the header.");
+    const errors = mapped
+      .map(({ column, field }) => csvValueError(row.values[column], field))
+      .filter(Boolean);
+    if (errors.length) return errors.join("; ");
+    const candidate = Object.fromEntries(
+      mapped.map(({ column, field }) => {
+        const value = row.values[column];
+        return [
+          field.name,
+          field.kind === "datetime" && /(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+            ? value
+            : toApiValue(
+                field.kind === "boolean" && value ? value === "true" : value,
+                field,
+              ),
+        ];
+      }),
+    );
+    return Object.values(recordRuleErrors(candidate, resource.fields)).join(
+      "; ",
+    );
+  });
   const invalid = issues.filter(Boolean).length;
   const pages = Math.max(1, Math.ceil(rows.length / 25));
   const currentPage = Math.min(page, pages);
@@ -118,37 +140,85 @@ export function CsvImportDialog({
       ),
     ]);
     if (new Blob([csv]).size > MAX_IMPORT_BYTES) {
-      onError("CSV import is limited to 2 MiB.");
+      onError(t("CSV import is limited to 2 MiB."));
       return;
     }
     setBusy(true);
     try {
       let result: BulkResult | undefined;
       const changed = await runChange(async () => {
-        result = await resource.api.importCsv(csv);
+        const firstRequest = attempt.current === null;
+        attempt.current ??= { batch: crypto.randomUUID(), csv };
+        setUnresolved(true);
+        try {
+          result = await resource.api.importCsv(
+            attempt.current.csv,
+            attempt.current.batch,
+          );
+        } catch (error) {
+          // An authoritative rejection of the first attempt cannot have committed rows.
+          if (
+            firstRequest &&
+            error instanceof ApiError &&
+            [400, 401, 403, 404, 413, 422, 429].includes(error.status)
+          ) {
+            attempt.current = null;
+            setUnresolved(false);
+          }
+          throw error;
+        }
       });
       if (!changed || !result) return;
-      const failures = new Map(
-        result.failed.map((failure) => [Number(failure.id), failure.message]),
-      );
-      const successIds = new Set(result.succeeded.map(Number));
-      setSucceeded((count) => count + successIds.size);
-      setRows(
-        rows.flatMap((row, index) =>
-          successIds.has(index)
-            ? []
-            : [
-                {
-                  ...row,
-                  error:
-                    failures.get(index) ??
-                    "No result was returned for this row.",
-                },
-              ],
-        ),
-      );
-      setAttempted(true);
-      setPage(1);
+      acceptResult(result);
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function acceptResult(result: BulkResult) {
+    attempt.current = null;
+    setUnresolved(false);
+    const failures = new Map(
+      result.failed.map((failure) => [
+        Number(failure.id),
+        errorMessage(failure),
+      ]),
+    );
+    const successIds = new Set(result.succeeded.map(Number));
+    setSucceeded((count) => count + successIds.size);
+    setRows(
+      rows.flatMap((row, index) =>
+        successIds.has(index)
+          ? []
+          : [
+              {
+                ...row,
+                error:
+                  failures.get(index) ??
+                  t("No result was returned for this row."),
+              },
+            ],
+      ),
+    );
+    setAttempted(true);
+    setPage(1);
+  }
+
+  async function checkResult() {
+    if (!attempt.current || busy) return;
+    setBusy(true);
+    try {
+      let result: BulkResult | undefined;
+      const batch = attempt.current.batch;
+      const changed = await runChange(async () => {
+        result = await resource.api.importResult(batch);
+      });
+      if (changed && result) {
+        acceptResult(result);
+        onError("");
+      }
     } catch (error) {
       onError(errorMessage(error));
     } finally {
@@ -167,15 +237,36 @@ export function CsvImportDialog({
   return (
     <DialogFrame
       open
-      title={`Import ${resource.label}`}
+      title={t("Import {0}", { "0": resource.label })}
       onCancel={() => {
         if (!busy) onClose();
       }}
     >
       <p>
-        {file.name} · {succeeded} imported · {rows.length}{" "}
-        {attempted ? "remaining" : "rows to import"}
+        {file.name} · {succeeded} {t("imported ·")}
+        {rows.length} {attempted ? t("remaining") : t("rows to import")}
       </p>
+      {unresolved && attempt.current && (
+        <div className="alert" role="status">
+          <p>
+            {t("Import result is not confirmed. Keep batch ID:")}
+            <code>{attempt.current.batch}</code>
+          </p>
+          <p>
+            {t(
+              "Check the committed result or retry this same batch. Editing is paused until the result is confirmed.",
+            )}
+          </p>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy}
+            onClick={() => void checkResult()}
+          >
+            {t("Check import result")}
+          </button>
+        </div>
+      )}
       {parsed.error && <p role="alert">{parsed.error}</p>}
       {!parsed.error && rows.length > 0 && (
         <>
@@ -184,8 +275,8 @@ export function CsvImportDialog({
               <label key={header}>
                 {header}
                 <select
-                  aria-label={`Map ${header}`}
-                  disabled={busy || attempted}
+                  aria-label={t("Map {0}", { "0": header })}
+                  disabled={busy || attempted || unresolved}
                   value={mapping[index]}
                   onChange={(event) => {
                     setMapping(
@@ -195,7 +286,7 @@ export function CsvImportDialog({
                     );
                   }}
                 >
-                  <option value="">Skip column</option>
+                  <option value=""> {t("Skip column")} </option>
                   {fields.map((field) => (
                     <option key={field.name} value={field.apiName}>
                       {field.label}
@@ -207,17 +298,19 @@ export function CsvImportDialog({
           </div>
           {mappingError && <p role="alert">{mappingError}</p>}
           {invalid > 0 && (
-            <p role="alert">{invalid} rows need correction before import.</p>
+            <p role="alert">
+              {invalid} {t("rows need correction before import.")}
+            </p>
           )}
           <div className="table-frame import-preview">
             <table>
               <thead>
                 <tr>
-                  <th>CSV row</th>
+                  <th>{t("CSV row")}</th>
                   {mapped.map(({ field }) => (
                     <th key={field.name}>{field.label}</th>
                   ))}
-                  <th>Result</th>
+                  <th> {t("Result")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -227,8 +320,11 @@ export function CsvImportDialog({
                     {mapped.map(({ column, field }) => (
                       <td key={field.name}>
                         <input
-                          aria-label={`Row ${row.source} ${field.label}`}
-                          disabled={busy}
+                          aria-label={t("Row {0} {1}", {
+                            "0": row.source,
+                            "1": field.label,
+                          })}
+                          disabled={busy || unresolved}
                           value={row.values[column] ?? ""}
                           onChange={(event) => {
                             setRows(
@@ -282,7 +378,7 @@ export function CsvImportDialog({
                             )
                           }
                         >
-                          Trim or fill columns to match header
+                          {t("Trim or fill columns to match header")}
                         </button>
                       )}
                     </td>
@@ -293,28 +389,33 @@ export function CsvImportDialog({
           </div>
           <div className="pagination">
             <span>
-              Preview page {currentPage} of {pages}
+              {" "}
+              {t("Preview page")} {currentPage} {t("of")} {pages}
             </span>
             <button
               type="button"
               disabled={busy || currentPage === 1}
               onClick={() => setPage(currentPage - 1)}
             >
-              Previous preview
+              {" "}
+              {t("Previous preview")}
             </button>
             <button
               type="button"
               disabled={busy || currentPage === pages}
               onClick={() => setPage(currentPage + 1)}
             >
-              Next preview
+              {" "}
+              {t("Next preview")}
             </button>
           </div>
         </>
       )}
       {!parsed.error && !rows.length && (
         <p role="status">
-          {succeeded ? "All rows were imported." : "CSV contains no data rows."}
+          {succeeded
+            ? t("All rows were imported.")
+            : t("CSV contains no data rows.")}
         </p>
       )}
       <div className="dialog-actions">
@@ -325,7 +426,7 @@ export function CsvImportDialog({
             disabled={busy}
             onClick={downloadFailures}
           >
-            Download failed rows
+            {t("Download failed rows")}
           </button>
         )}
         <button
@@ -334,7 +435,7 @@ export function CsvImportDialog({
           disabled={busy}
           onClick={onClose}
         >
-          Close
+          {t("Close")}
         </button>
         {rows.length > 0 && (
           <button
@@ -347,9 +448,11 @@ export function CsvImportDialog({
           >
             {busy
               ? "Importing..."
-              : attempted
-                ? "Retry remaining rows"
-                : `Import ${rows.length} rows`}
+              : unresolved
+                ? t("Retry same batch")
+                : attempted
+                  ? t("Retry remaining rows")
+                  : t("Import {0} rows", { "0": rows.length })}
           </button>
         )}
       </div>

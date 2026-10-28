@@ -131,6 +131,8 @@ fn application_source() -> TokenStream {
             ) -> Result<Self, StartupError> {
                 billing::validate_env()
                     .map_err(|error| StartupError::configuration("appstruct/billing", error))?;
+                audit::validate_env()
+                    .map_err(|error| StartupError::configuration("appstruct/audit", error))?;
                 let health = ApplicationHealth::starting();
                 let started = start_application_modules(
                     database, extensions, health.clone(),
@@ -217,6 +219,8 @@ fn application_source() -> TokenStream {
         pub fn router_with_auth(
             database: Database, extensions: AppExtensions, auth: AuthState,
         ) -> Result<Router, StartupError> {
+            audit::validate_env()
+                .map_err(|error| StartupError::configuration("audit", error))?;
             let mail = MailState::from_env(database.clone())
                 .map_err(|error| StartupError::configuration("mail", error))?;
             let file = FileState::from_env(database.clone())

@@ -63,11 +63,11 @@ pub(super) fn select(
     if matches!(access, super::render::AccessMode::None) {
         println!("Access rules must be declared before adding this draft to includes.");
     }
-    if confirm("Write draft? [y/N]: ", false)? {
-        Ok(Some((schema, access)))
-    } else {
-        Ok(None)
-    }
+    Ok(Some((schema, access)))
+}
+
+pub(super) fn confirm_write() -> io::Result<bool> {
+    confirm("Write draft? [y/N]: ", false)
 }
 
 fn prompt_access() -> io::Result<super::render::AccessMode> {

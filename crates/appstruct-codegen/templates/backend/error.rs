@@ -380,6 +380,10 @@ impl IntoResponse for ApiError {
                 vec![],
             ),
         };
-        (status, Json(ErrorEnvelope { error: ErrorBody { code, message, fields } })).into_response()
+        let mut response = (status, Json(ErrorEnvelope { error: ErrorBody { code, message, fields } })).into_response();
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            response.headers_mut().insert(axum::http::header::RETRY_AFTER, axum::http::HeaderValue::from_static("60"));
+        }
+        response
     }
 }

@@ -1,3 +1,4 @@
+import { formatNumber, t } from "../ui";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { type InputHTMLAttributes, useEffect, useRef, useState } from "react";
@@ -98,10 +99,10 @@ function FacetCounts({
   });
   if (!result.data)
     return result.isError ? (
-      <p role="status">Filter counts are unavailable.</p>
+      <p role="status">{t("Filter counts are unavailable.")}</p>
     ) : null;
   return (
-    <div className="facet-counts" aria-label="Counts for current filters">
+    <div className="facet-counts" aria-label={t("Counts for current filters")}>
       {facets.map((field) => {
         const facet = result.data.data[field.name];
         return (
@@ -161,17 +162,19 @@ function FacetCounts({
                     }}
                   >
                     {bucket.value === null
-                      ? "No value"
+                      ? t("No value")
                       : field.kind === "boolean"
                         ? bucket.value
-                          ? "Yes"
-                          : "No"
+                          ? t("Yes")
+                          : t("No")
                         : String(bucket.value)}{" "}
-                    ({bucket.count})
+                    ({formatNumber(bucket.count)})
                   </button>
                 );
               })}
-              {facet.other_count > 0 ? ` · Other (${facet.other_count})` : ""}
+              {facet.other_count > 0
+                ? t(" · Other ({0})", { 0: formatNumber(facet.other_count) })
+                : ""}
             </div>
           )
         );
@@ -205,8 +208,10 @@ function FilterControl({
               <DebouncedFilterInput
                 key={operator}
                 type={inputType(field.kind)}
-                aria-label={`${field.label} ${operator === "gte" ? "from" : "to"}`}
-                placeholder={operator === "gte" ? "From" : "To"}
+                aria-label={t(operator === "gte" ? "{0} from" : "{0} to", {
+                  0: field.label,
+                })}
+                placeholder={operator === "gte" ? t("From") : t("To")}
                 value={filterDisplayValue(
                   searchParams.get(name) ?? "",
                   field.kind,
@@ -249,13 +254,13 @@ function FilterControl({
             updateParam(name, event.target.value || undefined, true)
           }
         >
-          <option value="">All</option>
+          <option value="">{t("All")}</option>
           {values.map((value) => (
             <option key={value} value={value}>
               {field.kind === "boolean"
                 ? value === "true"
-                  ? "Yes"
-                  : "No"
+                  ? t("Yes")
+                  : t("No")
                 : value}
             </option>
           ))}
@@ -335,8 +340,8 @@ function RelationFilter({
       <span>{field.label}</span>
       <input
         value={search}
-        placeholder="Search"
-        aria-label={`Search ${field.label}`}
+        placeholder={t("Search")}
+        aria-label={t("Search {0}", { "0": field.label })}
         onChange={(event) => {
           setSearch(event.target.value);
           setPage(1);
@@ -350,7 +355,7 @@ function RelationFilter({
         disabled={isPending && canLoad}
         onChange={(event) => onChange(event.target.value || undefined)}
       >
-        <option value="">All</option>
+        <option value="">{t("All")}</option>
         {options.map((record) => {
           const optionValue = String(record[target?.primaryKey ?? "id"]);
           return (
@@ -366,7 +371,7 @@ function RelationFilter({
           className="icon-button"
           disabled={page <= 1}
           onClick={() => setPage(page - 1)}
-          aria-label="Previous options"
+          aria-label={t("Previous options")}
         >
           <ChevronLeft size={14} />
         </button>
@@ -378,15 +383,19 @@ function RelationFilter({
           className="icon-button"
           disabled={page >= pages}
           onClick={() => setPage(page + 1)}
-          aria-label="Next options"
+          aria-label={t("Next options")}
         >
           <ChevronRight size={14} />
         </button>
       </span>
       <span className="sr-only" role="status" aria-live="polite">
         {isFetching
-          ? `Loading ${field.label} options`
-          : loadError || `${options.length} ${field.label} options loaded`}
+          ? t("Loading {0} options", { "0": field.label })
+          : loadError ||
+            t("{0} {1} options loaded", {
+              0: formatNumber(options.length),
+              1: field.label,
+            })}
       </span>
     </div>
   );
@@ -399,7 +408,7 @@ function filterDisplayValue(
   return String(
     toFormValue(value || undefined, {
       name: "filter",
-      label: "Filter",
+      label: t("Filter"),
       kind,
       required: false,
     }),
@@ -411,7 +420,7 @@ function filterApiValue(
   kind: FieldDefinition["kind"],
 ): string | undefined {
   if (!value) return undefined;
-  const field = { name: "filter", label: "Filter", kind, required: false };
+  const field = { name: "filter", label: t("Filter"), kind, required: false };
   return valueError(value, field)
     ? undefined
     : String(toApiValue(value, field));

@@ -1,0 +1,9 @@
+version: 1
+app:
+  name: form-rules
+database:
+  provider: postgres
+  dev:
+    mode: managed
+includes:
+  - spec/appointment.yaml

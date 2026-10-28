@@ -26,6 +26,18 @@ pub mod __source {
     pub const SUPERVISOR: &str = include_str!("supervisor.rs");
 }
 
+/// Preserve the difference between an omitted patch field and explicit JSON null.
+///
+/// # Errors
+/// Returns the field deserializer error when a supplied value has the wrong type.
+pub fn deserialize_patch<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
 pub use lifecycle::{
     ModuleDescriptor, ModuleEvent, ModuleObserver, ModulePhase, ModulePlan, ModuleRuntime,
     ModuleStarter,

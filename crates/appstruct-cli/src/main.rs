@@ -5,6 +5,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod access_preview;
 mod auth_admin;
 mod build;
 mod cache;
@@ -24,6 +25,7 @@ mod project_new;
 mod project_status;
 mod report;
 mod schema;
+mod template;
 mod transaction;
 mod update;
 
@@ -48,6 +50,11 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Explain declared resource and field access for a sample actor.
+    Access {
+        #[command(subcommand)]
+        command: access_preview::AccessCommand,
+    },
     /// Show the Auth and Billing provider support matrix.
     Capabilities,
     /// Create a new `AppStruct` project from an official template.
@@ -119,6 +126,11 @@ enum Command {
     },
     /// Print the App Spec JSON Schema for editor integration.
     Schema,
+    /// Compare user-owned delivery files with the current official template.
+    Template {
+        #[command(subcommand)]
+        command: template::TemplateCommand,
+    },
     /// Stage, verify, and transactionally commit locked framework updates.
     Update,
     /// Inspect the local project control-plane status.
@@ -185,6 +197,7 @@ fn run(cli: Cli) -> ExitCode {
             unreachable!()
         }
         Command::Auth { command } => auth_admin::run(&project, &command),
+        Command::Access { command } => access_preview::run(&project, &command),
         Command::Build => build::run(&project),
         Command::Doctor {} => doctor::run(&project, cli.format == report::OutputFormat::Json),
         Command::Dev {
@@ -201,6 +214,7 @@ fn run(cli: Cli) -> ExitCode {
         Command::Migrate { command } => migration::run(&project, command),
         Command::Module { command } => module_registry::run(&project, &command),
         Command::Preset { command } => preset::run(&project, &command),
+        Command::Template { command } => template::run(&project, &command),
         Command::Update => update::run(&project),
         Command::Project { command } => {
             project_diagnostics::run(&project, &command, cli.format == report::OutputFormat::Json)

@@ -1,8 +1,18 @@
+import { t } from "../ui";
 import { useState, type ComponentType } from "react";
 import { resources } from "../generated/resources";
 import { customPages } from "../generated/registry";
-import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
-import { Navigate, Outlet, RuntimeRouter, createRuntimeRouter, type RuntimeRoute } from "../navigation";
+import type {
+  AppStructRegistry,
+  PageComponentProps,
+} from "../generated/registry";
+import {
+  Navigate,
+  Outlet,
+  RuntimeRouter,
+  createRuntimeRouter,
+  type RuntimeRoute,
+} from "../navigation";
 import { ResourceActorProvider, useVisibleResources } from "../resource";
 import { Layout } from "./Layout";
 import { resourceRoutes } from "./ResourceRoutes";
@@ -27,29 +37,51 @@ export function App({ registry }: { registry?: AppStructRegistry }) {
 }
 
 function PublicRoot() {
-  return <ResourceActorProvider user={null}><Outlet /></ResourceActorProvider>;
+  return (
+    <ResourceActorProvider user={null}>
+      <Outlet />
+    </ResourceActorProvider>
+  );
 }
 
 function HomeRedirect() {
   const first = useVisibleResources(resources)[0];
-  return <Navigate to={`/${first?.slug ?? customPages[0]?.path ?? "empty"}`} replace />;
+  return (
+    <Navigate
+      to={`/${first?.slug ?? customPages[0]?.path ?? "empty"}`}
+      replace
+    />
+  );
 }
 
 function EmptyPage() {
-  return <main className="page"><h1>No resources</h1></main>;
+  return (
+    <main className="page">
+      <h1>{t("No resources")}</h1>
+    </main>
+  );
 }
 
 function PageRendererUnavailable() {
-  return <main className="page"><div className="alert" role="alert">Page renderer unavailable</div></main>;
+  return (
+    <main className="page">
+      <div className="alert" role="alert">
+        {t("Page renderer unavailable")}
+      </div>
+    </main>
+  );
 }
 
 function customPageRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
-  const pageComponents = registry?.pages as Record<string, ComponentType<PageComponentProps>> | undefined;
+  const pageComponents = registry?.pages as
+    Record<string, ComponentType<PageComponentProps>> | undefined;
   return customPages.map((page) => {
     const Component = pageComponents?.[String(page.component)];
     return {
       path: absolutePath(page.path),
-      component: Component ? () => <Component resources={resources} /> : PageRendererUnavailable,
+      component: Component
+        ? () => <Component resources={resources} />
+        : PageRendererUnavailable,
     };
   });
 }

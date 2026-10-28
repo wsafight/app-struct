@@ -1,3 +1,5 @@
+import { formatDate } from "../ui";
+import { t } from "../ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, MailPlus, Plus, Trash2, Users } from "lucide-react";
 import {
@@ -138,7 +140,7 @@ export function useTenant(): TenantContextValue {
 export function RequireTenant() {
   const tenant = useTenant();
   if (tenant.loading)
-    return <div className="auth-loading" aria-label="Loading" />;
+    return <div className="auth-loading" aria-label={t("Loading")} />;
   return tenant.current ? <Outlet /> : <TenantOnboarding />;
 }
 
@@ -150,7 +152,7 @@ export function TenantSwitcher() {
       <div className="tenant-switcher">
         <Building2 size={16} aria-hidden />
         <select
-          aria-label="Current organization"
+          aria-label={t("Current organization")}
           value={tenant.current?.id ?? ""}
           onChange={(event) => tenant.select(event.target.value)}
         >
@@ -162,15 +164,15 @@ export function TenantSwitcher() {
         </select>
         <Link
           to="/organization"
-          title="Organization settings"
-          aria-label="Organization settings"
+          title={t("Organization settings")}
+          aria-label={t("Organization settings")}
         >
           <Users size={15} />
         </Link>
         <button
           type="button"
-          title="Create organization"
-          aria-label="Create organization"
+          title={t("Create organization")}
+          aria-label={t("Create organization")}
           onClick={() => setCreating(true)}
         >
           <Plus size={15} />
@@ -178,8 +180,8 @@ export function TenantSwitcher() {
       </div>
       <PromptDialog
         open={creating}
-        title="Create organization"
-        label="Organization name"
+        title={t("Create organization")}
+        label={t("Organization name")}
         confirmLabel="Create"
         onCancel={() => setCreating(false)}
         onConfirm={async (name) => {
@@ -243,8 +245,11 @@ export function OrganizationPage() {
     <main className="page">
       <div className="page-heading">
         <div>
-          <h1>Organization</h1>
-          <p>Manage members and invitations for {tenant.current?.name}.</p>
+          <h1> {t("Organization")}</h1>
+          <p>
+            {t("Manage members and invitations for")}
+            {tenant.current?.name}.
+          </p>
         </div>
       </div>
       {error && (
@@ -255,10 +260,10 @@ export function OrganizationPage() {
       {owner ? (
         <>
           <section className="form-frame invitation-form">
-            <h2>Invite a member</h2>
+            <h2>{t("Invite a member")}</h2>
             <form className="toolbar" onSubmit={(event) => void invite(event)}>
               <label className="sr-only" htmlFor="invitation-email">
-                Email
+                {t("Email")}
               </label>
               <input
                 id="invitation-email"
@@ -272,7 +277,7 @@ export function OrganizationPage() {
                 className="primary-button"
                 disabled={inviteMutation.isPending}
               >
-                <MailPlus size={16} /> Invite
+                <MailPlus size={16} /> {t("Invite")}
               </button>
             </form>
           </section>
@@ -280,11 +285,11 @@ export function OrganizationPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Expires</th>
-                  <th aria-label="Actions" />
+                  <th>{t("Email")}</th>
+                  <th> {t("Role")}</th>
+                  <th> {t("Status")} </th>
+                  <th> {t("Expires")}</th>
+                  <th aria-label={t("Actions")} />
                 </tr>
               </thead>
               <tbody>
@@ -292,17 +297,19 @@ export function OrganizationPage() {
                   <tr key={invitation.id}>
                     <td>{invitation.email}</td>
                     <td>{invitation.role}</td>
-                    <td>{invitation.accepted_at ? "Accepted" : "Pending"}</td>
                     <td>
-                      {new Date(invitation.expires_at).toLocaleDateString()}
+                      {invitation.accepted_at ? t("Accepted") : t("Pending")}
                     </td>
+                    <td>{formatDate(invitation.expires_at)}</td>
                     <td>
                       {!invitation.accepted_at && (
                         <button
                           type="button"
                           className="icon-button danger"
-                          title="Revoke invitation"
-                          aria-label={`Revoke invitation for ${invitation.email}`}
+                          title={t("Revoke invitation")}
+                          aria-label={t("Revoke invitation for {0}", {
+                            "0": invitation.email,
+                          })}
                           disabled={revokeMutation.isPending}
                           onClick={() => revokeMutation.mutate(invitation.id)}
                         >
@@ -315,13 +322,13 @@ export function OrganizationPage() {
               </tbody>
             </table>
             {invitations.length === 0 && (
-              <div className="empty">No invitations yet</div>
+              <div className="empty"> {t("No invitations yet")}</div>
             )}
           </section>
         </>
       ) : (
         <div className="alert" role="status">
-          Only organization owners can manage invitations.
+          {t("Only organization owners can manage invitations.")}
         </div>
       )}
     </main>
@@ -339,7 +346,7 @@ export function InvitationAcceptPage() {
   useEffect(() => {
     if (!token) {
       setStatus("error");
-      setMessage("This invitation link is missing its token.");
+      setMessage(t("This invitation link is missing its token."));
       return;
     }
     if (requestedToken.current === token) return;
@@ -351,7 +358,7 @@ export function InvitationAcceptPage() {
         if (!active) return;
         tenantApi.select(organization.id);
         setStatus("accepted");
-        setMessage(`You joined ${organization.name}.`);
+        setMessage(t("You joined {0}.", { "0": organization.name }));
         window.history.replaceState({}, "", "/organization");
       })
       .catch((reason) => {
@@ -370,18 +377,18 @@ export function InvitationAcceptPage() {
         <div className="auth-brand">__APP_TITLE__</div>
         <h1>
           {status === "loading"
-            ? "Accepting invitation"
+            ? t("Accepting invitation")
             : status === "accepted"
-              ? "Invitation accepted"
-              : "Invitation unavailable"}
+              ? t("Invitation accepted")
+              : t("Invitation unavailable")}
         </h1>
         {status === "loading" ? (
-          <div className="auth-loading" aria-label="Loading" />
+          <div className="auth-loading" aria-label={t("Loading")} />
         ) : status === "accepted" ? (
           <>
             <p>{message}</p>
             <Link className="primary-button" to="/organization">
-              Open organization
+              {t("Open organization")}
             </Link>
           </>
         ) : (
@@ -411,7 +418,7 @@ function TenantOnboarding() {
     <main className="auth-page">
       <div className="auth-panel">
         <div className="auth-brand">__APP_TITLE__</div>
-        <h1>Create organization</h1>
+        <h1>{t("Create organization")}</h1>
         {error && (
           <div className="alert" role="alert">
             {error}
@@ -419,7 +426,7 @@ function TenantOnboarding() {
         )}
         <form className="auth-form" onSubmit={(event) => void submit(event)}>
           <label>
-            Name
+            {t("Name")}
             <input
               value={name}
               maxLength={120}
@@ -428,7 +435,7 @@ function TenantOnboarding() {
             />
           </label>
           <button className="primary-button">
-            <Building2 size={17} /> Create
+            <Building2 size={17} /> {t("Create")}
           </button>
         </form>
       </div>

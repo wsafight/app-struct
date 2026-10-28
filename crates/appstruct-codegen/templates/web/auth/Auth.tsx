@@ -1,3 +1,4 @@
+import { t } from "../ui";
 import {
   type QueryClient,
   useQuery,
@@ -135,6 +136,6 @@ export function RequireAuth() {
   ]);
 
   if (loading || !user)
-    return <div className="auth-loading" aria-label="Loading" />;
+    return <div className="auth-loading" aria-label={t("Loading")} />;
   return <Outlet />;
 }

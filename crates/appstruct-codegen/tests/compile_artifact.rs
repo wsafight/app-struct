@@ -221,7 +221,7 @@ fn generated_web_uses_the_tanstack_runtime() {
     assert!(form.contains("useResourceFormController"));
     let form_controller = artifact_text(&artifacts, "web/src/form-controller.ts");
     assert!(form_controller.contains("useForm"));
-    assert!(form_controller.contains("buildValidationSchema"));
+    assert!(form_controller.contains("valueError"));
     assert!(form.contains("editing && canSubmit && recordQuery.isPending"));
     assert!(form.contains("initialRecord={recordQuery.data}"));
     assert!(form_controller.contains("recordFormValues(baseline, fields)"));
@@ -229,7 +229,7 @@ fn generated_web_uses_the_tanstack_runtime() {
     let html = artifact_text(&artifacts, "web/index.html");
     let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
     assert!(html.contains("<title>Project Manager</title>"));
-    assert!(layout.contains("<span>Project Manager</span>"));
+    assert!(layout.contains("<AppBrand fallbackTitle=\"Project Manager\" />"));
     assert!(!html.contains("__APP_TITLE__"));
 }
 
@@ -329,7 +329,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 119);
+    assert_eq!(artifacts.len(), 122);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -382,8 +382,11 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(!auth.contains("<Navigate to=\"/login\""));
     let layout = artifact_text(&artifacts, "web/src/app/Layout.tsx");
     assert!(layout.contains("sidebar-account"));
-    assert_eq!(layout.matches("aria-label=\"Sign out\"").count(), 1);
-    assert!(layout.contains("<span>Project Hub</span>"));
+    assert_eq!(
+        layout.matches("aria-label={uiText(\"signOut\")}").count(),
+        1
+    );
+    assert!(layout.contains("fallbackTitle=\"Project Hub\""));
     assert!(layout.contains("await auth.logout();"));
     assert!(!layout.contains("useNavigate"));
     assert!(artifact_text(&artifacts, "web/src/styles.css").contains(".sidebar-account"));
@@ -697,7 +700,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 
 #[allow(clippy::too_many_lines)]
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 102);
+    assert_eq!(artifacts.len(), 105);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")
@@ -731,7 +734,7 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     assert!(auth.contains("CorsLayer::permissive()"));
     assert!(auth.contains("APPSTRUCT_ENV"));
     assert_logging_contract(artifacts, backend);
-    assert!(backend.contains("pub const GENERATED_RUNTIME_API_VERSION: u32 = 4"));
+    assert!(backend.contains("pub const GENERATED_RUNTIME_API_VERSION: u32 = 5"));
     assert!(backend.contains("startup_plan().start(&mut context).await?"));
     assert!(backend.contains("state.health.is_ready() && state.database.ping().await.is_ok()"));
     assert!(backend.contains("mark_draining"));
@@ -802,7 +805,7 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
 }
 
 fn assert_logging_contract(artifacts: &[Artifact], backend: &str) {
-    let main = artifact_text(artifacts, "backend/src/main.rs");
+    let main = artifact_text(artifacts, "server/src/main.rs");
     assert!(main.contains("connect_database(database_url)"));
     assert!(main.contains("init_tracing()?"));
     let logging = artifact_text(artifacts, "backend/src/logging.rs");

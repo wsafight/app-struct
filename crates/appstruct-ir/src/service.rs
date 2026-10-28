@@ -17,7 +17,6 @@ pub struct TenantIr {
 /// Application server settings normalized by the compiler.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerIr {
-    #[serde(default)]
     pub security_headers: SecurityHeadersIr,
 }
 
@@ -157,23 +156,10 @@ pub struct JobScheduleIr {
 pub struct WebhooksIr {
     pub enabled: bool,
     pub poll_interval_ms: u64,
-    #[serde(default = "default_webhook_connect_timeout_ms")]
     pub connect_timeout_ms: u64,
-    #[serde(default = "default_webhook_read_timeout_ms")]
     pub read_timeout_ms: u64,
-    #[serde(default = "default_webhook_request_timeout_ms")]
     pub request_timeout_ms: u64,
     pub endpoints: Vec<WebhookEndpointIr>,
-}
-
-fn default_webhook_connect_timeout_ms() -> u64 {
-    3_000
-}
-fn default_webhook_read_timeout_ms() -> u64 {
-    10_000
-}
-fn default_webhook_request_timeout_ms() -> u64 {
-    15_000
 }
 
 impl WebhooksIr {

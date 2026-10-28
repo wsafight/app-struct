@@ -203,7 +203,7 @@ pub(super) fn layout_source(ir: &AppIr) -> String {
         .replace(
             "__AUDIT_LINK__",
             if audit {
-                "        {canReadAudit && <NavLink to=\"/audit\"><History size={15} /> Audit log</NavLink>}"
+                "        {canReadAudit && <NavLink to=\"/audit\"><History size={15} /> {uiText(\"auditLog\")}</NavLink>}"
             } else {
                 ""
             },
@@ -211,14 +211,14 @@ pub(super) fn layout_source(ir: &AppIr) -> String {
         .replace(
             "__REPORT_LINK__",
             if report {
-                "        <NavLink to=\"/reports\"><FileText size={15} /> Reports</NavLink>"
+                "        <NavLink to=\"/reports\"><FileText size={15} /> {uiText(\"reports\")}</NavLink>"
             } else {
                 ""
             },
         )
         .replace(
             "__BILLING_LINK__",
-            if billing { "        <NavLink to=\"/billing\"><CreditCard size={15} /> Billing</NavLink>" } else { "" },
+            if billing { "        <NavLink to=\"/billing\"><CreditCard size={15} /> {uiText(\"billing\")}</NavLink>" } else { "" },
         )
         .replace("__APP_TITLE__", &title)
 }

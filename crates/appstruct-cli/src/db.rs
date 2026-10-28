@@ -8,6 +8,7 @@ use std::process::ExitCode;
 
 mod access;
 mod output;
+mod preflight;
 mod preview;
 mod render;
 mod review;
@@ -73,6 +74,7 @@ struct PullResult<'path> {
     warnings: Vec<String>,
     preview: preview::PullPreview,
     next_steps: Vec<String>,
+    preflight: preflight::Preflight,
 }
 
 #[derive(Serialize)]
@@ -104,6 +106,7 @@ struct PreparedPull {
     output_path: PathBuf,
     schema: String,
     draft: render::Draft,
+    preflight: preflight::Preflight,
 }
 
 pub(crate) fn run(project: &Path, command: &DbCommand) -> ExitCode {
@@ -178,6 +181,7 @@ fn pull(project: &Path, options: PullOptions<'_>) -> ExitCode {
             warnings: prepared.draft.warnings,
             preview,
             next_steps: pull_next_steps(relative),
+            preflight: prepared.preflight,
         });
     } else {
         println!(
@@ -186,6 +190,7 @@ fn pull(project: &Path, options: PullOptions<'_>) -> ExitCode {
             prepared.draft.entity_count
         );
         preview::print(&prepared.draft);
+        preflight::print(&prepared.preflight);
         for warning in &prepared.draft.warnings {
             crate::report::warning("AS6306", crate::report::ErrorCategory::Database, warning);
         }
@@ -202,7 +207,7 @@ fn pull_next_steps(output: &Path) -> Vec<String> {
         format!("Review access rules and warnings in {}, then add the draft to appstruct.yaml includes.", output.display()),
         "Run appstruct check, appstruct generate, then appstruct migrate plan to review required columns and module tables.".to_owned(),
         "For a fresh development database, apply reviewed migrations and run appstruct doctor, then appstruct dev.".to_owned(),
-        "An existing schema is not automatically adopted as a migration baseline. Read the Existing PostgreSQL guide in the AppStruct documentation.".to_owned(),
+        "For an existing database, align required structure, then preview appstruct migrate baseline; use --accept only after it matches. Read the Existing PostgreSQL guide.".to_owned(),
     ]
 }
 
@@ -278,20 +283,33 @@ fn prepare_pull(
             ));
         }
     };
-    let (inspection, access) = if options.review {
-        match review_schema(inspection) {
+    let (selected, access) = if options.review {
+        match review_schema(inspection.clone()) {
             Ok(Some((selected, selected_access))) => (selected, selected_access),
             Ok(None) => return Ok(None),
             Err(exit) => return Err(exit),
         }
     } else {
-        (inspection, configured_access)
+        (inspection.clone(), configured_access)
     };
-    let draft = render::render_with_access(&inspection, &access);
+    let draft = render::render_with_access(&selected, &access);
+    let preflight = preflight::build(project, options.output, &draft, &inspection, &database_url);
+    if options.review {
+        preflight::print(&preflight);
+        match review::confirm_write() {
+            Ok(true) => {}
+            Ok(false) => {
+                println!("Import cancelled; no draft was written");
+                return Ok(None);
+            }
+            Err(error) => return Err(write_error(&output_path, &error)),
+        }
+    }
     Ok(Some(PreparedPull {
         output_path,
         schema: inspection.name,
         draft,
+        preflight,
     }))
 }
 

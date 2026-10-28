@@ -1,3 +1,5 @@
+import { formatNumber } from "../../ui";
+import { t } from "../../ui";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, ChevronDown, ChevronRight } from "lucide-react";
 import { lazy, Suspense } from "react";
@@ -40,12 +42,18 @@ const AggregateChart = lazy(() =>
 export function aggregateMetricOptions(
   fields: FieldDefinition[],
 ): MetricOption[] {
-  const options: MetricOption[] = [{ value: "count", label: "Count" }];
+  const options: MetricOption[] = [{ value: "count", label: t("Count") }];
   for (const field of fields) {
     if (["integer", "bigint", "decimal"].includes(field.kind)) {
       options.push(
-        { value: `sum:${field.name}`, label: `Sum ${field.label}` },
-        { value: `avg:${field.name}`, label: `Average ${field.label}` },
+        {
+          value: `sum:${field.name}`,
+          label: t("Sum {0}", { "0": field.label }),
+        },
+        {
+          value: `avg:${field.name}`,
+          label: t("Average {0}", { "0": field.label }),
+        },
       );
     }
     if (
@@ -60,8 +68,14 @@ export function aggregateMetricOptions(
       ].includes(field.kind)
     ) {
       options.push(
-        { value: `min:${field.name}`, label: `Minimum ${field.label}` },
-        { value: `max:${field.name}`, label: `Maximum ${field.label}` },
+        {
+          value: `min:${field.name}`,
+          label: t("Minimum {0}", { "0": field.label }),
+        },
+        {
+          value: `max:${field.name}`,
+          label: t("Maximum {0}", { "0": field.label }),
+        },
       );
     }
   }
@@ -236,7 +250,7 @@ export function ResourceInsights({
     updateParams({ report_chart: undefined, ...values });
 
   return (
-    <section className="resource-insights" aria-label="Resource summary">
+    <section className="resource-insights" aria-label={t("Resource summary")}>
       <button
         type="button"
         className="insights-toggle"
@@ -244,16 +258,16 @@ export function ResourceInsights({
         onClick={() => updateParams({ summary: open ? undefined : "1" })}
       >
         {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        <BarChart3 size={16} /> Summary
+        <BarChart3 size={16} /> {t("Summary")}
       </button>
       {open && (
         <div className="insights-body">
           <div className="insights-controls">
             {charts.length > 0 && (
               <label>
-                Chart
+                {t("Chart")}{" "}
                 <select
-                  aria-label="Report chart"
+                  aria-label={t("Report chart")}
                   value={selectedChart?.name ?? ""}
                   onChange={(event) => {
                     const chart = charts.find(
@@ -271,7 +285,7 @@ export function ResourceInsights({
                     else updateParams({ report_chart: undefined });
                   }}
                 >
-                  <option value="">Ad hoc</option>
+                  <option value="">{t("Ad hoc")}</option>
                   {charts.map((chart) => (
                     <option key={chart.name} value={chart.name}>
                       {chart.label}
@@ -281,9 +295,9 @@ export function ResourceInsights({
               </label>
             )}
             <label>
-              Metric
+              {t("Metric")}
               <select
-                aria-label="Report metric"
+                aria-label={t("Report metric")}
                 value={metric}
                 onChange={(event) =>
                   change({ report_metric: event.target.value })
@@ -297,9 +311,10 @@ export function ResourceInsights({
               </select>
             </label>
             <label>
-              Group by
+              {" "}
+              {t("Group by")}
               <select
-                aria-label="Report group"
+                aria-label={t("Report group")}
                 value={groupBy}
                 onChange={(event) =>
                   change({
@@ -309,7 +324,7 @@ export function ResourceInsights({
                   })
                 }
               >
-                <option value="">No grouping</option>
+                <option value=""> {t("No grouping")}</option>
                 {groups.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -319,9 +334,10 @@ export function ResourceInsights({
             </label>
             {groupField && ["date", "datetime"].includes(groupField.kind) && (
               <label>
-                Period
+                {" "}
+                {t("Period")}
                 <select
-                  aria-label="Report period"
+                  aria-label={t("Report period")}
                   value={bucket ?? ""}
                   onChange={(event) =>
                     change({
@@ -330,33 +346,33 @@ export function ResourceInsights({
                     })
                   }
                 >
-                  <option value="">Exact value</option>
-                  <option value="day">Day</option>
-                  <option value="week">Week</option>
-                  <option value="month">Month</option>
+                  <option value=""> {t("Exact value")}</option>
+                  <option value="day"> {t("Day")} </option>
+                  <option value="week">{t("Week")}</option>
+                  <option value="month"> {t("Month")} </option>
                 </select>
               </label>
             )}
             {groupBy && (
               <label>
-                Display
+                {t("Display")}
                 <select
-                  aria-label="Report display"
+                  aria-label={t("Report display")}
                   value={chartType === "kpi" ? "horizontal_bar" : chartType}
                   onChange={(event) =>
                     change({ report_type: event.target.value })
                   }
                 >
-                  <option value="bar">Bars</option>
-                  <option value="horizontal_bar">Horizontal bars</option>
-                  <option value="donut">Donut</option>
+                  <option value="bar">{t("Bars")}</option>
+                  <option value="horizontal_bar">{t("Horizontal bars")}</option>
+                  <option value="donut">{t("Donut")}</option>
                 </select>
               </label>
             )}
             <label>
-              Groups
+              {t("Groups")}
               <select
-                aria-label="Report group limit"
+                aria-label={t("Report group limit")}
                 value={limit}
                 onChange={(event) =>
                   change({ report_limit: event.target.value })
@@ -373,14 +389,17 @@ export function ResourceInsights({
             </label>
           </div>
           <p className="report-help">
-            Save this report with Saved views.{" "}
-            {bucket ? "Periods use UTC; weeks start on Monday. " : ""}
+            {t("Save this report with Saved views.")}{" "}
+            {bucket ? t("Periods use UTC; weeks start on Monday. ") : ""}
             {groupBy
-              ? `Showing up to ${limit} nonempty groups; choose a date range to focus a trend.`
+              ? t(
+                  "Showing up to {0} nonempty groups; choose a date range to focus a trend.",
+                  { "0": limit },
+                )
               : ""}
           </p>
           {aggregate.isPending && (
-            <div className="empty">Loading summary...</div>
+            <div className="empty"> {t("Loading summary...")}</div>
           )}
           {aggregate.error && (
             <div className="alert" role="alert">
@@ -391,7 +410,9 @@ export function ResourceInsights({
             <>
               {chartRows && chartRows.length > 0 && (
                 <Suspense
-                  fallback={<div className="empty">Loading chart...</div>}
+                  fallback={
+                    <div className="empty">{t("Loading chart...")} </div>
+                  }
                 >
                   <AggregateChart
                     type={chartType}
@@ -407,7 +428,7 @@ export function ResourceInsights({
                 </Suspense>
               )}
               {!aggregateRows.length ? (
-                <div className="empty">No summary data</div>
+                <div className="empty">{t("No summary data")}</div>
               ) : (
                 <div className="table-frame insights-table">
                   <table>
@@ -415,7 +436,7 @@ export function ResourceInsights({
                       <tr>
                         <th>{groupLabel}</th>
                         <th>{metricLabel}</th>
-                        <th>Records</th>
+                        <th>{t("Records")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -432,7 +453,7 @@ export function ResourceInsights({
                               <Link
                                 to={`/${resource.slug}?${drilldowns[index]}`}
                               >
-                                View matching records
+                                {t("View matching records")}
                               </Link>
                             )}
                           </td>
@@ -461,6 +482,6 @@ export function ResourceInsights({
 function formatAggregateValue(value: unknown): string {
   if (value === null || value === undefined) return "-";
   return typeof value === "number"
-    ? value.toLocaleString(undefined, { maximumFractionDigits: 4 })
+    ? formatNumber(value, { maximumFractionDigits: 4 })
     : String(value);
 }

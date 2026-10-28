@@ -7,5 +7,5 @@ publish = false
 [dependencies]
 appstruct-generated-backend = { path = "../../generated/backend" }
 sqlx = { version = "=0.9.0", default-features = false, features = ["postgres", "uuid"] }
-tokio = { version = "=1.53.2", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "=1.53.3", features = ["macros", "rt-multi-thread"] }
 uuid = "=1.28.0"

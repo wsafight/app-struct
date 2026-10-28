@@ -73,8 +73,8 @@ consumers:
 ```text
 appstruct-core and appstruct-contracts
 appstruct-ir, appstruct-module-sdk, and appstruct-runtime
-appstruct-schema
 appstruct-compiler
+appstruct-schema
 appstruct-migrate
 appstruct-codegen
 appstruct-cli
@@ -83,6 +83,8 @@ appstruct-cli
 Use `cargo publish -p <package> --locked` for each package. The binary package name is
 `appstruct-cli`, while the installed executable is `appstruct`. Crates.io publishing stays a
 manual maintainer action so a source tag cannot consume registry credentials.
+
+This order also includes development dependencies resolved during packaging: schema and migrate tests use compiler, so compiler must be indexed first.
 
 ## Prepare A Binary Release
 

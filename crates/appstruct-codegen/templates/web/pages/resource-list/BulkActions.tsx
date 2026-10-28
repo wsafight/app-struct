@@ -1,3 +1,4 @@
+import { t } from "../../ui";
 import type { RowSelectionState } from "@tanstack/react-table";
 import { Check, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -90,7 +91,7 @@ export function useBulkActions({
   const currencyError = companion
     ? (valueError(currency, companion) ??
       (Boolean(bulkValue) !== Boolean(currency)
-        ? "Set or clear both the amount and currency."
+        ? t("Set or clear both the amount and currency.")
         : undefined))
     : undefined;
   const canUpdate = selectedIds.some((id) =>
@@ -187,7 +188,9 @@ export function useBulkActions({
             : await Promise.all(ids.map((id) => resource.api.get(id)));
       if (latest.length !== ids.length)
         throw new Error(
-          "Some failed records are no longer accessible. Refresh the list before retrying.",
+          t(
+            "Some failed records are no longer accessible. Refresh the list before retrying.",
+          ),
         );
       setPreview({
         ...outcome.operation,
@@ -243,14 +246,14 @@ export function useBulkActions({
     bulkUpdate: () => prepare("update"),
     actionLabel: (kind: Operation["kind"]) =>
       kind === "update"
-        ? "Update"
+        ? t("Update")
         : kind === "restore"
-          ? "Restore"
+          ? t("Restore")
           : trashMode
-            ? "Permanently delete"
+            ? t("Permanently delete")
             : resource.softDelete
-              ? "Move to trash"
-              : "Delete",
+              ? t("Move to trash")
+              : t("Delete"),
   };
 }
 
@@ -270,13 +273,15 @@ export function BulkToolbar({
     <>
       {actions.selectedIds.length > 0 && (
         <div className="bulk-toolbar">
-          <strong>{actions.selectedIds.length} selected on this page</strong>
+          <strong>
+            {actions.selectedIds.length} {t("selected on this page")}
+          </strong>
           {!trashMode &&
             actions.canUpdate &&
             actions.writableFields.length > 0 && (
               <>
                 <select
-                  aria-label="Field to update"
+                  aria-label={t("Field to update")}
                   value={actions.bulkField}
                   disabled={disabled}
                   onChange={(event) => actions.setBulkField(event.target.value)}
@@ -320,7 +325,7 @@ export function BulkToolbar({
                   }
                   onClick={actions.bulkUpdate}
                 >
-                  <Check size={16} /> Review update
+                  <Check size={16} /> {t("Review update")}
                 </button>
               </>
             )}
@@ -332,7 +337,7 @@ export function BulkToolbar({
                   disabled={disabled}
                   onClick={actions.restoreSelected}
                 >
-                  <RotateCcw size={16} /> Restore
+                  <RotateCcw size={16} /> {t("Restore")}
                 </button>
               )
             : actions.canDelete && (
@@ -341,8 +346,8 @@ export function BulkToolbar({
                   className="icon-button danger"
                   disabled={disabled}
                   onClick={actions.bulkDelete}
-                  title="Delete selected"
-                  aria-label="Delete selected"
+                  title={t("Delete selected")}
+                  aria-label={t("Delete selected")}
                 >
                   <Trash2 size={16} />
                 </button>
@@ -352,7 +357,9 @@ export function BulkToolbar({
       <DialogFrame
         open={Boolean(actions.preview || actions.outcome)}
         title={
-          actions.preview ? "Review bulk operation" : "Bulk operation results"
+          actions.preview
+            ? t("Review bulk operation")
+            : t("Bulk operation results")
         }
         onCancel={actions.close}
       >
@@ -360,7 +367,7 @@ export function BulkToolbar({
           <>
             <p>
               {actions.actionLabel(actions.preview.kind)}{" "}
-              {actions.preview.ids.length} records.
+              {actions.preview.ids.length} {t("records.")}
             </p>
             {actions.preview.patch && (
               <dl className="bulk-patch">
@@ -369,7 +376,7 @@ export function BulkToolbar({
                     <dt>{name}</dt>
                     <dd>
                       {value === null
-                        ? "Clear value"
+                        ? t("Clear value")
                         : typeof value === "object"
                           ? JSON.stringify(value)
                           : String(value)}
@@ -379,11 +386,12 @@ export function BulkToolbar({
               </dl>
             )}
             <details>
-              <summary>Selected records and revisions</summary>
+              <summary> {t("Selected records and revisions")}</summary>
               <ul>
                 {actions.preview.ids.map((id) => (
                   <li key={id}>
-                    {id} · revision {actions.preview!.revisions[id]}
+                    {id} {t("· revision")}
+                    {actions.preview!.revisions[id]}
                   </li>
                 ))}
               </ul>
@@ -395,7 +403,8 @@ export function BulkToolbar({
                 disabled={disabled}
                 onClick={actions.close}
               >
-                Cancel
+                {" "}
+                {t("Cancel")}
               </button>
               <button
                 type="button"
@@ -407,7 +416,7 @@ export function BulkToolbar({
                 disabled={disabled}
                 onClick={() => void actions.execute()}
               >
-                {disabled ? "Working..." : "Confirm operation"}
+                {disabled ? "Working..." : t("Confirm operation")}
               </button>
             </div>
           </>
@@ -415,16 +424,16 @@ export function BulkToolbar({
         {actions.outcome && (
           <>
             <p role="status">
-              {actions.outcome.result.succeeded.length} succeeded ·{" "}
-              {actions.outcome.result.failed.length} failed
+              {actions.outcome.result.succeeded.length} {t("succeeded ·")}{" "}
+              {actions.outcome.result.failed.length} {t("failed")}
             </p>
             {actions.outcome.result.failed.length > 0 && (
               <div className="table-frame">
                 <table>
                   <thead>
                     <tr>
-                      <th>Record</th>
-                      <th>Reason</th>
+                      <th> {t("Record")} </th>
+                      <th>{t("Reason")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -432,7 +441,7 @@ export function BulkToolbar({
                       <tr key={failure.id}>
                         <td>{failure.id}</td>
                         <td>
-                          {failure.message} ({failure.code})
+                          {errorMessage(failure)} ({failure.code})
                         </td>
                       </tr>
                     ))}
@@ -447,7 +456,7 @@ export function BulkToolbar({
                 disabled={disabled}
                 onClick={actions.close}
               >
-                Close
+                {t("Close")}
               </button>
               {actions.outcome.result.failed.length > 0 && (
                 <button
@@ -456,7 +465,7 @@ export function BulkToolbar({
                   disabled={disabled}
                   onClick={() => void actions.reviewRetry()}
                 >
-                  Review retry for failed records
+                  {t("Review retry for failed records")}
                 </button>
               )}
             </div>

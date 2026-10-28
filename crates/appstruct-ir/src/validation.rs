@@ -2,12 +2,14 @@ mod activity;
 pub(crate) mod aggregates;
 pub(crate) mod charts;
 mod error;
+mod form_rules;
 mod graph;
 mod indexes;
 mod report;
 mod seeds;
 mod server;
 mod ui;
+pub use form_rules::validate_form_rules;
 mod workflow;
 use self::activity::validate_activity;
 use self::graph::{validate_modules, validate_operations, validate_services};
@@ -48,6 +50,9 @@ pub fn validate_app_ir(ir: &AppIr) -> Result<(), IrValidationErrors> {
     }
     if let Err(chart_errors) = charts::validate_charts_indexed(&ir.entities, &entities) {
         errors.extend(chart_errors.0);
+    }
+    if let Err(rule_errors) = validate_form_rules(&ir.entities) {
+        errors.extend(rule_errors.0);
     }
     validate_seeds(ir, &entities, &mut errors);
     validate_relations(ir, &entities, &mut errors);

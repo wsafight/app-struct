@@ -1,3 +1,4 @@
+import { t } from "../../ui";
 import { Check, Pencil, X } from "lucide-react";
 import { useState } from "react";
 import {
@@ -80,8 +81,8 @@ export function InlineEditor({
           type="button"
           className="inline-edit-button"
           onClick={begin}
-          title={`Edit ${field.label}`}
-          aria-label={`Edit ${field.label}`}
+          title={t("Edit {0}", { "0": field.label })}
+          aria-label={t("Edit {0}", { "0": field.label })}
         >
           <Pencil size={13} />
         </button>
@@ -90,7 +91,21 @@ export function InlineEditor({
   }
   return (
     <div className="inline-editor">
-      {field.kind === "boolean" ? (
+      {field.kind === "boolean" && !field.required ? (
+        <select
+          value={value === "" ? "" : String(value)}
+          onChange={(event) =>
+            setValue(
+              event.target.value === "" ? "" : event.target.value === "true",
+            )
+          }
+          aria-label={field.label}
+        >
+          <option value="">{t("None")}</option>
+          <option value="true">{t("Yes")}</option>
+          <option value="false">{t("No")}</option>
+        </select>
+      ) : field.kind === "boolean" ? (
         <input
           type="checkbox"
           checked={Boolean(value)}
@@ -103,7 +118,7 @@ export function InlineEditor({
           onChange={(event) => setValue(event.target.value)}
           aria-label={field.label}
         >
-          {!field.required && <option value="">None</option>}
+          {!field.required && <option value=""> {t("None")} </option>}
           {field.values?.map((option) => (
             <option key={option}>{option}</option>
           ))}
@@ -135,8 +150,8 @@ export function InlineEditor({
         className="inline-edit-button"
         disabled={saving || Boolean(valueError(value, field))}
         onClick={() => void save()}
-        title="Save"
-        aria-label={`Save ${field.label}`}
+        title={t("Save")}
+        aria-label={t("Save {0}", { "0": field.label })}
       >
         <Check size={14} />
       </button>
@@ -145,8 +160,8 @@ export function InlineEditor({
         className="inline-edit-button"
         disabled={saving}
         onClick={() => setEditing(false)}
-        title="Cancel"
-        aria-label={`Cancel ${field.label}`}
+        title={t("Cancel")}
+        aria-label={t("Cancel {0}", { "0": field.label })}
       >
         <X size={14} />
       </button>
@@ -156,6 +171,6 @@ export function InlineEditor({
 
 function displayValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "-";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "boolean") return value ? t("Yes") : t("No");
   return String(value);
 }

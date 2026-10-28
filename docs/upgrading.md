@@ -109,3 +109,11 @@ incompatible release.
 - [Installation](installation.md) to replace the CLI binary
 - [Deployment](deployment.md) for production migrate status / apply
 - [Migration lint](migration-lint.md) when the upgrade plan is destructive
+
+## One-time template fixes
+
+After changing CLI versions, run `appstruct template diff`, or `appstruct template diff --format json > /tmp/appstruct-template-diff.json`. This read-only command compares the locked template name/version with the current CLI's delivery defaults. Unified patches show current-to-template changes; JSON also contains old/new SHA-256 and status. Differences can include your customizations and are not automatically classified as fixes.
+
+Only Dockerfile, Compose, `.dockerignore`, `deploy/` and toolchain files are compared. No files or locks are changed. Review and manually merge applicable hunks, then build, run `deploy verify`, smoke and business journeys. Rebuild Compose on a Docker host for container changes. Retain the comparison and application commit as the repair record. Supported locked templates are minimal/dashboard/saas; symlink paths are rejected.
+
+Readers accept only the [current contract baseline](compatibility.md). Update does not convert historical IR, snapshots or layouts. Recreate old development directories from backups using the current template; migration history, checksum and crash-recovery protections remain in force.

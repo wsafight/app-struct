@@ -1,8 +1,8 @@
 # Installation
 
 AppStruct can be installed from a source checkout. Release automation packages checksummed
-macOS/Linux/Windows archives and version-pinned installers. No public release is assumed to exist
-during the technical preview; use source installation until a tag and its assets are published.
+macOS/Linux/Windows archives and version-pinned installers. Use source installation for the
+current checkout, or a checksummed archive produced by the release workflow.
 
 Read this page to install the CLI and create the first project. Use
 [Upgrading](upgrading.md) after the app already exists, and [Deployment](deployment.md) when
@@ -125,8 +125,9 @@ install -m 0755 appstruct-<version>-<target>/appstruct "$HOME/.local/bin/appstru
 ```
 
 Linux users may use `sha256sum -c` instead. Do not install an archive when its checksum fails.
-After the crates are published, `cargo install appstruct-cli --version <version> --locked` is the
-registry equivalent; source and binary release versions remain lockstep.
+Use `cargo install appstruct-cli --version <version> --locked` for a selected crates.io version,
+and check which features that version includes. Future source and binary releases should use
+the same new version.
 
 Release tags prepare Linux glibc archives for x86-64/ARM64, native archives for Apple Silicon and
 Intel macOS, and an x86-64 Windows `.zip`. On Windows, verify and expand it from

@@ -25,7 +25,7 @@ tenant="$(jq -er '.id' "$temporary_root/tenant.json")"
 
 csv_payload=$'code,title,secret\nalpha,Alpha,"private, ""quoted""\nline"\nalpha,Duplicate,duplicate-secret\nbeta,Beta,beta-secret\n'
 curl --fail --silent --show-error -b "$jar" \
-  -H "Content-Type: text/csv" -H "X-CSRF-Token: $csrf" \
+  -H "Content-Type: text/csv" -H "Idempotency-Key: 00000000-0000-4000-8000-000000000001" -H "X-CSRF-Token: $csrf" \
   -H "X-AppStruct-Tenant: $tenant" --data-binary "$csv_payload" \
   "$api/api/entries/_import.csv" >"$temporary_root/import.json"
 jq -e '

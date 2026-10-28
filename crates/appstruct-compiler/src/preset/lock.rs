@@ -11,7 +11,6 @@ use std::path::Path;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProjectLayout {
-    LegacyGeneratedBackend = 1,
     CompositionRoot = 2,
 }
 
@@ -77,7 +76,7 @@ pub(super) fn layout(project: &Path) -> Result<ProjectLayout, Diagnostic> {
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(ProjectLayout::LegacyGeneratedBackend);
+            return Ok(ProjectLayout::CompositionRoot);
         }
         Err(error) => {
             return Err(lock_error(
@@ -223,7 +222,7 @@ fn read_update_metadata(project: &Path) -> Result<(String, ProjectLayout), Diagn
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(("custom".to_owned(), infer_legacy_layout(project)?));
+            return Ok(("custom".to_owned(), ProjectLayout::CompositionRoot));
         }
         Err(error) => {
             return Err(lock_error(
@@ -248,27 +247,18 @@ fn read_update_metadata(project: &Path) -> Result<(String, ProjectLayout), Diagn
                 format!("unsupported project layout version `{version}`"),
             )
         })?,
-        None => infer_legacy_layout(project)?,
+        None => {
+            return Err(lock_error(
+                "AS3064",
+                "project lock is missing `project_layout_version`; recreate the lock for the current composition-root layout",
+            ));
+        }
     };
     Ok((template, layout))
 }
 
-fn infer_legacy_layout(project: &Path) -> Result<ProjectLayout, Diagnostic> {
-    let manifest = project.join("app/backend/Cargo.toml").is_file();
-    let library = project.join("app/backend/src/lib.rs").is_file();
-    match (manifest, library) {
-        (false, false) => Ok(ProjectLayout::LegacyGeneratedBackend),
-        (true, true) => Ok(ProjectLayout::CompositionRoot),
-        _ => Err(lock_error(
-            "AS3064",
-            "cannot migrate a partial `app/backend` layout; expected both `Cargo.toml` and `src/lib.rs`",
-        )),
-    }
-}
-
 fn parse_layout(version: Option<u64>) -> Option<ProjectLayout> {
     match version {
-        Some(1) => Some(ProjectLayout::LegacyGeneratedBackend),
         Some(2) => Some(ProjectLayout::CompositionRoot),
         Some(_) | None => None,
     }

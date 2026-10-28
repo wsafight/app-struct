@@ -1,3 +1,5 @@
+import { formatDateTime } from "../ui";
+import { t } from "../ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CirclePlay, Pause, Play } from "lucide-react";
 import {
@@ -58,12 +60,12 @@ export function AdminSchedulesPage() {
   return (
     <main className="page">
       <Link className="back-link" to="/admin">
-        <ArrowLeft size={15} /> Administration
+        <ArrowLeft size={15} /> {t("Administration")}
       </Link>
       <div className="page-heading">
         <div>
-          <h1>Schedules</h1>
-          <p>UTC calendar and interval definitions</p>
+          <h1>{t("Schedules")}</h1>
+          <p>{t("UTC calendar and interval definitions")}</p>
         </div>
       </div>
       {error && (
@@ -75,14 +77,14 @@ export function AdminSchedulesPage() {
         <table>
           <thead>
             <tr>
-              <th>Schedule</th>
-              <th>Expression</th>
-              <th>Queue</th>
-              <th>Job kind</th>
-              <th>State</th>
-              <th>Next run</th>
-              <th>Last run</th>
-              <th aria-label="Actions" />
+              <th>{t("Schedule")}</th>
+              <th> {t("Expression")}</th>
+              <th> {t("Queue")} </th>
+              <th>{t("Job kind")}</th>
+              <th>{t("State")}</th>
+              <th> {t("Next run")}</th>
+              <th> {t("Last run")}</th>
+              <th aria-label={t("Actions")} />
             </tr>
           </thead>
           <tbody>
@@ -112,9 +114,11 @@ export function AdminSchedulesPage() {
                         type="button"
                         className="icon-button"
                         title={
-                          schedule.paused ? "Resume schedule" : "Pause schedule"
+                          schedule.paused
+                            ? t("Resume schedule")
+                            : t("Pause schedule")
                         }
-                        aria-label={`${schedule.paused ? "Resume" : "Pause"} ${schedule.name}`}
+                        aria-label={`${schedule.paused ? t("Resume") : t("Pause")} ${schedule.name}`}
                         disabled={scheduleMutation.isPending}
                         onClick={() =>
                           void mutate(
@@ -134,8 +138,8 @@ export function AdminSchedulesPage() {
                       <button
                         type="button"
                         className="icon-button"
-                        title="Run now"
-                        aria-label={`Run ${schedule.name} now`}
+                        title={t("Run now")}
+                        aria-label={t("Run {0} now", { "0": schedule.name })}
                         disabled={scheduleMutation.isPending}
                         onClick={() => void mutate(schedule.id, "trigger")}
                       >
@@ -149,7 +153,7 @@ export function AdminSchedulesPage() {
           </tbody>
         </table>
         {schedules.length === 0 && !schedulesQuery.isPending && (
-          <div className="empty">No schedules configured</div>
+          <div className="empty"> {t("No schedules configured")}</div>
         )}
       </section>
     </main>
@@ -164,5 +168,5 @@ function scheduleState(
 }
 
 function formatDate(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : "-";
+  return value ? formatDateTime(value) : "-";
 }

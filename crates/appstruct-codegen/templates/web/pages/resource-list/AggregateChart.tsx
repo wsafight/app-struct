@@ -1,3 +1,4 @@
+import { formatNumber, t } from "../../ui";
 import {
   Bar,
   BarChart,
@@ -58,7 +59,7 @@ export function AggregateChart({
     type === "horizontal_bar"
       ? Math.min(420, Math.max(220, rows.length * 38))
       : 300;
-  const label = `${metricLabel} by ${groupLabel}`;
+  const label = t("{0} by {1}", { 0: metricLabel, 1: groupLabel });
   if (type === "donut") {
     return (
       <div
@@ -86,7 +87,14 @@ export function AggregateChart({
                 />
               ))}
             </Pie>
-            <Tooltip contentStyle={tooltipStyle} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              formatter={(value) =>
+                typeof value === "number"
+                  ? formatNumber(value)
+                  : String(value ?? "")
+              }
+            />
             <Legend
               iconType="circle"
               iconSize={8}
@@ -121,6 +129,7 @@ export function AggregateChart({
             <>
               <XAxis
                 type="number"
+                tickFormatter={(value: number) => formatNumber(value)}
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 12 }}
@@ -145,6 +154,7 @@ export function AggregateChart({
               />
               <YAxis
                 type="number"
+                tickFormatter={(value: number) => formatNumber(value)}
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 12 }}
@@ -153,6 +163,11 @@ export function AggregateChart({
           )}
           <Tooltip
             contentStyle={tooltipStyle}
+            formatter={(value) =>
+              typeof value === "number"
+                ? formatNumber(value)
+                : String(value ?? "")
+            }
             cursor={{ fill: "var(--color-surface-soft)" }}
           />
           <Bar

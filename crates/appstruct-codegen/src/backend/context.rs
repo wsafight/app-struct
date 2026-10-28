@@ -72,7 +72,7 @@ fn methods() -> TokenStream {
                 }
             }
 
-            pub(crate) fn transaction_with_file(
+            pub fn transaction_with_file(
                 database: &'db Transaction,
                 mail: &'db crate::MailState,
                 file: &'db crate::FileState,
@@ -147,9 +147,20 @@ fn methods() -> TokenStream {
                 self.file.ok_or(crate::FileError::Disabled)?
                     .get_with_connection(self, object_key, self.tenant).await
             }
-            pub async fn delete_file(&self, object_key: &str) -> Result<(), crate::FileError> {
+            pub async fn retain_file(&self, object_key: &str, entity: &str, record_id: &str) -> Result<(), crate::FileError> {
                 self.file.ok_or(crate::FileError::Disabled)?
-                    .delete_with_connection(self, object_key, self.tenant).await
+                    .retain_with_connection(self, object_key, entity, record_id, self.tenant).await
+            }
+            pub async fn release_file(&self, object_key: &str, entity: &str, record_id: &str) -> Result<(), crate::FileError> {
+                self.file.ok_or(crate::FileError::Disabled)?
+                    .release_with_connection(self, object_key, entity, record_id, self.tenant).await
+            }
+            pub async fn delete_file(&self, object_key: &str) -> Result<(), crate::FileError> {
+                let file = self.file.ok_or(crate::FileError::Disabled)?;
+                match self.database {
+                    RequestDatabase::Connection(_) => file.delete(object_key, self.tenant).await,
+                    RequestDatabase::Transaction(database) => file.delete_with_connection(database, object_key, self.tenant).await,
+                }
             }
         }
     }

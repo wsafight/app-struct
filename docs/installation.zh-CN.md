@@ -1,6 +1,6 @@
 # 安装
 
-AppStruct 可以从源码检出安装。发布自动化会打包带校验和的 macOS/Linux/Windows 归档以及版本固定的安装器。技术预览阶段不假定已有公开发布；在标签及其资源发布之前，请使用源码安装。
+AppStruct 可以从源码检出安装。发布自动化会打包带校验和的 macOS/Linux/Windows 归档以及版本固定的安装器。使用当前检出请从源码安装，也可安装发布工作流生成的带校验和归档。
 
 本页用于安装 CLI 并创建第一个项目。应用已经存在时看 [升级](upgrading.zh-CN.md)；发布不可变产物时看 [部署](deployment.zh-CN.md)。
 
@@ -103,7 +103,7 @@ tar -xzf appstruct-<version>-<target>.tar.gz
 install -m 0755 appstruct-<version>-<target>/appstruct "$HOME/.local/bin/appstruct"
 ```
 
-Linux 用户可以使用 `sha256sum -c`。校验和失败时不要安装归档。crates 发布后，`cargo install appstruct-cli --version <version> --locked` 是 registry 等价方式；源码与二进制发布版本保持同步。
+Linux 用户可以使用 `sha256sum -c`。校验和失败时不要安装归档。crates.io 的指定版本可通过 `cargo install appstruct-cli --version <version> --locked` 安装；请核对该版本实际包含的功能。后续源码包与二进制发布应采用同一新版本。
 
 发布标签会为 Linux x86-64/ARM64 准备 glibc 归档，为 Apple Silicon 和 Intel macOS 准备原生归档，以及 x86-64 Windows `.zip`。在 Windows 上，从 PowerShell 校验并解压：
 

@@ -1,3 +1,5 @@
+import { recordRuleErrors } from "./field-values";
+import { configureUI } from "./ui";
 import { afterEach, describe, expect, it, rs } from "@rstest/core";
 import {
   act,
@@ -26,7 +28,10 @@ import { reportDrilldown } from "./pages/resource-list/report-query";
 import { aggregateChartRows } from "./pages/resource-list/ResourceInsights";
 import { validateResourceSearch } from "./navigation";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  configureUI({});
+});
 function field(
   name: string,
   kind: FieldDefinition["kind"] = "string",
@@ -75,6 +80,7 @@ function resource(fields: FieldDefinition[]): ResourceDefinition {
       bulkDelete: rs.fn(),
       exportCsv: rs.fn(),
       importCsv: rs.fn(),
+      importResult: rs.fn(),
     },
   };
 }
@@ -203,6 +209,51 @@ describe("CSV workflow", () => {
       ["title", "status"],
       ["Corrected", "done"],
     ]);
+  });
+});
+
+describe("uncertain import results", () => {
+  it("retries identical content with the same batch and recovers a committed result", async () => {
+    const model = resource([field("title", "string", { required: true })]);
+    rs.mocked(model.api.importCsv).mockRejectedValue(
+      new Error("Connection lost"),
+    );
+    rs.mocked(model.api.importResult).mockResolvedValue({
+      succeeded: ["0"],
+      failed: [],
+    });
+    const user = userEvent.setup();
+    render(
+      <CsvImportDialog
+        resource={model}
+        file={{ name: "records.csv", text: "title\nKeep\n" }}
+        runChange={runChange}
+        onError={rs.fn()}
+        onClose={rs.fn()}
+      />,
+      { wrapper },
+    );
+    await user.click(screen.getByRole("button", { name: "Import 1 rows" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Retry same batch" }),
+      ).toBeTruthy(),
+    );
+    const first = rs.mocked(model.api.importCsv).mock.calls[0];
+    expect(first[1]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(screen.getByLabelText("Row 2 Title").hasAttribute("disabled")).toBe(
+      true,
+    );
+    await user.click(screen.getByRole("button", { name: "Retry same batch" }));
+    await waitFor(() => expect(model.api.importCsv).toHaveBeenCalledTimes(2));
+    expect(rs.mocked(model.api.importCsv).mock.calls[1]).toEqual(first);
+    await user.click(
+      screen.getByRole("button", { name: "Check import result" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("All rows were imported.")).toBeTruthy(),
+    );
+    expect(model.api.importResult).toHaveBeenCalledWith(first[1]);
   });
 });
 
@@ -380,4 +431,57 @@ describe("reports", () => {
       ),
     ).toBeNull();
   });
+});
+
+it("renders Chinese CSV actions and result recovery without translating business headers", () => {
+  configureUI({ locale: "zh-CN" });
+  const model = resource([
+    field("title", "string", { required: true, label: "业务标题" }),
+  ]);
+  render(
+    <CsvImportDialog
+      resource={model}
+      file={{ name: "test.csv", text: "title\nexample\n" }}
+      runChange={runChange}
+      onError={rs.fn()}
+      onClose={rs.fn()}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "导入 1 行" })).toBeTruthy();
+  expect(screen.getByLabelText("映射title")).toBeTruthy();
+  expect(screen.getAllByText("业务标题").length).toBeGreaterThan(0);
+});
+
+it("validates false conditions, zero, exact decimals and microseconds using complete records", () => {
+  const fields = [
+    field("flag", "boolean"),
+    field("count", "integer", {
+      requiredWhen: { field: "flag", equals: false },
+    }),
+    field("minimum", "decimal"),
+    field("amount", "decimal", { greaterThan: "minimum" }),
+    field("starts", "datetime"),
+    field("ends", "datetime", { greaterThan: "starts" }),
+  ];
+  const good = {
+    flag: false,
+    count: 0,
+    minimum: "9007199254740993.14",
+    amount: "9007199254740993.15",
+    starts: "2026-01-01T00:00:00.000001Z",
+    ends: "2026-01-01T00:00:00.000002Z",
+  };
+  expect(recordRuleErrors(good, fields)).toEqual({});
+  expect(recordRuleErrors({ ...good, count: null }, fields).count).toBeTruthy();
+  expect(
+    recordRuleErrors({ ...good, flag: true, count: null }, fields),
+  ).toEqual({});
+  expect(
+    recordRuleErrors({ ...good, minimum: "9007199254740993.16" }, fields)
+      .amount,
+  ).toBeTruthy();
+  expect(
+    recordRuleErrors({ ...good, starts: "2026-01-01T00:00:00.000003Z" }, fields)
+      .ends,
+  ).toBeTruthy();
 });

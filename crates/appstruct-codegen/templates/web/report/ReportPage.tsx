@@ -1,3 +1,5 @@
+import { formatDateTime } from "../ui";
+import { t } from "../ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Download, FileText, X } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -77,8 +79,10 @@ export function ReportPage() {
     <main className="page report-page">
       <div className="page-heading">
         <div>
-          <h1>Reports</h1>
-          <p>{total} runs</p>
+          <h1>{t("Reports")}</h1>
+          <p>
+            {total} {t("runs")}
+          </p>
         </div>
         <FileText size={22} aria-hidden />
       </div>
@@ -88,10 +92,11 @@ export function ReportPage() {
         </div>
       )}
       <section className="report-create" aria-labelledby="new-report-heading">
-        <h2 id="new-report-heading">New report</h2>
+        <h2 id="new-report-heading">{t("New report")}</h2>
         <div className="report-create-grid">
           <label>
-            Template
+            {" "}
+            {t("Template")}
             <select
               value={selected}
               onChange={(event) => {
@@ -99,7 +104,7 @@ export function ReportPage() {
                 setValues({});
               }}
             >
-              <option value="">Select template</option>
+              <option value=""> {t("Select template")}</option>
               {(templates.data ?? []).map((template) => (
                 <option
                   key={`${template.name}:${template.version}`}
@@ -130,7 +135,7 @@ export function ReportPage() {
               create.mutate({ template: selectedTemplate.name, data: values })
             }
           >
-            <FileText size={16} /> Generate
+            <FileText size={16} /> {t("Generate")}
           </button>
         </div>
       </section>
@@ -138,26 +143,26 @@ export function ReportPage() {
         <table>
           <thead>
             <tr>
-              <th>Template</th>
-              <th>Created</th>
-              <th>Status</th>
-              <th>Progress</th>
-              <th>Expires</th>
-              <th aria-label="Actions" />
+              <th> {t("Template")}</th>
+              <th> {t("Created")} </th>
+              <th>{t("Status")}</th>
+              <th>{t("Progress")}</th>
+              <th>{t("Expires")}</th>
+              <th aria-label={t("Actions")} />
             </tr>
           </thead>
           <tbody>
             {runs.isPending && (
               <tr>
                 <td colSpan={6} className="empty">
-                  Loading...
+                  {t("Loading...")}
                 </td>
               </tr>
             )}
             {!runs.isPending && (runs.data?.data.length ?? 0) === 0 && (
               <tr>
                 <td colSpan={6} className="empty">
-                  No report runs
+                  {t("No report runs")}
                 </td>
               </tr>
             )}
@@ -189,8 +194,8 @@ export function ReportPage() {
                       <button
                         type="button"
                         className="icon-button"
-                        title="Cancel report"
-                        aria-label={`Cancel ${run.template}`}
+                        title={t("Cancel report")}
+                        aria-label={t("Cancel {0}", { "0": run.template })}
                         disabled={cancel.isPending}
                         onClick={() => cancel.mutate(run.id)}
                       >
@@ -201,8 +206,8 @@ export function ReportPage() {
                       <button
                         type="button"
                         className="icon-button"
-                        title="Download PDF"
-                        aria-label={`Download ${run.template}`}
+                        title={t("Download PDF")}
+                        aria-label={t("Download {0}", { "0": run.template })}
                         onClick={() => void download(run)}
                       >
                         <Download size={16} />
@@ -216,15 +221,13 @@ export function ReportPage() {
         </table>
       </section>
       <div className="pagination">
-        <span>
-          Page {page} of {pages}
-        </span>
+        <span>{t("Page {0} of {1}", { 0: page, 1: pages })}</span>
         <div>
           <button
             className="icon-button"
             disabled={page <= 1}
             onClick={() => setPage((value) => value - 1)}
-            aria-label="Previous page"
+            aria-label={t("Previous page")}
           >
             <ChevronLeft size={17} />
           </button>
@@ -232,7 +235,7 @@ export function ReportPage() {
             className="icon-button"
             disabled={page >= pages}
             onClick={() => setPage((value) => value + 1)}
-            aria-label="Next page"
+            aria-label={t("Next page")}
           >
             <ChevronRight size={17} />
           </button>
@@ -323,5 +326,5 @@ function active(run: ReportRun): boolean {
   );
 }
 function formatDate(value: string): string {
-  return new Date(value).toLocaleString();
+  return formatDateTime(value);
 }

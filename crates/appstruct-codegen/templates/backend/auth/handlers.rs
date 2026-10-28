@@ -66,6 +66,7 @@ async fn register(
     }
     state.auth.validate_origin(&headers)?;
     let email = validate_credentials(input)?;
+    state.auth.consume_auth_rate_limit(&state.database, &format!("register:{}", email.email)).await?;
     let password_hash = hash_password(&email.password)?;
     let user_id = uuid::Uuid::now_v7();
     let roles = vec![config::DEFAULT_ROLE.to_owned()];

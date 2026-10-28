@@ -299,6 +299,7 @@ pub(super) fn support(
                 active.#field_name = target.to_owned();
                 active.revision = before.revision.checked_add(1)
                     .ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
+                validate_candidate(&active)?;
                 let after = active.update(&transaction).await?;
                 state.extensions.#hooks()
                     .after_transition(&context, transition, &before, &input, &after).await?;

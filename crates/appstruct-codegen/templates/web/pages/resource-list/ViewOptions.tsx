@@ -1,3 +1,4 @@
+import { t } from "../../ui";
 import { Columns3, RotateCcw } from "lucide-react";
 import { isSemanticCompanion, type FieldDefinition } from "../../resource";
 
@@ -56,9 +57,9 @@ export function ViewOptions({
   return (
     <div className="view-options">
       <label>
-        Rows
+        {t("Rows")}
         <select
-          aria-label="Rows per page"
+          aria-label={t("Rows per page")}
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value))}
         >
@@ -72,8 +73,8 @@ export function ViewOptions({
       <details className="column-picker">
         <summary
           className="icon-button"
-          title="Choose columns"
-          aria-label="Choose columns"
+          title={t("Choose columns")}
+          aria-label={t("Choose columns")}
         >
           <Columns3 size={17} />
         </summary>
@@ -93,8 +94,8 @@ export function ViewOptions({
             <button
               type="button"
               className="icon-button"
-              title="Reset columns"
-              aria-label="Reset columns"
+              title={t("Reset columns")}
+              aria-label={t("Reset columns")}
               disabled={!customized}
               onClick={() => onColumnsChange(defaults)}
             >

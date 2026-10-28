@@ -46,7 +46,7 @@ fn apply_with_url(project: &Path, database_url: &str) -> ExitCode {
     }
 }
 
-fn database_url(configured_url: Option<&str>) -> Option<String> {
+pub(super) fn database_url(configured_url: Option<&str>) -> Option<String> {
     configured_url
         .map(str::to_owned)
         .or_else(|| env::var("DATABASE_URL").ok())
@@ -94,7 +94,7 @@ fn render_status(status: &MigrationStatus) -> ExitCode {
     render_drift(&status.drift)
 }
 
-fn render_drift(drift: &DriftStatus) -> ExitCode {
+pub(super) fn render_drift(drift: &DriftStatus) -> ExitCode {
     match drift {
         DriftStatus::Clean => {
             if !crate::report::is_json() {
@@ -125,7 +125,7 @@ fn drift_name(drift: &DriftStatus) -> &'static str {
     }
 }
 
-fn render_error(error: &MigrationError) -> ExitCode {
+pub(super) fn render_error(error: &MigrationError) -> ExitCode {
     let (code, exit) = match error {
         MigrationError::Project(_) => ("AS4108", crate::report::ExitClass::Validation),
         MigrationError::Database(_) => ("AS4109", crate::report::ExitClass::Database),

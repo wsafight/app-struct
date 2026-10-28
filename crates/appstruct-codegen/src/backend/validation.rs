@@ -142,3 +142,64 @@ fn numeric_bound(field: &FieldIr, value: &str) -> TokenStream {
         _ => unreachable!(),
     }
 }
+
+pub(super) fn candidate_rules(entity: &EntityIr) -> Result<Vec<TokenStream>, CodegenError> {
+    use appstruct_ir::ConditionValueIr;
+    let mut rules = Vec::new();
+    for field in &entity.fields {
+        let name = parse_ident(&field.rust_name)?;
+        let api_name = &field.api_name;
+        if let Some(rule) = &field.validation.required_when {
+            let source = entity
+                .fields
+                .iter()
+                .find(|other| other.id == rule.field)
+                .expect("validated condition");
+            let source_name = parse_ident(&source.rust_name)?;
+            let value = model_value(source, &source_name);
+            let equal = match &rule.equals {
+                ConditionValueIr::Boolean(expected) => quote! { value == &#expected },
+                ConditionValueIr::String(expected) => quote! { value == #expected },
+            };
+            let missing = if matches!(
+                field.ty,
+                FieldTypeIr::String | FieldTypeIr::Text | FieldTypeIr::Enum { .. }
+            ) {
+                quote! { model.#name.as_ref().is_none_or(String::is_empty) }
+            } else {
+                quote! { model.#name.is_none() }
+            };
+            let message = format!("is required when {} matches its condition", source.api_name);
+            rules.push(quote! {
+                if #value.is_some_and(|value| #equal) && #missing {
+                    violations.push(FieldViolation { field: #api_name.to_owned(), message: #message.to_owned() });
+                }
+            });
+        }
+        if let Some(id) = &field.validation.greater_than {
+            let other = entity
+                .fields
+                .iter()
+                .find(|other| other.id == *id)
+                .expect("validated comparison");
+            let other_name = parse_ident(&other.rust_name)?;
+            let left = model_value(field, &name);
+            let right = model_value(other, &other_name);
+            let message = format!("must be greater than {}", other.api_name);
+            rules.push(quote! {
+                if let (Some(left), Some(right)) = (#left, #right) && left <= right {
+                    violations.push(FieldViolation { field: #api_name.to_owned(), message: #message.to_owned() });
+                }
+            });
+        }
+    }
+    Ok(rules)
+}
+
+fn model_value(field: &FieldIr, name: &syn::Ident) -> TokenStream {
+    if field.nullable {
+        quote! { model.#name.as_ref() }
+    } else {
+        quote! { Some(&model.#name) }
+    }
+}

@@ -13,6 +13,7 @@ before building the five platform archives or creating a draft Release.
 | PostgreSQL query and combined operations/browser regressions | Yes | Yes |
 | Dashboard browser, Tenant, Audit, Mail, Jobs/Webhooks/Realtime, File, SaaS, bulk and Chromium reports | — | Yes |
 | Docker first deployment and renderer isolation | — | Yes |
+| Windows x64 native build, archive and installer | — | Yes |
 | Crate package verification and developer/API benchmarks | — | Yes |
 
 Every PostgreSQL matrix job gets its own PostgreSQL 17 service and dedicated test database.
@@ -58,3 +59,18 @@ To enforce checks before merging, configure required checks in GitHub branch pro
 Committing these workflows does not change repository settings. Linux container acceptance and
 the five-platform installer matrix require their actual Actions runs; local native tests do not
 establish those results.
+
+## Platform acceptance before release
+
+Select a branch and manually run `CI` in Actions for the full gates. No tag or Release is created.
+Linux `Docker deployment` runs `scripts/run-deployment-e2e.sh --docker`; `Renderer isolation`
+checks container isolation. `Windows installer` builds the current CLI on Windows 2022 x64,
+reads the workspace version, packages a local archive and verifies installation to a path with
+spaces, replacement, corrupt-archive rejection and original-binary preservation. It needs no
+published archive. Windows archives are retained for seven days; build/installer failures remain
+in the job log.
+
+Status on 2026-10-27: macOS native installation, builds, browser journeys and database restoration
+passed; see [delivery optimization](optimization-progress.md). Linux container and Windows
+installer jobs have not been executed for this change. Gate configuration is not a passing result;
+use the Actions run for the relevant commit after execution.

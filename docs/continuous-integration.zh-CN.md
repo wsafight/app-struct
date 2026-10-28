@@ -12,6 +12,7 @@
 | PostgreSQL 查询与组合运维/浏览器回归 | 是 | 是 |
 | Dashboard 浏览器、Tenant、Audit、Mail、Jobs/Webhooks/Realtime、File、SaaS、批量与 Chromium 报表 | — | 是 |
 | Docker 首次部署与渲染器隔离 | — | 是 |
+| Windows x64 原生构建、归档与安装器 | — | 是 |
 | Crate 打包与开发/API 性能基准 | — | 是 |
 
 每个 PostgreSQL 矩阵任务都有自己的 PostgreSQL 17 服务和独立测试数据库。测试可以重置该库的
@@ -47,3 +48,15 @@ APPSTRUCT_E2E_DATABASE_URL=postgresql://user@localhost/appstruct_operations_e2e 
 
 需要强制合并前检查时，在 GitHub 分支保护中配置 required checks。提交工作流不会修改仓库设置。
 Linux 容器验收和五平台安装器矩阵需要实际 Actions 执行结果，本地原生测试不能替代这些结果。
+
+## 发版前的平台验收
+
+在 Actions 的 `CI` 页面选择待验收分支并手动运行，即执行完整门禁，无需标签，也不会创建 Release。
+Linux `Docker deployment` 执行 `scripts/run-deployment-e2e.sh --docker`，`Renderer isolation`
+执行容器隔离检查。`Windows installer` 在 Windows 2022 x64 runner 构建当前 CLI，读取 workspace
+版本并创建本地归档，验证含空格路径安装、替换、损坏归档拒绝和旧二进制保留；不依赖已发布归档。
+Windows 归档保留七天，构建/安装失败信息可在该任务日志中查看。
+
+2026-10-27 状态：本次 macOS 原生安装、构建、浏览器旅程及数据库还原已通过，详见
+[交付优化记录](optimization-progress.zh-CN.md)。本次尚未执行 Linux 容器或 Windows 安装器任务，
+不能将门禁配置视为验收通过；执行后以对应 commit 的 Actions run 为准。

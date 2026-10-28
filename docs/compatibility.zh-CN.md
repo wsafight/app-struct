@@ -1,20 +1,16 @@
-# 兼容性契约
+# 当前格式契约
 
-持久化与生成契约只在下表范围内兼容，范围外一律失败关闭。当前代码只写入 `current` 版本；
-从 `minimum` 到 `current` 的版本由对应 crate 按其策略直接读取或迁移。
+只读写当前格式，旧格式与未来格式均明确拒绝。IR 应从 App Spec 重新编译；项目采用 composition-root 布局。迁移 SQL、历史校验和及事务恢复机制仍保留。
 
 <!-- contract-matrix:start -->
-| 契约 | 最低版本 | 当前版本 |
-| --- | ---: | ---: |
-| `ir` | 7 | 17 |
-| `runtime_api` | 4 | 4 |
-| `module_api` | 1 | 1 |
-| `project_layout` | 1 | 2 |
-| `database_schema` | 1 | 3 |
-| `ownership_manifest` | 1 | 1 |
-| `cache_schema` | 2 | 2 |
-| `transaction_journal` | 1 | 1 |
+| 契约 | 当前版本 |
+| --- | ---: |
+| `ir` | 18 |
+| `runtime_api` | 5 |
+| `module_api` | 1 |
+| `project_layout` | 2 |
+| `database_schema` | 3 |
+| `ownership_manifest` | 1 |
+| `cache_schema` | 2 |
+| `transaction_journal` | 1 |
 <!-- contract-matrix:end -->
-
-测试会用 `appstruct-contracts::CONTRACT_MATRIX` 校验此表。修改契约版本时，必须在同一变更中
-更新迁移或兼容实现及本文档。

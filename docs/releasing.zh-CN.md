@@ -60,14 +60,16 @@ scripts/verify-packages.sh
 ```text
 appstruct-core and appstruct-contracts
 appstruct-ir, appstruct-module-sdk, and appstruct-runtime
-appstruct-schema
 appstruct-compiler
+appstruct-schema
 appstruct-migrate
 appstruct-codegen
 appstruct-cli
 ```
 
 对每个包使用 `cargo publish -p <package> --locked`。二进制包名是 `appstruct-cli`，安装后的可执行文件是 `appstruct`。crates.io 发布仍由维护者手动执行，因此源码标签不能消费仓库凭据。
+
+顺序也包含打包时解析的开发依赖：schema 和 migrate 的测试使用 compiler，所以 compiler 必须先进入索引。
 
 ## 准备二进制发布
 

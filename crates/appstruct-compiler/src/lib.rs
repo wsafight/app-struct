@@ -63,9 +63,56 @@ pub fn compile_project(project_root: &Path) -> Result<AppIr, Vec<Diagnostic>> {
 ///
 /// Returns all fatal diagnostics found during loading and semantic validation.
 pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<Diagnostic>> {
+    compile_with_domain(project_root, None)
+}
+
+/// Compile a proposed domain and its include entirely in memory, without changing the project.
+///
+/// # Errors
+///
+/// Returns normal compiler diagnostics, or rejects a non-relative or ambiguous domain path.
+pub fn compile_project_with_domain(
+    project_root: &Path,
+    relative: &Path,
+    source: &str,
+) -> Result<CompileReport, Vec<Diagnostic>> {
+    if relative.as_os_str().is_empty()
+        || relative
+            .components()
+            .any(|part| !matches!(part, std::path::Component::Normal(_)))
+        || relative.to_str().is_none()
+        || !matches!(
+            relative.extension().and_then(|value| value.to_str()),
+            Some("yaml" | "yml")
+        )
+    {
+        return Err(vec![Diagnostic::error(
+            "AS1010",
+            "preview domain must have a project-relative YAML path",
+            loading::synthetic_span("appstruct.yaml"),
+        )]);
+    }
+    compile_with_domain(project_root, Some((relative, source)))
+}
+
+fn compile_with_domain(
+    project_root: &Path,
+    proposed: Option<(&Path, &str)>,
+) -> Result<CompileReport, Vec<Diagnostic>> {
     let root = canonical_project_root(project_root)?;
     let root_node = loading::load_yaml(&root, &root.join("appstruct.yaml"))?;
-    let surface_root = surface::decode_root(&root_node)?;
+    let mut surface_root = surface::decode_root(&root_node)?;
+    if let Some((relative, _)) = proposed
+        && !surface_root
+            .includes
+            .iter()
+            .any(|include| Path::new(&include.value) == relative)
+    {
+        surface_root.includes.push(surface::Located {
+            value: relative.to_string_lossy().into_owned(),
+            span: loading::synthetic_span("appstruct.yaml"),
+        });
+    }
     let mut diagnostics = validation::validate_root(&surface_root);
     diagnostics.extend(preset::validate_lock(&root, &surface_root));
     let (local_modules, module_diagnostics) =
@@ -80,7 +127,13 @@ pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<
     let mut application = surface::SurfaceDomain::default();
 
     for include in &surface_root.includes {
-        let include_path = match loading::resolve_include(&root, include) {
+        let override_source =
+            proposed.filter(|(relative, _)| *relative == Path::new(&include.value));
+        let resolved = override_source.map_or_else(
+            || loading::resolve_include(&root, include),
+            |(relative, _)| Ok(root.join(relative)),
+        );
+        let include_path = match resolved {
             Ok(path) => path,
             Err(error) => {
                 diagnostics.push(error);
@@ -101,9 +154,11 @@ pub fn compile_project_report(project_root: &Path) -> Result<CompileReport, Vec<
             continue;
         }
 
-        match loading::load_yaml(&root, &include_path)
-            .and_then(|node| surface::decode_domain(&node))
-        {
+        let domain_node = override_source.map_or_else(
+            || loading::load_yaml(&root, &include_path),
+            |(_, source)| yaml::parse(&include.value, source).map_err(|error| vec![error]),
+        );
+        match domain_node.and_then(|node| surface::decode_domain(&node)) {
             Ok(domain) => application.extend(domain),
             Err(mut errors) => diagnostics.append(&mut errors),
         }

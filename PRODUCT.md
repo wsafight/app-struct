@@ -1,7 +1,7 @@
 # AppStruct 产品需求文档
 
 > 状态：Implementation Baseline v1.3<br>
-> 日期：2026-08-30<br>
+> 日期：2026-10-27<br>
 > 产品类型：配置驱动的 Rust 全栈应用生成框架<br>
 > 文档范围：产品定位、用户体验、功能边界、MVP 和验收标准
 
@@ -9,7 +9,7 @@
 
 ## 0. 当前实现基线
 
-截至 2026-08-30，仓库已完成 M0 至 M6，并在 M1 后完成生成器与编译器的模块化重构：
+截至 2026-10-27，仓库已完成 M0 至 M6，并在 M1 后完成生成器与编译器的模块化重构：
 
 | 里程碑 | 状态 | 已固化能力 |
 | --- | --- | --- |
@@ -34,7 +34,9 @@
 | TP 升级事务 | 已完成 | staging workspace 全量生成/构建/测试、源文件并发检测及 lock/generated 联合 journal 提交与恢复 |
 | TP 发布准备 | 已完成 | crates.io 元数据与本地 package 验证、macOS/Linux tag 构建、压缩包及 SHA-256 |
 | Runtime/Module 边界 | 已完成 | 独立 `appstruct-runtime` 与 `appstruct-module-sdk`、官方 capability graph、生成 server composition root |
-| 内部契约加固 | 已完成 | Runtime/Module 版本、IR v7-v17 兼容迁移、本地 manifest Artifact 隔离、增量缓存、布局 v1/v2 和故障恢复注入测试；版本矩阵见 `docs/compatibility.zh-CN.md` |
+| 内部契约加固 | 已完成 | Runtime/Module 版本、当前 IR 17/snapshot 3/layout 2 契约、本地 manifest Artifact 隔离、增量缓存和故障恢复注入测试；版本矩阵见 `docs/compatibility.zh-CN.md` |
+
+2026-10-27 补齐了已有数据库显式 baseline、注册/验证邮件限流、用户拥有的品牌主题入口、审计和文件生命周期、业务扩展示例及只读模板 diff。生成 Web 已去除直接 Zod 依赖，表单共用 `valueError`。实现、实际本地验收和待平台执行项见[交付优化](docs/optimization-progress.zh-CN.md)；能力边界与后续投入条件见[产品路线图](docs/next-product-roadmap.zh-CN.md)。这些记录不代表已公开发布或完成真实用户研究。
 
 M2 的 `migrate plan` 保持纯只读差异预览；`migrate dev --accept` 只接受 `NonDestructive + Online` 变更，并以 staging 文件提交迁移草稿和 schema snapshot。Migration Runner 已补齐磁盘迁移、snapshot 与目标数据库之间的执行状态：配置 `DATABASE_URL` 时 dev 会继续 apply，未配置时迁移保留为 pending；`migrate apply/status` 不从 Spec 生成或修改文件。
 
@@ -44,17 +46,17 @@ CRUD 写路径已在显式 SQLx 事务内执行：`before_create/update/delete`�
 
 M4 已将 `modules.auth` 和 `modules.rbac` 纳入 Surface、Typed IR、Compiler 校验与全部生成器。启用认证的应用会生成注册、登录、退出、当前用户和可选密码重置流程，使用 Argon2id 密码哈希、只保存 hash 的 opaque session/reset token、`HttpOnly` session Cookie、CSRF token 和 Origin 校验。账户注册后会签发 24 小时有效的一次性邮箱验证 token，认证响应提供 `email_verified`，登录用户可请求重新发送，确认接口在事务内标记 `email_verified_at` 并消费 token。可选的 `modules.auth.oauth: true` 发布 OIDC authorization-code 登录，使用环境变量配置 provider，短期 state cookie 防重放，按 provider+subject 绑定本地用户且不持久化 provider token。认证用户还可以创建带名称和可选过期时间的个人 API token；Runtime 只保存 SHA-256 hash，支持 Bearer 认证并记录最近使用时间，明文只返回一次。Actor 被注入普通及事务内 `RequestContext`，`public/authenticated/role/owner/any/all` 规则在后端执行；列表和按 ID 读取会将 owner/RBAC 转换为 参数化 SQL 查询条件。React 生成物包含认证状态、登录/注册/密码重置/邮箱确认页面、OIDC SSO、API token 管理页、路由守卫和退出入口，TypeScript client 默认携带 Cookie 并自动发送 CSRF，OpenAPI 同步发布 Cookie/Bearer security scheme 和启用的 Auth endpoint。
 
-社交登录现在支持按应用声明 `modules.auth.providers: [google, github]`，旧的 `oauth: true` 仍表示通用 OIDC。生成应用现在可按 Spec 启用 Stripe Billing v1（订阅、试用、客户门户和签名 Webhook 幂等处理）；使用 `appstruct capabilities --format json` 可查看 Provider 矩阵与必需环境变量。
+社交登录现在支持按应用声明 `modules.auth.providers: [google, github]`，`oauth: true` 表示通用 OIDC。生成应用现在可按 Spec 启用 Stripe Billing v1（订阅、试用、客户门户和签名 Webhook 幂等处理）；使用 `appstruct capabilities --format json` 可查看 Provider 矩阵与必需环境变量。
 
 M4 已通过独立本地 PostgreSQL 数据库验收：覆盖匿名 401、注册与 Cookie、CSRF 403、owner 数据隔离、admin 跨 owner 访问、member 删除 403、ETag `rev-1/rev-2`、缺少 `If-Match` 的 428、陈旧 revision 的 412，以及密码重置 token 单次使用、旧 session 撤销和新密码登录。验收数据库在测试后已回收。
 
 Migration Runner 使用 `_appstruct_migrations` 保存 migration ID、文件 SHA-256、`applying/applied/failed` 状态和时间；session advisory lock 阻止同一数据库并发 apply。迁移默认与历史写入共享事务；带 `-- appstruct:transaction=off` 的审查后迁移在事务外执行，失败会留下 dirty history 并要求人工恢复。每次 `migrate dev` 生成的最新迁移都绑定 schema snapshot checksum；已执行文件被修改、历史缺失/乱序或 snapshot 不匹配时 apply/status 会拒绝继续。全部迁移完成后，status 从 PostgreSQL catalog 校验业务表、列类型/null/default/identity、主键/唯一、enum CHECK 和外键；存在 pending 时明确延后 drift 判断，避免把尚未执行的目标 schema 误报为漂移。
 
-ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新生成先获取 `.appstruct/generation.lock` 的跨进程排他锁，再拒绝未知文件和 hash 已变化的生成文件。完整 staging 通过 manifest 校验后，CLI 向 `.appstruct/generation.journal` 追加并持久化 `prepared/backed_up/installed` phase，随后交换同级 staging/backup 目录。下次生成在持锁状态下根据 journal 和三个目录的实际组合完成提交或回滚；缺少 journal 的旧版遗留目录也能恢复，歧义组合则保留现场并失败。`app/` 不进入该事务。
+ownership manifest 为每个 Artifact 记录路径、类别和 SHA-256。重新生成先获取 `.appstruct/generation.lock` 的跨进程排他锁，再拒绝未知文件和 hash 已变化的生成文件。完整 staging 通过 manifest 校验后，CLI 向 `.appstruct/generation.journal` 追加并持久化 `prepared/backed_up/installed` phase，随后交换同级 staging/backup 目录。下次生成在持锁状态下根据 journal 和三个目录的实际组合完成提交或回滚；缺少 journal 的事务中断目录也会校验完整树后恢复，歧义组合则保留现场并失败。`app/` 不进入该事务。
 
 无输入变化时，generation cache 在重新编译前校验输入、CLI executable、ownership manifest 和完整 generated tree hash，命中后跳过 Compiler、Codegen、Prettier 与目录事务。dev backend build cache 覆盖 generated backend/server 和用户 `app/backend` Rust 输入；Web install cache 覆盖 package/lock 和 `.pnpm` 安装状态。缓存删除后可完整重建，不能绕过 ownership 或未知文件检查。事务测试可在 backed-up 与 installed phase 注入失败，分别验证回滚旧树和完成新树。
 
-`appstruct new <name> --template minimal|dashboard|saas` 已提供不覆盖的一次性项目创建。`minimal` 生成 external PostgreSQL 的公开 Note 应用；`dashboard` 生成 managed PostgreSQL Compose、Auth/RBAC/owner 和 User/Project/Task 三实体项目管理应用；`saas` 锁定 `appstruct/saas@1`，生成 Tenant/Audit 化的 Project/Task 骨架和 Mail/Jobs/File 开发配置。三个模板都提交带 `project_layout_version = 2` 的 `appstruct.lock`、`rust-toolchain.toml`、`.env.example` 和本地状态忽略规则，首次 generate 再产生固定的 `pnpm-lock.yaml`；目标或 sibling staging 已存在时创建会中止。布局 v1 直接运行 generated backend，v2 使用 server composition root；普通 build/dev 只按 lock 协议选择，未版本化 lock 由显式 update 一次性迁移。
+`appstruct new <name> --template minimal|dashboard|saas` 已提供不覆盖的一次性项目创建。`minimal` 生成 external PostgreSQL 的公开 Note 应用；`dashboard` 生成 managed PostgreSQL Compose、Auth/RBAC/owner 和 User/Project/Task 三实体项目管理应用；`saas` 锁定 `appstruct/saas@1`，生成 Tenant/Audit 化的 Project/Task 骨架和 Mail/Jobs/File 开发配置。三个模板都提交带 `project_layout_version = 2` 的 `appstruct.lock`、`rust-toolchain.toml`、`.env.example` 和本地状态忽略规则，首次 generate 再产生固定的 `pnpm-lock.yaml`；目标或 sibling staging 已存在时创建会中止。只支持 layout 2 的 server composition root；无 lock 的独立 Spec 使用当前布局，已有 lock 缺少布局版本或声明旧布局时明确拒绝。update 不转换历史布局。
 
 `appstruct doctor --format text|json` 检查 1.99 Rust/Cargo、rustfmt、Clippy、固定 pnpm 版本和数据库开发模式。managed 模式验证 Compose 文件及 Docker/Compose 服务；external 模式从进程环境或 `.env` 读取 `DATABASE_URL` 并执行 migration status，不在输出中暴露连接串。`appstruct build` 先生成 canonical Artifact，再对固定 Rust dependency lock 执行 fmt、release Clippy 和 release build，并对 pnpm lock 执行 Prettier check、TypeScript 检查和 Rsbuild。生成 TypeScript 在 manifest hash 计算前由 lockfile 固定的 Prettier 格式化，`generate --check` 与 build 因此使用同一份字节输出。
 
@@ -875,7 +877,7 @@ Template 可以包含初始领域配置、用户可修改的 React 页面、邮�
 | 数据请求 | TanStack Query |
 | 路由 | TanStack Router |
 | 表格 | TanStack Table |
-| 表单 | TanStack Form + Zod |
+| 表单 | TanStack Form + 共享 `valueError` 校验 |
 | UI 基础 | shadcn/ui 风格组件层 |
 
 产品层面承诺的是契约和能力，不是让用户在 MVP 阶段自由替换每一层技术组件。

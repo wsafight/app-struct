@@ -1,7 +1,7 @@
 # AppStruct Product Requirements
 
 > Status: Implementation Baseline v1.3<br>
-> Date: 2026-08-30<br>
+> Date: 2026-10-27<br>
 > Product type: configuration-driven Rust full-stack application generation framework<br>
 > Document scope: product positioning, user experience, feature boundaries, MVP, and acceptance criteria
 
@@ -10,7 +10,7 @@ This is the product baseline, not a getting-started guide. To build an applicati
 
 ## 0. Current Implementation Baseline
 
-As of 2026-08-30, the repository has completed M0 through M6, and after M1 it completed a modular refactor of the generator and compiler:
+As of 2026-10-27, the repository has completed M0 through M6, and after M1 it completed a modular refactor of the generator and compiler:
 
 | Milestone | Status | Frozen capabilities |
 | --- | --- | --- |
@@ -35,7 +35,9 @@ As of 2026-08-30, the repository has completed M0 through M6, and after M1 it co
 | TP upgrade transaction | Complete | Full generate/build/test in a staging workspace, source-file concurrency detection, and joint lock/generated journal commit and recovery |
 | TP release readiness | Complete | crates.io metadata and local package verification, macOS/Linux tag builds, archives, and SHA-256 |
 | Runtime/Module boundary | Complete | Standalone `appstruct-runtime` and `appstruct-module-sdk`, official capability graph, generated server composition root |
-| Internal contract hardening | Complete | Runtime/Module versions, IR v7-v17 compatibility migrations, isolated local-manifest Artifacts, incremental cache, layout v1/v2, and crash-recovery injection tests; see `docs/compatibility.md` |
+| Internal contract hardening | Complete | Runtime/Module versions, current IR 17/snapshot 3/layout 2 contracts, isolated local-manifest Artifacts, incremental cache, and crash-recovery injection tests; see `docs/compatibility.md` |
+
+The 2026-10-27 changes add explicit existing-database baseline, registration/verification limits, user-owned branding/themes, audit and file lifecycle, an extension example and read-only template diff. Generated Web removes its direct Zod dependency and shares `valueError` across forms. See [delivery optimization](docs/optimization-progress.md) for implementation, actual local checks and pending platform runs, and the [product roadmap](docs/next-product-roadmap.md) for boundaries and investment criteria. These records establish neither a public release nor real-user studies.
 
 M2 `migrate plan` remains a read-only diff preview. `migrate dev --accept` accepts only `NonDestructive + Online` changes and commits the migration draft and schema snapshot as staging files. Migration Runner now tracks execution state across on-disk migrations, the snapshot, and the target database: when `DATABASE_URL` is set, dev continues to apply; otherwise migrations stay pending. `migrate apply/status` neither generate nor modify files from the Spec.
 
@@ -51,11 +53,11 @@ Social login can now declare `modules.auth.providers: [google, github]`; `oauth:
 
 Migration Runner uses `_appstruct_migrations` to store migration ID, file SHA-256, `applying/applied/failed` status, and timestamps. A session advisory lock prevents concurrent apply against the same database. Migrations share a transaction with history writes by default. Reviewed migrations marked `-- appstruct:transaction=off` run outside a transaction. Failure leaves dirty history and requires manual recovery. Every latest migration produced by `migrate dev` is bound to a schema snapshot checksum. apply/status refuse to continue when an already-applied file has been modified, history is missing/out of order, or the snapshot does not match. After all migrations complete, status checks business tables, column type/null/default/identity, primary/unique keys, enum CHECK, and foreign keys against the PostgreSQL catalog. When pending migrations exist, drift judgment is deferred so a not-yet-applied target schema is not reported as drift.
 
-The ownership manifest records path, category, and SHA-256 for every Artifact. Regeneration first acquires a cross-process exclusive lock on `.appstruct/generation.lock`, then rejects unknown files and generated files whose hash has changed. After a complete staging tree passes manifest checks, the CLI appends to `.appstruct/generation.journal` and persists `prepared/backed_up/installed` phases, then swaps sibling staging/backup directories. The next generate, while holding the lock, commits or rolls back from the journal and the actual combination of the three directories. Legacy directories without a journal can still be recovered. Ambiguous combinations leave the scene intact and fail. `app/` is not part of this transaction.
+The ownership manifest records path, category, and SHA-256 for every Artifact. Regeneration first acquires a cross-process exclusive lock on `.appstruct/generation.lock`, then rejects unknown files and generated files whose hash has changed. After a complete staging tree passes manifest checks, the CLI appends to `.appstruct/generation.journal` and persists `prepared/backed_up/installed` phases, then swaps sibling staging/backup directories. The next generate, while holding the lock, commits or rolls back from the journal and the actual combination of the three directories. Interrupted transaction directories without a journal are also recovered after validating the complete tree. Ambiguous combinations leave the scene intact and fail. `app/` is not part of this transaction.
 
 When inputs have not changed, the generation cache validates inputs, the CLI executable, the ownership manifest, and the full generated tree hash before recompiling. A hit skips Compiler, Codegen, Prettier, and the directory transaction. The dev backend build cache covers generated backend/server and user `app/backend` Rust inputs. The Web install cache covers package/lock and `.pnpm` install state. Deleting the cache allows a full rebuild and cannot bypass ownership or unknown-file checks. Transaction tests can inject failure at the backed-up and installed phases to verify rollback of the old tree and completion of the new tree.
 
-`appstruct new <name> --template minimal|dashboard|saas` already provides one-shot project creation that never overwrites. `minimal` generates a public Note app for external PostgreSQL. `dashboard` generates managed PostgreSQL Compose, Auth/RBAC/owner, and a three-entity User/Project/Task project-management app. `saas` locks `appstruct/saas@1` and generates a Tenant/Audit Project/Task skeleton plus Mail/Jobs/File development configuration. All three templates commit `appstruct.lock` with `project_layout_version = 2`, `rust-toolchain.toml`, `.env.example`, and local-state ignore rules. The first generate then produces a pinned `pnpm-lock.yaml`. Creation aborts if the target or a sibling staging directory already exists. Layout v1 runs the generated backend directly. v2 uses a server composition root. Ordinary build/dev select by the lock protocol only. An unversioned lock is migrated once by an explicit update.
+`appstruct new <name> --template minimal|dashboard|saas` already provides one-shot project creation that never overwrites. `minimal` generates a public Note app for external PostgreSQL. `dashboard` generates managed PostgreSQL Compose, Auth/RBAC/owner, and a three-entity User/Project/Task project-management app. `saas` locks `appstruct/saas@1` and generates a Tenant/Audit Project/Task skeleton plus Mail/Jobs/File development configuration. All three templates commit `appstruct.lock` with `project_layout_version = 2`, `rust-toolchain.toml`, `.env.example`, and local-state ignore rules. The first generate then produces a pinned `pnpm-lock.yaml`. Creation aborts if the target or a sibling staging directory already exists. Only layout 2 with a server composition root is supported. A standalone Spec without a lock uses the current layout; an existing lock with a missing or old layout version is rejected. Update does not convert historical layouts.
 
 `appstruct doctor --format text|json` checks Rust 1.99/Cargo, rustfmt, Clippy, the pinned pnpm version, and the database development mode. Managed mode validates the Compose file and Docker/Compose services. External mode reads `DATABASE_URL` from the process environment or `.env` and runs migration status. Connection strings are never exposed in output. `appstruct build` first generates canonical Artifacts, then runs fmt, release Clippy, and release build against the pinned Rust dependency lock, and Prettier check, TypeScript check, and Rsbuild against the pnpm lock. Generated TypeScript is formatted by the lockfile-pinned Prettier before the manifest hash is computed, so `generate --check` and build use the same bytes.
 
@@ -67,7 +69,7 @@ M5 quality gates are frozen. Complete `generated/` trees of two independent proj
 
 The M6 SaaS Template gate creates a real `saas` project from the CLI and switches it to a dedicated external PostgreSQL. It verifies Preset lock, the five module tables, migrations, generated Web TypeScript, registration, organization selection, Project/Task writes, Audit events, and empty cross-tenant results. Playwright screenshots the 1440x900 Audit page and the 390x844 Project page. Mobile tables stay inside the viewport and use local horizontal scroll. `examples/saas-demo` is compared byte-for-byte with the CLI template to prevent example drift.
 
-The 2026-08-30 operations hardening completed production semantics for interval-only Schedule, signed Webhook, and Realtime. Schedule accepts only fixed-interval expressions. After process downtime it fires once and skips backlog. Definitions removed from the Spec are disabled at startup. The Webhook worker uses configurable connect/read/total timeouts and provides Admin delivery retry/replay. Realtime trims events by resource/record Policy, fans out across instances through a short-lived PostgreSQL event table, redacts generated CRUD payloads for the browser, and provides database TTL presence plus an optional exclusive edit lease. Saved views are still private named browser state. URLs share only a query snapshot, not a server-side team view.
+The 2026-08-30 operations hardening completed production semantics for interval-only Schedule, signed Webhook, and Realtime. Schedule accepts only fixed-interval expressions. After process downtime it fires once and skips backlog. Definitions removed from the Spec are disabled at startup. The Webhook worker uses configurable connect/read/total timeouts and provides Admin delivery retry/replay. Realtime trims events by resource/record Policy, fans out across instances through a short-lived PostgreSQL event table, redacts generated CRUD payloads for the browser, and provides database TTL presence plus an optional exclusive edit lease. Saved views support browser-private, server-private and tenant-shared team state. URLs can share query and report configuration.
 
 Entities support ordered composite indexes and partial indexes with a `where` predicate. Indexes enter IR, the schema snapshot, and initial migration SQL, and migration status checks them for drift. Adding an index to an existing table is marked as potentially locking. Deleting or changing an index does not auto-generate destructive SQL.
 
@@ -900,7 +902,7 @@ The following is the first-version default stack. It is not a long-term multi-im
 | Data fetching | TanStack Query |
 | Routing | TanStack Router |
 | Tables | TanStack Table |
-| Forms | TanStack Form + Zod |
+| Forms | TanStack Form + shared `valueError` validation |
 | UI foundation | shadcn/ui-style component layer |
 
 What the product promises is contracts and capabilities, not that users can freely replace every technical layer during MVP.

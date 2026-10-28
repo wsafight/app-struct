@@ -136,6 +136,7 @@ pub(super) async fn account_email_verified(
 pub(super) async fn issue_email_verification(
     state: &AppState, user_id: uuid::Uuid, email: &str,
 ) -> Result<(), ApiError> {
+    state.auth.consume_auth_rate_limit(&state.database, &format!("verify:{user_id}")).await?;
     let token = random_token();
     state.database.execute(Sql::bind("DELETE FROM \"_appstruct_auth_email_verifications\" WHERE user_id = $1 AND used_at IS NULL",
         [user_id.into()],

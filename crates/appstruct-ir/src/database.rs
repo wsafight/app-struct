@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 pub struct DatabaseIr {
     pub provider: DatabaseProvider,
     pub dev_mode: DatabaseDevMode,
-    #[serde(default)]
     pub dev_migration: DatabaseMigrationPolicy,
 }
 

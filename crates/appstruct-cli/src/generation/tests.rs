@@ -61,7 +61,7 @@ fn backed_up_recovery_finishes_an_installed_tree() {
 }
 
 #[test]
-fn journal_free_legacy_backup_is_recovered() {
+fn journal_free_backup_is_recovered() {
     let temporary = tempfile::tempdir().unwrap();
     write_tree(&temporary.path().join(".generated.appstruct-backup"), "old");
     write_tree(

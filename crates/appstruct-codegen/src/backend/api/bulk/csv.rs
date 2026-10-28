@@ -95,6 +95,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
     quote! {
         async fn import_csv(State(state): State<AppState>, headers: HeaderMap, body: String) -> Result<Json<BulkResult>, ApiError> {
             let context = state.mutation_context(&headers).await?;
+            let batch = crate::import_batches::key(&headers)?;
             let rows = parse_csv_rows(&body)
                 .map_err(|error| ApiError::InvalidQuery(error.to_string()))?;
             let Some(header_row) = rows.first() else { return Ok(Json(BulkResult { succeeded: Vec::new(), failed: Vec::new() })); };
@@ -108,6 +109,9 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
             }
             if header_row.iter().map(String::as_str).any(|name| !expected.contains(&name)) { return Err(ApiError::InvalidQuery("CSV contains an unknown column".to_owned())); }
             let actor = context.actor().cloned(); let tenant = context.tenant(); let transaction = state.database.begin().await?;
+            if let Some(result) = crate::import_batches::begin(&transaction, &context, #entity_id, batch, &body).await? {
+                return Ok(Json(result));
+            }
             let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };
             let mut created = Vec::new();
             for (index, row) in rows.iter().skip(1).enumerate() {
@@ -145,6 +149,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                         return Err(ApiError::Forbidden);
                     }
                     let active = #module::Model { #(#create_values,)* #active_default };
+                    validate_candidate(&active)?;
                     let model = active.insert(&savepoint).await?;
                     state.extensions.#hooks().after_create(&context, &model).await?;
                     #audit
@@ -163,12 +168,18 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                     }
                 }
             }
+            crate::import_batches::finish(&transaction, &context, #entity_id, batch, &result).await?;
             transaction.commit().await?;
             for model in &created {
                 publish_realtime_event(&state, &context, #create_event, model);
                 run_after_commit(&state, crate::HookOperation::Create, model, actor.clone(), tenant).await;
             }
             Ok(Json(result))
+        }
+
+        async fn import_result(State(state): State<AppState>, headers: HeaderMap, Path(batch): Path<uuid::Uuid>) -> Result<Json<BulkResult>, ApiError> {
+            let context = state.context(&headers).await?;
+            crate::import_batches::result(&context, #entity_id, batch).await.map(Json)
         }
     }
 }

@@ -72,11 +72,6 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             ArtifactKind::RustSource,
         ),
         Artifact::text(
-            "backend/src/main.rs",
-            rust_template(include_str!("../templates/backend/main.rs"))?,
-            ArtifactKind::RustSource,
-        ),
-        Artifact::text(
             "backend/src/error.rs",
             rust_template(include_str!("../templates/backend/error.rs"))?,
             ArtifactKind::RustSource,
@@ -87,6 +82,11 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             ArtifactKind::RustSource,
         ),
         database_artifact()?,
+        Artifact::text(
+            "backend/src/import_batches.rs",
+            rust_template(include_str!("../templates/backend/import_batches.rs"))?,
+            ArtifactKind::RustSource,
+        ),
         Artifact::text(
             "backend/src/database/query.rs",
             rust_template(include_str!("../templates/backend/database/query.rs"))?,
@@ -213,13 +213,14 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub mod api;
         pub mod entities;
         pub mod extensions;
-        mod audit;
+        pub mod audit;
         mod activity;
         mod auth;
         mod billing;
         mod error;
         mod file;
         mod jobs;
+        mod import_batches;
         mod logging;
         mod mail;
         mod metrics;

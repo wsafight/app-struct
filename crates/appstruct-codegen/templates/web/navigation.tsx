@@ -1,3 +1,4 @@
+import { t } from "./ui";
 import {
   Link as RouterLink,
   Navigate as RouterNavigate,
@@ -285,7 +286,7 @@ export function RuntimeRouter({ router }: { router: AnyRouter }) {
   return (
     <AppErrorBoundary>
       <Suspense
-        fallback={<div className="auth-loading" aria-label="Loading" />}
+        fallback={<div className="auth-loading" aria-label={t("Loading")} />}
       >
         <RouterProvider router={router} />
       </Suspense>
@@ -304,12 +305,12 @@ class AppErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("Application render failed", error, info.componentStack);
+    console.error(t("Application render failed"), error, info.componentStack);
   }
 
   render() {
     return this.state.failed ? (
-      <RecoveryPage title="Application unavailable" />
+      <RecoveryPage title={t("Application unavailable")} />
     ) : (
       this.props.children
     );
@@ -317,16 +318,17 @@ class AppErrorBoundary extends Component<
 }
 
 function RouteErrorPage() {
-  return <RecoveryPage title="Page unavailable" />;
+  return <RecoveryPage title={t("Page unavailable")} />;
 }
 
 function NotFoundPage() {
   return (
     <main className="auth-page">
       <section className="auth-panel">
-        <h1>Page not found</h1>
+        <h1>{t("Page not found")}</h1>
         <a className="primary-button" href="/">
-          Go home
+          {" "}
+          {t("Go home")}
         </a>
       </section>
     </main>
@@ -343,7 +345,7 @@ function RecoveryPage({ title }: { title: string }) {
           type="button"
           onClick={() => window.location.reload()}
         >
-          Reload
+          {t("Reload")}
         </button>
       </section>
     </main>

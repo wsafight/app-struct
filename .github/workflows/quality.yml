@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       full:
-        description: Run all PostgreSQL modules, production containers, packaging and benchmarks.
+        description: Run all PostgreSQL modules, production containers, Windows installer, packaging and benchmarks.
         type: boolean
         default: false
 
@@ -33,6 +33,7 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      - run: python3 scripts/test-record-journey.py
       - name: Check shell scripts and E2E cleanup
         run: |
           for script in scripts/*.sh; do bash -n "$script"; done
@@ -111,7 +112,8 @@ jobs:
         if: matrix.suite == 'authorization'
         run: |
           cargo test --locked -p appstruct-migrate --test postgres
-          cargo test --locked -p appstruct-cli --test db_pull_cli
+          cargo test --locked -p appstruct-cli --test db_pull_cli --test migration_baseline
+          cargo test --locked -p appstruct-codegen --test auth_rate_limit --test data_lifecycle --test extension_journey --test import_batches --test form_rules
       - name: Run PostgreSQL suite
         run: bash "scripts/run-$E2E_SUITE-e2e.sh"
       - uses: actions/upload-artifact@v4
@@ -157,6 +159,37 @@ jobs:
           path: |
             output/deployment/
             output/e2e-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  windows-installer:
+    name: Windows installer
+    if: inputs.full
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build native CLI and test local archive installation
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup show active-toolchain
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Rust toolchain setup failed' }
+          cargo build --release --locked -p appstruct-cli --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw 'Windows CLI build failed' }
+          $metadataJson = cargo metadata --locked --no-deps --format-version=1
+          if ($LASTEXITCODE -ne 0) { throw 'Cargo metadata failed' }
+          $metadata = $metadataJson | ConvertFrom-Json
+          $version = ($metadata.packages | Where-Object { $_.name -eq 'appstruct-cli' }).version
+          ./scripts/package-release.ps1 -Version $version -Binary 'target/x86_64-pc-windows-msvc/release/appstruct.exe' -OutputDir dist
+          ./scripts/test-installer.ps1 -ArchiveDir dist -Version $version
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-installer-archives
+          path: dist/*
           if-no-files-found: ignore
           retention-days: 7
 

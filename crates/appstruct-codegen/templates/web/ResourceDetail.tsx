@@ -1,3 +1,4 @@
+import { t } from "../ui";
 import { ArrowLeft, Edit3 } from "lucide-react";
 import { AsyncState } from "../components/AsyncState";
 import { useResourceDetailController } from "../controller";
@@ -13,20 +14,33 @@ import {
   useResourceActor,
 } from "../resource";
 import { formatFieldValue } from "./ResourceList";
-import { WorkflowActions } from "./WorkflowActions";__DETAIL_IMPORTS__
+import { WorkflowActions } from "./WorkflowActions";
+__DETAIL_IMPORTS__;
 
-export function ResourceDetail({ resource, resources, registry }: { resource: ResourceDefinition; resources: ResourceDefinition[]; registry?: AppStructRegistry }) {
+export function ResourceDetail({
+  resource,
+  resources,
+  registry,
+}: {
+  resource: ResourceDefinition;
+  resources: ResourceDefinition[];
+  registry?: AppStructRegistry;
+}) {
   const { id } = useParams();
   const actor = useResourceActor();
   const controller = useResourceDetailController(resource, id);
   const record = controller.record;
-  const relations = useRelationRecords(resources, record ? [record] : [], resource.fields);
+  const relations = useRelationRecords(
+    resources,
+    record ? [record] : [],
+    resource.fields,
+  );
 
   if (!controller.canRead) {
     return (
       <main className="page">
         <div className="alert" role="alert">
-          You do not have permission to view this resource.
+          {t("You do not have permission to view this resource.")}{" "}
         </div>
       </main>
     );
@@ -39,9 +53,7 @@ export function ResourceDetail({ resource, resources, registry }: { resource: Re
           <Link className="back-link" to={`/${resource.slug}`}>
             <ArrowLeft size={16} /> {resource.label}
           </Link>
-          <h1>
-            {record ? recordLabel(resource, record) : resource.label}
-          </h1>
+          <h1>{record ? recordLabel(resource, record) : resource.label}</h1>
         </div>
         <div className="detail-actions">
           {id && record && <WorkflowActions id={id} resource={resource} />}
@@ -50,7 +62,7 @@ export function ResourceDetail({ resource, resources, registry }: { resource: Re
               className="primary-button"
               to={`/${resource.slug}/${encodeURIComponent(id)}/edit`}
             >
-              <Edit3 size={16} /> Edit
+              <Edit3 size={16} /> {t("Edit")}
             </Link>
           )}
         </div>
@@ -81,15 +93,38 @@ export function ResourceDetail({ resource, resources, registry }: { resource: Re
                 <div key={field.name}>
                   <dt>{field.label}</dt>
                   <dd className={field.semantic ? "semantic-value" : undefined}>
-                    {field.relation ? <RelationValue field={field} value={record[field.name]} resources={resources} records={relations} /> : formatFieldValue(record, field)}
+                    {field.relation ? (
+                      <RelationValue
+                        field={field}
+                        value={record[field.name]}
+                        resources={resources}
+                        records={relations}
+                      />
+                    ) : (
+                      formatFieldValue(record, field)
+                    )}
                   </dd>
                 </div>
               ))}
           </dl>
-          {id && resource.collections?.map((definition) => {
-            const child = resources.find((item) => item.id === definition.child);
-            return child ? <AggregateEditor key={`${id}:${definition.name}`} parent={resource} child={child} definition={definition} id={id} resources={resources} registry={registry} /> : null;
-          })}__DETAIL_EXTRAS__
+          {id &&
+            resource.collections?.map((definition) => {
+              const child = resources.find(
+                (item) => item.id === definition.child,
+              );
+              return child ? (
+                <AggregateEditor
+                  key={`${id}:${definition.name}`}
+                  parent={resource}
+                  child={child}
+                  definition={definition}
+                  id={id}
+                  resources={resources}
+                  registry={registry}
+                />
+              ) : null;
+            })}
+          __DETAIL_EXTRAS__
         </>
       )}
     </main>

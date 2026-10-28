@@ -1,7 +1,7 @@
 # AppStruct Technical Design
 
 > Status: Implementation Baseline v1.2<br>
-> Date: 2026-08-30<br>
+> Date: 2026-10-27<br>
 > Product document: [`PRODUCT.en.md`](PRODUCT.en.md)<br>
 > Target versions: Technical Preview through MVP
 
@@ -49,7 +49,7 @@ M5 determinism, performance, and browser gates are implemented. CLI integration 
 
 M6 is complete. Tenant, Audit, Mail, Jobs, and File modules plus the `appstruct/saas@1` Preset are in the Compiler. Surface configuration first expands official default module maps, then recursively merges user map overrides, and finally lowers to versioned `PresetIr` and module IR. IR `modules` records each enabled module's source, exact version, provides/requires capabilities, deterministic startup order, and isolated static Artifacts. The Compiler fail-closes on AppStruct version, Preset name/version/content digest, and the exact module version set in `appstruct.lock`. CLI `preset show [--expanded]` inspects the contract. The `saas` Template and `examples/saas-demo` provide a locked Preset, managed PostgreSQL, development Mail/File configuration, and a Tenant/Audit Project/Task skeleton. Dedicated external PostgreSQL/Chromium E2E verifies the five module tables, user journeys, tenant isolation, Audit, and desktop/mobile layouts.
 
-Internal contract hardening is complete. IR v7-v16 can migrate in memory to current v17; old IR database migration policy safely degrades to unmanaged. Future versions and semantically unsafe old module graphs fail closed. Authoritative ranges live in `appstruct-contracts::CONTRACT_MATRIX`, with tests synchronizing `docs/compatibility.md` and `docs/compatibility.zh-CN.md`. Root `module_manifests` loads only local TOML under `modules/`, and rejects traversal, symlink, non-UTF-8, and oversized files. Local Artifacts write into the module-owned generated namespace; the local Runtime starter is a no-op. `appstruct.lock` `project_layout_version` distinguishes v1 generated backend from v2 server composition root; directory probing is used only by explicit update to migrate unversioned old projects. Generation and dev build/install use content caches but still run ownership checks. Module Runtime emits structured lifecycle phases; the generated backend records start, failure, rollback, and stop with tracing. Generation-transaction test failpoints cover recovery after backup and after install.
+Internal contract hardening is complete. Only current IR 18, schema snapshot 3, and project layout 2 are read and written. Historical or future formats and missing required versions or fields are rejected. Recompile IR from the Spec; historical formats are neither filled in nor migrated. Authoritative current versions live in `appstruct-contracts::CONTRACT_MATRIX`, with tests synchronizing `docs/compatibility.md` and `docs/compatibility.zh-CN.md`. Root `module_manifests` loads only local TOML under `modules/`, and rejects traversal, symlink, non-UTF-8, and oversized files. Local Artifacts write into the module-owned generated namespace; the local Runtime starter is a no-op. `appstruct.lock` requires `project_layout_version = 2`: the generated backend is a library started by the server composition root. Historical layouts are neither probed nor converted. A standalone Spec without a lock uses the current layout. Generation and dev build/install use content caches but still run ownership checks. Module Runtime emits structured lifecycle phases; the generated backend records start, failure, rollback, and stop with tracing. Generation-transaction test failpoints cover recovery after backup and after install.
 
 Technical Preview contract hardening is complete. The Compiler embeds Draft 2020-12 JSON Schema; `appstruct schema` can emit it without a project. Compile reports keep non-fatal warnings; currently `AS3070` detects anonymous write operations, and `check --deny-warnings` gives CI a fail policy. `appstruct update` holds both generation and update locks, writes a candidate lock in an in-project staging workspace, compiles the full Spec, generates, runs release Rust/Web builds and backend tests, then compares user-file hashes. It finally jointly swaps `appstruct.lock` and ownership-managed `generated/` with a dedicated journal. Crash recovery either rolls both back or finishes an already-installed candidate. Ordinary generate fail-closes if it sees leftover update state.
 
@@ -674,7 +674,7 @@ acquire the project-level generation lock
 
 The guarantee is a recoverable directory transaction, not the non-portable assumption that one rename can overwrite a non-empty directory. `app/`, `migrations/`, and other user directories never enter this transaction.
 
-The current implementation covers ownership/hash checks, path checks, a project-level cross-process file lock, sibling staging/backup, rollback on sync failure, and automatic recovery after a crash. The journal is append-only JSON records of `prepared`, `backed_up`, and `installed` in order. Even if the last line is incomplete because of a crash, recovery can use the previous complete phase plus the directory combination. Legacy staging/backup without a journal rolls back to the existing complete tree. Ambiguous combinations such as all three directories present are not deleted by guessing. Rust Artifacts are rustfmt'd during in-memory planning; TypeScript Artifacts are Prettier-formatted with the lockfile-pinned tool before the manifest is computed. Production build also runs Clippy, Prettier check, TypeScript check, and Rsbuild against the final staging result.
+The current implementation covers ownership/hash checks, path checks, a project-level cross-process file lock, sibling staging/backup, rollback on sync failure, and automatic recovery after a crash. The journal is append-only JSON records of `prepared`, `backed_up`, and `installed` in order. Even if the last line is incomplete because of a crash, recovery can use the previous complete phase plus the directory combination. Interrupted transaction staging/backup without a journal rolls back to the existing complete tree. Ambiguous combinations such as all three directories present are not deleted by guessing. Rust Artifacts are rustfmt'd during in-memory planning; TypeScript Artifacts are Prettier-formatted with the lockfile-pinned tool before the manifest is computed. Production build also runs Clippy, Prettier check, TypeScript check, and Rsbuild against the final staging result.
 
 ## 12. Database Model and Migrations
 
@@ -1198,7 +1198,7 @@ the Manifest references a missing component.
 - Server state is managed by TanStack Query.
 - Client routing and URL state are managed by TanStack Router.
 - List filters, pagination, and sort sync to the URL.
-- Local form state is managed by TanStack Form; Zod supplies validation directly through Standard Schema.
+- Local form state is managed by TanStack Form; submit validation reuses the shared `valueError` function and returns a field error map. The form validator also checks amount/currency pairs.
 - Do not introduce a global Redux-style store for MVP.
 - Permission data is used to show and disable actions; the backend still runs full authorization.
 
@@ -1663,7 +1663,7 @@ These later questions need separate ADRs. First-version protocols that have alre
 1. Whether large projects need remote or package-level Spec dependencies.
 2. Whether Session adds a Redis Provider.
 3. Sandboxing, IR-fragment permissions, and non-lockstep runtime compatibility for executable third-party Modules.
-4. Cross-version compatibility migration strategy for `.appstruct/schema.snapshot.json`.
+4. Whether future public format changes need an explicit converter and data-protection contract; `.appstruct/schema.snapshot.json` currently accepts only version 3.
 5. Authorization, cache, and migration semantics for cursor pagination and bulk writes.
 
 ## 31. Definition of Done

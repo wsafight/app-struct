@@ -1,3 +1,4 @@
+mod baseline;
 mod catalog;
 mod history;
 mod project;
@@ -9,6 +10,8 @@ use std::fmt;
 use std::path::Path;
 
 use project::{MigrationFile, ProjectMigrations, reconcile};
+
+pub use baseline::{BaselineStatus, baseline_project, inspect_baseline, inspect_schema_structure};
 
 const SCHEMA_CHECKSUM_PREFIX: &str = "-- appstruct:schema-sha256=";
 const TRANSACTION_PREFIX: &str = "-- appstruct:transaction=";

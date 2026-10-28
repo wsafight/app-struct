@@ -203,7 +203,7 @@ fn check_cached_user_symbols(project: &Path, generated: &Path) -> Result<(), Exi
             crate::report::ExitClass::Environment,
         )
     })?;
-    let ir = appstruct_ir::from_compatible_json(&source).map_err(|error| {
+    let ir = appstruct_ir::from_json(&source).map_err(|error| {
         crate::report::fail(
             "AS5004",
             crate::report::ErrorCategory::Generation,

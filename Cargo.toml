@@ -14,7 +14,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT OR Apache-2.0"
@@ -22,15 +22,15 @@ readme = "README.md"
 repository = "https://github.com/wsafight/app-struct"
 
 [workspace.dependencies]
-appstruct-codegen = { version = "0.1.0", path = "crates/appstruct-codegen" }
-appstruct-core = { version = "0.1.0", path = "crates/appstruct-core" }
-appstruct-contracts = { version = "0.1.0", path = "crates/appstruct-contracts" }
-appstruct-compiler = { version = "0.1.0", path = "crates/appstruct-compiler" }
-appstruct-ir = { version = "0.1.0", path = "crates/appstruct-ir" }
-appstruct-module-sdk = { version = "0.1.0", path = "crates/appstruct-module-sdk" }
-appstruct-migrate = { version = "0.1.0", path = "crates/appstruct-migrate" }
-appstruct-runtime = { version = "0.1.0", path = "crates/appstruct-runtime" }
-appstruct-schema = { version = "0.1.0", path = "crates/appstruct-schema" }
+appstruct-codegen = { version = "0.2.0", path = "crates/appstruct-codegen" }
+appstruct-core = { version = "0.2.0", path = "crates/appstruct-core" }
+appstruct-contracts = { version = "0.2.0", path = "crates/appstruct-contracts" }
+appstruct-compiler = { version = "0.2.0", path = "crates/appstruct-compiler" }
+appstruct-ir = { version = "0.2.0", path = "crates/appstruct-ir" }
+appstruct-module-sdk = { version = "0.2.0", path = "crates/appstruct-module-sdk" }
+appstruct-migrate = { version = "0.2.0", path = "crates/appstruct-migrate" }
+appstruct-runtime = { version = "0.2.0", path = "crates/appstruct-runtime" }
+appstruct-schema = { version = "0.2.0", path = "crates/appstruct-schema" }
 async-trait = "0.1.92"
 base64 = "0.23.1"
 clap = { version = "4.6.7", features = ["derive"] }
@@ -60,7 +60,7 @@ syn = { version = "3.0.7", features = ["full"] }
 tempfile = "3.27.0"
 jsonschema = { version = "0.58.6", default-features = false }
 hex = "0.4.3"
-tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "sync", "time"] }
 uuid = { version = "1.28.0", features = ["serde", "v7"] }
 url = "2.5.8"
 

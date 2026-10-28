@@ -1,3 +1,4 @@
+import { t } from "../ui";
 import {
   type FormEvent,
   type ReactNode,
@@ -104,7 +105,7 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = "Confirm",
+  confirmLabel = t("Confirm"),
   danger = false,
   onCancel,
   onConfirm,
@@ -138,7 +139,7 @@ export function ConfirmDialog({
           disabled={pending}
           onClick={onCancel}
         >
-          Cancel
+          {t("Cancel")}
         </button>
         <button
           type="button"
@@ -206,7 +207,7 @@ export function PromptDialog({
             disabled={pending}
             onClick={onCancel}
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             type="submit"

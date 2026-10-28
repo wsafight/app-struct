@@ -1,7 +1,7 @@
 use super::MigrationError;
 use crate::{ColumnSchema, DatabaseSchema, DatabaseType};
 use appstruct_ir::{GeneratedValueIr, OnDeleteIr};
-use postgres::Client;
+use postgres::GenericClient;
 use std::collections::{BTreeMap, BTreeSet};
 
 mod constraints;
@@ -21,7 +21,7 @@ struct ActualColumn {
 }
 
 pub(super) fn detect(
-    client: &mut Client,
+    client: &mut impl GenericClient,
     expected: &DatabaseSchema,
 ) -> Result<Vec<String>, MigrationError> {
     let actual_tables = tables(client)?;
@@ -115,7 +115,7 @@ fn compare_indexes(
     }
 }
 
-fn tables(client: &mut Client) -> Result<BTreeSet<String>, MigrationError> {
+fn tables(client: &mut impl GenericClient) -> Result<BTreeSet<String>, MigrationError> {
     client
         .query(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'",
@@ -131,7 +131,7 @@ fn tables(client: &mut Client) -> Result<BTreeSet<String>, MigrationError> {
 }
 
 fn columns(
-    client: &mut Client,
+    client: &mut impl GenericClient,
 ) -> Result<BTreeMap<(String, String), ActualColumn>, MigrationError> {
     client
         .query(
@@ -164,7 +164,9 @@ WHERE table_schema = current_schema()",
         .collect()
 }
 
-fn check_constraints(client: &mut Client) -> Result<BTreeMap<String, Vec<String>>, MigrationError> {
+fn check_constraints(
+    client: &mut impl GenericClient,
+) -> Result<BTreeMap<String, Vec<String>>, MigrationError> {
     let rows = client
         .query(
             r"SELECT relation.relname AS table_name, pg_get_constraintdef(con.oid) AS definition

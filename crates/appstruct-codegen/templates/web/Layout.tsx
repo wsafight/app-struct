@@ -1,4 +1,5 @@
-import { Boxes, ChevronRight, LayoutDashboard, Table2 } from "lucide-react";
+import { AppBrand, uiText } from "../ui";
+import { ChevronRight, LayoutDashboard, Table2 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "../navigation";
 import { type ResourceDefinition, useVisibleResources } from "../resource";
 
@@ -16,18 +17,15 @@ export function Layout({
       (resource) => pathname.split("/")[1] === resource.slug,
     )?.label ??
     pages.find((page) => pathname === `/${page.path}`)?.label ??
-    "Workspace";
+    uiText("workspace");
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">
-            <Boxes size={21} aria-hidden />
-          </span>
-          <span>__APP_TITLE__</span>
+          <AppBrand fallbackTitle="__APP_TITLE__" />
         </div>
-        <nav aria-label="Resources">
-          <span className="nav-heading">Workspace</span>
+        <nav aria-label={uiText("resources")}>
+          <span className="nav-heading">{uiText("workspace")}</span>
           {visibleResources.map((resource) => (
             <NavLink key={resource.name} to={`/${resource.slug}`}>
               <Table2 size={17} aria-hidden />
@@ -45,7 +43,7 @@ export function Layout({
       <div className="workspace">
         <header className="topbar">
           <div className="workspace-breadcrumb">
-            <span>Workspace</span>
+            <span>{uiText("workspace")}</span>
             <ChevronRight size={14} aria-hidden />
             <strong>{section}</strong>
           </div>

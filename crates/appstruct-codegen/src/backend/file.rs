@@ -26,6 +26,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     );
     let metadata = metadata_source();
     let validation = validation_source();
+    let lifecycle = lifecycle_source(ir)?;
     render(quote! {
         use async_trait::async_trait;
         use object_store::{
@@ -39,6 +40,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         #state
         #metadata
         #validation
+        #lifecycle
         #provider_source
     })
 }
@@ -60,11 +62,12 @@ fn contract_source() -> proc_macro2::TokenStream {
         pub enum FileError {
             Disabled, InvalidKey, InvalidName, InvalidContentType,
             TooLarge { size: u64, max: u64 }, Configuration(String),
-            Storage(String), Database(DbErr),
+            Storage(String), Database(DbErr), ReferenceConflict,
         }
         impl fmt::Display for FileError {
             fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 match self {
+                    Self::ReferenceConflict => formatter.write_str("file is unavailable, referenced, deleting, or has too many owners"),
                     Self::Disabled => formatter.write_str("file module is disabled"),
                     Self::InvalidKey => formatter.write_str("file key must be a safe relative path"),
                     Self::InvalidName => formatter.write_str("file name is invalid"),
@@ -171,19 +174,21 @@ fn state_source(
             pub async fn delete(
                 &self, object_key: &str, tenant_id: Option<uuid::Uuid>,
             ) -> Result<(), FileError> {
-                self.delete_with_connection(&self.database, object_key, tenant_id).await
+                let transaction = self.database.begin().await?;
+                let result = self.delete_with_connection(&transaction, object_key, tenant_id).await;
+                transaction.commit().await?;
+                result
             }
-            pub(crate) async fn delete_with_connection<C: DatabaseExecutor>(
-                &self, database: &C, object_key: &str, tenant_id: Option<uuid::Uuid>,
+            pub(crate) async fn delete_with_connection(
+                &self, database: &crate::database::Transaction, object_key: &str, tenant_id: Option<uuid::Uuid>,
             ) -> Result<(), FileError> {
                 validate_key(object_key)?;
-                load_metadata(database, object_key, tenant_id).await?;
-                self.provider.delete(object_key).await?;
-                database.execute(Sql::bind(
-                    "DELETE FROM \"_appstruct_files\" WHERE object_key = $1 AND tenant_id IS NOT DISTINCT FROM $2",
+                let claimed = database.execute(Sql::bind(
+                    "UPDATE \"_appstruct_files\" SET deleting = true WHERE object_key = $1 AND tenant_id IS NOT DISTINCT FROM $2 AND reference_owners = '[]'::jsonb",
                     [object_key.to_owned().into(), tenant_id.into()],
                 )).await?;
-                Ok(())
+                if claimed.rows_affected() == 0 { return Err(FileError::ReferenceConflict); }
+                self.remove_claimed(database, object_key).await
             }
         }
     }
@@ -343,8 +348,34 @@ fn disabled_source() -> Result<String, CodegenError> {
             pub(crate) async fn put_with_connection<C: DatabaseExecutor>(&self, _database: &C, _key: &str, _name: &str, _content_type: &str, _content: &[u8], _tenant_id: Option<uuid::Uuid>) -> Result<FileMetadata, FileError> { Err(FileError::Disabled) }
             pub async fn get(&self, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(FileMetadata, Vec<u8>), FileError> { Err(FileError::Disabled) }
             pub(crate) async fn get_with_connection<C: DatabaseExecutor>(&self, _database: &C, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(FileMetadata, Vec<u8>), FileError> { Err(FileError::Disabled) }
+            pub(crate) async fn retain_with_connection<C: DatabaseExecutor>(&self, _database: &C, _key: &str, _entity: &str, _record_id: &str, _tenant: Option<uuid::Uuid>) -> Result<(), FileError> { Err(FileError::Disabled) }
+            pub(crate) async fn release_with_connection<C: DatabaseExecutor>(&self, _database: &C, _key: &str, _entity: &str, _record_id: &str, _tenant: Option<uuid::Uuid>) -> Result<(), FileError> { Err(FileError::Disabled) }
             pub async fn delete(&self, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(), FileError> { Err(FileError::Disabled) }
-            pub(crate) async fn delete_with_connection<C: DatabaseExecutor>(&self, _database: &C, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(), FileError> { Err(FileError::Disabled) }
+            pub(crate) async fn delete_with_connection(&self, _database: &crate::database::Transaction, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(), FileError> { Err(FileError::Disabled) }
         }
     })
+}
+
+fn lifecycle_source(ir: &AppIr) -> Result<proc_macro2::TokenStream, CodegenError> {
+    let mut conditions = String::new();
+    if ir.report.enabled {
+        conditions.push_str(" AND NOT EXISTS (SELECT 1 FROM \"_appstruct_report_runs\" r WHERE r.result_file_id = f.id)");
+    }
+    if ir.activity.enabled {
+        conditions.push_str(" AND NOT EXISTS (SELECT 1 FROM \"_appstruct_activity_entries\" a WHERE a.attachment_file_id = f.id)");
+    }
+    let sql = format!(
+        r#"WITH candidates AS (
+        SELECT f.id FROM "_appstruct_files" f
+        WHERE f.reference_owners = '[]'::jsonb
+          AND (f.deleting OR f.unreferenced_at < CURRENT_TIMESTAMP - $1 * INTERVAL '1 day')
+          {conditions}
+        ORDER BY f.unreferenced_at, f.id LIMIT $2 FOR UPDATE OF f SKIP LOCKED
+    ) UPDATE "_appstruct_files" f SET deleting = true FROM candidates c
+      WHERE f.id = c.id RETURNING f.object_key"#
+    );
+    include_str!("../../templates/backend/file_lifecycle.rs")
+        .replace("__APPSTRUCT_FILE_COLLECTION_SQL__", &format!("{sql:?}"))
+        .parse()
+        .map_err(|error| CodegenError::new(format!("invalid file lifecycle source: {error}")))
 }

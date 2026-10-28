@@ -853,7 +853,7 @@ a {
     background 140ms ease,
     border-color 140ms ease,
     box-shadow 140ms ease;
-  width: 40px;
+  white-space: nowrap;
 }
 .primary-button {
   background: var(--color-accent);
@@ -2226,4 +2226,32 @@ a {
     border-width: 0 0 0 2px;
     border-radius: 0;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-text: #e1e9e3;
+  --color-muted: #a1b1a6;
+  --color-surface: #1c2821;
+  --color-surface-soft: #243229;
+  --color-page: #141e18;
+  --color-border: #37483d;
+  --color-border-strong: #536b5c;
+  --color-accent: #65c99b;
+  --color-accent-hover: #82dbb1;
+  --color-accent-soft: #244837;
+  --color-danger: #f08d82;
+  --color-danger-hover: #ffa99f;
+  --color-danger-soft: #482b28;
+}
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.conflict-comparison td {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 24rem;
 }

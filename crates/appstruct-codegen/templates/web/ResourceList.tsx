@@ -1,3 +1,4 @@
+import { formatNumber, t } from "../ui";
 import type { RowSelectionState } from "@tanstack/react-table";
 import {
   ChevronLeft,
@@ -144,11 +145,11 @@ export function ResourceList({
 
   async function remove(id: string) {
     const action = resource.softDelete
-      ? "Move this record to trash"
-      : "Delete this record";
+      ? t("Move this record to trash")
+      : t("Delete this record");
     setConfirmation({
       title: action,
-      description: "This action cannot be undone from the current view.",
+      description: t("This action cannot be undone from the current view."),
       action: async () => {
         await runChange(() => resource.api.remove(id));
       },
@@ -222,10 +223,10 @@ export function ResourceList({
     Boolean(searchParams.get("where")) ||
     Array.from(searchParams.keys()).some((key) => key.startsWith("filter["));
   const emptyMessage = trashMode
-    ? "Trash is empty"
+    ? t("Trash is empty")
     : hasFilters
-      ? "No records match the current filters"
-      : "No records yet";
+      ? t("No records match the current filters")
+      : t("No records yet");
   const busy = controller.changing;
   if (!controller.canList) return <AccessDenied />;
   return (
@@ -241,11 +242,15 @@ export function ResourceList({
       )}
       <div className="page-heading">
         <div>
-          <h1>{trashMode ? `${resource.label} trash` : resource.label}</h1>
+          <h1>
+            {trashMode ? t("{0} trash", { 0: resource.label }) : resource.label}
+          </h1>
           <p>
             {cursorMode
-              ? `${records.length} records on this page`
-              : `${total} records`}
+              ? t("{0} records on this page", {
+                  0: formatNumber(records.length),
+                })
+              : t("{0} records", { 0: formatNumber(total) })}
           </p>
         </div>
         <div className="toolbar">
@@ -253,8 +258,10 @@ export function ResourceList({
             <button
               className="icon-button"
               onClick={() => updateParam("trash", trashMode ? undefined : "1")}
-              title={trashMode ? "Show active records" : "Show trash"}
-              aria-label={trashMode ? "Show active records" : "Show trash"}
+              title={trashMode ? t("Show active records") : t("Show trash")}
+              aria-label={
+                trashMode ? t("Show active records") : t("Show trash")
+              }
             >
               {trashMode ? <RotateCcw size={17} /> : <Trash2 size={17} />}
             </button>
@@ -263,8 +270,8 @@ export function ResourceList({
             className="icon-button"
             onClick={csv.exportCsv}
             disabled={csv.exporting}
-            title="Export CSV"
-            aria-label="Export CSV"
+            title={t("Export CSV")}
+            aria-label={t("Export CSV")}
           >
             <Download size={17} />
           </button>
@@ -283,8 +290,8 @@ export function ResourceList({
                 className="icon-button"
                 onClick={() => csv.importInput.current?.click()}
                 disabled={busy}
-                title="Import CSV"
-                aria-label="Import CSV"
+                title={t("Import CSV")}
+                aria-label={t("Import CSV")}
               >
                 <Upload size={17} />
               </button>
@@ -294,19 +301,19 @@ export function ResourceList({
             className="icon-button"
             onClick={() => void controller.refetch()}
             disabled={controller.fetching}
-            title="Refresh"
-            aria-label="Refresh"
+            title={t("Refresh")}
+            aria-label={t("Refresh")}
           >
             <RefreshCw size={17} />
           </button>
           {canCreate && !trashMode && (
             <Link className="primary-button" to={`/${resource.slug}/new`}>
-              <Plus size={17} /> Add
+              <Plus size={17} /> {t("Add")}
             </Link>
           )}
         </div>
       </div>
-      <section className="resource-controls" aria-label="List controls">
+      <section className="resource-controls" aria-label={t("List controls")}>
         {!trashMode && (
           <div className="list-controls">
             {resource.fields.some(
@@ -319,8 +326,8 @@ export function ResourceList({
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  aria-label="Search"
-                  placeholder="Search"
+                  aria-label={t("Search")}
+                  placeholder={t("Search")}
                 />
               </form>
             )}
@@ -399,7 +406,11 @@ export function ResourceList({
         restore={restoreOne}
       />
       <div className="pagination">
-        <span>{cursorMode ? `Page ${page}` : `Page ${page} of ${pages}`}</span>
+        <span>
+          {cursorMode
+            ? t("Page {0}", { "0": page })
+            : t("Page {0} of {1}", { "0": page, "1": pages })}
+        </span>
         <div>
           <button
             className="icon-button"
@@ -409,7 +420,7 @@ export function ResourceList({
                 ? moveCursor(previousCursor, "previous", page - 1)
                 : updateParam("page", String(page - 1))
             }
-            aria-label="Previous page"
+            aria-label={t("Previous page")}
           >
             <ChevronLeft size={17} />
           </button>
@@ -421,7 +432,7 @@ export function ResourceList({
                 ? moveCursor(nextCursor, "next", page + 1)
                 : updateParam("page", String(page + 1))
             }
-            aria-label="Next page"
+            aria-label={t("Next page")}
           >
             <ChevronRight size={17} />
           </button>
@@ -455,7 +466,8 @@ function AccessDenied() {
   return (
     <main className="page">
       <div className="alert" role="alert">
-        You do not have permission to view this resource.
+        {" "}
+        {t("You do not have permission to view this resource.")}{" "}
       </div>
     </main>
   );

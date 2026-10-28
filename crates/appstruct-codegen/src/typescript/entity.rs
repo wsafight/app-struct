@@ -58,9 +58,10 @@ pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
   }},
   create: (input: Create{model}Input) =>
     request<{model}>("{path}", {{ method: "POST", body: JSON.stringify(input) }}),
-  update: (id: string, input: Update{model}Input) => {{
+  update: (id: string, input: Update{model}Input, options: {{ revision?: number }} = {{}}) => {{
     const member = `{path}${{encodeURIComponent(id)}}`;
-    return request<{model}>(member, {{ method: "PATCH", body: JSON.stringify(input) }}, member);
+    const headers = options.revision === undefined ? undefined : {{ "If-Match": `"rev-${{options.revision}}"` }};
+    return request<{model}>(member, {{ method: "PATCH", headers, body: JSON.stringify(input) }}, member);
   }},
   remove: (id: string) => {{
     const member = `{path}${{encodeURIComponent(id)}}`;
@@ -70,7 +71,8 @@ pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
   bulkDelete: (input: BulkDeleteRequest) => request<BulkResult>("{path}_bulk", {{ method: "DELETE", body: JSON.stringify(input) }}),
   exportCsv: (query: Omit<ListQuery, "page" | "page_size"> = {{}}) => requestText(listPath("{path}_export.csv", query)),
   downloadCsv: (query: Omit<ListQuery, "page" | "page_size"> = {{}}) => downloadResourceCsv(listPath("{path}_export.csv", query), "{table}.csv"),
-  importCsv: (csv: string) => request<BulkResult>("{path}_import.csv", {{ method: "POST", headers: {{ "Content-Type": "text/csv" }}, body: csv }}),
+  importCsv: (csv: string, batch: string) => request<BulkResult>("{path}_import.csv", {{ method: "POST", headers: {{ "Content-Type": "text/csv", "Idempotency-Key": batch }}, body: csv }}),
+  importResult: (batch: string) => request<BulkResult>("{path}_imports/" + encodeURIComponent(batch)),
 {restore}{workflow}{collections}}};
 "#
     )

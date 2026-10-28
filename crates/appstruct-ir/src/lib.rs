@@ -1,9 +1,9 @@
 //! Stable, serialization-friendly intermediate representation for `AppStruct`.
 mod auth;
 mod billing;
-mod compatibility;
 mod database;
 mod extension;
+mod json;
 mod seed;
 mod service;
 mod ui;
@@ -12,9 +12,9 @@ mod views;
 mod workflow;
 pub use auth::AuthIr;
 pub use billing::{BillingIr, BillingPlanIr};
-pub use compatibility::{IrCompatibilityError, from_compatible_json};
 pub use database::{DatabaseDevMode, DatabaseIr, DatabaseMigrationPolicy, DatabaseProvider};
 pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
+pub use json::{IrJsonError, from_json};
 pub use seed::SeedIr;
 use serde::{Deserialize, Serialize};
 pub use service::{
@@ -27,7 +27,7 @@ use std::fmt;
 pub use ui::FieldSemanticIr;
 pub use validation::aggregates::validate_aggregates;
 pub use validation::charts::validate_charts;
-pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir};
+pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir, validate_form_rules};
 pub use views::{
     AggregateIr, ChartDimensionIr, ChartIr, ChartKindIr, ChartMeasureIr, EntityViewsIr,
 };
@@ -41,7 +41,6 @@ pub struct AppIr {
     pub database: DatabaseIr,
     pub preset: Option<PresetIr>,
     pub auth: AuthIr,
-    #[serde(default)]
     pub billing: BillingIr,
     #[serde(default, skip_serializing_if = "ServerIr::is_default")]
     pub server: ServerIr,
@@ -195,7 +194,6 @@ pub struct FieldIr {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub write_access: Option<AccessRuleIr>,
     pub ui_component: Option<String>,
-    #[serde(default)]
     pub ui_semantic: Option<FieldSemanticIr>,
 }
 
@@ -232,6 +230,21 @@ pub struct ValidationIr {
     pub max_length: Option<u64>,
     pub minimum: Option<String>,
     pub maximum: Option<String>,
+    pub required_when: Option<RequiredWhenIr>,
+    pub greater_than: Option<FieldId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RequiredWhenIr {
+    pub field: FieldId,
+    pub equals: ConditionValueIr,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ConditionValueIr {
+    Boolean(bool),
+    String(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -333,7 +346,7 @@ pub enum ModuleOrigin {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleArtifactIr {
     pub path: String,
-    /// Project-relative source path, or `None` for migrated legacy IR.
+    /// Project-relative source path, or `None` when no source file is attached.
     pub source: Option<String>,
     pub sha256: String,
     pub byte_len: u64,

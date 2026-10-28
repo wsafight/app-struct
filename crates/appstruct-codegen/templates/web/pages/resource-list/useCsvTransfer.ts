@@ -1,3 +1,4 @@
+import { t } from "../../ui";
 import { useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import type { ResourceDefinition } from "../../resource";
@@ -50,7 +51,7 @@ export function useCsvTransfer({
     if (!file) return;
     try {
       if (file.size > MAX_IMPORT_BYTES)
-        throw new Error("CSV import is limited to 2 MiB.");
+        throw new Error(t("CSV import is limited to 2 MiB."));
       setImportFile({ name: file.name, text: await file.text() });
       onError("");
     } catch (error) {

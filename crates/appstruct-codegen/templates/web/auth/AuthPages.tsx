@@ -1,3 +1,5 @@
+import { formatDate, formatDateTime, formatNumber } from "../ui";
+import { t } from "../ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import {
@@ -88,8 +90,8 @@ export function ApiTokensPage() {
     <main className="page">
       <div className="page-heading">
         <div>
-          <h1>API tokens</h1>
-          <p>Use personal tokens for scripts and automation.</p>
+          <h1> {t("API tokens")} </h1>
+          <p> {t("Use personal tokens for scripts and automation.")}</p>
         </div>
       </div>
       {error && (
@@ -99,14 +101,17 @@ export function ApiTokensPage() {
       )}
       {created && (
         <section className="alert" role="status">
-          <strong>Copy this token now. It will not be shown again.</strong>
+          <strong>
+            {" "}
+            {t("Copy this token now. It will not be shown again.")}
+          </strong>
           <div className="toolbar">
             <code>{created.token}</code>
             <button
               type="button"
               className="icon-button"
-              title="Copy token"
-              aria-label="Copy token"
+              title={t("Copy token")}
+              aria-label={t("Copy token")}
               onClick={() => void navigator.clipboard.writeText(created.token)}
             >
               <Copy size={15} />
@@ -117,18 +122,19 @@ export function ApiTokensPage() {
       <section className="form-frame token-form">
         <form className="toolbar" onSubmit={(event) => void create(event)}>
           <label className="sr-only" htmlFor="token-name">
-            Token name
+            {t("Token name")}
           </label>
           <input
             id="token-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Token name"
+            placeholder={t("Token name")}
             maxLength={80}
             required
           />
           <label className="sr-only" htmlFor="token-expiry">
-            Expires in days
+            {" "}
+            {t("Expires in days")}
           </label>
           <input
             id="token-expiry"
@@ -137,13 +143,13 @@ export function ApiTokensPage() {
             max={3650}
             value={expires}
             onChange={(event) => setExpires(event.target.value)}
-            placeholder="Days (optional)"
+            placeholder={t("Days (optional)")}
           />
           <button
             className="primary-button"
             disabled={createMutation.isPending}
           >
-            <Plus size={16} /> Create token
+            <Plus size={16} /> {t("Create token")}
           </button>
         </form>
       </section>
@@ -151,31 +157,29 @@ export function ApiTokensPage() {
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Created</th>
-              <th>Expires</th>
-              <th>Status</th>
-              <th aria-label="Actions" />
+              <th>{t("Name")}</th>
+              <th>{t("Created")}</th>
+              <th> {t("Expires")}</th>
+              <th> {t("Status")}</th>
+              <th aria-label={t("Actions")} />
             </tr>
           </thead>
           <tbody>
             {tokens.map((token) => (
               <tr key={token.id}>
                 <td>{token.name}</td>
-                <td>{new Date(token.created_at).toLocaleDateString()}</td>
+                <td>{formatDate(token.created_at)}</td>
                 <td>
-                  {token.expires_at
-                    ? new Date(token.expires_at).toLocaleDateString()
-                    : "Never"}
+                  {token.expires_at ? formatDate(token.expires_at) : t("Never")}
                 </td>
-                <td>{token.revoked_at ? "Revoked" : "Active"}</td>
+                <td>{token.revoked_at ? t("Revoked") : t("Active")}</td>
                 <td>
                   {!token.revoked_at && (
                     <button
                       type="button"
                       className="icon-button danger"
-                      title="Revoke token"
-                      aria-label={`Revoke ${token.name}`}
+                      title={t("Revoke token")}
+                      aria-label={t("Revoke {0}", { "0": token.name })}
                       disabled={revokeMutation.isPending}
                       onClick={() => revokeMutation.mutate(token.id)}
                     >
@@ -187,7 +191,9 @@ export function ApiTokensPage() {
             ))}
           </tbody>
         </table>
-        {tokens.length === 0 && <div className="empty">No API tokens yet</div>}
+        {tokens.length === 0 && (
+          <div className="empty"> {t("No API tokens yet")}</div>
+        )}
       </section>
     </main>
   );
@@ -206,24 +212,24 @@ export function AdminPage() {
   const error = overviewQuery.error ? errorMessage(overviewQuery.error) : "";
   const metrics = overview
     ? ([
-        ["Users", overview.users],
-        ["Organizations", overview.organizations],
-        ["Invitations", overview.invitations],
-        ["Sessions", overview.sessions],
-        ["Jobs queued", overview.jobs_queued],
-        ["Jobs dead", overview.jobs_dead],
-        ["Mail deliveries", overview.mail_deliveries],
-        ["Files", overview.files],
-        ["Audit events", overview.audit_events],
-        ["Billing events", overview.billing_events],
+        [t("Users"), overview.users],
+        [t("Organizations"), overview.organizations],
+        [t("Invitations"), overview.invitations],
+        [t("Sessions"), overview.sessions],
+        [t("Jobs queued"), overview.jobs_queued],
+        [t("Jobs dead"), overview.jobs_dead],
+        [t("Mail deliveries"), overview.mail_deliveries],
+        [t("Files"), overview.files],
+        [t("Audit events"), overview.audit_events],
+        [t("Billing events"), overview.billing_events],
       ] as const)
     : [];
   return (
     <main className="page">
       <div className="page-heading">
         <div>
-          <h1>Administration</h1>
-          <p>Operational status across generated modules.</p>
+          <h1>{t("Administration")}</h1>
+          <p>{t("Operational status across generated modules.")}</p>
         </div>
       </div>
       {error && (
@@ -236,27 +242,33 @@ export function AdminPage() {
           {metrics.map(([label, value]) => (
             <section className="admin-metric" key={label}>
               <span>{label}</span>
-              <strong>{value.toLocaleString()}</strong>
+              <strong>{formatNumber(value)}</strong>
             </section>
           ))}
         </div>
       ) : (
-        !error && <div className="auth-loading" aria-label="Loading" />
+        !error && <div className="auth-loading" aria-label={t("Loading")} />
       )}
-      <nav className="admin-links" aria-label="Administration pages">
-        <Link to="/admin/users">Users</Link>
-        <Link to="/tokens">API tokens</Link>
-        {adminFeatures.jobs && <Link to="/admin/jobs">Jobs</Link>}
-        {adminFeatures.jobs && <Link to="/admin/schedules">Schedules</Link>}
-        {adminFeatures.webhooks && (
-          <Link to="/admin/webhooks">Webhook deliveries</Link>
+      <nav className="admin-links" aria-label={t("Administration pages")}>
+        <Link to="/admin/users"> {t("Users")}</Link>
+        <Link to="/tokens"> {t("API tokens")} </Link>
+        {adminFeatures.jobs && <Link to="/admin/jobs"> {t("Jobs")}</Link>}
+        {adminFeatures.jobs && (
+          <Link to="/admin/schedules">{t("Schedules")}</Link>
         )}
-        {adminFeatures.mail && <Link to="/admin/mail">Mail deliveries</Link>}
-        {adminFeatures.file && <Link to="/admin/files">Files</Link>}
-        {adminFeatures.tenant && <Link to="/organization">Organization</Link>}
-        {adminFeatures.audit && <Link to="/audit">Audit log</Link>}
+        {adminFeatures.webhooks && (
+          <Link to="/admin/webhooks"> {t("Webhook deliveries")}</Link>
+        )}
+        {adminFeatures.mail && (
+          <Link to="/admin/mail">{t("Mail deliveries")}</Link>
+        )}
+        {adminFeatures.file && <Link to="/admin/files">{t("Files")}</Link>}
+        {adminFeatures.tenant && (
+          <Link to="/organization">{t("Organization")}</Link>
+        )}
+        {adminFeatures.audit && <Link to="/audit">{t("Audit log")}</Link>}
         {adminFeatures.billing && (
-          <Link to="/admin/billing">Billing events</Link>
+          <Link to="/admin/billing">{t("Billing events")}</Link>
         )}
       </nav>
     </main>
@@ -308,12 +320,12 @@ export function AdminUsersPage() {
   return (
     <main className="page">
       <Link className="back-link" to="/admin">
-        <ArrowLeft size={15} /> Administration
+        <ArrowLeft size={15} /> {t("Administration")}
       </Link>
       <div className="page-heading">
         <div>
-          <h1>Users</h1>
-          <p>Registered accounts and active sessions.</p>
+          <h1> {t("Users")}</h1>
+          <p>{t("Registered accounts and active sessions.")}</p>
         </div>
       </div>
       {error && (
@@ -325,12 +337,12 @@ export function AdminUsersPage() {
         <table>
           <thead>
             <tr>
-              <th>Email</th>
-              <th>Roles</th>
-              <th>Verified</th>
-              <th>Active sessions</th>
-              <th>Created</th>
-              <th aria-label="Actions" />
+              <th> {t("Email")}</th>
+              <th> {t("Roles")}</th>
+              <th> {t("Verified")} </th>
+              <th>{t("Active sessions")}</th>
+              <th>{t("Created")}</th>
+              <th aria-label={t("Actions")} />
             </tr>
           </thead>
           <tbody>
@@ -338,15 +350,17 @@ export function AdminUsersPage() {
               <tr key={user.id}>
                 <td>{user.email}</td>
                 <td>{user.roles.join(", ")}</td>
-                <td>{user.email_verified ? "Yes" : "No"}</td>
+                <td>{user.email_verified ? t("Yes") : t("No")}</td>
                 <td>{user.active_sessions}</td>
-                <td>{new Date(user.created_at).toLocaleString()}</td>
+                <td>{formatDateTime(user.created_at)}</td>
                 <td>
                   <button
                     type="button"
                     className="icon-button"
-                    title="Revoke all sessions"
-                    aria-label={`Revoke all sessions for ${user.email}`}
+                    title={t("Revoke all sessions")}
+                    aria-label={t("Revoke all sessions for {0}", {
+                      "0": user.email,
+                    })}
                     disabled={revokeMutation.isPending}
                     onClick={() => void revokeSessions(user)}
                   >
@@ -358,7 +372,7 @@ export function AdminUsersPage() {
           </tbody>
         </table>
         {users.length === 0 && !error && (
-          <div className="empty">No users yet</div>
+          <div className="empty">{t("No users yet")}</div>
         )}
       </section>
       <AdminPagination
@@ -419,15 +433,16 @@ export function AdminJobsPage() {
   return (
     <main className="page">
       <Link className="back-link" to="/admin">
-        <ArrowLeft size={15} /> Administration
+        <ArrowLeft size={15} /> {t("Administration")}
       </Link>
       <div className="page-heading">
         <div>
-          <h1>Jobs</h1>
-          <p>Inspect recent work and recover terminal jobs.</p>
+          <h1> {t("Jobs")}</h1>
+          <p>{t("Inspect recent work and recover terminal jobs.")}</p>
         </div>
         <label className="filter-control">
-          Status
+          {" "}
+          {t("Status")}
           <select
             value={status}
             onChange={(event) => {
@@ -435,12 +450,12 @@ export function AdminJobsPage() {
               setPage(1);
             }}
           >
-            <option value="">All statuses</option>
-            <option value="queued">Queued</option>
-            <option value="running">Running</option>
-            <option value="succeeded">Succeeded</option>
-            <option value="dead">Dead</option>
-            <option value="cancelled">Cancelled</option>
+            <option value="">{t("All statuses")}</option>
+            <option value="queued"> {t("Queued")}</option>
+            <option value="running">{t("Running")}</option>
+            <option value="succeeded"> {t("Succeeded")}</option>
+            <option value="dead"> {t("Dead")}</option>
+            <option value="cancelled">{t("Cancelled")}</option>
           </select>
         </label>
       </div>
@@ -453,13 +468,13 @@ export function AdminJobsPage() {
         <table>
           <thead>
             <tr>
-              <th>Job</th>
-              <th>Queue</th>
-              <th>Status</th>
-              <th>Attempts</th>
-              <th>Run at</th>
-              <th>Last error</th>
-              <th aria-label="Actions" />
+              <th> {t("Job")} </th>
+              <th>{t("Queue")}</th>
+              <th> {t("Status")}</th>
+              <th>{t("Attempts")}</th>
+              <th> {t("Run at")} </th>
+              <th>{t("Last error")}</th>
+              <th aria-label={t("Actions")} />
             </tr>
           </thead>
           <tbody>
@@ -471,13 +486,13 @@ export function AdminJobsPage() {
                 <td>{job.queue}</td>
                 <td>
                   <span className={`job-status ${job.status}`}>
-                    {job.status}
+                    {t(job.status)}
                   </span>
                 </td>
                 <td>
                   {job.attempts} / {job.max_attempts}
                 </td>
-                <td>{new Date(job.run_at).toLocaleString()}</td>
+                <td>{formatDateTime(job.run_at)}</td>
                 <td title={job.last_error ?? undefined}>
                   {job.last_error ?? "-"}
                 </td>
@@ -487,8 +502,8 @@ export function AdminJobsPage() {
                       <button
                         type="button"
                         className="icon-button"
-                        title="Retry job"
-                        aria-label={`Retry ${job.kind}`}
+                        title={t("Retry job")}
+                        aria-label={t("Retry {0}", { "0": job.kind })}
                         disabled={busy}
                         onClick={() => void mutate(job.id, "retry")}
                       >
@@ -499,8 +514,8 @@ export function AdminJobsPage() {
                       <button
                         type="button"
                         className="icon-button"
-                        title="Replay as a new job"
-                        aria-label={`Replay ${job.kind}`}
+                        title={t("Replay as a new job")}
+                        aria-label={t("Replay {0}", { "0": job.kind })}
                         disabled={busy}
                         onClick={() => void mutate(job.id, "replay")}
                       >
@@ -514,7 +529,7 @@ export function AdminJobsPage() {
           </tbody>
         </table>
         {jobs.length === 0 && (
-          <div className="empty">No jobs match this status</div>
+          <div className="empty">{t("No jobs match this status")}</div>
         )}
       </section>
       <AdminPagination
@@ -578,17 +593,21 @@ export function AdminWebhooksPage() {
   return (
     <main className="page">
       <Link className="back-link" to="/admin">
-        <ArrowLeft size={15} /> Administration
+        <ArrowLeft size={15} /> {t("Administration")}
       </Link>
       <div className="page-heading">
         <div>
-          <h1>Webhook deliveries</h1>
+          <h1> {t("Webhook deliveries")}</h1>
           <p>
-            Inspect downstream delivery failures and replay terminal events.
+            {" "}
+            {t(
+              "Inspect downstream delivery failures and replay terminal events.",
+            )}
           </p>
         </div>
         <label className="filter-control">
-          Status
+          {" "}
+          {t("Status")}
           <select
             value={status}
             onChange={(event) => {
@@ -596,11 +615,11 @@ export function AdminWebhooksPage() {
               setPage(1);
             }}
           >
-            <option value="">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="delivering">Delivering</option>
-            <option value="succeeded">Succeeded</option>
-            <option value="dead">Dead</option>
+            <option value="">{t("All statuses")}</option>
+            <option value="pending">{t("Pending")}</option>
+            <option value="delivering">{t("Delivering")}</option>
+            <option value="succeeded"> {t("Succeeded")}</option>
+            <option value="dead"> {t("Dead")}</option>
           </select>
         </label>
       </div>
@@ -613,13 +632,13 @@ export function AdminWebhooksPage() {
         <table>
           <thead>
             <tr>
-              <th>Event</th>
-              <th>Endpoint</th>
-              <th>Status</th>
-              <th>Attempts</th>
+              <th>{t("Event")}</th>
+              <th>{t("Endpoint")}</th>
+              <th> {t("Status")}</th>
+              <th>{t("Attempts")}</th>
               <th>HTTP</th>
-              <th>Last error</th>
-              <th aria-label="Actions" />
+              <th>{t("Last error")}</th>
+              <th aria-label={t("Actions")} />
             </tr>
           </thead>
           <tbody>
@@ -631,7 +650,7 @@ export function AdminWebhooksPage() {
                 <td>{delivery.endpoint}</td>
                 <td>
                   <span className={`job-status ${delivery.status}`}>
-                    {delivery.status}
+                    {t(delivery.status)}
                   </span>
                 </td>
                 <td>
@@ -647,8 +666,8 @@ export function AdminWebhooksPage() {
                       <button
                         type="button"
                         className="icon-button"
-                        title="Retry delivery"
-                        aria-label={`Retry ${delivery.event}`}
+                        title={t("Retry delivery")}
+                        aria-label={t("Retry {0}", { "0": delivery.event })}
                         disabled={busy}
                         onClick={() => void mutate(delivery.id, "retry")}
                       >
@@ -660,8 +679,8 @@ export function AdminWebhooksPage() {
                       <button
                         type="button"
                         className="icon-button"
-                        title="Replay as a new delivery"
-                        aria-label={`Replay ${delivery.event}`}
+                        title={t("Replay as a new delivery")}
+                        aria-label={t("Replay {0}", { "0": delivery.event })}
                         disabled={busy}
                         onClick={() => void mutate(delivery.id, "replay")}
                       >
@@ -675,7 +694,9 @@ export function AdminWebhooksPage() {
           </tbody>
         </table>
         {deliveries.length === 0 && (
-          <div className="empty">No webhook deliveries match this status</div>
+          <div className="empty">
+            {t("No webhook deliveries match this status")}
+          </div>
         )}
       </section>
       <AdminPagination
@@ -703,7 +724,7 @@ export function AdminPagination({
   return (
     <div className="pagination">
       <span>
-        Page {page} of {pages} ({total} total)
+        {t("Page {0} of {1} ({2} total)", { 0: page, 1: pages, 2: total })}
       </span>
       <div>
         <button
@@ -711,7 +732,7 @@ export function AdminPagination({
           className="icon-button"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
-          aria-label="Previous page"
+          aria-label={t("Previous page")}
         >
           <ChevronLeft size={17} />
         </button>
@@ -720,7 +741,7 @@ export function AdminPagination({
           className="icon-button"
           disabled={page >= pages}
           onClick={() => onPageChange(page + 1)}
-          aria-label="Next page"
+          aria-label={t("Next page")}
         >
           <ChevronRight size={17} />
         </button>

@@ -1,0 +1,34 @@
+domain: appointments
+entities:
+  Appointment:
+    fields:
+      id: { type: uuid, primary_key: true, generated: uuid_v7 }
+      status: { type: enum, required: true, values: [draft, ready] }
+      needs_note: { type: boolean, required: true }
+      note:
+        type: text
+        required_when: { field: needs_note, equals: false }
+      starts: { type: datetime, required: true }
+      ends: { type: datetime, greater_than: starts }
+      minimum: { type: decimal, required: true }
+      amount:
+        type: decimal
+        required_when: { field: status, equals: ready }
+        greater_than: minimum
+      count:
+        type: integer
+        required_when: { field: needs_note, equals: false }
+    workflow:
+      field: status
+      initial: draft
+      transitions:
+        publish:
+          from: [draft]
+          to: ready
+          access: { public: true }
+    access:
+      list: { public: true }
+      read: { public: true }
+      create: { public: true }
+      update: { public: true }
+      delete: { public: true }

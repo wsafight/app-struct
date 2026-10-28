@@ -1,3 +1,4 @@
+import { t } from "../../ui";
 import { useEffect, useState } from "react";
 import { inputType, toFormValue, toApiValue } from "../../field-values";
 import type { FilterExpression, FilterOperator } from "../../generated/client";
@@ -36,7 +37,9 @@ export function AdvancedFilters({
     } catch (error) {
       setInvalidSaved(true);
       setError(
-        error instanceof Error ? error.message : "The saved filter is invalid.",
+        error instanceof Error
+          ? error.message
+          : t("The saved filter is invalid."),
       );
     }
   }, [raw]);
@@ -51,7 +54,9 @@ export function AdvancedFilters({
     setSubmitted(true);
     if (!validate(tree)) {
       setError(
-        "Correct the highlighted conditions; each group needs at least one condition.",
+        t(
+          "Correct the highlighted conditions; each group needs at least one condition.",
+        ),
       );
       return;
     }
@@ -61,12 +66,15 @@ export function AdvancedFilters({
       setError("");
       onApply(serialized);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Invalid filters.");
+      setError(error instanceof Error ? error.message : t("Invalid filters."));
     }
   }
   return (
     <details className="advanced-filters">
-      <summary>Advanced filters{raw ? " · active" : ""}</summary>
+      <summary>
+        {t("Advanced filters")}
+        {raw ? " · active" : ""}
+      </summary>
       {raw && !invalidSaved && (
         <p className="filter-summary">{filterSummary(tree, fields)}</p>
       )}
@@ -88,7 +96,8 @@ export function AdvancedFilters({
           disabled={invalidSaved || !groupChildren(tree).length}
           onClick={apply}
         >
-          Apply filters
+          {" "}
+          {t("Apply filters")}
         </button>
         <button
           type="button"
@@ -100,7 +109,7 @@ export function AdvancedFilters({
             onApply();
           }}
         >
-          Clear advanced filters
+          {t("Clear advanced filters")}
         </button>
       </div>
       {error && <p role="alert">{error}</p>}
@@ -127,7 +136,7 @@ function GroupEditor({
 }) {
   const mode = "all" in group ? "all" : "any";
   const children = groupChildren(group);
-  const label = path ? `Group ${path}` : "Filter";
+  const label = path ? t("Group {0}", { "0": path }) : t("Filter");
   function replace(next: FilterExpression[], nextMode = mode) {
     onChange({ [nextMode]: next } as FilterGroup);
   }
@@ -140,18 +149,20 @@ function GroupEditor({
   }
   return (
     <fieldset className="filter-group">
-      <legend>{path ? label : "Conditions"}</legend>
+      <legend>{path ? label : t("Conditions")}</legend>
       <label>
-        Match{" "}
+        {t("Match")}{" "}
         <select
-          aria-label={path ? `${label} match mode` : "Filter match mode"}
+          aria-label={
+            path ? t("{0} match mode", { 0: label }) : t("Filter match mode")
+          }
           value={mode}
           onChange={(event) =>
             replace(children, event.target.value as "all" | "any")
           }
         >
-          <option value="all">All conditions</option>
-          <option value="any">Any condition</option>
+          <option value="all">{t("All conditions")}</option>
+          <option value="any">{t("Any condition")}</option>
         </select>
       </label>
       {children.map((child, index) => {
@@ -180,24 +191,35 @@ function GroupEditor({
             <button
               type="button"
               className="secondary-button"
-              aria-label={`Remove ${"field" in child ? "condition" : "group"} ${childPath}`}
+              aria-label={t("Remove {0} {1}", {
+                "0": "field" in child ? "condition" : "group",
+                "1": childPath,
+              })}
               onClick={() =>
                 replace(children.filter((_, position) => position !== index))
               }
             >
-              Remove
+              {t("Remove")}
             </button>
           </div>
         );
       })}
       {submitted && !children.length && (
-        <p role="alert">Add a condition to {label.toLowerCase()}.</p>
+        <p role="alert">
+          {" "}
+          {t("Add a condition to")}
+          {label.toLowerCase()}.
+        </p>
       )}
       <div className="advanced-filter-actions">
         <button
           type="button"
           className="secondary-button"
-          aria-label={path ? `Add condition to group ${path}` : "Add condition"}
+          aria-label={
+            path
+              ? t("Add condition to group {0}", { "0": path })
+              : t("Add condition")
+          }
           disabled={nodeCount >= 64 || depth >= 8}
           onClick={() =>
             replace([
@@ -206,12 +228,14 @@ function GroupEditor({
             ])
           }
         >
-          Add condition
+          {t("Add condition")}{" "}
         </button>
         <button
           type="button"
           className="secondary-button"
-          aria-label={path ? `Add group to group ${path}` : "Add group"}
+          aria-label={
+            path ? t("Add group to group {0}", { "0": path }) : t("Add group")
+          }
           disabled={nodeCount >= 63 || depth >= 7}
           onClick={() =>
             replace([
@@ -220,7 +244,7 @@ function GroupEditor({
             ])
           }
         >
-          Add group
+          {t("Add group")}
         </button>
       </div>
     </fieldset>
@@ -245,18 +269,20 @@ function ConditionEditor({
   const list = ["in", "not_in"].includes(rule.op);
   const noValue = ["is_null", "not_null"].includes(rule.op);
   const error = submitted ? filterConditionError(rule, fields) : undefined;
-  const label = `Condition ${path}`;
+  const label = t("Condition {0}", { "0": path });
   return (
     <div className="advanced-filter-row">
       <select
-        aria-label={`${label} field`}
+        aria-label={t("{0} field", { 0: label })}
         value={rule.field}
         onChange={(event) =>
           onChange({ field: event.target.value, op: "eq", values: [""] })
         }
       >
         {!field && (
-          <option value={rule.field}>{rule.field} (unavailable)</option>
+          <option value={rule.field}>
+            {rule.field} {t("(unavailable)")}
+          </option>
         )}
         {fields.map((field) => (
           <option key={field.name} value={field.name}>
@@ -265,7 +291,7 @@ function ConditionEditor({
         ))}
       </select>
       <select
-        aria-label={`${label} operator`}
+        aria-label={t("{0} operator", { 0: label })}
         value={rule.op}
         onChange={(event) => {
           const op = event.target.value as FilterOperator;
@@ -277,7 +303,9 @@ function ConditionEditor({
         }}
       >
         {!operators.some(([op]) => op === rule.op) && (
-          <option value={rule.op}>{rule.op} (unavailable)</option>
+          <option value={rule.op}>
+            {rule.op} {t("(unavailable)")}
+          </option>
         )}
         {operators.map(([op, label]) => (
           <option key={op} value={op}>
@@ -287,7 +315,7 @@ function ConditionEditor({
       </select>
       {!noValue && (field?.kind === "enum" || field?.kind === "boolean") ? (
         <select
-          aria-label={`${label} value`}
+          aria-label={t("{0} value", { 0: label })}
           aria-invalid={Boolean(error)}
           multiple={list}
           value={list ? (rule.values ?? []) : (rule.values?.[0] ?? "")}
@@ -303,7 +331,7 @@ function ConditionEditor({
             })
           }
         >
-          {!list && <option value="">Choose a value</option>}
+          {!list && <option value="">{t("Choose a value")}</option>}
           {(field.kind === "boolean"
             ? ["true", "false"]
             : (field.values ?? [])
@@ -311,8 +339,8 @@ function ConditionEditor({
             <option key={value} value={value}>
               {field.kind === "boolean"
                 ? value === "true"
-                  ? "Yes"
-                  : "No"
+                  ? t("Yes")
+                  : t("No")
                 : value}
             </option>
           ))}
@@ -320,7 +348,7 @@ function ConditionEditor({
       ) : (
         !noValue && (
           <input
-            aria-label={`${label} value`}
+            aria-label={t("{0} value", { 0: label })}
             aria-invalid={Boolean(error)}
             type={!list && field ? inputType(field.kind) : "text"}
             step="any"
@@ -333,10 +361,10 @@ function ConditionEditor({
             }
             placeholder={
               list
-                ? "Values separated by commas"
+                ? t("Values separated by commas")
                 : field?.kind === "json"
                   ? '{"key":"value"}'
-                  : "Value"
+                  : t("Value")
             }
             onChange={(event) => {
               let value = event.target.value;

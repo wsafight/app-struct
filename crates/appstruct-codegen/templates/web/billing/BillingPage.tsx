@@ -1,3 +1,5 @@
+import { formatDate } from "../ui";
+import { t } from "../ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, CreditCard, ExternalLink } from "lucide-react";
 import { billingApi, type BillingPlan } from "../generated/client";
@@ -19,7 +21,7 @@ export function BillingPage() {
   if (billing.isPending)
     return (
       <main className="page">
-        <div className="auth-loading" aria-label="Loading" />
+        <div className="auth-loading" aria-label={t("Loading")} />
       </main>
     );
   if (billing.error)
@@ -35,8 +37,8 @@ export function BillingPage() {
     <main className="page">
       <div className="page-heading">
         <div>
-          <h1>Billing</h1>
-          <p>Manage the organization subscription and access.</p>
+          <h1>{t("Billing")}</h1>
+          <p>{t("Manage the organization subscription and access.")}</p>
         </div>
         {data.customer_portal && data.subscription && (
           <button
@@ -45,7 +47,7 @@ export function BillingPage() {
             onClick={() => portal.mutate()}
             disabled={portal.isPending}
           >
-            <ExternalLink size={16} /> Manage billing
+            <ExternalLink size={16} /> {t("Manage billing")}
           </button>
         )}
       </div>
@@ -53,17 +55,14 @@ export function BillingPage() {
         <section className="panel">
           <div className="section-heading">
             <CreditCard size={18} />
-            <h2>Current subscription</h2>
+            <h2>{t("Current subscription")}</h2>
           </div>
           <p>
             {data.subscription.plan_id} · {data.subscription.status}
           </p>
           {data.subscription.current_period_end && (
             <p>
-              Renews{" "}
-              {new Date(
-                data.subscription.current_period_end,
-              ).toLocaleDateString()}
+              {t("Renews")} {formatDate(data.subscription.current_period_end)}
             </p>
           )}
         </section>
@@ -102,7 +101,11 @@ function PlanCard({
   return (
     <article className={`panel billing-plan${active ? " active" : ""}`}>
       <h2>{plan.id}</h2>
-      {plan.trial_days && <p>{plan.trial_days}-day trial</p>}
+      {plan.trial_days && (
+        <p>
+          {plan.trial_days} {t("-day trial")}
+        </p>
+      )}
       <ul>
         {plan.entitlements.map((item) => (
           <li key={item}>
@@ -117,7 +120,7 @@ function PlanCard({
           onClick={onCheckout}
           disabled={disabled}
         >
-          <CreditCard size={16} /> Choose plan
+          <CreditCard size={16} /> {t("Choose plan")}
         </button>
       )}
     </article>

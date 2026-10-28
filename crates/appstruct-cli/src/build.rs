@@ -107,23 +107,13 @@ pub(crate) fn verify_update(project: &Path) -> io::Result<()> {
 }
 
 pub(crate) fn backend_manifest(project: &Path) -> io::Result<PathBuf> {
-    match project_layout(project)? {
-        appstruct_compiler::ProjectLayout::LegacyGeneratedBackend => {
-            Ok(project.join("generated/backend/Cargo.toml"))
-        }
-        appstruct_compiler::ProjectLayout::CompositionRoot => {
-            Ok(project.join("generated/server/Cargo.toml"))
-        }
-    }
+    project_layout(project)?;
+    Ok(project.join("generated/server/Cargo.toml"))
 }
 
 pub(crate) fn backend_binary_name(project: &Path) -> io::Result<&'static str> {
-    match project_layout(project)? {
-        appstruct_compiler::ProjectLayout::LegacyGeneratedBackend => {
-            Ok("appstruct-generated-backend")
-        }
-        appstruct_compiler::ProjectLayout::CompositionRoot => Ok("appstruct-generated-server"),
-    }
+    project_layout(project)?;
+    Ok("appstruct-generated-server")
 }
 
 fn project_layout(project: &Path) -> io::Result<appstruct_compiler::ProjectLayout> {
@@ -331,22 +321,15 @@ mod tests {
         fs::create_dir_all(project.path().join("app/backend")).unwrap();
         fs::write(
             project.path().join("appstruct.lock"),
-            "lock_version = 1\nproject_layout_version = 1\nappstruct = \"0.1.0\"\n",
+            "lock_version = 1\nproject_layout_version = 1\nappstruct = \"0.2.0\"\n",
         )
         .unwrap();
-        assert!(
-            backend_manifest(project.path())
-                .unwrap()
-                .ends_with(Path::new("generated/backend/Cargo.toml"))
-        );
-        assert_eq!(
-            backend_binary_name(project.path()).unwrap(),
-            "appstruct-generated-backend"
-        );
+        assert!(backend_manifest(project.path()).is_err());
+        assert!(backend_binary_name(project.path()).is_err());
 
         fs::write(
             project.path().join("appstruct.lock"),
-            "lock_version = 1\nproject_layout_version = 2\nappstruct = \"0.1.0\"\n",
+            "lock_version = 1\nproject_layout_version = 2\nappstruct = \"0.2.0\"\n",
         )
         .unwrap();
         assert!(
@@ -365,7 +348,7 @@ mod tests {
         let project = tempfile::tempdir().unwrap();
         fs::write(
             project.path().join("appstruct.lock"),
-            "lock_version = 1\nappstruct = \"0.1.0\"\n",
+            "lock_version = 1\nappstruct = \"0.2.0\"\n",
         )
         .unwrap();
         assert!(backend_manifest(project.path()).is_err());

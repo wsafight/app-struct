@@ -1,3 +1,4 @@
+import { t } from "../ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
@@ -103,7 +104,7 @@ export function WorkflowActions({
 
   return (
     <>
-      <div className="workflow-actions" aria-label="Workflow actions">
+      <div className="workflow-actions" aria-label={t("Workflow actions")}>
         {definitions.map((transition) => (
           <button
             key={transition.name}
@@ -149,7 +150,7 @@ export function WorkflowActions({
               disabled={mutation.isPending}
               onClick={() => setSelected(null)}
             >
-              Cancel
+              {t("Cancel")}
             </button>
             <button
               type="submit"
@@ -196,7 +197,7 @@ function WorkflowField({
           value={String(value ?? "")}
           onChange={(event) => onChange(event.target.value)}
         >
-          <option value="">Select...</option>
+          <option value=""> {t("Select...")} </option>
           {field.values?.map((option) => (
             <option key={option} value={option}>
               {option}
@@ -248,7 +249,7 @@ function workflowInput(
       const value = values[field.name];
       if (value === "" && !field.required) return [];
       if (value === "" && field.required) {
-        throw new Error(`${field.label} is required`);
+        throw new Error(t("{0} is required", { "0": field.label }));
       }
       return [[field.name, toApiValue(value, field)]];
     }),

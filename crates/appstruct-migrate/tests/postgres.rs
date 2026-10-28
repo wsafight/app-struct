@@ -3,8 +3,9 @@ use appstruct_ir::{
 };
 use appstruct_migrate::{
     ColumnSchema, DatabaseSchema, DatabaseType, DriftStatus, ForeignKeySchema, IndexSchema,
-    TableSchema, UniqueConstraintSchema, apply_project, connect_database, initial_migration,
-    inspect_database_schema, stamp_schema_checksum, status_project, to_json,
+    TableSchema, UniqueConstraintSchema, apply_project, baseline_project, connect_database, diff,
+    initial_migration, inspect_baseline, inspect_database_schema, migration_sql,
+    stamp_schema_checksum, status_project, to_json,
 };
 use std::fs;
 use std::sync::Mutex;
@@ -101,6 +102,174 @@ fn write_project(schema: &DatabaseSchema) -> tempfile::TempDir {
     let sql = stamp_schema_checksum(&initial_migration(schema), &snapshot);
     fs::write(project.path().join("migrations/0001_notes.sql"), sql).unwrap();
     project
+}
+
+#[test]
+fn baseline_preserves_populated_tables_and_allows_the_next_migration() {
+    let Some(url) = database_url() else {
+        return;
+    };
+    let _lock = lock_database();
+    reset_public(&url);
+    let schema = notes_schema();
+    let mut client = connect_database(&url).unwrap();
+    client.batch_execute(&initial_migration(&schema)).unwrap();
+    client.batch_execute("INSERT INTO notes (id, title) VALUES ('00000000-0000-4000-8000-000000000001', 'existing row')").unwrap();
+    let empty_project = tempfile::tempdir().unwrap();
+    let preview = inspect_baseline(empty_project.path(), &url, &schema).unwrap();
+    assert_eq!(preview.drift, DriftStatus::Clean);
+    assert!(!preview.registered);
+    assert!(preview.migration.is_none());
+    assert_eq!(fs::read_dir(empty_project.path()).unwrap().count(), 0);
+    let history_exists: bool = client
+        .query_one(
+            "SELECT to_regclass('_appstruct_migrations') IS NOT NULL",
+            &[],
+        )
+        .unwrap()
+        .get(0);
+    assert!(!history_exists);
+
+    let project = write_project(&schema);
+    for _ in 0..2 {
+        let status = baseline_project(project.path(), &url, &schema).unwrap();
+        assert!(status.registered);
+        assert_eq!(status.drift, DriftStatus::Clean);
+    }
+    let status = status_project(project.path(), &url).unwrap();
+    assert_eq!((status.applied, status.pending), (1, 0));
+    assert_eq!(status.drift, DriftStatus::Clean);
+    assert_eq!(
+        client
+            .query_one("SELECT title FROM notes", &[])
+            .unwrap()
+            .get::<_, String>(0),
+        "existing row"
+    );
+    let mut next = schema.clone();
+    let mut column = next.tables[0].columns[1].clone();
+    column.id = "notes.description".to_owned();
+    column.name = "description".to_owned();
+    column.nullable = true;
+    column.unique = false;
+    next.tables[0].columns.push(column);
+    let snapshot = to_json(&next).unwrap();
+    fs::write(
+        project.path().join(".appstruct/schema.snapshot.json"),
+        &snapshot,
+    )
+    .unwrap();
+    fs::write(
+        project.path().join("migrations/0002_description.sql"),
+        stamp_schema_checksum(&migration_sql(&diff(&schema, &next)).unwrap(), &snapshot),
+    )
+    .unwrap();
+    let report = apply_project(project.path(), &url).unwrap();
+    assert_eq!(report.applied_now, 1);
+    assert_eq!(report.drift, DriftStatus::Clean);
+    assert_eq!(
+        client
+            .query_one("SELECT title, description FROM notes", &[])
+            .unwrap()
+            .get::<_, Option<String>>(1),
+        None
+    );
+}
+
+#[test]
+fn baseline_refuses_drift_and_tampered_history_without_registration() {
+    let Some(url) = database_url() else {
+        return;
+    };
+    let _lock = lock_database();
+    reset_public(&url);
+    let schema = notes_schema();
+    let project = write_project(&schema);
+    let mut client = connect_database(&url).unwrap();
+    client.batch_execute(&initial_migration(&schema)).unwrap();
+    client
+        .batch_execute("ALTER TABLE notes ADD COLUMN extra TEXT")
+        .unwrap();
+    assert!(matches!(
+        inspect_baseline(project.path(), &url, &schema)
+            .unwrap()
+            .drift,
+        DriftStatus::Detected(_)
+    ));
+    assert!(
+        baseline_project(project.path(), &url, &schema)
+            .unwrap_err()
+            .to_string()
+            .contains("unexpected column")
+    );
+    assert!(
+        !client
+            .query_one(
+                "SELECT to_regclass('_appstruct_migrations') IS NOT NULL",
+                &[]
+            )
+            .unwrap()
+            .get::<_, bool>(0)
+    );
+    client
+        .batch_execute("ALTER TABLE notes DROP COLUMN extra")
+        .unwrap();
+    baseline_project(project.path(), &url, &schema).unwrap();
+    client
+        .batch_execute("UPDATE _appstruct_migrations SET checksum = 'tampered'")
+        .unwrap();
+    assert!(
+        baseline_project(project.path(), &url, &schema)
+            .unwrap_err()
+            .to_string()
+            .contains("modified after execution")
+    );
+    client
+        .batch_execute("UPDATE _appstruct_migrations SET state = 'failed'")
+        .unwrap();
+    assert!(
+        baseline_project(project.path(), &url, &schema)
+            .unwrap_err()
+            .to_string()
+            .contains("manual recovery")
+    );
+}
+
+#[test]
+fn baseline_never_skips_arbitrary_sql_or_a_migration_chain() {
+    let schema = notes_schema();
+    let project = write_project(&schema);
+    let path = project.path().join("migrations/0001_notes.sql");
+    let sql = fs::read_to_string(&path).unwrap();
+    fs::write(&path, format!("{sql}\nDELETE FROM notes;\n")).unwrap();
+    let error = inspect_baseline(project.path(), "invalid url", &schema).unwrap_err();
+    assert!(error.to_string().contains("cannot skip arbitrary SQL"));
+    fs::write(&path, &sql).unwrap();
+    fs::write(project.path().join("migrations/0002_other.sql"), &sql).unwrap();
+    assert!(
+        baseline_project(project.path(), "invalid url", &schema)
+            .unwrap_err()
+            .to_string()
+            .contains("migration chains")
+    );
+}
+
+#[test]
+fn baseline_refuses_seed_data_instead_of_silently_marking_it_applied() {
+    let mut schema = notes_schema();
+    schema.seeds.push(appstruct_migrate::SeedSchema {
+        id: "notes.initial".to_owned(),
+        table: "notes".to_owned(),
+        values: Vec::new(),
+    });
+    let project = tempfile::tempdir().unwrap();
+    assert!(
+        inspect_baseline(project.path(), "invalid url", &schema)
+            .unwrap_err()
+            .to_string()
+            .contains("without seeds")
+    );
+    assert_eq!(fs::read_dir(project.path()).unwrap().count(), 0);
 }
 
 #[test]

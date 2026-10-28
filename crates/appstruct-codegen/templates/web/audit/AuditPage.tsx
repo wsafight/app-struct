@@ -1,3 +1,5 @@
+import { formatDateTime } from "../ui";
+import { t } from "../ui";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, History } from "lucide-react";
 import { useState } from "react";
@@ -27,7 +29,7 @@ export function AuditPage() {
     return (
       <main className="page">
         <div className="alert" role="alert">
-          You do not have permission to view the audit log.
+          {t("You do not have permission to view the audit log.")}
         </div>
       </main>
     );
@@ -35,8 +37,10 @@ export function AuditPage() {
     <main className="page audit-page">
       <div className="page-heading">
         <div>
-          <h1>Audit log</h1>
-          <p>{total} events</p>
+          <h1> {t("Audit log")}</h1>
+          <p>
+            {total} {t("events")}
+          </p>
         </div>
         <History size={22} aria-hidden />
       </div>
@@ -49,25 +53,26 @@ export function AuditPage() {
         <table className="audit-table">
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Operation</th>
-              <th>Entity</th>
-              <th>Record</th>
-              <th>Actor</th>
+              <th> {t("Time")}</th>
+              <th> {t("Operation")}</th>
+              <th> {t("Entity")} </th>
+              <th>{t("Record")}</th>
+              <th>{t("Actor")}</th>
             </tr>
           </thead>
           <tbody>
             {query.isPending && (
               <tr>
                 <td className="empty" colSpan={5}>
-                  Loading...
+                  {" "}
+                  {t("Loading...")}
                 </td>
               </tr>
             )}
             {!query.isPending && events.length === 0 && (
               <tr>
                 <td className="empty" colSpan={5}>
-                  No audit events
+                  {t("No audit events")}
                 </td>
               </tr>
             )}
@@ -77,15 +82,13 @@ export function AuditPage() {
         </table>
       </div>
       <div className="pagination">
-        <span>
-          Page {page} of {pages}
-        </span>
+        <span>{t("Page {0} of {1}", { 0: page, 1: pages })}</span>
         <div>
           <button
             className="icon-button"
             disabled={page <= 1}
             onClick={() => setPage((value) => value - 1)}
-            aria-label="Previous page"
+            aria-label={t("Previous page")}
           >
             <ChevronLeft size={17} />
           </button>
@@ -93,7 +96,7 @@ export function AuditPage() {
             className="icon-button"
             disabled={page >= pages}
             onClick={() => setPage((value) => value + 1)}
-            aria-label="Next page"
+            aria-label={t("Next page")}
           >
             <ChevronRight size={17} />
           </button>
@@ -108,7 +111,7 @@ function AuditRow({ event }: { event: AuditEvent }) {
   return (
     <>
       <tr>
-        <td>{new Date(event.occurred_at).toLocaleString()}</td>
+        <td>{formatDateTime(event.occurred_at)}</td>
         <td>
           <span className={`audit-operation ${event.operation}`}>
             {event.operation}
@@ -122,18 +125,18 @@ function AuditRow({ event }: { event: AuditEvent }) {
         <td colSpan={5}>
           <details>
             <summary>
-              <span>Change snapshot</span>
+              <span>{t("Change snapshot")}</span>
               <span className="audit-change-count">
-                {changes.length} changed fields
+                {changes.length} {t("changed fields")}
               </span>
             </summary>
             {changes.length > 0 ? (
               <table className="audit-diff">
                 <thead>
                   <tr>
-                    <th>Changed fields</th>
-                    <th>Before</th>
-                    <th>After</th>
+                    <th> {t("Changed fields")}</th>
+                    <th> {t("Before")} </th>
+                    <th> {t("After")} </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -147,17 +150,17 @@ function AuditRow({ event }: { event: AuditEvent }) {
                 </tbody>
               </table>
             ) : (
-              <p className="empty">No field changes</p>
+              <p className="empty">{t("No field changes")}</p>
             )}
             <details className="audit-raw">
-              <summary>Raw snapshots</summary>
+              <summary> {t("Raw snapshots")}</summary>
               <div className="audit-json">
                 <section>
-                  <h2>Before</h2>
+                  <h2> {t("Before")} </h2>
                   <pre>{formatJson(event.before)}</pre>
                 </section>
                 <section>
-                  <h2>After</h2>
+                  <h2> {t("After")} </h2>
                   <pre>{formatJson(event.after)}</pre>
                 </section>
               </div>

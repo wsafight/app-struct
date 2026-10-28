@@ -439,7 +439,7 @@ fn generation_manifest_blocks_modified_and_unknown_files() {
     let manifest_path = project.join("generated/.appstruct-manifest.json");
     let manifest: Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     assert_eq!(manifest["manifest_version"], 1);
-    assert_eq!(manifest["artifacts"].as_array().unwrap().len(), 102);
+    assert_eq!(manifest["artifacts"].as_array().unwrap().len(), 105);
 
     let cargo_locks = [
         project.join("generated/backend/Cargo.lock"),
@@ -486,6 +486,10 @@ fn generation_never_overwrites_user_extension_directories() {
     let registry = project.join("app/web/registry.ts");
     fs::create_dir_all(registry.parent().unwrap()).unwrap();
     fs::write(&registry, "export const userRegistry = true;\n").unwrap();
+    let setup = project.join("app/web/setup.ts");
+    let user_setup =
+        "import { configureUI } from '@appstruct/ui';\nconfigureUI({title: 'User app'});\n";
+    fs::write(&setup, user_setup).unwrap();
 
     assert!(run(&project, &["generate"]).status.success());
     let spec_path = project.join("spec/project.yaml");
@@ -500,6 +504,7 @@ fn generation_never_overwrites_user_extension_directories() {
     )
     .unwrap();
     assert!(run(&project, &["generate"]).status.success());
+    assert_eq!(fs::read_to_string(setup).unwrap(), user_setup);
     assert_eq!(
         fs::read_to_string(registry).unwrap(),
         "export const userRegistry = true;\n"
@@ -683,4 +688,55 @@ fn assert_directories_equal(first: &Path, second: &Path) {
             );
         }
     }
+}
+
+#[test]
+fn template_diff_is_read_only_and_reports_modified_and_missing_delivery_files() {
+    let temporary = tempfile::tempdir().unwrap();
+    assert!(
+        run_new(temporary.path(), "delivery", "minimal")
+            .status
+            .success()
+    );
+    let project = temporary.path().join("delivery");
+    let dockerfile = project.join("Dockerfile");
+    fs::write(&dockerfile, "# application customization\n").unwrap();
+    fs::remove_file(project.join("deploy/nginx.conf")).unwrap();
+    fs::write(project.join("app/web/setup.ts"), "// user branding\n").unwrap();
+    let output = run(&project, &["template", "diff", "--format", "json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let files = value["result"]["files"].as_array().unwrap();
+    let docker = files
+        .iter()
+        .find(|file| file["path"] == "Dockerfile")
+        .unwrap();
+    assert_eq!(docker["status"], "modified");
+    assert!(
+        docker["patch"]
+            .as_str()
+            .unwrap()
+            .contains("-# application customization")
+    );
+    let nginx = files
+        .iter()
+        .find(|file| file["path"] == "deploy/nginx.conf")
+        .unwrap();
+    assert_eq!(nginx["status"], "missing");
+    assert!(nginx["current_sha256"].is_null());
+    assert_eq!(
+        fs::read_to_string(dockerfile).unwrap(),
+        "# application customization\n"
+    );
+    assert!(!project.join("deploy/nginx.conf").exists());
+    assert_eq!(
+        fs::read_to_string(project.join("app/web/setup.ts")).unwrap(),
+        "// user branding\n"
+    );
+    let text = run(&project, &["template", "diff"]);
+    assert!(String::from_utf8_lossy(&text.stdout).contains("--- a/Dockerfile"));
 }

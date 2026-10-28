@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime, formatNumber, t } from "../../ui";
 import {
   createColumnHelper,
   rowSelectionFeature,
@@ -80,7 +81,7 @@ export function ResourceTable({
       id: "selection",
       header: ({ table }) => (
         <SelectionCheckbox
-          aria-label="Select page"
+          aria-label={t("Select page")}
           checked={table.getIsAllPageRowsSelected()}
           indeterminate={
             table.getIsSomePageRowsSelected() &&
@@ -94,7 +95,7 @@ export function ResourceTable({
           type="checkbox"
           checked={row.getIsSelected()}
           onChange={row.getToggleSelectedHandler()}
-          aria-label={`Select ${row.id}`}
+          aria-label={t("Select {0}", { "0": row.id })}
         />
       ),
     }),
@@ -167,7 +168,7 @@ export function ResourceTable({
     ),
     resourceColumnHelper.display({
       id: "actions",
-      header: () => <span className="sr-only">Actions</span>,
+      header: () => <span className="sr-only">{t("Actions")}</span>,
       cell: ({ row }) => {
         const record = row.original;
         const id = String(record[resource.primaryKey]);
@@ -179,8 +180,8 @@ export function ResourceTable({
               <Link
                 className="icon-button"
                 to={`/${resource.slug}/${encodeURIComponent(id)}`}
-                title="View"
-                aria-label="View"
+                title={t("View")}
+                aria-label={t("View")}
               >
                 <Eye size={16} />
               </Link>
@@ -190,8 +191,8 @@ export function ResourceTable({
                   <button
                     className="icon-button"
                     onClick={() => void restore(id)}
-                    title="Restore"
-                    aria-label="Restore"
+                    title={t("Restore")}
+                    aria-label={t("Restore")}
                   >
                     <RotateCcw size={16} />
                   </button>
@@ -200,9 +201,11 @@ export function ResourceTable({
                   <button
                     className="icon-button danger"
                     onClick={() => void remove(id)}
-                    title={resource.softDelete ? "Move to trash" : "Delete"}
+                    title={
+                      resource.softDelete ? t("Move to trash") : t("Delete")
+                    }
                     aria-label={
-                      resource.softDelete ? "Move to trash" : "Delete"
+                      resource.softDelete ? t("Move to trash") : t("Delete")
                     }
                   >
                     <Trash2 size={16} />
@@ -319,6 +322,15 @@ export function formatFieldValue(
   field: FieldDefinition,
 ): string {
   const value = record[field.name];
+  if (value != null && value !== "") {
+    if (field.kind === "date") return formatDate(String(value));
+    if (field.kind === "datetime") return formatDateTime(String(value));
+    if (
+      ["integer", "bigint", "decimal"].includes(field.kind) &&
+      !field.semantic
+    )
+      return formatNumber(String(value));
+  }
   if (field.semantic?.kind !== "money") return formatValue(value);
   if (value === null || value === undefined || value === "") return "-";
   const currency = record[field.semantic.currencyField];

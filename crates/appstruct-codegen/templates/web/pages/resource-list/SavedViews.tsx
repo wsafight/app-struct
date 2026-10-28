@@ -1,3 +1,4 @@
+import { t } from "../../ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bookmark, Copy, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -89,7 +90,7 @@ export function SavedViews({
 
   useEffect(() => {
     if (serverQuery.error)
-      onError("Could not load saved views from the server");
+      onError(t("Could not load saved views from the server"));
   }, [onError, serverQuery.error]);
 
   function persistLocal(next: LocalSavedView[]) {
@@ -98,7 +99,7 @@ export function SavedViews({
       localStorage.setItem(storageKey, JSON.stringify(next));
       onError("");
     } catch {
-      onError("Could not save this view in the browser");
+      onError(t("Could not save this view in the browser"));
     }
   }
 
@@ -138,7 +139,7 @@ export function SavedViews({
       onError("");
     } catch (error) {
       onError(
-        error instanceof Error ? error.message : "Could not save this view",
+        error instanceof Error ? error.message : t("Could not save this view"),
       );
     } finally {
       setBusy(false);
@@ -160,7 +161,9 @@ export function SavedViews({
       onError("");
     } catch (error) {
       onError(
-        error instanceof Error ? error.message : "Could not delete this view",
+        error instanceof Error
+          ? error.message
+          : t("Could not delete this view"),
       );
     } finally {
       setBusy(false);
@@ -172,7 +175,7 @@ export function SavedViews({
       await navigator.clipboard.writeText(window.location.href);
       onError("");
     } catch {
-      onError("Could not copy view link");
+      onError(t("Could not copy view link"));
     }
   }
 
@@ -180,7 +183,7 @@ export function SavedViews({
     <div className="view-toolbar">
       <Bookmark size={16} />
       <select
-        aria-label="Saved views"
+        aria-label={t("Saved views")}
         value={activeView ? viewKey(activeView) : ""}
         onChange={(event) => {
           setSelectedViewKey(event.target.value);
@@ -190,7 +193,7 @@ export function SavedViews({
           if (view) setSearchParams(new URLSearchParams(view.query));
         }}
       >
-        <option value="">Saved views</option>
+        <option value="">{t("Saved views")}</option>
         {views.map((view) => (
           <option key={viewKey(view)} value={viewKey(view)}>
             {view.name} ({viewLabel(view)})
@@ -198,20 +201,22 @@ export function SavedViews({
         ))}
       </select>
       <input
-        aria-label="View name"
-        placeholder="Name this view"
+        aria-label={t("View name")}
+        placeholder={t("Name this view")}
         maxLength={80}
         value={viewName}
         onChange={(event) => setViewName(event.target.value)}
       />
       <select
-        aria-label="Save view as"
+        aria-label={t("Save view as")}
         value={saveTarget}
         onChange={(event) => setSaveTarget(event.target.value as SaveTarget)}
       >
-        {savedViewFeatures.server && <option value="private">Private</option>}
-        {savedViewFeatures.team && <option value="team">Team</option>}
-        <option value="browser">Browser only</option>
+        {savedViewFeatures.server && (
+          <option value="private">{t("Private")}</option>
+        )}
+        {savedViewFeatures.team && <option value="team">{t("Team")}</option>}
+        <option value="browser">{t("Browser only")}</option>
       </select>
       <button
         type="button"
@@ -219,14 +224,15 @@ export function SavedViews({
         onClick={() => void saveView()}
         disabled={!viewName.trim() || busy}
       >
-        Save
+        {" "}
+        {t("Save")}
       </button>
       <button
         type="button"
         className="icon-button"
         onClick={() => void copyViewLink()}
-        title="Copy view link"
-        aria-label="Copy view link"
+        title={t("Copy view link")}
+        aria-label={t("Copy view link")}
       >
         <Copy size={16} />
       </button>
@@ -236,8 +242,8 @@ export function SavedViews({
           className="icon-button danger"
           onClick={() => void deleteActiveView()}
           disabled={busy}
-          title="Delete selected view"
-          aria-label="Delete selected view"
+          title={t("Delete selected view")}
+          aria-label={t("Delete selected view")}
         >
           <Trash2 size={16} />
         </button>
@@ -255,9 +261,9 @@ function viewKey(view: DisplayView): string {
 }
 
 function viewLabel(view: DisplayView): string {
-  if (view.visibility === "browser") return "Browser";
-  if (view.visibility === "private") return "Private";
-  return view.owned ? "Team" : "Team shared";
+  if (view.visibility === "browser") return t("Browser");
+  if (view.visibility === "private") return t("Private");
+  return view.owned ? t("Team") : t("Team shared");
 }
 
 export function parseLocalSavedViews(value: string | null): LocalSavedView[] {

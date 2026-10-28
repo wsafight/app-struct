@@ -70,7 +70,7 @@ fn start_api_fails_when_the_generated_binary_is_missing() {
     let project = tempfile::tempdir().unwrap();
     fs::write(
         project.path().join("appstruct.lock"),
-        "lock_version = 1\nproject_layout_version = 2\nappstruct = \"0.1.0\"\n",
+        "lock_version = 1\nproject_layout_version = 2\nappstruct = \"0.2.0\"\n",
     )
     .unwrap();
     let error = start_api(

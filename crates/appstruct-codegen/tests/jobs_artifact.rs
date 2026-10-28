@@ -164,7 +164,7 @@ fn assert_interface_contracts(artifacts: &[Artifact]) {
     assert!(library.contains("pub struct Application"));
     assert!(library.contains("shutdown signal received"));
     assert!(!library.contains("expect(\"invalid AppStruct"));
-    let main = artifact_text(artifacts, "backend/src/main.rs");
+    let main = artifact_text(artifacts, "server/src/main.rs");
     assert!(main.contains("Application::from_env"));
     assert!(main.contains("application.serve(listener)"));
 }

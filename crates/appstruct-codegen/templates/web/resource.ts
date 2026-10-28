@@ -1,3 +1,4 @@
+import { t } from "./ui";
 import type {
   AggregateQuery,
   AggregateResponse,
@@ -155,13 +156,18 @@ export interface ResourceApi {
   ): Promise<FacetResponse>;
   get(id: string, options?: { signal?: AbortSignal }): Promise<ResourceRecord>;
   create(input: ResourceInput): Promise<ResourceRecord>;
-  update(id: string, input: ResourceInput): Promise<ResourceRecord>;
+  update(
+    id: string,
+    input: ResourceInput,
+    options?: { revision?: number },
+  ): Promise<ResourceRecord>;
   remove(id: string): Promise<void>;
   bulkUpdate(input: BulkUpdateRequest<ResourceInput>): Promise<BulkResult>;
   bulkDelete(input: BulkDeleteRequest): Promise<BulkResult>;
   exportCsv(query?: Omit<ListQuery, "page" | "page_size">): Promise<string>;
   downloadCsv?(query?: Omit<ListQuery, "page" | "page_size">): Promise<void>;
-  importCsv(csv: string): Promise<BulkResult>;
+  importCsv(csv: string, batch: string): Promise<BulkResult>;
+  importResult(batch: string): Promise<BulkResult>;
   restore?(input: BulkDeleteRequest): Promise<BulkResult>;
   trash?(
     query?: Pick<ListQuery, "page" | "page_size">,
@@ -213,6 +219,10 @@ export interface FieldDefinition {
   writeAccess?: AccessRule;
   values?: string[];
   relation?: string;
+  requiredWhen?: { field: string; equals: string | boolean };
+  greaterThan?: string;
+  minLength?: number;
+  maxLength?: number;
   minimum?: string;
   maximum?: string;
   uiComponent?: keyof AppStructRegistry["fields"];
@@ -344,14 +354,38 @@ export interface CollectionDefinition {
 export function fieldErrors(error: unknown): Record<string, string> {
   const candidate = error as ApiError | undefined;
   return Object.fromEntries(
-    candidate?.fields?.map((item) => [item.field, item.message]) ?? [],
+    candidate?.fields?.map((item) => [
+      item.field,
+      translatedMessage(item.message),
+    ]) ?? [],
   );
 }
 
+function translatedMessage(message: string): string {
+  for (const pattern of [
+    /^(must contain at least )([0-9]+)( characters)$/,
+    /^(must contain at most )([0-9]+)( characters)$/,
+    /^(must be at least )(.+)$/,
+    /^(must be at most )(.+)$/,
+    /^(must be greater than )(.+)$/,
+    /^(is required when )(.+)( matches its condition)$/,
+  ]) {
+    const match = pattern.exec(message);
+    if (match) return t(`${match[1]}{0}${match[3] ?? ""}`, { 0: match[2] });
+  }
+  return t(message);
+}
+
 export function errorMessage(error: unknown): string {
-  return error instanceof Error
-    ? error.message
-    : "The request could not be completed";
+  if (
+    error instanceof TypeError &&
+    /fetch|network|load failed/i.test(error.message)
+  )
+    return t("Network request failed");
+  const message = (error as { message?: unknown } | null)?.message;
+  return typeof message === "string"
+    ? translatedMessage(message)
+    : t("The request could not be completed");
 }
 
 /**

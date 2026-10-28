@@ -169,7 +169,7 @@ mod tests {
         fs::write(
             project
                 .path()
-                .join(".appstruct/cache/backend-target/debug/appstruct-generated-backend"),
+                .join(".appstruct/cache/backend-target/debug/appstruct-generated-server"),
             "binary",
         )
         .unwrap();

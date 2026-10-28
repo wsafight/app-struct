@@ -66,6 +66,7 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
                     if !state.extensions.#policy().can_update(&context, &before, &input, &candidate).await? {
                         return Err(ApiError::Forbidden);
                     }
+                    validate_candidate(&active)?;
                     let after = active.update(&savepoint).await?;
                     state.extensions.#hooks().after_update(&context, &before, &after).await?;
                     #audit
@@ -162,6 +163,7 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
                     if !state.extensions.#policy().can_update(&context, &before, &input, &candidate).await? {
                         return Err(ApiError::Forbidden);
                     }
+                    validate_candidate(&active)?;
                     let after = active.update(&savepoint).await?;
                     state.extensions.#hooks().after_update(&context, &before, &after).await?;
                     #audit
@@ -214,6 +216,7 @@ pub(super) fn delete(context: &BulkContext<'_>) -> TokenStream {
             active.deleted_at = Some(chrono::Utc::now());
             active.revision = model.revision.checked_add(1)
                 .ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
+            validate_candidate(&active)?;
             active.update(&savepoint).await?
         }
     } else {

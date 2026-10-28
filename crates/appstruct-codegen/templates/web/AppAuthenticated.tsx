@@ -1,3 +1,4 @@
+import { t } from "../ui";
 __REACT_IMPORT__
 import { AuthProvider, RequireAuth } from "../auth/Auth";
 __RESOURCE_IMPORT__
@@ -94,11 +95,11 @@ __HOME_REDIRECT__
 }
 
 function EmptyPage() {
-  return <main className="page"><h1>No accessible resources</h1></main>;
+  return <main className="page"><h1>{t("No accessible resources")}</h1></main>;
 }
 
 function PageRendererUnavailable() {
-  return <main className="page"><div className="alert" role="alert">Page renderer unavailable</div></main>;
+  return <main className="page"><div className="alert" role="alert">{t("Page renderer unavailable")}</div></main>;
 }
 
 function customPageRoutes(registry?: AppStructRegistry): RuntimeRoute[] {

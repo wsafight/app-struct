@@ -1,0 +1,12 @@
+[package]
+name = "appstruct-app-backend"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+
+[dependencies]
+appstruct-generated-backend = { path = "../../generated/backend" }
+uuid = { version = "=1.28.0", features = ["v7"] }
+tracing = "=0.1.44"
+async-trait = "=0.1.92"

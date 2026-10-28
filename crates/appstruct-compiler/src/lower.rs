@@ -102,6 +102,15 @@ pub(crate) fn build_ir(
         &auth,
         &mut diagnostics,
     );
+    if let Err(errors) = appstruct_ir::validate_form_rules(&entities) {
+        diagnostics.extend(errors.errors().iter().map(|error| {
+            Diagnostic::error(
+                "AS2045",
+                format!("{}: {}", error.path, error.message),
+                root.app_name.span.clone(),
+            )
+        }));
+    }
     let activity = lower_activity(
         &root.activity,
         &auth,

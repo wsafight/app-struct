@@ -1,5 +1,5 @@
 use super::{MigrationError, MigrationFile};
-use postgres::Client;
+use postgres::{Client, GenericClient};
 
 const HISTORY_TABLE: &str = "_appstruct_migrations";
 
@@ -16,7 +16,7 @@ pub(super) fn lock(client: &mut Client) -> Result<(), MigrationError> {
         .map_err(|error| MigrationError::Database(format!("cannot lock migration runner: {error}")))
 }
 
-pub(super) fn ensure_table(client: &mut Client) -> Result<(), MigrationError> {
+pub(super) fn ensure_table(client: &mut impl GenericClient) -> Result<(), MigrationError> {
     client
         .batch_execute(
             r#"CREATE TABLE IF NOT EXISTS "_appstruct_migrations" (
@@ -32,7 +32,7 @@ pub(super) fn ensure_table(client: &mut Client) -> Result<(), MigrationError> {
         })
 }
 
-pub(super) fn load(client: &mut Client) -> Result<Vec<HistoryEntry>, MigrationError> {
+pub(super) fn load(client: &mut impl GenericClient) -> Result<Vec<HistoryEntry>, MigrationError> {
     if !exists(client)? {
         return Ok(Vec::new());
     }
@@ -71,7 +71,7 @@ pub(super) fn apply(client: &mut Client, migration: &MigrationFile) -> Result<()
     }
 }
 
-fn exists(client: &mut Client) -> Result<bool, MigrationError> {
+fn exists(client: &mut impl GenericClient) -> Result<bool, MigrationError> {
     client
         .query_one(
             "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1)",

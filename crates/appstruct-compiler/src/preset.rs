@@ -89,7 +89,7 @@ pub fn project_lock(template: &str, preset: Option<(&str, u64)>) -> Option<Strin
 /// # Errors
 ///
 /// Returns a diagnostic for invalid, unversioned, or unsupported project locks. Lockless custom
-/// projects are treated as legacy layout v1 for backward compatibility.
+/// projects use the current composition-root layout.
 pub fn project_layout(project: &Path) -> Result<ProjectLayout, Diagnostic> {
     lock::layout(project)
 }

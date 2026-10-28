@@ -57,6 +57,18 @@ fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
         ),
         ("web/src/main.tsx", main.to_owned()),
         (
+            "web/src/ui.tsx",
+            include_str!("../templates/web/ui.tsx").to_owned(),
+        ),
+        (
+            "web/src/ui-messages.ts",
+            include_str!("../templates/web/ui-messages.ts").to_owned(),
+        ),
+        (
+            "web/src/ui.test.tsx",
+            include_str!("../templates/web/ui.test.tsx").to_owned(),
+        ),
+        (
             "web/src/field-values.ts",
             include_str!("../templates/web/field-values.ts").to_owned(),
         ),
@@ -258,23 +270,36 @@ fn tsconfig() -> &'static str {
     "noEmit": true,
     "jsx": "react-jsx",
     "types": ["@rsbuild/core/types"]
+    ,"paths": { "@appstruct/ui": ["./src/ui.tsx"] }
   },
-  "include": ["src", "rsbuild.config.ts", "rstest.config.ts"]
+  "include": ["src", "rsbuild.config.ts", "rstest.config.ts", "../../app/web"]
 }
 "#
 }
 
 fn rsbuild_config() -> &'static str {
-    r#"import { defineConfig, loadEnv } from "@rsbuild/core";
+    r#"import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { defineConfig, loadEnv } from "@rsbuild/core";
 import { pluginReact } from "@rsbuild/plugin-react";
 
 const { publicVars } = loadEnv({ prefixes: ["PUBLIC_", "VITE_"] });
+const setup = resolve(import.meta.dirname, "../../app/web/setup.ts");
 
 export default defineConfig({
   plugins: [pluginReact()],
   source: {
-    entry: { index: "./src/main.tsx" },
+    entry: {
+      index: [
+        "./src/styles.css",
+        ...(existsSync(setup) ? [setup] : []),
+        "./src/main.tsx",
+      ],
+    },
     define: publicVars,
+  },
+  resolve: {
+    alias: { "@appstruct/ui": resolve(import.meta.dirname, "src/ui.tsx") },
   },
   html: { template: "./index.html" },
   server: { host: "127.0.0.1", port: 5173 },

@@ -12,6 +12,14 @@ pub(super) fn indexes(ir: &AppIr) -> Vec<IndexSchema> {
     if ir.audit.enabled {
         indexes.extend(audit());
     }
+    if ir.file.enabled {
+        indexes.push(index(
+            "appstruct::file::unreferenced",
+            "_appstruct_files",
+            &["unreferenced_at", "id"],
+            Some("reference_owners = '[]'::jsonb"),
+        ));
+    }
     if ir.jobs.enabled {
         indexes.extend(jobs());
     }

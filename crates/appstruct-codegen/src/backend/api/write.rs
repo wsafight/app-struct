@@ -153,6 +153,7 @@ fn create_handler(
                     return Err(ApiError::Forbidden);
                 }
                 let active = #module::Model { #(#create_values,)* #active_default };
+                validate_candidate(&active)?;
                 let model = active.insert(&transaction).await?;
                 state.extensions.#hooks().after_create(&context, &model).await?;
                 #audit
@@ -230,6 +231,7 @@ fn update_handler(
                 {
                     return Err(ApiError::Forbidden);
                 }
+                validate_candidate(&active)?;
                 let after = active.update(&transaction).await?;
                 state.extensions.#hooks().after_update(&context, &before, &after).await?;
                 #audit
@@ -263,6 +265,7 @@ fn delete_handler(
             active.deleted_at = Some(chrono::Utc::now());
             active.revision = model.revision.checked_add(1)
                 .ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
+            validate_candidate(&active)?;
             active.update(&transaction).await?
         }
     } else {

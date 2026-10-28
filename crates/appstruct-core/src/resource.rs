@@ -62,14 +62,14 @@ pub struct BulkDeleteInput {
     pub expected_revisions: BTreeMap<String, i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BulkFailure {
     pub id: String,
     pub code: String,
     pub message: String,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct BulkResult {
     pub succeeded: Vec<String>,
     pub failed: Vec<BulkFailure>,

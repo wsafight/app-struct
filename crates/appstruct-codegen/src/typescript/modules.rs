@@ -1,9 +1,12 @@
-pub(super) fn tenant_storage_source() -> &'static str {
-    r#"export const tenantStorageKey = "appstruct_tenant";
-
-let tenantOverride: string | null | undefined;
-
-function browserStorage(): Storage | undefined {
+pub(super) fn tenant_storage_source(auth_enabled: bool) -> String {
+    [
+        "export const tenantStorageKey = \"appstruct_tenant\";\n\n",
+        if auth_enabled {
+            "let tenantOverride: string | null | undefined;\n\n"
+        } else {
+            "const tenantOverride = undefined;\n\n"
+        },
+        r#"function browserStorage(): Storage | undefined {
   try {
     const storage = window.localStorage;
     return typeof storage?.getItem === "function" &&
@@ -25,7 +28,9 @@ function currentTenant(): string | undefined {
   }
 }
 
-"#
+"#,
+    ]
+    .concat()
 }
 
 pub(super) fn tenant_source() -> String {

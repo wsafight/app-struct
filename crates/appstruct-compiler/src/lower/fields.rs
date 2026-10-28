@@ -224,6 +224,16 @@ fn build_field(
                 max_length: field.max_length.as_ref().map(|value| value.value),
                 minimum: field.minimum.as_ref().map(|value| value.value.clone()),
                 maximum: field.maximum.as_ref().map(|value| value.value.clone()),
+                required_when: field.required_when.as_ref().map(|rule| {
+                    appstruct_ir::RequiredWhenIr {
+                        field: FieldId(format!("{entity_id}.{}", rule.field.0)),
+                        equals: rule.equals.clone(),
+                    }
+                }),
+                greater_than: field
+                    .greater_than
+                    .as_ref()
+                    .map(|other| FieldId(format!("{entity_id}.{}", other.value))),
             },
             capabilities: FieldCapabilities {
                 searchable: field.flags.searchable(),

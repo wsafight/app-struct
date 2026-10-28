@@ -14,27 +14,27 @@ fn empty() -> DatabaseSchema {
 }
 
 #[test]
-fn json_round_trip_accepts_compatible_versions() {
+fn json_round_trip_rejects_every_noncurrent_version() {
     let json = to_json(&empty()).unwrap();
     let parsed = from_json(&json).unwrap();
     assert_eq!(parsed.schema_version, SCHEMA_VERSION);
 
-    let mut legacy = empty();
-    legacy.schema_version = MIN_COMPATIBLE_SCHEMA_VERSION;
-    let parsed = from_json(&to_json(&legacy).unwrap()).unwrap();
-    assert_eq!(parsed.schema_version, SCHEMA_VERSION);
-
-    for version in MIN_COMPATIBLE_SCHEMA_VERSION..SCHEMA_VERSION {
-        let mut compatible = empty();
-        compatible.schema_version = version;
-        let parsed = from_json(&to_json(&compatible).unwrap()).unwrap();
-        assert_eq!(parsed.schema_version, SCHEMA_VERSION);
+    for version in 0..SCHEMA_VERSION {
+        let mut old = empty();
+        old.schema_version = version;
+        assert!(from_json(&to_json(&old).unwrap()).is_err());
     }
 
     let mut future = empty();
     future.schema_version = SCHEMA_VERSION + 10;
     assert!(from_json(&to_json(&future).unwrap()).is_err());
     assert!(from_json("{").is_err());
+    let mut incomplete = serde_json::to_value(empty()).unwrap();
+    incomplete
+        .as_object_mut()
+        .unwrap()
+        .remove("unique_constraints");
+    assert!(from_json(&incomplete.to_string()).is_err());
 }
 
 #[test]

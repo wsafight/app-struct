@@ -7,7 +7,7 @@ mod realtime;
 mod workflow;
 mod write;
 use super::query::list_support;
-use super::validation::validation_rules;
+use super::validation::{candidate_rules, validation_rules};
 use super::{module_name, parse_ident, render, rust_type};
 use crate::CodegenError;
 use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
@@ -136,6 +136,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
                 .route("/_bulk", axum::routing::patch(bulk_update).delete(bulk_delete))
                 .route("/_export.csv", get(export_csv))
                 .route("/_import.csv", axum::routing::post(import_csv))
+                .route("/_imports/{batch}", get(import_result))
                 #restore_route
                 #workflow_routes
                 #collection_routes
@@ -157,6 +158,8 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
     })
 }
 fn validation_functions(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
+    let candidate_rules = candidate_rules(entity)?;
+    let module = parse_ident(&super::module_name(entity))?;
     let create_rules = validation_rules(entity, false)?;
     let update_rules = validation_rules(entity, true)?;
     Ok(quote! {
@@ -171,6 +174,13 @@ fn validation_functions(entity: &EntityIr) -> Result<TokenStream, CodegenError> 
         fn validate_update(input: &UpdateInput) -> Result<(), ApiError> {
             let mut violations = Vec::new();
             #(#update_rules)*
+            finish_validation(violations)
+        }
+
+        #[allow(unused_mut, unused_variables)]
+        fn validate_candidate(model: &#module::Model) -> Result<(), ApiError> {
+            let mut violations = Vec::new();
+            #(#candidate_rules)*
             finish_validation(violations)
         }
 

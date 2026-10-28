@@ -1,6 +1,6 @@
 use super::{catalog_string, database_error};
 use crate::runner::MigrationError;
-use postgres::Client;
+use postgres::GenericClient;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -29,7 +29,7 @@ pub(super) struct IndexShape {
 }
 
 pub(super) fn key_constraints(
-    client: &mut Client,
+    client: &mut impl GenericClient,
 ) -> Result<BTreeMap<(String, String), BTreeSet<String>>, MigrationError> {
     let rows = client
         .query(
@@ -66,7 +66,7 @@ WHERE tc.table_schema = current_schema()
 }
 
 pub(super) fn foreign_keys(
-    client: &mut Client,
+    client: &mut impl GenericClient,
 ) -> Result<BTreeSet<ForeignKeyShape>, MigrationError> {
     let rows = client
         .query(
@@ -138,7 +138,7 @@ ORDER BY source.relname, con.conname, key.position",
 }
 
 pub(super) fn unique_constraints(
-    client: &mut Client,
+    client: &mut impl GenericClient,
 ) -> Result<BTreeSet<UniqueConstraintShape>, MigrationError> {
     let rows = client
         .query(
@@ -185,7 +185,9 @@ ORDER BY relation.relname, con.conname, key.position",
         .collect())
 }
 
-pub(super) fn indexes(client: &mut Client) -> Result<BTreeSet<IndexShape>, MigrationError> {
+pub(super) fn indexes(
+    client: &mut impl GenericClient,
+) -> Result<BTreeSet<IndexShape>, MigrationError> {
     let rows = client
         .query(
             r"SELECT relation.relname AS table_name,

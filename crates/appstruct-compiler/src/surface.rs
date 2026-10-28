@@ -287,6 +287,8 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             "max_length",
             "minimum",
             "maximum",
+            "required_when",
+            "greater_than",
             "searchable",
             "filterable",
             "sortable",
@@ -335,6 +337,11 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             .get("default")
             .map(|default| expect_scalar_string(&default.value, "field `default`"))
             .transpose()?,
+        required_when: mapping
+            .get("required_when")
+            .map(|entry| decode_required_when(&entry.value))
+            .transpose()?,
+        greater_than: optional_string(mapping, "greater_than", "greater_than field")?,
         min_length: optional_u64(mapping, "min_length")?,
         max_length: optional_u64(mapping, "max_length")?,
         minimum: mapping
@@ -363,5 +370,40 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             .map(|access| access::decode_field_access(&access.value))
             .transpose()?,
         span: entry.value.span.clone(),
+    })
+}
+
+fn decode_required_when(
+    node: &crate::yaml::Node,
+) -> Result<appstruct_ir::RequiredWhenIr, Diagnostic> {
+    let mapping = expect_mapping(node, "required_when")?;
+    ensure_known_keys(mapping, &["field", "equals"], "required_when")?;
+    let field = expect_string(
+        &required(mapping, "field", &node.span)?.value,
+        "condition field",
+    )?;
+    let value = &required(mapping, "equals", &node.span)?.value;
+    let Some((text, plain)) = value.scalar() else {
+        return Err(Diagnostic::error(
+            "AS2045",
+            "required_when.equals must be a boolean or string",
+            value.span.clone(),
+        ));
+    };
+    let equals = if plain && ["true", "false"].contains(&text) {
+        appstruct_ir::ConditionValueIr::Boolean(text == "true")
+    } else {
+        if plain && (text == "null" || text == "~" || text.parse::<f64>().is_ok()) {
+            return Err(Diagnostic::error(
+                "AS2045",
+                "required_when.equals must be a boolean or string; quote text values",
+                value.span.clone(),
+            ));
+        }
+        appstruct_ir::ConditionValueIr::String(text.to_owned())
+    };
+    Ok(appstruct_ir::RequiredWhenIr {
+        field: appstruct_ir::FieldId(field.value),
+        equals,
     })
 }

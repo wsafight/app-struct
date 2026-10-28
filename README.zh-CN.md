@@ -6,7 +6,7 @@ AppStruct 是一个由配置驱动的 Rust 全栈应用生成器。它把多文�
 中间表示（IR）、PostgreSQL 迁移、Axum/SQLx + sift-query 后端、OpenAPI、TypeScript 客户端以及
 React/Rsbuild Web 应用。
 
-当前仓库处于技术预览阶段。现在需要从源码构建 CLI，尚未发布 crates.io 包或独立安装器。
+当前仓库处于技术预览阶段。使用当前实现需要从源码构建 CLI。
 M0-M6 已完成，包含生产构建、协调式开发服务器、Tenant/Audit/Mail/Jobs/File 模块、锁定的
 `appstruct/saas@1` 预设、事务化项目更新，以及可运行的 SaaS 模板和示例。SaaS 预设提供
 Admin 运维概览和受保护的 Jobs 重试/重放操作。生成应用可以按配置启用 Stripe Billing v1，预设 v1 默认关闭。
@@ -179,7 +179,7 @@ Web 运行时采用固定且现代的 React 19 + TypeScript + Rsbuild/Rspack + R
 - TanStack Query：服务端数据获取和缓存。
 - TanStack Router：类型安全路由和认证/租户路由保护。
 - TanStack Table：资源列表、排序、筛选和分页。
-- TanStack Form + Zod：表单状态和 schema 校验。
+- TanStack Form：表单状态与共享的 `valueError` 校验。
 
 生成的资源 API 支持偏移分页、主键游标分页、筛选、排序、关系过滤、聚合和分组查询；所有
 查询都会继续应用 actor、资源和租户权限。字段可以独立声明读写规则，未授权字段不会出现在

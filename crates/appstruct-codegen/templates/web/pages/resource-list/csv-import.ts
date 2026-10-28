@@ -1,3 +1,4 @@
+import { t } from "../../ui";
 import type { FieldDefinition } from "../../resource";
 import { toApiValue } from "../../field-values";
 
@@ -18,7 +19,9 @@ export function parseCsv(text: string): string[][] {
     value = "";
     closed = false;
     if (rows.length > MAX_IMPORT_ROWS + 1)
-      throw new Error(`CSV import is limited to ${MAX_IMPORT_ROWS} rows.`);
+      throw new Error(
+        t("CSV import is limited to {0} rows.", { "0": MAX_IMPORT_ROWS }),
+      );
   }
   for (let index = 0; index < input.length; index++) {
     const character = input[index];
@@ -42,14 +45,14 @@ export function parseCsv(text: string): string[][] {
     } else if (character === '"' && !value && !closed) {
       quoted = true;
     } else if (character === '"' || closed) {
-      throw new Error("CSV contains an invalid quoted field.");
+      throw new Error(t("CSV contains an invalid quoted field."));
     } else value += character;
   }
-  if (quoted) throw new Error("CSV contains an unterminated quoted field.");
+  if (quoted) throw new Error(t("CSV contains an unterminated quoted field."));
   if (value || row.length || closed) endRow();
-  if (!rows.length) throw new Error("CSV is empty.");
+  if (!rows.length) throw new Error(t("CSV is empty."));
   if (new Set(rows[0]).size !== rows[0].length || rows[0].some((name) => !name))
-    throw new Error("CSV headers must be nonempty and unique.");
+    throw new Error(t("CSV headers must be nonempty and unique."));
   return rows;
 }
 
@@ -73,10 +76,10 @@ export function csvValueError(
 ): string | undefined {
   try {
     if (field.kind === "boolean" && value && !["true", "false"].includes(value))
-      return `${field.label} must be true or false`;
+      return t("{0} must be true or false", { "0": field.label });
     if (field.kind === "datetime" && /(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
       if (Number.isNaN(Date.parse(value)))
-        return `${field.label} must be a valid date and time`;
+        return t("{0} must be a valid date and time", { "0": field.label });
       return undefined;
     }
     toApiValue(
@@ -85,6 +88,6 @@ export function csvValueError(
     );
     return undefined;
   } catch (error) {
-    return error instanceof Error ? error.message : "Invalid value";
+    return error instanceof Error ? error.message : t("Invalid value");
   }
 }

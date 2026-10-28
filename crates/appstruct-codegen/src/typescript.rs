@@ -24,7 +24,7 @@ fn client_source(ir: &AppIr) -> String {
     let mut sections = vec![
         generated_header("//"),
         format!("{}{}", runtime_source(), collections::types()),
-        tenant_storage_source().to_owned(),
+        tenant_storage_source(ir.auth.enabled),
         saved_views::source(ir),
     ];
     if ir.auth.enabled {

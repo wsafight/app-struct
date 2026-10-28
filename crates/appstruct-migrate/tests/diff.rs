@@ -93,7 +93,7 @@ fn tenant_relations_use_composite_database_constraints() {
 }
 
 #[test]
-fn legacy_single_column_foreign_keys_remain_readable() {
+fn historical_single_column_foreign_keys_are_rejected() {
     let mut value = serde_json::to_value(fixture_schema()).unwrap();
     value["schema_version"] = 1.into();
     value.as_object_mut().unwrap().remove("unique_constraints");
@@ -108,10 +108,9 @@ fn legacy_single_column_foreign_keys_remain_readable() {
         }
     }
 
-    let restored = from_json(&serde_json::to_string(&value).unwrap()).unwrap();
-    assert_eq!(restored.schema_version, appstruct_migrate::SCHEMA_VERSION);
-    assert_eq!(restored.unique_constraints, Vec::new());
-    assert_eq!(restored.foreign_keys[0].source_columns, ["project_id"]);
+    assert!(from_json(&serde_json::to_string(&value).unwrap()).is_err());
+    value["schema_version"] = appstruct_migrate::SCHEMA_VERSION.into();
+    assert!(from_json(&serde_json::to_string(&value).unwrap()).is_err());
 }
 
 #[test]

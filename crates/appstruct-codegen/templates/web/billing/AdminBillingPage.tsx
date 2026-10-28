@@ -1,3 +1,5 @@
+import { formatDateTime } from "../ui";
+import { t } from "../ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ArrowLeft, RotateCcw } from "lucide-react";
@@ -36,12 +38,14 @@ export function AdminBillingPage() {
   return (
     <main className="page">
       <Link className="back-link" to="/admin">
-        <ArrowLeft size={15} /> Administration
+        <ArrowLeft size={15} /> {t("Administration")}
       </Link>
       <div className="page-heading">
         <div>
-          <h1>Billing events</h1>
-          <p>Inspect Stripe subscription events and replay reconciliation.</p>
+          <h1>{t("Billing events")}</h1>
+          <p>
+            {t("Inspect Stripe subscription events and replay reconciliation.")}
+          </p>
         </div>
       </div>
       {error && (
@@ -53,10 +57,10 @@ export function AdminBillingPage() {
         <table>
           <thead>
             <tr>
-              <th>Event</th>
-              <th>Type</th>
-              <th>Received</th>
-              <th aria-label="Actions" />
+              <th>{t("Event")}</th>
+              <th> {t("Type")} </th>
+              <th> {t("Received")}</th>
+              <th aria-label={t("Actions")} />
             </tr>
           </thead>
           <tbody>
@@ -66,13 +70,13 @@ export function AdminBillingPage() {
                   <code>{event.event_id}</code>
                 </td>
                 <td>{event.event_type}</td>
-                <td>{new Date(event.created_at).toLocaleString()}</td>
+                <td>{formatDateTime(event.created_at)}</td>
                 <td>
                   <button
                     type="button"
                     className="icon-button"
-                    title="Replay subscription reconciliation"
-                    aria-label={`Replay ${event.event_id}`}
+                    title={t("Replay subscription reconciliation")}
+                    aria-label={t("Replay {0}", { "0": event.event_id })}
                     disabled={replayMutation.isPending}
                     onClick={() => replayMutation.mutate(event.event_id)}
                   >
@@ -84,7 +88,7 @@ export function AdminBillingPage() {
           </tbody>
         </table>
         {events.length === 0 && !error && (
-          <div className="empty">No Billing events yet</div>
+          <div className="empty"> {t("No Billing events yet")}</div>
         )}
       </section>
       <AdminPagination

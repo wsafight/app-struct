@@ -3,6 +3,7 @@ import {
   toApiValue,
   toFormValue,
   valueError,
+  recordRuleErrors,
   type FormValues,
 } from "./field-values";
 import type {
@@ -57,6 +58,10 @@ export function collectionBatch(
       else
         input[field.name] = toApiValue(value, field, row.record?.[field.name]);
     }
+    for (const [name, error] of Object.entries(
+      recordRuleErrors({ ...row.record, ...input }, resource.fields),
+    ))
+      errors[`${row.key}.${name}`] = error;
     if (row.record) {
       if (Object.keys(input).length)
         batch.updates.push({

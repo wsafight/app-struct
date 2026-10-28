@@ -1,3 +1,4 @@
+import { t } from "../ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Edit3, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -149,7 +150,7 @@ export function AggregateEditor({
         <h2>{child.label}</h2>
         {!editing && allowed && (
           <button className="secondary-button" onClick={() => begin(data!)}>
-            <Edit3 size={16} /> Edit lines
+            <Edit3 size={16} /> {t("Edit lines")}
           </button>
         )}
       </div>
@@ -158,7 +159,7 @@ export function AggregateEditor({
           {errorMessage(save.error ?? query.error)}
         </div>
       )}
-      {query.isPending && <p role="status">Loading...</p>}
+      {query.isPending && <p role="status">{t("Loading...")}</p>}
       {editing ? (
         <form
           onSubmit={(event) => {
@@ -174,7 +175,10 @@ export function AggregateEditor({
                 canAccessRule(child.access.update, actor, row.record);
               return (
                 <fieldset className="aggregate-row" key={row.key}>
-                  <legend>Line {index + 1}</legend>
+                  <legend>
+                    {t("Line")}
+                    {index + 1}
+                  </legend>
                   <fieldset
                     className="aggregate-row-fields"
                     disabled={!canUpdate}
@@ -225,8 +229,8 @@ export function AggregateEditor({
                     <button
                       type="button"
                       className="icon-button danger"
-                      aria-label={`Remove line ${index + 1}`}
-                      title={`Remove line ${index + 1}`}
+                      aria-label={t("Remove line {0}", { "0": index + 1 })}
+                      title={t("Remove line {0}", { "0": index + 1 })}
                       onClick={() =>
                         setRows((current) =>
                           current.filter((item) => item.key !== row.key),
@@ -252,7 +256,7 @@ export function AggregateEditor({
                     ])
                   }
                 >
-                  <Plus size={16} /> Add line
+                  <Plus size={16} /> {t("Add line")}
                 </button>
               )}
               <button
@@ -260,7 +264,8 @@ export function AggregateEditor({
                 className="primary-button"
                 disabled={!draft.dirty}
               >
-                <Save size={16} /> {save.isPending ? "Saving..." : "Save lines"}
+                <Save size={16} />{" "}
+                {save.isPending ? "Saving..." : t("Save lines")}
               </button>
               <button
                 type="button"
@@ -268,7 +273,7 @@ export function AggregateEditor({
                 disabled={query.isFetching}
                 onClick={() => void reload()}
               >
-                <RefreshCw size={16} /> Reload
+                <RefreshCw size={16} /> {t("Reload")}
               </button>
               <button
                 type="button"
@@ -278,7 +283,7 @@ export function AggregateEditor({
                   save.reset();
                 }}
               >
-                <X size={16} /> Cancel
+                <X size={16} /> {t("Cancel")}
               </button>
             </div>
           </fieldset>
@@ -315,7 +320,7 @@ export function AggregateEditor({
                 ))}
                 {!data.rows.length && (
                   <tr>
-                    <td colSpan={visible.length}>No lines</td>
+                    <td colSpan={visible.length}> {t("No lines")} </td>
                   </tr>
                 )}
               </tbody>

@@ -1,3 +1,4 @@
+import { uiText } from "../ui";
 import { RefreshCw } from "lucide-react";
 
 export function AsyncState({
@@ -18,7 +19,7 @@ export function AsyncState({
       <span>{message}</span>
       {state === "error" && onRetry && (
         <button type="button" className="secondary-button" onClick={onRetry}>
-          <RefreshCw size={16} /> Retry
+          <RefreshCw size={16} /> {uiText("retry")}
         </button>
       )}
     </div>

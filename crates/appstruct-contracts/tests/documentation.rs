@@ -8,11 +8,8 @@ const END: &str = "<!-- contract-matrix:end -->";
 fn compatibility_documentation_matches_contract_constants() {
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for (relative, headers) in [
-        ("docs/compatibility.md", ("Contract", "Minimum", "Current")),
-        (
-            "docs/compatibility.zh-CN.md",
-            ("契约", "最低版本", "当前版本"),
-        ),
+        ("docs/compatibility.md", ("Contract", "Current")),
+        ("docs/compatibility.zh-CN.md", ("契约", "当前版本")),
     ] {
         let path = workspace.join(relative);
         let source = fs::read_to_string(&path).unwrap();
@@ -51,18 +48,10 @@ fn product_and_design_docs_do_not_restore_obsolete_contract_claims() {
     }
 }
 
-fn render_matrix(headers: (&str, &str, &str)) -> String {
-    let mut table = format!(
-        "| {} | {} | {} |\n| --- | ---: | ---: |",
-        headers.0, headers.1, headers.2
-    );
+fn render_matrix(headers: (&str, &str)) -> String {
+    let mut table = format!("| {} | {} |\n| --- | ---: |", headers.0, headers.1);
     for (name, range) in CONTRACT_MATRIX {
-        write!(
-            table,
-            "\n| `{name}` | {} | {} |",
-            range.minimum, range.current
-        )
-        .unwrap();
+        write!(table, "\n| `{name}` | {} |", range.current).unwrap();
     }
     table
 }

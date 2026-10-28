@@ -1,5 +1,5 @@
 use super::{ColumnSchema, DatabaseType, ForeignKeySchema, TableSchema};
-use appstruct_ir::{AppIr, OnDeleteIr};
+use appstruct_ir::{AppIr, GeneratedValueIr, OnDeleteIr};
 
 const FILES: &str = "_appstruct_files";
 
@@ -16,6 +16,24 @@ pub(super) fn tables() -> Vec<TableSchema> {
             column("checksum", DatabaseType::Text, false, false, false),
             column("tenant_id", DatabaseType::Uuid, true, false, false),
             column("created_at", DatabaseType::Datetime, false, false, false),
+            ColumnSchema {
+                default: Some("[]".to_owned()),
+                ..column("reference_owners", DatabaseType::Json, false, false, false)
+            },
+            ColumnSchema {
+                generated: Some(GeneratedValueIr::Now),
+                ..column(
+                    "unreferenced_at",
+                    DatabaseType::Datetime,
+                    true,
+                    false,
+                    false,
+                )
+            },
+            ColumnSchema {
+                default: Some("false".to_owned()),
+                ..column("deleting", DatabaseType::Boolean, false, false, false)
+            },
         ],
     }]
 }

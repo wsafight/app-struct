@@ -1,7 +1,7 @@
 # AppStruct Next Product Roadmap
 
 > Status: active implementation (Phases A and B are complete; Phase C admits evidence-backed delivery work only)
-> Date: 2026-10-01
+> Date: 2026-10-28
 > Scope: product work after the M0-M6 technical preview baseline
 
 ## 1. Outcome
@@ -32,6 +32,11 @@ The remaining gap is migration from real-world schemas: composite keys and cross
 still require manual modeling. Domains are imported as their base scalar with a constraint warning;
 arrays, generated columns, and unsupported types are omitted with warnings rather than emitted as
 runtime-incompatible fields. Access rules cannot be inferred from database metadata.
+
+Explicit `migrate baseline` now compares without writes and can record a matching canonical initial
+migration without executing CREATE SQL. Includes, per-operation access and revision still require
+review. It does not repair source schemas or accept seeds, custom SQL or migration chains. See the
+[existing database guide](existing-database.md).
 
 ### 2.2 Data access and reporting
 
@@ -188,3 +193,25 @@ authenticated, role, or owner policies.
 5. Text and JSON command modes follow the existing CLI contracts.
 6. Unit tests cover catalog-to-model mapping and rendering; a PostgreSQL integration test covers the
    command when the repository database test environment is available.
+
+## 5. Evidence for further investment
+
+The 2026-10-27 baseline, authentication limits, theme/messages, data lifecycle, extension example,
+template diff and frontend validation changes are implemented; see [delivery optimization](optimization-progress.md).
+[Platform acceptance](continuous-integration.md) and [real-user observations](product-journeys.md)
+track their pending executions separately. The following conditional ideas are not default delivery blockers.
+
+| Direction | Current boundary and evidence needed |
+| --- | --- |
+| Computed fields, conditional validation and complex databases | Conditional requirements and sibling comparisons are available in [form validation](form-validation.md); cross-record rules and record/state-based field permissions use extension code. Composite keys, cross-schema and deeper relations follow the real-project sample gate above. |
+| Boards, calendars, cross-resource dashboards and complete i18n | Startup English/Chinese standard copy, field display labels and shared formatting are available. Runtime language switching, multilingual Spec and new page types still require repeated project evidence. |
+| Direct, multipart and scanned file uploads | Base design on size, throughput and security needs. Reference collection does not replace reconciliation of storage orphans without metadata. |
+| Job priorities and general workflows | PostgreSQL Jobs already has named queues, leases, retries, dead letters and replay; Workflow is a single-entity state machine. Measure queueing and recovery before inferring capacity from storage choice. |
+| Redis sessions and database RLS | Establish pool, authentication latency or isolation requirements. RLS must cover database roles, transactions, workers and administrator paths; tenant isolation currently runs in the application. |
+| List totals and aggregate cost | Exact COUNT remains the default; group limits do not bound scans. Use real distributions, indexes and query plans before choosing estimates, timeouts or pagination changes. A million-row benchmark option is not a completed million-row acceptance test. |
+| Executable third-party modules | Remote packages distribute static Artifacts. Define compilation, registration, dependencies, migrations and uninstall before executable code; dynamic libraries or WASM are not default prerequisites. |
+| Billing, platform adapters, Playground, editors, AI/MCP and hosting | Stripe Billing v1 already supports subscriptions. Rank complex billing and new delivery surfaces by repeated real-project demand. |
+
+Database recovery prioritizes verified backup restoration and forward repair without requiring automatic
+down SQL. Optimize tests using duration, failure rate and duplicate coverage. Define support for Tenant,
+Jobs, File, Mail and Billing from demand and maintenance cost rather than removing modules by count.

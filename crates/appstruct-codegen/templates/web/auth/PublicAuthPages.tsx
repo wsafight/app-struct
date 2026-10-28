@@ -1,3 +1,5 @@
+import { errorMessage } from "../resource";
+import { t } from "../ui";
 import {
   type FormEvent,
   type ReactNode,
@@ -74,8 +76,8 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
     } catch (reason) {
       setError(
         reason instanceof Error
-          ? reason.message
-          : "The request could not be completed",
+          ? errorMessage(reason)
+          : t("The request could not be completed"),
       );
     } finally {
       setSubmitting(false);
@@ -84,7 +86,7 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
 
   const registering = mode === "register";
   return (
-    <AuthFrame title={registering ? "Create account" : "Sign in"}>
+    <AuthFrame title={registering ? t("Create account") : t("Sign in")}>
       <form className="auth-form" onSubmit={(event) => void submit(event)}>
         {error && (
           <div className="alert" role="alert">
@@ -92,7 +94,7 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
           </div>
         )}
         <label>
-          Email
+          {t("Email")}{" "}
           <input
             type="email"
             autoComplete="email"
@@ -102,7 +104,7 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
           />
         </label>
         <label>
-          Password
+          {t("Password")}
           <input
             type="password"
             minLength={12}
@@ -117,8 +119,8 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
           {submitting
             ? "Working..."
             : registering
-              ? "Create account"
-              : "Sign in"}
+              ? t("Create account")
+              : t("Sign in")}
         </button>
         {authFeatures.oauth &&
           !registering &&
@@ -129,7 +131,8 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
               className="secondary-button"
               onClick={() => authApi.startOAuth(provider)}
             >
-              Continue with{" "}
+              {" "}
+              {t("Continue with")}{" "}
               {provider === "google"
                 ? "Google"
                 : provider === "github"
@@ -139,11 +142,11 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
           ))}
         <div className="auth-links">
           {authFeatures.passwordReset && (
-            <Link to="/forgot-password">Forgot password?</Link>
+            <Link to="/forgot-password">{t("Forgot password?")}</Link>
           )}
           {authFeatures.registration && (
             <Link to={registering ? "/login" : "/register"}>
-              {registering ? "Sign in" : "Create account"}
+              {registering ? t("Sign in") : t("Create account")}
             </Link>
           )}
         </div>
@@ -166,16 +169,16 @@ export function ForgotPasswordPage() {
     } catch (reason) {
       setError(
         reason instanceof Error
-          ? reason.message
-          : "The request could not be completed",
+          ? errorMessage(reason)
+          : t("The request could not be completed"),
       );
     }
   }
   return (
-    <AuthFrame title="Reset password">
+    <AuthFrame title={t("Reset password")}>
       {sent ? (
         <div className="auth-success">
-          <Mail size={20} /> Check your email
+          <Mail size={20} /> {t("Check your email")}
         </div>
       ) : (
         <form className="auth-form" onSubmit={(event) => void submit(event)}>
@@ -185,7 +188,7 @@ export function ForgotPasswordPage() {
             </div>
           )}
           <label>
-            Email
+            {t("Email")}{" "}
             <input
               type="email"
               autoComplete="email"
@@ -195,10 +198,10 @@ export function ForgotPasswordPage() {
             />
           </label>
           <button className="primary-button">
-            <Mail size={17} /> Send reset link
+            <Mail size={17} /> {t("Send reset link")}
           </button>
           <div className="auth-links">
-            <Link to="/login">Back to sign in</Link>
+            <Link to="/login">{t("Back to sign in")}</Link>
           </div>
         </form>
       )}
@@ -222,13 +225,13 @@ export function ResetPasswordPage() {
     } catch (reason) {
       setError(
         reason instanceof Error
-          ? reason.message
-          : "The request could not be completed",
+          ? errorMessage(reason)
+          : t("The request could not be completed"),
       );
     }
   }
   return (
-    <AuthFrame title="Choose a password">
+    <AuthFrame title={t("Choose a password")}>
       <form className="auth-form" onSubmit={(event) => void submit(event)}>
         {error && (
           <div className="alert" role="alert">
@@ -236,7 +239,8 @@ export function ResetPasswordPage() {
           </div>
         )}
         <label>
-          New password
+          {" "}
+          {t("New password")}
           <input
             type="password"
             minLength={12}
@@ -247,7 +251,7 @@ export function ResetPasswordPage() {
           />
         </label>
         <button className="primary-button" disabled={!token}>
-          <KeyRound size={17} /> Update password
+          <KeyRound size={17} /> {t("Update password")}
         </button>
       </form>
     </AuthFrame>
@@ -266,7 +270,7 @@ export function VerifyEmailPage() {
   useEffect(() => {
     if (!token) {
       setState("error");
-      setMessage("This verification link is missing its token.");
+      setMessage(t("This verification link is missing its token."));
       return;
     }
     if (requestedToken.current === token) return;
@@ -277,7 +281,7 @@ export function VerifyEmailPage() {
       .then(() => {
         if (active) {
           setState("success");
-          setMessage("Your email address is verified.");
+          setMessage(t("Your email address is verified."));
         }
       })
       .catch((reason) => {
@@ -285,8 +289,8 @@ export function VerifyEmailPage() {
         if (active)
           setMessage(
             reason instanceof Error
-              ? reason.message
-              : "The verification link is invalid or expired",
+              ? errorMessage(reason)
+              : t("The verification link is invalid or expired"),
           );
       });
     return () => {
@@ -297,14 +301,14 @@ export function VerifyEmailPage() {
     <AuthFrame
       title={
         state === "success"
-          ? "Email verified"
+          ? t("Email verified")
           : state === "error"
-            ? "Verification unavailable"
-            : "Verifying email"
+            ? t("Verification unavailable")
+            : t("Verifying email")
       }
     >
       {state === "pending" ? (
-        <div className="auth-loading" aria-label="Loading" />
+        <div className="auth-loading" aria-label={t("Loading")} />
       ) : state === "success" ? (
         <>
           <div className="auth-success">
@@ -315,7 +319,8 @@ export function VerifyEmailPage() {
             className="primary-button"
             onClick={() => navigate("/", { replace: true })}
           >
-            Continue
+            {" "}
+            {t("Continue")}
           </button>
         </>
       ) : (

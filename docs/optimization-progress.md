@@ -50,7 +50,7 @@ test database and Capture rendering; it is not a Linux Chromium deployment accep
 - [x] Database pull previews use actual resource paths and provide next steps; doctor checks pending migrations, with a first-run guide.
 - [x] Reports support UTC day/week/month groups, saved-view configuration and drilldown links; values that cannot be charted precisely retain their exact table representation.
 
-Management lists retain page pagination and exact totals; report changes preserve the current list page. Existing databases still require manual schema and migration-history alignment; automatic baseline adoption is unavailable.
+Management lists retain page pagination and exact totals; report changes preserve the current list page. At that time, existing databases required manual schema and migration-history alignment. Explicit `migrate baseline` was added on 2026-10-27; see the update below and the [existing database guide](existing-database.md).
 
 Validation passed: 463 workspace Rust tests, 55 generated Web tests, rustfmt, Clippy with warnings denied, TypeScript, ESLint, Prettier, production build and generated-tree snapshots. Real PostgreSQL query regression covers JSON import retries, UTC year boundaries, tenant/field authorization, page totals, cursors, filters and exports, with no migration drift. Dashboard initialization and read-only database pull were also verified.
 
@@ -85,3 +85,54 @@ TypeScript, ESLint, Prettier, production build, and generated-tree snapshots.
 
 Validation: generated Web framework tests, TypeScript, ESLint, Prettier, production builds, and
 generated-tree snapshots pass for the affected templates.
+
+## 2026-10-27 Product journeys and current formats
+
+- [x] [Existing database adoption](existing-database.md): `migrate baseline` previews without writes; `--accept` records only a matching canonical initial migration without seeds, without executing its CREATE SQL. Drift, custom SQL, migration chains and dirty history block adoption. Schema repair still requires review.
+- [x] [Authentication limits](authentication-limits.md): registration is limited before password hashing, and verification issuance/resends share a counter. PostgreSQL cross-instance counters and `429 / Retry-After: 60` are verified. Trusted deployment gateways define source limits.
+- [x] [Branding and themes](web-customization.md): all templates provide user-owned `app/web/setup.ts` for title, logo, palettes, themes and common messages, preserved by generate/update. This is partial text customization, not complete i18n.
+- [x] [Data lifecycle](data-lifecycle.md): audit redaction before insertion, optional retention and explicit batched pruning; file references, retention collection, builtin-reference protection and storage-failure retries. Metadata row locks span object deletion to prevent concurrent collectors deleting a reused key. Storage deletion cannot roll back with the database; storage orphans without metadata still need reconciliation.
+- [x] [Business extensions](business-extensions.md): the runnable example covers Policy rejection, transactional Hook rollback, after-commit failure and request-ID logs. The [upgrade guide](upgrading.md) covers read-only `template diff` and manual merge verification.
+- [x] [Frontend validation](headless-controller.md): generated Web no longer directly depends on Zod; TanStack Form calls `valueError`, retaining UUID, exact scalars, amount/currency pairs, conversion and conflict drafts. Unrelated tooling transitive dependencies remain.
+- [x] [Current format contracts](compatibility.md): only IR 17, snapshot 3 and layout 2 are read/written. Removed historical defaults, aliases and layout inference; kept version matching, ownership hashes, migration history/checksums and crash recovery. Back up old development directories and recreate them with the current template.
+- [x] [Journey records](product-journeys.md): optional local stage/timing/status/help/reason records store no command arguments, environment or output and upload nothing. Recorder regression runs in CI.
+
+### Actual local verification
+
+- minimal/dashboard/saas passed 57/60/63 Web tests respectively, types, lint, formatting and production builds. Frozen installs in separate directories reused the local pnpm store; network-only cold installation was not verified.
+- Actual `appstruct build`, `deploy verify`, native release backend and production Web smoke plus desktop/mobile revision-safe CRUD passed. Browser checks verified the user setup title, dark theme, palette and form messages.
+- Isolated PostgreSQL checks retained existing rows through a second nullable-field migration and actual `pg_dump/pg_restore`. Restored status was applied 2 / pending 0 / drift none. The dedicated cluster was stopped and removed.
+- CLI, Contracts, IR, Schema, Compiler and Codegen regressions, the full real-PostgreSQL Migrate suite, lifecycle/extensions/concurrent collection, generated-tree goldens and scoped Clippy passed. Current composition-root and local/S3 file artifacts compiled.
+- macOS local archive installation, replacement, corrupt-archive rejection and original-binary preservation passed, as did recorder regression, rustfmt, documentation builds and link checks.
+
+### Awaiting execution in the relevant environment
+
+- [ ] Linux Docker/Compose first deployment and container isolation results for this change.
+- [ ] Windows x64 installer results for this change. Full CI now includes the gate without requiring a version tag.
+- [ ] Consenting real-user journey observations; no adoption, willingness-to-pay or retention conclusions are available.
+
+See [quality gates](continuous-integration.md) for platform execution and status, and the [product roadmap](next-product-roadmap.md) for conditional future investment. Tests and workflow definitions do not establish platform results or real-user feedback.
+
+## 2026-10-28 six product improvements and the 0.2.0 candidate
+
+- [x] [Database adoption preflight](existing-database.md): compile an include proposal in memory and compare the actual schema read-only, reporting missing revision columns, omitted tables and diagnostics. Structural alignment does not accept migration history.
+- [x] [CSV result recovery](bulk-operations.md): immutable UUID batches, content digests and saved results commit with business data. Concurrent retries write once; response loss can be resolved by querying the result. Changed content is rejected and resource/actor/tenant scopes remain isolated.
+- [x] [Editing conflict merge](headless-controller.md): compare baseline, server and draft, select competing changes, then explicitly save using the compared revision. Datetime comparisons and selections retain microseconds.
+- [x] [Permission preview](access-preview.md): explain CRUD, fields, owner, tenant and aggregate-child restrictions; custom Rust Policy is explicitly not evaluated.
+- [x] [Chinese UI and formatting](web-customization.md): startup locale and field-label configuration, standard copy and shared numeric, monetary, date and display-zone formatting. Native datetime controls accept millisecond displays while unchanged values retain original microseconds; button widths and status styles are corrected.
+- [x] [Conditional and cross-field validation](form-validation.md): typed `required_when` and strict `greater_than`, shared frontend `valueError`, and server validation of complete candidates after Hooks across partial patches, CSV, bulk, aggregates and Workflow. Explicit null clears nullable fields. No direct Zod dependency was restored; new forms submit untouched required false checkboxes.
+
+Version metadata is prepared for 0.2.0 with IR 18 / runtime API 5 / snapshot 3 / layout 2. [Candidate release notes](release-0.2.0.md) explain the migration boundary. A crates.io check confirmed that 0.1.0 was published on 2026-08-29; the assumption of no previous release is incorrect. 0.2.0 introduces breaking format changes. This preparation has not pushed, tagged, published crates or created a Release.
+
+### Local verification
+
+- minimal/dashboard/saas passed 64/67/70 Web tests respectively, frozen installation, production dependency audit, Prettier, ESLint, TypeScript and production builds. Installation reused the local pnpm store.
+- Chromium desktop and 390px mobile checks passed against the actual generated UI: Chinese copy and field labels, microsecond timestamps in native controls, conflict comparison/explicit save, CSV result recovery after response loss, and creation with an untouched required false checkbox and a zero count. Datetime codecs also passed in UTC, New York, Berlin and Shanghai. HTTP responses were intercepted in this UI check; separate real PostgreSQL integration tests verify server transactions, concurrency and isolation.
+- All ten official crates passed actual packaging and verification builds. The macOS arm64 release archive, checksum, installation into a path with spaces, replacement, corrupt-archive rejection and original-binary preservation passed.
+- Workspace Clippy with warnings denied, rustfmt, cargo-deny advisories/licenses/sources, journey recorder, actionlint and all shell syntax checks passed. Advisory fixes include ctutils 0.4.4, Rustls 0.23.46, rustls-webpki 0.103.16, webpki-root-certs 1.0.10 and Tokio 1.53.3.
+- The documentation site check reported no errors/warnings; 54 pages, search and internal links built successfully.
+- 473 workspace Rust tests passed with zero failures or ignored tests, including real PostgreSQL migration, adoption, batch and form-rule integration. Performance checks used the CI multiplier of 2; the latest generated-tree golden tests also passed separately.
+
+The dedicated PostgreSQL cluster and browser preview were stopped and temporary projects removed. Logs, screenshots and the native candidate archive remain under the ignored `target/` directory.
+
+Linux Docker/Compose, renderer isolation, the Windows installer and the full five-platform release matrix still require actual runs on the candidate commit. Voluntary real-user observation has not run either. Local results do not count as acceptance in those environments.

@@ -187,6 +187,8 @@ pub(crate) struct SurfaceField {
     pub max_length: Option<Located<u64>>,
     pub minimum: Option<Located<String>>,
     pub maximum: Option<Located<String>>,
+    pub required_when: Option<appstruct_ir::RequiredWhenIr>,
+    pub greater_than: Option<Located<String>>,
     pub values: Option<Vec<Located<String>>>,
     pub target: Option<Located<String>>,
     pub on_delete: Option<Located<String>>,

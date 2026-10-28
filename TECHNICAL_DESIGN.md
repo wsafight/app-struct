@@ -1,7 +1,7 @@
 # AppStruct 技术设计文档
 
 > 状态：Implementation Baseline v1.2<br>
-> 日期：2026-08-30<br>
+> 日期：2026-10-27<br>
 > 对应产品文档：[`PRODUCT.md`](PRODUCT.md)<br>
 > 目标版本：Technical Preview 至 MVP
 
@@ -49,7 +49,7 @@ M5 确定性、性能和浏览器门禁已实现。CLI 集成测试在两个独�
 
 M6 已完成。Tenant、Audit、Mail、Jobs 和 File Module 以及 `appstruct/saas@1` Preset 已进入 Compiler：Surface 配置先展开官方默认模块映射，再递归合并用户映射覆盖，最后降低到版本化 `PresetIr` 和模块 IR。IR 中的 `modules` 包含每个启用模块的来源、精确版本、provides/requires capability、确定性启动顺序和隔离静态 Artifact。Compiler 对 `appstruct.lock` 中的 AppStruct 版本、Preset 名称/版本/内容摘要及精确模块版本集合执行失败关闭校验；CLI 可用 `preset show [--expanded]` 检查契约。`saas` Template 与 `examples/saas-demo` 提供锁定 Preset、managed PostgreSQL、开发 Mail/File 配置和 Tenant/Audit 化的 Project/Task 骨架；专用 external PostgreSQL/Chromium E2E 验证五个模块表、用户旅程、租户隔离、Audit 和桌面/移动布局。
 
-内部契约加固已完成。IR v7-v16 可在内存迁移到当前 v17，旧 IR 的数据库迁移策略安全降级为 unmanaged；未来版本和语义不安全的旧模块图失败关闭。权威版本范围定义在 `appstruct-contracts::CONTRACT_MATRIX`，并由测试同步到 `docs/compatibility.md` 和 `docs/compatibility.zh-CN.md`。根 `module_manifests` 只加载 `modules/` 内的本地 TOML，拒绝 traversal、symlink、非 UTF-8 和超限文件；本地 Artifact 输出到模块专属 generated namespace，本地 Runtime starter 为 no-op。`appstruct.lock` 的 `project_layout_version` 明确区分 v1 generated backend 与 v2 server composition root，目录探测仅用于显式 update 迁移未版本化旧项目。生成和 dev build/install 使用内容缓存但仍执行 ownership 校验；Module Runtime 发出结构化 lifecycle phase，生成后端用 tracing 记录启动、失败、回滚和停止。generation transaction 的测试 failpoint 覆盖备份后与安装后恢复。
+内部契约加固已完成。只读写当前 IR 18、schema snapshot 3 和 project layout 2；旧格式、未来格式及缺失的必需版本或字段均明确拒绝。IR 从 Spec 重新编译，不提供历史格式自动补齐或迁移。权威当前版本定义在 `appstruct-contracts::CONTRACT_MATRIX`，并由测试同步到 `docs/compatibility.md` 和 `docs/compatibility.zh-CN.md`。根 `module_manifests` 只加载 `modules/` 内的本地 TOML，拒绝 traversal、symlink、非 UTF-8 和超限文件；本地 Artifact 输出到模块专属 generated namespace，本地 Runtime starter 为 no-op。`appstruct.lock` 的 `project_layout_version` 必须为 2，生成后端为 library 并由 server composition root 启动；不再探测或转换历史目录布局。无 lock 的独立 Spec 使用当前布局。生成和 dev build/install 使用内容缓存但仍执行 ownership 校验；Module Runtime 发出结构化 lifecycle phase，生成后端用 tracing 记录启动、失败、回滚和停止。generation transaction 的测试 failpoint 覆盖备份后与安装后恢复。
 
 Technical Preview 契约加固已完成。Compiler 内嵌 Draft 2020-12 JSON Schema，`appstruct schema` 无需项目即可输出；编译报告保留非致命 warning，当前 `AS3070` 检测匿名写操作，`check --deny-warnings` 为 CI 提供失败策略。`appstruct update` 同时持有 generation/update lock，在项目内 staging workspace 写候选 lock、全量编译 Spec、生成、执行 release Rust/Web 构建和后端测试，再比对用户文件哈希；最终用独立 journal 联合交换 `appstruct.lock` 与 ownership 管理的 `generated/`。崩溃恢复要么回滚两者，要么完成已安装候选，普通 generate 遇到 update 遗留状态时失败关闭。
 
@@ -673,7 +673,7 @@ App Spec -> Rust API -> OpenAPI -> 前端
 
 这里的保证是可恢复的目录事务，而不是依赖“用一次 rename 覆盖非空目录”这一不可移植假设。`app/`、`migrations/` 和其他用户目录永远不进入该事务。
 
-当前实现覆盖 ownership/hash 校验、路径校验、项目级跨进程文件锁、sibling staging/backup、同步失败回滚和崩溃后自动恢复。journal 采用追加式 JSON record，依次记录 `prepared`、`backed_up` 和 `installed`；即使最后一行因崩溃不完整，也可使用上一条完整 phase 与目录组合恢复。无 journal 的旧版 staging/backup 会回滚到已有完整树；三个目录同时存在等歧义组合不会被猜测性删除。Rust Artifact 在内存规划期经过 rustfmt；TypeScript Artifact 在 manifest 计算前经过 lockfile 固定的 Prettier。生产 build 还对最终 staging 结果执行 Clippy、Prettier check、TypeScript check 和 Rsbuild。
+当前实现覆盖 ownership/hash 校验、路径校验、项目级跨进程文件锁、sibling staging/backup、同步失败回滚和崩溃后自动恢复。journal 采用追加式 JSON record，依次记录 `prepared`、`backed_up` 和 `installed`；即使最后一行因崩溃不完整，也可使用上一条完整 phase 与目录组合恢复。无 journal 的事务中断 staging/backup 会回滚到已有完整树；三个目录同时存在等歧义组合不会被猜测性删除。Rust Artifact 在内存规划期经过 rustfmt；TypeScript Artifact 在 manifest 计算前经过 lockfile 固定的 Prettier。生产 build 还对最终 staging 结果执行 Clippy、Prettier check、TypeScript check 和 Rsbuild。
 
 ## 12. 数据库模型与迁移
 
@@ -1261,7 +1261,7 @@ Registry key 由生成类型限制。`satisfies AppStructRegistry` 和 `defineAp
 - 服务端状态由 TanStack Query 管理。
 - 客户端路由和 URL 状态由 TanStack Router 管理。
 - 列表筛选、分页和排序同步到 URL。
-- 表单局部状态由 TanStack Form 管理，Zod 通过 Standard Schema 直接提供校验。
+- 表单局部状态由 TanStack Form 管理，提交校验直接复用共享的 `valueError`，以字段错误映射返回结果；金额与币种的配对约束由表单校验器统一检查。
 - 不为 MVP 引入全局 Redux 类 store。
 - 权限信息用于显示和禁用操作，但后端仍执行完整授权。
 
@@ -1724,7 +1724,7 @@ MVP 只执行 monorepo 官方模块代码；项目本地或远程 registry manif
 1. 大型项目是否需要远程或包级 Spec 依赖。
 2. Session 是否增加 Redis Provider。
 3. 可执行第三方 Module 的沙箱、IR fragment 权限和非锁步运行时兼容矩阵。
-4. `.appstruct/schema.snapshot.json` 的跨版本兼容迁移策略。
+4. 未来公开格式变更是否需要显式转换工具及其数据保护契约；当前 `.appstruct/schema.snapshot.json` 只接受版本 3。
 5. 游标分页与批量写入的授权、缓存和迁移语义。
 
 ## 31. Definition of Done

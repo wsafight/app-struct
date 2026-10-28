@@ -10,6 +10,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
+import userEvent from "@testing-library/user-event";
 import * as resourceActual from "./resource" with { rstest: "importActual" };
 import {
   useResourceFormController,
@@ -70,6 +71,7 @@ function resource(): ResourceDefinition {
       bulkDelete: rs.fn(),
       exportCsv: rs.fn(),
       importCsv: rs.fn(),
+      importResult: rs.fn(),
     },
   };
 }
@@ -84,7 +86,191 @@ function wrapper() {
   };
 }
 
+function FormHarness({ invoice }: { invoice: ResourceDefinition }) {
+  const { form, fields } = useResourceFormController(invoice);
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      {fields.map((definition) => (
+        <form.Field key={definition.name} name={definition.name}>
+          {(field) => (
+            <label>
+              {definition.label}
+              <input
+                aria-label={definition.label}
+                value={String(field.state.value)}
+                onChange={(event) => field.handleChange(event.target.value)}
+              />
+              {field.state.meta.errors.length > 0 && (
+                <span role="alert">{field.state.meta.errors[0]}</span>
+              )}
+            </label>
+          )}
+        </form.Field>
+      ))}
+      <button type="submit">Save</button>
+    </form>
+  );
+}
+
 describe("headless controllers", () => {
+  it("sends required false values on create even when the checkbox was untouched", async () => {
+    const invoice = resource();
+    invoice.fields.push({
+      ...amount,
+      name: "paid",
+      apiName: "paid",
+      label: "Paid",
+      kind: "boolean",
+    });
+    rs.mocked(invoice.api.create).mockResolvedValue({
+      id: "one",
+      amount: "1",
+      paid: false,
+      revision: 1,
+    });
+    const { result } = renderHook(() => useResourceFormController(invoice), {
+      wrapper: wrapper(),
+    });
+    await act(async () => {
+      result.current.form.setFieldValue("amount", "1");
+      await result.current.form.handleSubmit();
+    });
+    expect(invoice.api.create).toHaveBeenCalledWith({
+      amount: "1",
+      paid: false,
+    });
+  });
+
+  it("shows scalar field errors, blocks invalid submissions and saves corrected values", async () => {
+    const user = userEvent.setup();
+    const invoice = resource();
+    const reference = "01990000-0000-7000-8000-000000000001";
+    invoice.fields.push({
+      ...amount,
+      name: "reference",
+      apiName: "reference",
+      label: "Reference",
+      kind: "uuid",
+    });
+    rs.mocked(invoice.api.create).mockResolvedValue({
+      id: "one",
+      amount: "9007199254740993.15",
+      reference,
+    });
+    render(<FormHarness invoice={invoice} />, { wrapper: wrapper() });
+    fireEvent.change(screen.getByLabelText("Reference"), {
+      target: { value: "invalid" },
+    });
+    await user.click(screen.getByText("Save"));
+    await screen.findByText("Amount is required");
+    expect(screen.getByText("Reference must be a valid UUID")).toBeTruthy();
+    expect(invoice.api.create).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "NaN" },
+    });
+    await user.click(screen.getByText("Save"));
+    await screen.findByText("Amount must be a decimal number");
+    expect(invoice.api.create).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "9007199254740993.15" },
+    });
+    fireEvent.change(screen.getByLabelText("Reference"), {
+      target: { value: reference },
+    });
+    await user.click(screen.getByText("Save"));
+    await waitFor(() =>
+      expect(invoice.api.create).toHaveBeenCalledExactlyOnceWith({
+        amount: "9007199254740993.15",
+        reference,
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("validates both sides of optional money pairs and accepts zero or an empty pair", async () => {
+    const user = userEvent.setup();
+    const invoice = resource();
+    invoice.fields = [
+      {
+        ...amount,
+        required: false,
+        semantic: {
+          kind: "money",
+          currencyField: "currency",
+          fractionDigits: 2,
+        },
+      },
+      {
+        ...amount,
+        name: "currency",
+        apiName: "currency",
+        label: "Currency",
+        kind: "enum",
+        values: ["USD", "EUR"],
+        required: false,
+      },
+    ];
+    rs.mocked(invoice.api.create).mockResolvedValue({
+      id: "one",
+      amount: "0",
+      currency: "USD",
+    });
+    render(<FormHarness invoice={invoice} />, { wrapper: wrapper() });
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "0" },
+    });
+    await user.click(screen.getByText("Save"));
+    await screen.findByText("Amount and currency must be provided together");
+    expect(invoice.api.create).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "" },
+    });
+    fireEvent.change(screen.getByLabelText("Currency"), {
+      target: { value: "USD" },
+    });
+    await user.click(screen.getByText("Save"));
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText("Amount").parentElement?.textContent,
+      ).toContain("Amount and currency must be provided together"),
+    );
+    expect(invoice.api.create).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "0" },
+    });
+    await user.click(screen.getByText("Save"));
+    await waitFor(() =>
+      expect(invoice.api.create).toHaveBeenCalledExactlyOnceWith({
+        amount: "0",
+        currency: "USD",
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+
+    fireEvent.change(screen.getByLabelText("Amount"), {
+      target: { value: "" },
+    });
+    fireEvent.change(screen.getByLabelText("Currency"), {
+      target: { value: "" },
+    });
+    await user.click(screen.getByText("Save"));
+    await waitFor(() =>
+      expect(invoice.api.create).toHaveBeenLastCalledWith({
+        amount: null,
+        currency: null,
+      }),
+    );
+  });
+
   it("preserves the draft after a conflict and explicitly reloads the latest baseline", async () => {
     const invoice = resource();
     rs.mocked(invoice.api.update)
@@ -126,11 +312,160 @@ describe("headless controllers", () => {
       result.current.form.setFieldValue("amount", "9007199254740993.15");
       await result.current.form.handleSubmit();
     });
-    expect(invoice.api.update).toHaveBeenLastCalledWith("one", {
-      amount: "9007199254740993.15",
-    });
+    expect(invoice.api.update).toHaveBeenLastCalledWith(
+      "one",
+      {
+        amount: "9007199254740993.15",
+      },
+      { revision: 2 },
+    );
     expect(onSaved).toHaveBeenCalledOnce();
     expect(result.current.form.state.isDirty).toBe(false);
+  });
+
+  it("merges nonconflicting changes, requires explicit conflicts and pins the compared revision", async () => {
+    const invoice = resource();
+    invoice.fields.push({
+      ...invoice.fields.find((field) => field.name === "amount")!,
+      name: "note",
+      apiName: "note",
+      label: "Note",
+      kind: "string",
+    });
+    rs.mocked(invoice.api.update)
+      .mockRejectedValueOnce({ code: "CONCURRENT_MODIFICATION" })
+      .mockResolvedValueOnce({
+        id: "one",
+        amount: "3.00",
+        note: "Server note",
+        revision: 3,
+      });
+    const refetchRecord = rs.fn().mockResolvedValue({
+      id: "one",
+      amount: "2.00",
+      note: "Server note",
+      revision: 2,
+    });
+    const { result } = renderHook(
+      () =>
+        useResourceFormController(invoice, {
+          id: "one",
+          initialRecord: {
+            id: "one",
+            amount: "1.00",
+            note: "Original note",
+            revision: 1,
+          },
+          refetchRecord,
+        }),
+      { wrapper: wrapper() },
+    );
+    await act(async () => {
+      result.current.form.setFieldValue("amount", "3.00");
+      await result.current.form.handleSubmit();
+    });
+    await act(async () => {
+      await result.current.compareConflict();
+    });
+    expect(result.current.form.state.values.amount).toBe("3.00");
+    expect(
+      result.current.comparison?.fields.find((field) => field.name === "amount")
+        ?.choice,
+    ).toBeUndefined();
+    expect(
+      result.current.comparison?.fields.find((field) => field.name === "note")
+        ?.choice,
+    ).toBe("latest");
+    act(() => result.current.applyConflict());
+    expect(result.current.conflict).toBe(true);
+    act(() => result.current.chooseConflict("amount", "mine"));
+    act(() => result.current.applyConflict());
+    expect(result.current.conflict).toBe(false);
+    expect(result.current.form.state.values).toMatchObject({
+      amount: "3.00",
+      note: "Server note",
+    });
+    expect(result.current.form.state.isDirty).toBe(true);
+    await act(async () => {
+      await result.current.form.handleSubmit();
+    });
+    expect(invoice.api.update).toHaveBeenLastCalledWith(
+      "one",
+      { amount: "3", note: "Server note" },
+      { revision: 2 },
+    );
+  });
+
+  it("compares hidden datetime precision and preserves an explicit original-time choice", async () => {
+    const invoice = resource();
+    invoice.fields.push({
+      ...amount,
+      name: "starts",
+      apiName: "starts",
+      label: "Starts",
+      kind: "datetime",
+    });
+    const original = "2026-10-01T00:00:00.000001Z";
+    const latest = "2026-10-01T00:00:00.000002Z";
+    rs.mocked(invoice.api.update)
+      .mockRejectedValueOnce({ code: "CONCURRENT_MODIFICATION" })
+      .mockResolvedValue({
+        id: "one",
+        amount: "2",
+        starts: original,
+        revision: 3,
+      });
+    const { result } = renderHook(
+      () =>
+        useResourceFormController(invoice, {
+          id: "one",
+          initialRecord: {
+            id: "one",
+            amount: "1",
+            starts: original,
+            revision: 1,
+          },
+          refetchRecord: async () => ({
+            id: "one",
+            amount: "1",
+            starts: latest,
+            revision: 2,
+          }),
+        }),
+      { wrapper: wrapper() },
+    );
+    const originalInput = result.current.form.state.values.starts;
+    await act(async () => {
+      result.current.form.setFieldValue("amount", "2");
+      await result.current.form.handleSubmit();
+      await result.current.compareConflict();
+    });
+    expect(
+      result.current.comparison?.fields.find(
+        (field) => field.name === "starts",
+      ),
+    ).toMatchObject({ original, mine: original, latest, choice: "latest" });
+    act(() => result.current.chooseConflict("starts", "mine"));
+    act(() => result.current.applyConflict());
+    expect(result.current.form.state.values.starts).toBe(originalInput);
+    await act(async () => {
+      await result.current.form.handleSubmit();
+    });
+    expect(invoice.api.update).toHaveBeenLastCalledWith(
+      "one",
+      { amount: "2", starts: original },
+      { revision: 2 },
+    );
+    // A draft with a visibly different timestamp must also resolve a server microsecond change.
+    // Use a valid local timestamp regardless of the test runner's time zone.
+    act(() => result.current.form.setFieldValue("starts", "2026-10-03T12:00"));
+    await act(async () => {
+      await result.current.compareConflict();
+    });
+    expect(
+      result.current.comparison?.fields.find((field) => field.name === "starts")
+        ?.choice,
+    ).toBeUndefined();
   });
 
   it("refetches when query input changes under the same caller cache key", async () => {
