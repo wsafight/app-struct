@@ -127,8 +127,10 @@ curl --fail --silent --show-error -b "$jar" -H "X-CSRF-Token: $csrf" -X POST \
 jq -e '.paused == true' "$temporary_root/schedule-paused.json" >/dev/null
 paused_jobs_before="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
   "SELECT COUNT(*) FROM \"_appstruct_jobs\" WHERE kind = 'maintenance.cleanup'")"
+# Schedule idempotency uses whole seconds; resume must target a distinct occurrence
+# even when these test requests finish within the same second as the first run.
 psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 -c \
-  "UPDATE \"_appstruct_job_schedules\" SET next_run_at = CURRENT_TIMESTAMP - INTERVAL '1 hour' WHERE id = '$schedule_id'" \
+  "UPDATE \"_appstruct_job_schedules\" SET next_run_at = CURRENT_TIMESTAMP - INTERVAL '2 hours' WHERE id = '$schedule_id'" \
   >/dev/null
 sleep 0.2
 paused_jobs_after="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
