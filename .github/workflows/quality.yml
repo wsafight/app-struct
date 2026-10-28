@@ -108,6 +108,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - if: matrix.suite == 'operations' || matrix.suite == 'm5-browser' || matrix.suite == 'm6-tenant' || matrix.suite == 'm6-audit' || matrix.suite == 'm6-saas' || matrix.suite == 'chromium-report'
         run: pnpm exec playwright install --with-deps chromium
+      - name: Allow the report Chromium sandbox on Ubuntu
+        if: matrix.suite == 'chromium-report'
+        run: |
+          # Ubuntu restricts user namespaces for unprofiled executables. Give only
+          # the pinned headless browser a profile, retaining Chromium's sandbox.
+          found=0
+          for chromium in "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell; do
+            [[ -x "$chromium" ]] || continue
+            printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile appstruct-report-chromium "%s" flags=(unconfined) {\n  userns,\n}\n' "$chromium" | sudo apparmor_parser --replace
+            found=1
+          done
+          [[ "$found" == 1 ]]
       - name: Verify migration and database introspection contracts
         if: matrix.suite == 'authorization'
         run: |

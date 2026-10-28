@@ -19,6 +19,15 @@ renderer="$workspace/crates/appstruct-codegen/templates/report-renderer"
 pnpm --dir "$renderer" install --ignore-workspace --frozen-lockfile --ignore-scripts
 APPSTRUCT_RENDERER_SOCKET="$socket_root/real.sock" node "$renderer/server.mjs" >"$temporary_root/renderer.log" 2>&1 &
 renderer_pid=$!
+for ((attempt = 0; attempt < 150; attempt++)); do
+  [[ ! -S "$socket_root/real.sock" ]] || break
+  if ! kill -0 "$renderer_pid" 2>/dev/null; then
+    cat "$temporary_root/renderer.log" >&2
+    exit 1
+  fi
+  sleep 0.1
+done
+[[ -S "$socket_root/real.sock" ]] || { cat "$temporary_root/renderer.log" >&2; exit 1; }
 node "$workspace/tests/report-renderer-proxy.mjs" "$socket_root/proxy.sock" "$socket_root/real.sock" "$socket_root/open" >"$temporary_root/proxy.log" 2>&1 &
 proxy_pid=$!
 m6_start_dev APPSTRUCT_REPORT_RENDERER_SOCKET="$socket_root/proxy.sock" \
