@@ -109,6 +109,15 @@ m6_prepare_fixture() {
   local fixture="$1"
   mkdir -p "$project"
   cp -R "$workspace/tests/fixtures/$fixture/." "$project/"
+  # Spec fixtures share the same composition root as a newly created project.
+  # A fixture may provide its own extensions instead.
+  if [[ ! -f "$project/app/backend/Cargo.toml" ]]; then
+    mkdir -p "$project/app/backend/src"
+    cp "$workspace/crates/appstruct-cli/templates/common/app-backend.Cargo.toml" \
+      "$project/app/backend/Cargo.toml"
+    cp "$workspace/crates/appstruct-cli/templates/common/app-backend.lib.rs" \
+      "$project/app/backend/src/lib.rs"
+  fi
   mkdir -p "$project/.appstruct/cache" "$m6_backend_target"
   ln -s "$m6_backend_target" "$project/.appstruct/cache/backend-target"
   cd "$workspace"

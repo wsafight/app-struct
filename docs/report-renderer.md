@@ -11,7 +11,7 @@ modules:
 ```
 
 Regenerate the project. The generated `report-renderer` directory contains pinned Node dependencies,
-the renderer, a Dockerfile, an upstream Playwright seccomp profile and a Compose override. With a
+the renderer, a Dockerfile, a Playwright seccomp profile adapted for Chromium's user-namespace chroot and a Compose override. With a
 prepared production backend and environment, the deployment composition is:
 
 ```sh

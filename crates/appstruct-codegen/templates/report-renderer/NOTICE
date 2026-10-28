@@ -3,4 +3,7 @@ https://github.com/microsoft/playwright/blob/v1.62.1/utils/docker/seccomp_profil
 
 Playwright is copyright Microsoft Corporation and licensed under Apache-2.0.
 Its Docker seccomp profile derives from the Apache-2.0 Moby/Docker default profile.
-The Apache-2.0 license is included in LICENSE-SECCOMP. The profile is unmodified.
+The Apache-2.0 license is included in LICENSE-SECCOMP.
+AppStruct also allows chroot so Chromium can enter its sandbox root inside its
+user namespace when the outer container has all capabilities dropped. The host
+kernel still enforces CAP_SYS_CHROOT in the caller's user namespace.

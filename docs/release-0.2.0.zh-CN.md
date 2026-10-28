@@ -1,8 +1,8 @@
-# 0.2.0 发布候选
+# AppStruct 0.2.0
 
-状态：已在本地准备，尚未发布。日期：2026-10-28。
+发布说明：2026-10-28。
 
-本候选集中优化从已有 PostgreSQL 接入到日常后台操作：
+本版本集中优化从已有 PostgreSQL 接入到日常后台操作：
 
 - `db pull` 提供只读接管预检，结构修复和 baseline 接受仍显式执行。
 - CSV 批次幂等与业务写入同事务提交，丢失响应后可查询已提交结果。
@@ -16,6 +16,6 @@
 
 0.1.0 已在 crates.io 发布（[编译器记录](https://crates.io/crates/appstruct-compiler/0.1.0)，2026-08-29）；截至本次核查，GitHub 没有 Release 或标签。0.2.0 包含破坏性格式变更，不提供历史 IR、snapshot 或项目布局适配层。升级须先备份，从 Spec 重建 IR，并按[升级指南](upgrading.zh-CN.md)在独立目录审阅、重建旧格式项目；普通 update 不会转换旧格式。已有数据库需审阅 `_appstruct_import_batches` 的迁移，并对其他系统表、列和索引运行完整结构比较；保留数据、已应用迁移及其校验和，不能把旧库当成新库执行初始建表。
 
-本地结果维护在[交付优化](optimization-progress.zh-CN.md)。Linux 容器及渲染隔离、Windows 安装器和完整原生发布矩阵仍需在候选 commit 上取得实际结果，不能用 workflow 配置代替。运行时语言切换、任意跨记录校验和导入账本自动过期不在本候选范围。
+本地结果维护在[交付优化](optimization-progress.zh-CN.md)。完整 CI 覆盖 Linux 容器与渲染隔离、Windows 安装器、所有 PostgreSQL 套件、模板和打包；Release 流程在五种原生平台构建并测试安装器后产出归档与校验和。运行时语言切换、任意跨记录校验和导入账本自动过期不在本版本范围。
 
-先按[发布流程](releasing.zh-CN.md)在审阅后的 commit 上运行完整 CI，再考虑打 `v0.2.0` 标签。远端推送、标签、crates 和公开 Release 属于单独发布动作；本次准备未创建标签或 Release。
+二进制和校验和见 [GitHub Release](https://github.com/wsafight/app-struct/releases/tag/v0.2.0)，Rust 包见 [crates.io](https://crates.io/crates/appstruct-cli/0.2.0)。维护者按[发布流程](releasing.zh-CN.md)执行发布。

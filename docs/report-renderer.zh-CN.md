@@ -8,7 +8,7 @@ modules:
     renderer: chromium
 ```
 
-重新生成项目。生成的 `report-renderer` 目录包含固定的 Node 依赖、渲染器、Dockerfile、上游 Playwright seccomp 配置以及 Compose overlay。在准备好生产后端和环境后，部署组合为：
+重新生成项目。生成的 `report-renderer` 目录包含固定的 Node 依赖、渲染器、Dockerfile、允许 Chromium 在自身用户命名空间中执行 chroot 的 Playwright seccomp 配置以及 Compose overlay。在准备好生产后端和环境后，部署组合为：
 
 ```sh
 docker compose -f compose.production.yaml -f generated/report-renderer/compose.yaml config

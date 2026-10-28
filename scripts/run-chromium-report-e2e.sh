@@ -14,8 +14,7 @@ case "$database_name" in *test*|*e2e*) ;; *) echo "Dedicated test database requi
 psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public' >/dev/null
 m6_prepare_fixture m7-report-project
 cp "$workspace/tests/e2e/report-chromium.external.yaml" "$project/appstruct.yaml"
-mkdir -p "$project/app"
-cp -R "$workspace/examples/operations-demo/app/backend" "$project/app/"
+cp -R "$workspace/examples/operations-demo/app/backend/." "$project/app/backend/"
 renderer="$workspace/crates/appstruct-codegen/templates/report-renderer"
 pnpm --dir "$renderer" install --frozen-lockfile --ignore-scripts
 APPSTRUCT_RENDERER_SOCKET="$socket_root/real.sock" node "$renderer/server.mjs" >"$temporary_root/renderer.log" 2>&1 &

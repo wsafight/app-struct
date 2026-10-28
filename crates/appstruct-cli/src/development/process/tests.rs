@@ -30,6 +30,25 @@ fn terminate_stops_a_sleeping_child() {
     assert!(child.try_wait().unwrap().is_some());
 }
 
+#[cfg(unix)]
+#[test]
+fn terminate_isolated_group_preserves_an_unrelated_child() {
+    let mut command = Command::new("sleep");
+    command.arg("30");
+    isolate_process_group(&mut command);
+    let mut child = command.spawn().unwrap();
+    let mut unrelated = Command::new("sleep").arg("30").spawn().unwrap();
+    let group = format!("-{}", child.id());
+    assert!(process_group_alive(&group));
+    terminate(&mut child);
+    let unrelated_running = unrelated.try_wait().unwrap().is_none();
+    unrelated.kill().unwrap();
+    unrelated.wait().unwrap();
+    assert!(child.try_wait().unwrap().is_some());
+    assert!(!process_group_alive(&group));
+    assert!(unrelated_running);
+}
+
 #[test]
 fn failure_reports_an_exited_api_process() {
     let api = Command::new("true")

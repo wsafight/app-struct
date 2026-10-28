@@ -304,7 +304,7 @@ fn terminate(child: &mut Child) {
     {
         let process_group = format!("-{}", child.id());
         let signaled = Command::new("kill")
-            .args(["-TERM", &process_group])
+            .args(["-TERM", "--", &process_group])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -322,7 +322,7 @@ fn terminate(child: &mut Child) {
             thread::sleep(Duration::from_millis(50));
         }
         let _ = Command::new("kill")
-            .args(["-KILL", &process_group])
+            .args(["-KILL", "--", &process_group])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
@@ -348,7 +348,7 @@ fn terminate(child: &mut Child) {
 #[cfg(unix)]
 fn process_group_alive(process_group: &str) -> bool {
     Command::new("kill")
-        .args(["-0", process_group])
+        .args(["-0", "--", process_group])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()

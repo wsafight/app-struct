@@ -21,7 +21,7 @@ const server = http.createServer(async (request, response) => {
   if (!file.startsWith(`${assets}${sep}`)) file = resolve(assets, "index.html");
   const info = await stat(file).catch(() => null);
   if (!info?.isFile()) {
-    if (path.startsWith("/assets/")) { response.writeHead(404).end(); return; }
+    if (path.startsWith("/static/") || path.startsWith("/assets/")) { response.writeHead(404).end(); return; }
     file = resolve(assets, "index.html");
   }
   response.setHeader("Content-Type", file.endsWith(".js") ? "text/javascript" : file.endsWith(".css") ? "text/css" : "text/html");

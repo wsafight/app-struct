@@ -40,7 +40,7 @@ try {
         } finally { $source.Dispose() }
     } finally { $zip.Dispose() }
     $installed = Join-Path $BinDir 'appstruct.exe'
-    if ([IO.File]::Exists($installed)) { [IO.File]::Replace($staged, $installed, $null) }
+    if ([IO.File]::Exists($installed)) { [IO.File]::Replace($staged, $installed, [NullString]::Value) }
     else { [IO.File]::Move($staged, $installed) }
     $staged = $null
     Write-Output "Installed AppStruct $Version to $installed"

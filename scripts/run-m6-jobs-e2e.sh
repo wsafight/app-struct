@@ -50,7 +50,7 @@ m6_wait_for_dev
 
 api="http://127.0.0.1:$api_port"
 secondary_api="http://127.0.0.1:$secondary_api_port"
-backend="$project/.appstruct/cache/backend-target/debug/appstruct-generated-backend"
+backend="$project/.appstruct/cache/backend-target/debug/appstruct-generated-server"
 DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
   APPSTRUCT_BIND="127.0.0.1:$secondary_api_port" \
   APPSTRUCT_WEBHOOK_OPERATIONS_SECRET="operations-e2e-secret" \
