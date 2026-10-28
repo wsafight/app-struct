@@ -247,6 +247,9 @@ async fn assert_success_and_deduplication(
     drop(context);
     transaction.commit().await?;
 
+    // Automatic built-in workers must leave application jobs for their handler.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert_eq!(job_state(database, first.id).await?, "queued|0");
     assert_eq!(count_jobs(database).await?, 1);
     assert_eq!(job_tenant(database, first.id).await?, tenant_id);
     let worker = JobWorker::new(database.clone(), Arc::new(TestHandler));

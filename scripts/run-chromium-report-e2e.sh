@@ -16,7 +16,7 @@ m6_prepare_fixture m7-report-project
 cp "$workspace/tests/e2e/report-chromium.external.yaml" "$project/appstruct.yaml"
 cp -R "$workspace/examples/operations-demo/app/backend/." "$project/app/backend/"
 renderer="$workspace/crates/appstruct-codegen/templates/report-renderer"
-pnpm --dir "$renderer" install --frozen-lockfile --ignore-scripts
+pnpm --dir "$renderer" install --ignore-workspace --frozen-lockfile --ignore-scripts
 APPSTRUCT_RENDERER_SOCKET="$socket_root/real.sock" node "$renderer/server.mjs" >"$temporary_root/renderer.log" 2>&1 &
 renderer_pid=$!
 node "$workspace/tests/report-renderer-proxy.mjs" "$socket_root/proxy.sock" "$socket_root/real.sock" "$socket_root/open" >"$temporary_root/proxy.log" 2>&1 &

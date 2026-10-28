@@ -333,16 +333,29 @@ fn start_worker(ir: &AppIr) -> TokenStream {
         };
     }
     if ir.mail.enabled || ir.report.enabled {
+        let mut kinds = Vec::new();
+        if ir.mail.enabled {
+            kinds.push("mail.send");
+        }
+        if ir.report.enabled {
+            kinds.extend(["report.render", "report.cleanup"]);
+        }
         quote! {
             fn start_job_worker(
                 database: &Database, extensions: &AppExtensions, mail: &MailState,
                 file: &FileState,
                 health: ApplicationHealth,
             ) -> Option<JobWorkerHandle> {
+                let custom = extensions.job_handler();
+                let builtins_only = custom.is_none();
                 let handler = jobs::generated_job_handler(
-                    database.clone(), mail.clone(), file.clone(), extensions.job_handler(),
+                    database.clone(), mail.clone(), file.clone(), custom,
                 );
-                let worker = JobWorker::new(database.clone(), handler);
+                let worker = if builtins_only {
+                    JobWorker::for_kinds(database.clone(), handler, &[#(#kinds),*])
+                } else {
+                    JobWorker::new(database.clone(), handler)
+                };
                 Some(worker.spawn_with_health(health))
             }
         }

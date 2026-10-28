@@ -5,7 +5,7 @@ pub(super) fn run_once(lease_seconds: i64) -> TokenStream {
     quote! {
         pub async fn run_once(&self) -> Result<bool, JobError> {
             let Some(job) = claim(
-                &self.database, &self.worker_id, #lease_seconds, self.kind.as_deref(),
+                &self.database, &self.worker_id, #lease_seconds, self.kinds.as_deref(),
             ).await? else { return Ok(false); };
             let mut observation = crate::metrics::JobAttempt::new(&job.kind, job.attempts);
             let result = match self.handle_with_lease(&job).await {

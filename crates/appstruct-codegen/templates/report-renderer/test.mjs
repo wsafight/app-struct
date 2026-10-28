@@ -68,6 +68,8 @@ test("rejects documents beyond the page budget", { timeout: 30_000 }, async () =
 });
 
 test("reuses Chromium and recycles it at the configured request limit", { timeout: 45_000 }, async () => {
+  // The production container budgets one browser, including its sandbox processes.
+  await closeRenderer();
   const renderer = createRenderer({ recycleAfter: 2 });
   try {
     await renderer.render(request("<p>first</p>"), new AbortController().signal);

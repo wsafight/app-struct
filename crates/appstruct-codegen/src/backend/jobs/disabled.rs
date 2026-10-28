@@ -28,6 +28,9 @@ pub(super) fn disabled_source() -> Result<String, CodegenError> {
             pub fn for_kind(
                 _database: Database, _handler: Arc<dyn JobHandler>, _kind: &str,
             ) -> Self { Self }
+            pub fn for_kinds(
+                _database: Database, _handler: Arc<dyn JobHandler>, _kinds: &[&str],
+            ) -> Self { Self }
             pub async fn run_once(&self) -> Result<bool, JobError> { Err(JobError::Disabled) }
             pub fn spawn(self) -> JobWorkerHandle { JobWorkerHandle }
         }

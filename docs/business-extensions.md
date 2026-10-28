@@ -24,3 +24,7 @@ User-owned `app/backend`, `app/web`, Spec and migrations survive generation/upda
 Signed remote module packages supply static artifacts and metadata, not arbitrary executable Rust registration. Application Rust is compiled into the composition root and registered through `AppExtensions`. Official runtime modules are generated and started by the framework. These have separate dependency, migration and uninstall responsibilities; see [module registry](module-registry.md). There is no dynamic library or WASM runtime plugin contract.
 
 See [Workflow](workflows.md), [headless controllers](headless-controller.md), [observability](observability.md) and [upgrading](upgrading.md).
+
+## Background job handlers
+
+Without a custom `job_handler`, automatic workers claim only the enabled built-in mail and report kinds. Application jobs remain queued for their registered or external handler. Register a custom handler through `AppExtensions::builder().job_handler(...)` to dispatch application kinds alongside built-ins. Dedicated external workers can use `JobWorker::for_kind(...)` or `JobWorker::for_kinds(...)` to restrict claims to their supported kinds.

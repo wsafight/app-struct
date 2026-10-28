@@ -44,3 +44,7 @@ APPSTRUCT_LOG_FORMAT=json appstruct dev
 远程模块包提供已签名的静态 Artifact 和元数据，不能仅靠安装就注册任意第三方 Rust 运行时。应用自有 Rust 在 composition root 编译并通过 `AppExtensions` 注册；官方运行时模块由编译器内置生成和启动。三者有不同的依赖、迁移和卸载责任，详见[模块注册表](module-registry.zh-CN.md)。现阶段不提供动态库或 WASM 执行插件契约。
 
 继续阅读：[Workflow](workflows.zh-CN.md)、[无头控制器](headless-controller.zh-CN.md)、[指标与日志](observability.zh-CN.md)、[升级](upgrading.zh-CN.md)。
+
+## 后台任务处理器
+
+未注册自定义 `job_handler` 时，自动 worker 只领取已启用的内置邮件和报表任务；应用任务保留在队列中，等待已注册或外部处理器。通过 `AppExtensions::builder().job_handler(...)` 注册自定义处理器后，可以与内置任务一同分派应用任务。独立外部 worker 可用 `JobWorker::for_kind(...)` 或 `JobWorker::for_kinds(...)` 限定自身支持的任务类型。

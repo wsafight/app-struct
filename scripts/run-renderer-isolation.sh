@@ -5,10 +5,10 @@ renderer="$workspace/crates/appstruct-codegen/templates/report-renderer"
 image="appstruct-renderer-acceptance:${APPSTRUCT_RENDERER_TEST_TAG:-local}"
 command -v docker >/dev/null
 docker build --tag "$image" "$renderer"
-isolation=(--rm --network none --read-only --user 10001:10001 --cap-drop ALL
+isolation=(--rm --init --network none --read-only --user 10001:10001 --cap-drop ALL
   --security-opt no-new-privileges:true --security-opt "seccomp=$renderer/seccomp.json"
   --pids-limit 128 --memory 512m --memory-swap 512m --cpus 1 --shm-size 64m --tmpfs /tmp:size=128m,mode=1777)
-docker run "${isolation[@]}" --entrypoint node "$image" --test /opt/renderer/test.mjs
+docker run "${isolation[@]}" --entrypoint node "$image" --test --test-timeout=120000 /opt/renderer/test.mjs
 docker run "${isolation[@]}" --entrypoint node "$image" --input-type=module -e '
   import assert from "node:assert/strict";
   import {readFile, writeFile} from "node:fs/promises";

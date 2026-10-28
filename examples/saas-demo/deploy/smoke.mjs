@@ -18,7 +18,7 @@ const html = await index.text();
 assert(html.includes('id="root"'), "Web application shell is missing");
 const fallback = await get("/__appstruct_smoke_spa__");
 assert.equal(await fallback.text(), html, "SPA fallback failed");
-for (const path of ["/api/__appstruct_smoke_missing__", "/assets/__appstruct_missing__.js", "/metrics"]) {
+for (const path of ["/api/__appstruct_smoke_missing__", "/static/__appstruct_missing__.js", "/assets/__appstruct_missing__.js", "/metrics"]) {
   const response = await get(path);
   assert.equal(response.status, 404, `${path} must return 404`);
   await response.arrayBuffer();

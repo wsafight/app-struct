@@ -169,6 +169,7 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
     let (lease_seconds, max_idle_ms) = timing::worker_values(poll_interval_ms, lease_seconds);
     let gate_wait = test_worker_gate_wait(poll_interval_ms);
     let lifecycle = worker_lifecycle_source();
+    let constructors = worker_constructors_source();
     let lease = lease::methods(lease_seconds);
     let run_once = metrics::run_once(lease_seconds);
     quote! {
@@ -176,30 +177,12 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
             database: Database,
             handler: Arc<dyn JobHandler>,
             worker_id: String,
-            kind: Option<String>,
+            kinds: Option<Vec<String>>,
         }
         impl JobWorker {
             #lease
-            pub fn new(database: Database, handler: Arc<dyn JobHandler>) -> Self {
-                Self {
-                    database, handler, worker_id: uuid::Uuid::now_v7().to_string(), kind: None,
-                }
-            }
-            pub fn for_kind(
-                database: Database, handler: Arc<dyn JobHandler>, kind: &str,
-            ) -> Self {
-                Self {
-                    database, handler, worker_id: uuid::Uuid::now_v7().to_string(),
-                    kind: Some(kind.to_owned()),
-                }
-            }
+            #constructors
             #run_once
-            fn replica(&self) -> Self {
-                Self {
-                    database: self.database.clone(), handler: Arc::clone(&self.handler),
-                    worker_id: uuid::Uuid::now_v7().to_string(), kind: self.kind.clone(),
-                }
-            }
             pub fn spawn(self) -> JobWorkerHandle {
                 self.spawn_inner(None)
             }
@@ -268,6 +251,35 @@ fn worker_source(poll_interval_ms: u64, lease_seconds: u64) -> proc_macro2::Toke
     }
 }
 
+fn worker_constructors_source() -> proc_macro2::TokenStream {
+    quote! {
+        pub fn new(database: Database, handler: Arc<dyn JobHandler>) -> Self {
+            Self {
+                database, handler, worker_id: uuid::Uuid::now_v7().to_string(), kinds: None,
+            }
+        }
+        pub fn for_kind(
+            database: Database, handler: Arc<dyn JobHandler>, kind: &str,
+        ) -> Self {
+            Self::for_kinds(database, handler, &[kind])
+        }
+        pub fn for_kinds(
+            database: Database, handler: Arc<dyn JobHandler>, kinds: &[&str],
+        ) -> Self {
+            Self {
+                database, handler, worker_id: uuid::Uuid::now_v7().to_string(),
+                kinds: Some(kinds.iter().map(|kind| (*kind).to_owned()).collect()),
+            }
+        }
+        fn replica(&self) -> Self {
+            Self {
+                database: self.database.clone(), handler: Arc::clone(&self.handler),
+                worker_id: uuid::Uuid::now_v7().to_string(), kinds: self.kinds.clone(),
+            }
+        }
+    }
+}
+
 fn worker_lifecycle_source() -> proc_macro2::TokenStream {
     let test_gate = test_worker_gate_source();
     quote! {
@@ -313,12 +325,12 @@ fn persistence_source(report: bool) -> proc_macro2::TokenStream {
     quote! {
         async fn claim(
             database: &Database, worker_id: &str, lease_seconds: i64,
-            kind: Option<&str>,
+            kinds: Option<&[String]>,
         ) -> Result<Option<Job>, JobError> {
-            let row = database.fetch_optional(Sql::bind("WITH candidate AS (SELECT id FROM \"_appstruct_jobs\" WHERE ((status = 'queued' AND run_at <= CURRENT_TIMESTAMP) OR (status = 'running' AND locked_until <= CURRENT_TIMESTAMP)) AND ($3::text IS NULL OR kind = $3) ORDER BY run_at, id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE \"_appstruct_jobs\" AS job SET status = 'running', attempts = attempts + 1, locked_by = $1, locked_until = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second') FROM candidate WHERE job.id = candidate.id RETURNING job.id, job.queue, job.kind, job.payload, job.tenant_id, job.attempts, job.max_attempts, job.backoff_seconds",
+            let row = database.fetch_optional(Sql::bind("WITH candidate AS (SELECT id FROM \"_appstruct_jobs\" WHERE ((status = 'queued' AND run_at <= CURRENT_TIMESTAMP) OR (status = 'running' AND locked_until <= CURRENT_TIMESTAMP)) AND ($3::jsonb IS NULL OR kind IN (SELECT jsonb_array_elements_text($3))) ORDER BY run_at, id FOR UPDATE SKIP LOCKED LIMIT 1) UPDATE \"_appstruct_jobs\" AS job SET status = 'running', attempts = attempts + 1, locked_by = $1, locked_until = CURRENT_TIMESTAMP + ($2 * INTERVAL '1 second') FROM candidate WHERE job.id = candidate.id RETURNING job.id, job.queue, job.kind, job.payload, job.tenant_id, job.attempts, job.max_attempts, job.backoff_seconds",
                 [
                     worker_id.to_owned().into(), lease_seconds.into(),
-                    kind.map(str::to_owned).into(),
+                    kinds.map(|kinds| serde_json::json!(kinds)).into(),
                 ],
             )).await?;
             row.map(job_from_row).transpose().map_err(JobError::from)
