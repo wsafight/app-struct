@@ -159,6 +159,8 @@ m6_wait_for_url() {
 m6_wait_for_dev() {
   m6_wait_for_url "http://127.0.0.1:$api_port/health/ready" "$dev_pid" "$log" \
     "${APPSTRUCT_E2E_STARTUP_TIMEOUT:-${1:-180}}" 1
+  m6_wait_for_url "http://127.0.0.1:$web_port/" "$dev_pid" "$log" \
+    "${APPSTRUCT_E2E_STARTUP_TIMEOUT:-${1:-180}}" 1
 }
 
 m6_typecheck_web() {

@@ -31,6 +31,7 @@ case "$profile" in
     exit 2
     ;;
 esac
-m6_wait_for_dev 300
+m6_wait_for_url "http://127.0.0.1:$api_port/health/ready" "$dev_pid" "$log" \
+  "${APPSTRUCT_E2E_STARTUP_TIMEOUT:-300}" 1
 APPSTRUCT_BENCH_PROFILE="$profile" node "$workspace/tests/benchmarks/postgres-api.mjs" "http://127.0.0.1:$api_port" \
   "${APPSTRUCT_BENCH_OUTPUT:-$workspace/output/benchmarks/postgres-api.json}"

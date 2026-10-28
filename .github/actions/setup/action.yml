@@ -3,6 +3,10 @@ description: Install the repository's Rust, Node.js and pnpm toolchains and rest
 runs:
   using: composite
   steps:
+    - name: Reserve integration test ports from ephemeral client allocation
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=30000-34999,51000-57999
     - uses: pnpm/action-setup@v4
       with:
         version: 11.25.0
