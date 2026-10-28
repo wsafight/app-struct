@@ -14,7 +14,7 @@
   "dependencies": {
     "@tanstack/react-form": "1.33.5",
     "@tanstack/react-query": "5.104.1",
-    "@tanstack/react-router": "1.170.42",
+    "@tanstack/react-router": "1.170.44",
     "@tanstack/react-table": "9.2.8",
     "decimal.js": "10.6.0",
     "lucide-react": "1.55.0",
