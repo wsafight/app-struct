@@ -89,10 +89,10 @@ assert_no_file
 [[ "$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -c "SELECT stage FROM _appstruct_report_runs WHERE id = '$run'")" == rendering ]]
 curl -fsS "$api/metrics" >"$temporary_root/metrics.prom"
 for outcome in succeeded cancelled lease_lost; do
-  rg -Fq "appstruct_job_duration_seconds_count{kind=\"report\",outcome=\"$outcome\"} 1" "$temporary_root/metrics.prom" || {
+  grep -Fq "appstruct_job_duration_seconds_count{kind=\"report\",outcome=\"$outcome\"} 1" "$temporary_root/metrics.prom" || {
     cat "$temporary_root/metrics.prom" >&2
     exit 1
   }
 done
-rg -q '^appstruct_jobs_in_flight 0$' "$temporary_root/metrics.prom"
+grep -q '^appstruct_jobs_in_flight 0$' "$temporary_root/metrics.prom"
 echo "Chromium report protocol, lease renewal, running cancellation and stale worker publication checks passed"

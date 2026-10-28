@@ -27,6 +27,8 @@ m6_init() {
   project="$temporary_root/$project_name"
   log="$temporary_root/dev.log"
   dev_pid=""
+  set -E
+  trap 'printf "%s E2E failed at %s:%s\n" "$m6_suite" "${BASH_SOURCE[0]}" "$LINENO" >&2' ERR
   trap m6_cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
