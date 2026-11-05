@@ -78,6 +78,15 @@ export const appQueryKeys = {
     runs: (page: number, pageSize: number) =>
       ["reports", currentTenantScope(), "runs", { page, pageSize }] as const,
   },
+  product: {
+    all: ["product"] as const,
+    profile: ["product", "profile"] as const,
+    notifications: (page: number) =>
+      ["product", "notifications", currentTenantScope(), page] as const,
+    credits: (page = 1) =>
+      ["product", "credits", currentTenantScope(), page] as const,
+    team: () => ["product", "team", currentTenantScope()] as const,
+  },
   tokens: ["auth", "tokens"] as const,
   admin: {
     all: ["admin"] as const,
@@ -99,3 +108,15 @@ export const appQueryKeys = {
       ["admin", "billing", "events", { page, pageSize }] as const,
   },
 };
+
+export function workRefreshInterval(
+  work: readonly { stage?: string; state?: string }[] | undefined,
+): number | false {
+  return work?.some((item) =>
+    ["queued", "running", "rendering", "publishing"].includes(
+      item.stage ?? item.state ?? "",
+    ),
+  )
+    ? 2_000
+    : false;
+}

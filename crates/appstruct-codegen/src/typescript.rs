@@ -4,6 +4,7 @@ mod billing;
 mod bulk;
 mod collections;
 mod entity;
+mod file_library;
 mod modules;
 mod realtime;
 mod report;
@@ -29,9 +30,24 @@ fn client_source(ir: &AppIr) -> String {
     ];
     if ir.auth.enabled {
         sections.push(auth::source(ir));
+        sections.push(
+            include_str!("../templates/web/product/client.ts")
+                .replace(
+                    "__TENANT__",
+                    if ir.tenant.enabled { "true" } else { "false" },
+                )
+                .replace(
+                    "__BILLING__",
+                    if ir.billing.enabled { "true" } else { "false" },
+                ),
+        );
+        sections.push(include_str!("../templates/web/business/client.ts").to_owned());
     }
     if ir.billing.enabled {
         sections.push(billing::source(ir));
+    }
+    if ir.file.enabled && ir.auth.enabled {
+        sections.push(file_library::source(ir));
     }
     if ir.tenant.enabled {
         sections.push(tenant_source());
@@ -125,7 +141,7 @@ fn runtime_source() -> String {
     )
 }
 fn request_runtime_source() -> &'static str {
-    r#"const API_BASE = (import.meta.env.PUBLIC_API_URL as string | undefined) ?? (import.meta.env.VITE_API_URL as string | undefined) ?? (import.meta.env.PROD ? "" : "http://127.0.0.1:3000");
+    r#"export const API_BASE = (import.meta.env.PUBLIC_API_URL as string | undefined) ?? (import.meta.env.VITE_API_URL as string | undefined) ?? (import.meta.env.PROD ? "" : "http://127.0.0.1:3000");
 
 export interface RequestOptions { signal?: AbortSignal; }
 export const sessionSyncKey = "appstruct_session_sync";
@@ -161,6 +177,12 @@ const resourceEtags = new Map<string, string>();
 
 export function requestHeaders(init?: RequestInit, revisionKey?: string, requireRevision = false): Headers {
   const headers = new Headers(init?.headers);
+  try {
+    if (browserStorage()?.getItem("appstruct_analytics_consent") === "yes") {
+      const visitor = browserStorage()?.getItem("appstruct_analytics_visitor");
+      if (visitor) headers.set("X-AppStruct-Visitor", visitor);
+    }
+  } catch { headers.delete("X-AppStruct-Visitor"); }
   const method = init?.method ?? "GET";
   if (init?.body != null && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -178,7 +200,7 @@ export function requestHeaders(init?: RequestInit, revisionKey?: string, require
   return headers;
 }
 
-async function request<T>(path: string, init?: RequestInit, revisionKey?: string, requireRevision = false): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit, revisionKey?: string, requireRevision = false): Promise<T> {
   const headers = requestHeaders(init, revisionKey ?? path, requireRevision);
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,

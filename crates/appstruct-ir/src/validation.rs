@@ -154,6 +154,11 @@ fn validate_field_access_rule(
             path,
             "owner rules are not supported for field-level access",
         ),
+        AccessRuleIr::Entitlement { .. } => push(
+            errors,
+            path,
+            "entitlement rules are not supported for field-level access",
+        ),
         AccessRuleIr::Any { rules } | AccessRuleIr::All { rules } => {
             for (index, child) in rules.iter().enumerate() {
                 validate_field_access_rule(child, &format!("{path}.rules[{index}]"), errors);

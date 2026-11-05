@@ -163,7 +163,9 @@ fn formatted(artifact: &Artifact) -> bool {
             artifact.relative_path.to_str(),
             Some(
                 "web/src/app/App.tsx"
+                    | "web/src/app/PageRoutes.tsx"
                     | "web/src/app/Layout.tsx"
+                    | "web/src/report/ReportPage.tsx"
                     | "web/src/pages/ResourceDetail.tsx"
             )
         )
@@ -276,6 +278,14 @@ mod tests {
         )));
         assert!(formatted(&artifact(
             "web/src/app/Layout.tsx",
+            ArtifactKind::Web,
+        )));
+        assert!(formatted(&artifact(
+            "web/src/app/PageRoutes.tsx",
+            ArtifactKind::Web,
+        )));
+        assert!(formatted(&artifact(
+            "web/src/report/ReportPage.tsx",
             ArtifactKind::Web,
         )));
         assert!(formatted(&artifact(

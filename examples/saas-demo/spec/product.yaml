@@ -1,0 +1,18 @@
+domain: product
+
+pages:
+  Landing:
+    label: Home
+    path: /
+    scope: public
+    component: LandingPage
+  Pricing:
+    label: Pricing
+    path: pricing
+    scope: public
+    component: PricingPage
+  ReportStudio:
+    label: Report studio
+    path: studio
+    scope: workspace
+    component: ReportStudioPage

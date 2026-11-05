@@ -2,10 +2,48 @@ use super::{app_display_name, with_app_title};
 use crate::{Artifact, ArtifactKind};
 use appstruct_ir::AppIr;
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn extend_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
     let title = app_display_name(&ir.app.name);
+    if ir.file.enabled && ir.auth.enabled {
+        artifacts.push(Artifact::text(
+            "web/src/file/RecordAttachments.tsx",
+            include_str!("../../templates/web/file/RecordAttachments.tsx"),
+            ArtifactKind::Web,
+        ));
+        artifacts.push(Artifact::text(
+            "web/src/file/FilesPage.tsx",
+            include_str!("../../templates/web/file/FilesPage.tsx"),
+            ArtifactKind::Web,
+        ));
+    }
     if ir.auth.enabled {
+        artifacts.push(Artifact::text(
+            "web/src/product/ProductPages.tsx",
+            include_str!("../../templates/web/product/ProductPages.tsx"),
+            ArtifactKind::Web,
+        ));
+        artifacts.push(Artifact::text(
+            "web/src/auth/AccountSettings.tsx",
+            include_str!("../../templates/web/auth/AccountSettings.tsx"),
+            ArtifactKind::Web,
+        ));
         artifacts.extend([
+            Artifact::text(
+                "web/src/business/BusinessPage.tsx",
+                include_str!("../../templates/web/business/BusinessPage.tsx"),
+                ArtifactKind::Web,
+            ),
+            Artifact::text(
+                "web/src/auth/AccountPage.tsx",
+                include_str!("../../templates/web/auth/AccountPage.tsx"),
+                ArtifactKind::Web,
+            ),
+            Artifact::text(
+                "web/src/auth/return-to.ts",
+                include_str!("../../templates/web/auth/return-to.ts"),
+                ArtifactKind::Web,
+            ),
             Artifact::text(
                 "web/src/auth/Auth.tsx",
                 include_str!("../../templates/web/auth/Auth.tsx"),
@@ -41,6 +79,11 @@ pub(super) fn extend_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
     }
     if ir.billing.enabled {
         artifacts.extend([
+            Artifact::text(
+                "web/src/billing/BillingAccess.tsx",
+                include_str!("../../templates/web/billing/BillingAccess.tsx"),
+                ArtifactKind::Web,
+            ),
             Artifact::text(
                 "web/src/billing/BillingPage.tsx",
                 include_str!("../../templates/web/billing/BillingPage.tsx"),
@@ -79,8 +122,38 @@ pub(super) fn extend_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
     }
     if ir.report.enabled {
         artifacts.push(Artifact::text(
+            "web/src/product/TaskCenterPage.tsx",
+            include_str!("../../templates/web/product/TaskCenterPage.tsx"),
+            ArtifactKind::Web,
+        ));
+        artifacts.push(Artifact::text(
             "web/src/report/ReportPage.tsx",
-            include_str!("../../templates/web/report/ReportPage.tsx"),
+            include_str!("../../templates/web/report/ReportPage.tsx")
+                .replace(
+                    "__BILLING_IMPORT__",
+                    if ir.report.entitlement.is_some() {
+                        "import { BillingAccess } from \"../billing/BillingAccess\";"
+                    } else {
+                        ""
+                    },
+                )
+                .replace(
+                    "__BILLING_OPEN__",
+                    &ir.report
+                        .entitlement
+                        .as_ref()
+                        .map_or_else(String::new, |feature| {
+                            format!("<BillingAccess entitlement={feature:?}>")
+                        }),
+                )
+                .replace(
+                    "__BILLING_CLOSE__",
+                    if ir.report.entitlement.is_some() {
+                        "</BillingAccess>"
+                    } else {
+                        ""
+                    },
+                ),
             ArtifactKind::Web,
         ));
     }

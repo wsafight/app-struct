@@ -250,6 +250,7 @@ export function AdminPage() {
         !error && <div className="auth-loading" aria-label={t("Loading")} />
       )}
       <nav className="admin-links" aria-label={t("Administration pages")}>
+        <Link to="/admin/business">{t("Business overview")}</Link>
         <Link to="/admin/users"> {t("Users")}</Link>
         <Link to="/tokens"> {t("API tokens")} </Link>
         {adminFeatures.jobs && <Link to="/admin/jobs"> {t("Jobs")}</Link>}

@@ -65,6 +65,7 @@ pub(super) fn source(ir: &AppIr) -> TokenStream {
         #[derive(Clone)]
         pub struct AppExtensions {
             handlers: Arc<dyn RequiredHandlers>,
+            routes: axum::Router<crate::AppState>,
             #job_field
             #(#hook_fields,)*
             #(#policy_fields,)*
@@ -72,6 +73,7 @@ pub(super) fn source(ir: &AppIr) -> TokenStream {
 
         pub struct AppExtensionsBuilder<State> {
             handlers: State,
+            routes: axum::Router<crate::AppState>,
             #job_field
             #(#hook_fields,)*
             #(#policy_fields,)*
@@ -80,15 +82,22 @@ pub(super) fn source(ir: &AppIr) -> TokenStream {
         impl AppExtensions {
             pub fn builder() -> AppExtensionsBuilder<#initial_state> {
                 AppExtensionsBuilder {
-                    handlers: #initial_value, #job_default #(#defaults,)*
+                    handlers: #initial_value, routes: axum::Router::new(), #job_default #(#defaults,)*
                 }
             }
             pub fn handlers(&self) -> &dyn RequiredHandlers { self.handlers.as_ref() }
+            pub(crate) fn routes(&self) -> axum::Router<crate::AppState> { self.routes.clone() }
             #job_handler_access
             #getters
         }
 
-        impl<State> AppExtensionsBuilder<State> { #job_setter #setters }
+        impl<State> AppExtensionsBuilder<State> {
+            pub fn routes(mut self, routes: axum::Router<crate::AppState>) -> Self {
+                self.routes = self.routes.merge(routes);
+                self
+            }
+            #job_setter #setters
+        }
         #register
 
         impl<H> AppExtensionsBuilder<Present<H>>
@@ -186,5 +195,5 @@ fn optional_moves(ir: &AppIr) -> TokenStream {
         .jobs
         .enabled
         .then(|| quote! { job_handler: self.job_handler, });
-    quote! { #job #(#fields,)* }
+    quote! { routes: self.routes, #job #(#fields,)* }
 }

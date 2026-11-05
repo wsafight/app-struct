@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "test:e2e": "playwright test",
+    "saas:build": "pnpm --dir examples/saas-demo/generated/web run build && node scripts/prerender-saas.mjs",
     "site:dev": "pnpm --dir site run dev",
     "site:check": "pnpm --dir site run check",
     "site:build": "pnpm --dir site run build",

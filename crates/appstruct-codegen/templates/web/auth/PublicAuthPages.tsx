@@ -17,6 +17,7 @@ import {
 } from "../navigation";
 import { authApi, authFeatures } from "../generated/client";
 import { useAuth } from "./Auth";
+import { returnTo } from "./return-to";
 
 export function LoginPage() {
   return <CredentialsPage mode="login" />;
@@ -31,8 +32,10 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
   const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const destination = returnTo(location);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const redirecting = useRef(false);
@@ -44,35 +47,17 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
     }
     if (redirecting.current) return;
     redirecting.current = true;
-    void navigate("/", { replace: true });
-  }, [auth.user, navigate, submitting]);
+    void navigate(destination, { replace: true });
+  }, [auth.user, destination, navigate, submitting]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);
     setError("");
     try {
-      if (mode === "login") await auth.login(email, password);
+      if (mode === "login") await auth.login(email, password, code || undefined);
       else await auth.register(email, password);
-      const fromState = (
-        location.state as {
-          from?: { pathname?: string; searchStr?: string; hash?: string };
-        } | null
-      )?.from;
-      const search = fromState?.searchStr
-        ? fromState.searchStr.startsWith("?")
-          ? fromState.searchStr
-          : `?${fromState.searchStr}`
-        : "";
-      const hash = fromState?.hash
-        ? fromState.hash.startsWith("#")
-          ? fromState.hash
-          : `#${fromState.hash}`
-        : "";
-      const from = fromState?.pathname
-        ? `${fromState.pathname}${search}${hash}`
-        : "/";
-      await navigate(from, { replace: true });
+      await navigate(destination, { replace: true });
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -114,6 +99,7 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
             required
           />
         </label>
+        {!registering && <label>{t("Authenticator or recovery code (if enabled)")}<input autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} /></label>}
         <button className="primary-button" disabled={submitting}>
           {registering ? <UserPlus size={17} /> : <LogIn size={17} />}
           {submitting
@@ -145,7 +131,9 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
             <Link to="/forgot-password">{t("Forgot password?")}</Link>
           )}
           {authFeatures.registration && (
-            <Link to={registering ? "/login" : "/register"}>
+            <Link
+              to={`${registering ? "/login" : "/register"}?next=${encodeURIComponent(destination)}`}
+            >
               {registering ? t("Sign in") : t("Create account")}
             </Link>
           )}

@@ -39,6 +39,31 @@ indexes:
 
 数据库导入和漂移检查包含方法与 operator class，因此同字段的 B-tree 和 GIN 索引会被区分。
 
+## 租户排序索引
+
+在 `appstruct.yaml` 中启用租户列表的自动索引：
+
+```yaml
+modules:
+  tenant:
+    enabled: true
+    sortable_indexes: true
+```
+
+对每个 `tenant: true` 实体，编译器会为标记 `sortable: true` 的非主键字段生成
+`(tenant_id, 排序字段, 主键)` 非唯一 B-tree 索引。`soft_delete: true` 实体的索引带有
+`WHERE deleted_at IS NULL`；若 `deleted_at` 设置了 `column`，则使用映射后的数据库列名，
+与生成的列表查询一致。已有相同字段顺序和谓词的 B-tree 索引
+（包括唯一索引）能够覆盖排序，因此不会重复生成。
+
+项目设置默认是 `false`，已有迁移保持不变。实体可以设置 `tenant_index: true` 或
+`tenant_index: false` 覆盖项目默认值；启用时必须同时设置 `tenant: true`。
+生成的 SQL 索引名不得超过 PostgreSQL 的 63 字节限制。名称过长时，可以在 `indexes`
+中声明相同字段顺序和谓词，并指定较短的名称。
+
+这些索引有助于租户筛选和排序，页码列表仍然计算精确总数。剩余的计数和深度偏移成本见
+[百万行参考运行](observability.zh-CN.md#百万行参考运行)。
+
 ## 迁移
 
 索引定义会进入数据库快照和生成的初始迁移。向现有表添加索引被归类为非破坏性但可能锁表，因此 `migrate dev` 在接受该迁移前需要显式审查。删除或更改索引是破坏性操作，永远不会自动生成。迁移状态也会把缺失或意外的索引报告为 Schema 漂移。

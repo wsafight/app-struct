@@ -7,6 +7,29 @@ use quote::{format_ident, quote};
 use std::{fs, path::Path};
 
 #[test]
+fn operation_rules_preserve_nested_boolean_grouping() {
+    let rule = AccessRuleIr::All {
+        rules: vec![
+            AccessRuleIr::Role {
+                role: "admin".to_owned(),
+            },
+            AccessRuleIr::Any {
+                rules: vec![AccessRuleIr::Public, AccessRuleIr::Authenticated],
+            },
+        ],
+    };
+    let expression: syn::Expr = syn::parse2(super::operation_allowed(&rule)).unwrap();
+    let syn::Expr::Paren(outer) = expression else {
+        panic!("composite rule must be grouped");
+    };
+    let syn::Expr::Binary(binary) = *outer.expr else {
+        panic!("expected conjunction");
+    };
+    assert!(matches!(binary.op, syn::BinOp::And(_)));
+    assert!(matches!(*binary.right, syn::Expr::Paren(_)));
+}
+
+#[test]
 #[allow(clippy::too_many_lines)]
 fn generated_scopes_match_policy_truth_tables() {
     let fixture =

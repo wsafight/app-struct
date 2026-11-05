@@ -30,6 +30,10 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         ),
         generated("backend/src/auth/session.rs", template("auth/session.rs")?),
         generated(
+            "backend/src/auth/settings.rs",
+            template("auth/settings.rs")?,
+        ),
+        generated(
             "backend/src/auth/handlers.rs",
             template("auth/handlers.rs")?,
         ),
@@ -161,6 +165,7 @@ fn template(name: &str) -> Result<String, CodegenError> {
             include_str!("../../templates/backend/auth/admin_storage.rs")
         }
         "auth/session.rs" => include_str!("../../templates/backend/auth/session.rs"),
+        "auth/settings.rs" => include_str!("../../templates/backend/auth/settings.rs"),
         "auth/handlers.rs" => include_str!("../../templates/backend/auth/handlers.rs"),
         "auth/admin_webhooks.rs" => include_str!("../../templates/backend/auth/admin_webhooks.rs"),
         "auth/mail.rs" => include_str!("../../templates/backend/auth/mail.rs"),

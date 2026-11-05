@@ -19,7 +19,7 @@ pub(super) fn tenant_storage_source(auth_enabled: bool) -> String {
   }
 }
 
-function currentTenant(): string | undefined {
+export function currentTenant(): string | undefined {
   if (tenantOverride !== undefined) return tenantOverride || undefined;
   try {
     return browserStorage()?.getItem(tenantStorageKey) ?? undefined;

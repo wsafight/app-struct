@@ -267,6 +267,7 @@ site in `site/` renders both languages; from the workspace root run `pnpm run si
 - [Organization invitations](docs/organization-invitations.md)
 - [OAuth and OIDC](docs/oauth-oidc.md)
 - [Generated application billing](docs/billing.md)
+- [SaaS product journey](docs/saas-product-journey.md)
 - [Personal API tokens](docs/personal-api-tokens.md)
 - [Realtime events, presence, and edit leases](docs/realtime.md)
 - [Interval schedules](docs/schedules.md)

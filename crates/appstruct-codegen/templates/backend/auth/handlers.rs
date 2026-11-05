@@ -25,6 +25,7 @@ pub(super) fn router() -> Router<AppState> {
 struct Credentials {
     email: String,
     password: String,
+    code: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -92,6 +93,8 @@ async fn register(
         ))
         .await?;
     let (session, csrf) = state.auth.create_session(&transaction, user_id).await?;
+    let visitor = headers.get("x-appstruct-visitor").and_then(|value| value.to_str().ok()).and_then(|value| uuid::Uuid::parse_str(value).ok());
+    crate::product::record_event(&transaction, Some(user_id), visitor, None, &format!("signup:{user_id}"), "signup").await?;
     transaction.commit().await?;
     issue_email_verification(&state, user_id, &email.email).await?;
     let user = Actor {
@@ -133,8 +136,10 @@ async fn login(
     let Some(row) = row.filter(|_| valid) else {
         return Err(ApiError::Unauthorized);
     };
-    state.auth.clear_login_attempts(&state.database, &email).await?;
     let user_id = row.try_get("user_id")?;
+    let transaction = state.database.begin().await?;
+    super::settings::verify_mfa(&transaction, user_id, input.code.as_deref()).await?;
+    state.auth.clear_login_attempts(&transaction, &email).await?;
     let email_verified = row
         .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("email_verified_at")
         .ok()
@@ -143,7 +148,8 @@ async fn login(
     let roles: serde_json::Value = row.try_get("roles")?;
     let roles = serde_json::from_value(roles).map_err(|_| ApiError::Internal)?;
     let user = Actor { id: user_id, email, roles };
-    let (session, csrf) = state.auth.create_session(&state.database, user_id).await?;
+    let (session, csrf) = state.auth.create_session(&transaction, user_id).await?;
+    transaction.commit().await?;
     Ok((state.auth.session_headers(&session, &csrf), Json(AuthResponse { user, email_verified })))
 }
 

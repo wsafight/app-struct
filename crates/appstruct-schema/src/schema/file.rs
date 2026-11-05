@@ -4,7 +4,7 @@ use appstruct_ir::{AppIr, GeneratedValueIr, OnDeleteIr};
 const FILES: &str = "_appstruct_files";
 
 pub(super) fn tables() -> Vec<TableSchema> {
-    vec![TableSchema {
+    let mut tables = vec![TableSchema {
         id: "appstruct::file::files".to_owned(),
         name: FILES.to_owned(),
         columns: vec![
@@ -35,7 +35,36 @@ pub(super) fn tables() -> Vec<TableSchema> {
                 ..column("deleting", DatabaseType::Boolean, false, false, false)
             },
         ],
-    }]
+    }];
+    tables.push(TableSchema {
+        id: "appstruct::file::uploads".to_owned(),
+        name: "_appstruct_file_uploads".to_owned(),
+        columns: [
+            ("id", DatabaseType::Uuid, false),
+            ("tenant_id", DatabaseType::Uuid, true),
+            ("actor_id", DatabaseType::Uuid, false),
+            ("object_key", DatabaseType::Text, false),
+            ("original_name", DatabaseType::Text, false),
+            ("content_type", DatabaseType::Text, false),
+            ("size", DatabaseType::Bigint, false),
+            ("expires_at", DatabaseType::Datetime, false),
+            ("file_id", DatabaseType::Uuid, true),
+            ("cancelled", DatabaseType::Boolean, false),
+        ]
+        .into_iter()
+        .map(|(name, data_type, nullable)| ColumnSchema {
+            id: format!("appstruct::file::uploads.{name}"),
+            name: name.to_owned(),
+            data_type,
+            nullable,
+            primary_key: name == "id",
+            unique: false,
+            default: (name == "cancelled").then(|| "false".to_owned()),
+            generated: None,
+        })
+        .collect(),
+    });
+    tables
 }
 
 pub(super) fn foreign_keys(ir: &AppIr) -> Vec<ForeignKeySchema> {

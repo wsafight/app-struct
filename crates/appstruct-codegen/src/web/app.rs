@@ -19,9 +19,13 @@ pub(super) fn source(ir: &AppIr) -> String {
     let billing = ir.billing.enabled;
     let tenant = ir.tenant.enabled;
     include_str!("../../templates/web/AppAuthenticated.tsx")
+        .replace("__FILE_PAGE__", if ir.file.enabled { "const FilesPage = lazy(() => import(\"../file/FilesPage\").then(({ FilesPage: component }) => ({ default: component })));" } else { "" })
+        .replace("__FILE_ROUTE__", if ir.file.enabled { "    { path: \"/files\", component: FilesPage }," } else { "" })
+        .replace("__PRODUCT_PAGES__", &format!("{}\n{}", if ir.tenant.enabled { "const TeamPage = lazy(() => import(\"../product/ProductPages\").then(({ TeamPage: component }) => ({ default: component })));\nconst CreditsPage = lazy(() => import(\"../product/ProductPages\").then(({ CreditsPage: component }) => ({ default: component })));" } else { "" }, if report { "const TaskCenterPage = lazy(() => import(\"../product/TaskCenterPage\").then(({ TaskCenterPage: component }) => ({ default: component })));" } else { "" }))
+        .replace("__PRODUCT_ROUTES__", &format!("{}\n{}", if ir.tenant.enabled { "{ path: \"/team\", component: TeamPage },\n{ path: \"/credits\", component: CreditsPage }," } else { "" }, if report { "{ path: \"/results\", component: TaskCenterPage }," } else { "" }))
         .replace(
             "__REACT_IMPORT__",
-            "import { lazy, useState, type ComponentType } from \"react\";",
+            "import { lazy, useState } from \"react\";",
         )
         .replace(
             "__RESOURCE_IMPORT__",
@@ -42,7 +46,7 @@ pub(super) fn source(ir: &AppIr) -> String {
         .replace(
             "__TENANT_IMPORT__",
             if tenant {
-                "import { InvitationAcceptPage, OrganizationPage, RequireTenant, TenantProvider } from \"../tenant/Tenant\";"
+                "import { InvitationAcceptPage, OnboardingPage, OrganizationPage, RequireTenant, TenantProvider } from \"../tenant/Tenant\";"
             } else {
                 ""
             },
@@ -80,7 +84,7 @@ pub(super) fn source(ir: &AppIr) -> String {
         .replace(
             "__TENANT_ROOT__",
             if tenant {
-                "function TenantRoot() {\n  return <TenantProvider><RequireTenant /></TenantProvider>;\n}\n"
+                "function TenantRoot() {\n  return <TenantProvider><Outlet /></TenantProvider>;\n}\n"
             } else {
                 ""
             },
@@ -96,11 +100,12 @@ pub(super) fn source(ir: &AppIr) -> String {
         .replace(
             "__AUTHENTICATED_SCOPE__",
             if tenant {
-                "{ id: \"_tenant\", component: TenantRoot, children: [layout] }"
+                "{ id: \"_tenant\", component: TenantRoot, children: [account, { id: \"_workspace\", component: RequireTenant, children: [layout] }] }"
             } else {
-                "layout"
+                "{ id: \"_session\", component: Outlet, children: [account, layout] }"
             },
         )
+        .replace("__ONBOARDING_ROUTE__", if tenant { "      { path: \"/onboarding\", component: OnboardingPage }," } else { "" })
         .replace(
             "__AUDIT_ROUTE__",
             if audit {
@@ -140,9 +145,9 @@ pub(super) fn source(ir: &AppIr) -> String {
         .replace(
             "__HOME_REDIRECT__",
             if audit {
-                "  const canReadAudit = useCanAccessRule(auditAccess);\n  return <Navigate to={`/${first?.slug ?? customPages[0]?.path ?? (canReadAudit ? \"audit\" : \"empty\")}`} replace />;"
+                "  const canReadAudit = useCanAccessRule(auditAccess);\n  return <Navigate to={`/${first?.slug ?? workspacePages[0]?.path ?? (canReadAudit ? \"audit\" : \"empty\")}`} replace />;"
             } else {
-                "  return <Navigate to={`/${first?.slug ?? customPages[0]?.path ?? \"empty\"}`} replace />;"
+                "  return <Navigate to={`/${first?.slug ?? workspacePages[0]?.path ?? \"empty\"}`} replace />;"
             },
         )
 }
@@ -211,7 +216,7 @@ pub(super) fn layout_source(ir: &AppIr) -> String {
         .replace(
             "__REPORT_LINK__",
             if report {
-                "        <NavLink to=\"/reports\"><FileText size={15} /> {uiText(\"reports\")}</NavLink>"
+                "        <NavLink to=\"/reports\"><FileText size={15} /> {uiText(\"reports\")}</NavLink><NavLink to=\"/results\"><FileText size={15} /> {t(\"Tasks and results\")}</NavLink>"
             } else {
                 ""
             },
@@ -221,4 +226,6 @@ pub(super) fn layout_source(ir: &AppIr) -> String {
             if billing { "        <NavLink to=\"/billing\"><CreditCard size={15} /> {uiText(\"billing\")}</NavLink>" } else { "" },
         )
         .replace("__APP_TITLE__", &title)
+        .replace("__FILE_LINK__", if ir.file.enabled { "<NavLink to=\"/files\"><FileIcon size={15} /> {uiText(\"files\")}</NavLink>" } else { "" })
+        .replace("__FILE_ICON__", if ir.file.enabled { ", File as FileIcon" } else { "" })
 }

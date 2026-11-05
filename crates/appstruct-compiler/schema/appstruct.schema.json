@@ -345,6 +345,11 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        },
+        "sortable_indexes": {
+          "type": "boolean",
+          "default": false,
+          "description": "Generate (tenant_id, sortable field, primary key) indexes for every tenant-scoped entity. An entity can override it with tenant_index."
         }
       },
       "additionalProperties": false
@@ -623,6 +628,8 @@
     "reportModule": {
       "type": "object",
       "properties": {
+        "entitlement": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "free_runs": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
         "enabled": {
           "type": "boolean"
         },
@@ -829,6 +836,10 @@
         },
         "tenant": {
           "type": "boolean"
+        },
+        "tenant_index": {
+          "type": "boolean",
+          "description": "Override modules.tenant.sortable_indexes for this entity. Requires tenant: true when set to true."
         },
         "audit": {
           "type": "boolean"
@@ -1288,6 +1299,20 @@
         {
           "type": "object",
           "required": [
+            "entitlement"
+          ],
+          "properties": {
+            "entitlement": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
             "any"
           ],
           "properties": {
@@ -1420,7 +1445,11 @@
         },
         "path": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*$"
+          "pattern": "^(/|[a-z][a-z0-9-]*(/[a-z][a-z0-9-]*)*)$"
+        },
+        "scope": {
+          "enum": ["public", "account", "workspace"],
+          "default": "workspace"
         },
         "component": {
           "$ref": "#/$defs/typeName"

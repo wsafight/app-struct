@@ -21,7 +21,34 @@ import {
   defaultVisibleFieldNames,
   resolveVisibleFields,
 } from "./pages/resource-list/ViewOptions";
-import { appQueryKeys, resourceQueryKeys, shouldRetryQuery } from "./query";
+import {
+  appQueryKeys,
+  resourceQueryKeys,
+  shouldRetryQuery,
+  workRefreshInterval,
+} from "./query";
+
+it("polls only unfinished work and keeps shared product keys tenant scoped", () => {
+  expect(workRefreshInterval(undefined)).toBe(false);
+  expect(workRefreshInterval([])).toBe(false);
+  for (const stage of ["succeeded", "failed", "cancelled"])
+    expect(workRefreshInterval([{ stage }])).toBe(false);
+  for (const stage of ["queued", "rendering", "publishing"])
+    expect(workRefreshInterval([{ stage }])).toBe(2000);
+  expect(workRefreshInterval([{ state: "running" }])).toBe(2000);
+  const previous = localStorage.getItem("appstruct_tenant");
+  try {
+    localStorage.setItem("appstruct_tenant", "one");
+    const reports = appQueryKeys.reports.runs(1, 25);
+    const notifications = appQueryKeys.product.notifications(1);
+    localStorage.setItem("appstruct_tenant", "two");
+    expect(appQueryKeys.reports.runs(1, 25)).not.toEqual(reports);
+    expect(appQueryKeys.product.notifications(1)).not.toEqual(notifications);
+  } finally {
+    if (previous === null) localStorage.removeItem("appstruct_tenant");
+    else localStorage.setItem("appstruct_tenant", previous);
+  }
+});
 import {
   canAccessResource,
   canAccessRule,

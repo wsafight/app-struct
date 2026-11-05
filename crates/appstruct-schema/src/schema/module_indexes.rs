@@ -5,6 +5,44 @@ pub(super) fn indexes(ir: &AppIr) -> Vec<IndexSchema> {
     let mut indexes = Vec::new();
     if ir.auth.enabled {
         indexes.extend(auth());
+        indexes.extend([
+            index(
+                "appstruct::product::inbox",
+                "_appstruct_product_notifications",
+                &["user_id", "tenant_id", "created_at", "id"],
+                None,
+            ),
+            index(
+                "appstruct::product::ledger",
+                "_appstruct_product_credit_ledger",
+                &["tenant_id", "expires_at"],
+                None,
+            ),
+            index(
+                "appstruct::product::events",
+                "_appstruct_product_events",
+                &["kind", "occurred_at", "actor_id"],
+                None,
+            ),
+            index(
+                "appstruct::product::retention",
+                "_appstruct_product_events",
+                &["actor_id", "kind", "occurred_at"],
+                None,
+            ),
+            index(
+                "appstruct::product::payments",
+                "_appstruct_product_payments",
+                &["payment_intent"],
+                None,
+            ),
+            index(
+                "appstruct::product::purchases",
+                "_appstruct_product_credit_purchases",
+                &["payment_intent"],
+                None,
+            ),
+        ]);
     }
     if ir.tenant.enabled {
         indexes.extend(tenant());
@@ -13,6 +51,12 @@ pub(super) fn indexes(ir: &AppIr) -> Vec<IndexSchema> {
         indexes.extend(audit());
     }
     if ir.file.enabled {
+        indexes.push(index(
+            "appstruct::file::pending_uploads",
+            "_appstruct_file_uploads",
+            &["actor_id", "expires_at"],
+            Some("(file_id IS NULL) AND (NOT cancelled)"),
+        ));
         indexes.push(index(
             "appstruct::file::unreferenced",
             "_appstruct_files",
@@ -34,6 +78,14 @@ pub(super) fn indexes(ir: &AppIr) -> Vec<IndexSchema> {
     }
     if ir.activity.enabled {
         indexes.extend(activity());
+    }
+    if ir.billing.enabled {
+        indexes.push(index(
+            "appstruct::billing::free_usage",
+            "_appstruct_billing_usage",
+            &["organization_id", "entitlement"],
+            Some("free AND (NOT refunded)"),
+        ));
     }
     indexes
 }

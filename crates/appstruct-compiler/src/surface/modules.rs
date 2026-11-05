@@ -45,6 +45,8 @@ pub(crate) struct SurfaceBillingPlan {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SurfaceTenant {
     pub enabled: bool,
+    /// Generate `(tenant_id, <sortable field>, <primary key>)` indexes for tenant-scoped entities.
+    pub sortable_indexes: bool,
     pub span: Option<SourceSpan>,
 }
 
@@ -146,6 +148,8 @@ pub(crate) struct SurfaceReport {
     pub retention_days: Option<Located<u64>>,
     pub reader_roles: Vec<Located<String>>,
     pub templates: Vec<SurfaceReportTemplate>,
+    pub entitlement: Option<Located<String>>,
+    pub free_runs: Option<Located<u64>>,
     pub span: Option<SourceSpan>,
 }
 

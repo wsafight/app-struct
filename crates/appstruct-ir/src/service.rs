@@ -214,6 +214,10 @@ pub struct ReportIr {
     pub retention_days: u32,
     pub reader_roles: Vec<String>,
     pub templates: Vec<ReportTemplateIr>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entitlement: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub free_runs: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

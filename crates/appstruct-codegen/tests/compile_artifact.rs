@@ -289,7 +289,7 @@ fn m3_extensions_require_every_handler_at_compile_time() {
             .contains("resources: readonly ResourceDefinition[]")
     );
     assert!(
-        artifact_text(&artifacts, "web/src/app/App.tsx")
+        artifact_text(&artifacts, "web/src/app/PageRoutes.tsx")
             .contains("<Component resources={resources} />")
     );
     let openapi: Value =
@@ -329,7 +329,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 122);
+    assert_eq!(artifacts.len(), 138);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -395,8 +395,8 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     assert!(!public_auth_pages.contains("if (auth.user) return <Navigate"));
     assert!(public_auth_pages.contains("if (!auth.user || submitting)"));
     assert!(public_auth_pages.contains("if (redirecting.current) return;"));
-    assert!(public_auth_pages.contains("}, [auth.user, navigate, submitting]);"));
-    assert!(public_auth_pages.contains("await navigate(from, { replace: true });"));
+    assert!(public_auth_pages.contains("}, [auth.user, destination, navigate, submitting]);"));
+    assert!(public_auth_pages.contains("await navigate(destination, { replace: true });"));
     let auth_pages = artifact_text(&artifacts, "web/src/auth/AuthPages.tsx");
     assert!(auth_pages.contains("AdminPagination"));
     assert!(auth_pages.contains("appQueryKeys.admin.users"));
@@ -700,7 +700,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 
 #[allow(clippy::too_many_lines)]
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 105);
+    assert_eq!(artifacts.len(), 109);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")

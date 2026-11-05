@@ -4,8 +4,8 @@ use crate::access::build_operation_access;
 use crate::surface::{SurfaceOperation, SurfacePage, SurfaceValueObject};
 use appstruct_core::is_rust_type_name;
 use appstruct_ir::{
-    AuthIr, CommandIr, Diagnostic, EntityId, OperationTypeIr, PageIr, QueryIr, SourceSpan,
-    ValueObjectIr,
+    AuthIr, BillingIr, CommandIr, Diagnostic, EntityId, OperationTypeIr, PageIr, PageScopeIr,
+    QueryIr, SourceSpan, ValueObjectIr,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -22,6 +22,7 @@ pub(crate) struct ExtensionContext<'context> {
     pub known_entities: &'context BTreeSet<String>,
     pub resource_paths: &'context BTreeSet<String>,
     pub auth: &'context AuthIr,
+    pub billing: &'context BillingIr,
 }
 
 pub(crate) fn lower_extensions(
@@ -48,6 +49,7 @@ pub(crate) fn lower_extensions(
                 context.known_entities,
                 &known_values,
                 context.auth,
+                context.billing,
                 diagnostics,
             )
         })
@@ -61,11 +63,12 @@ pub(crate) fn lower_extensions(
                 context.known_entities,
                 &known_values,
                 context.auth,
+                context.billing,
                 diagnostics,
             )
         })
         .collect::<Vec<_>>();
-    let mut lowered_pages = lower_pages(pages, context.resource_paths, diagnostics);
+    let mut lowered_pages = lower_pages(pages, context.resource_paths, context.auth, diagnostics);
     lowered_values.sort_by(|left, right| left.id.cmp(&right.id));
     lowered_commands.sort_by(|left, right| left.id.cmp(&right.id));
     lowered_queries.sort_by(|left, right| left.id.cmp(&right.id));
@@ -83,6 +86,7 @@ fn lower_command(
     entities: &BTreeSet<String>,
     values: &BTreeSet<String>,
     auth: &AuthIr,
+    billing: &BillingIr,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<CommandIr> {
     let input = resolve_type(operation.input.as_ref()?, entities, values, diagnostics)?;
@@ -92,7 +96,7 @@ fn lower_command(
         rust_name: operation.name.value,
         input,
         output,
-        access: build_operation_access(&operation.access, auth, diagnostics)?,
+        access: build_operation_access(&operation.access, auth, billing, diagnostics)?,
     })
 }
 
@@ -101,6 +105,7 @@ fn lower_query(
     entities: &BTreeSet<String>,
     values: &BTreeSet<String>,
     auth: &AuthIr,
+    billing: &BillingIr,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<QueryIr> {
     let input = operation
@@ -113,7 +118,7 @@ fn lower_query(
         rust_name: operation.name.value,
         input,
         output,
-        access: build_operation_access(&operation.access, auth, diagnostics)?,
+        access: build_operation_access(&operation.access, auth, billing, diagnostics)?,
     })
 }
 
@@ -168,6 +173,7 @@ fn validate_operation_name(
 fn lower_pages(
     pages: Vec<SurfacePage>,
     resource_paths: &BTreeSet<String>,
+    auth: &AuthIr,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Vec<PageIr> {
     let mut names = BTreeMap::new();
@@ -175,6 +181,28 @@ fn lower_pages(
     pages
         .into_iter()
         .map(|page| {
+            let scope = match page.scope.as_ref().map(|scope| scope.value.as_str()) {
+                None | Some("workspace") => PageScopeIr::Workspace,
+                Some("public") => PageScopeIr::Public,
+                Some("account") => PageScopeIr::Account,
+                Some(value) => {
+                    diagnostics.push(Diagnostic::error(
+                        "AS3009",
+                        format!(
+                            "unsupported page scope `{value}`; use public, account or workspace"
+                        ),
+                        page.scope.as_ref().unwrap().span.clone(),
+                    ));
+                    PageScopeIr::Workspace
+                }
+            };
+            if scope == PageScopeIr::Account && !auth.enabled {
+                diagnostics.push(Diagnostic::error(
+                    "AS3034",
+                    "account pages require the Auth Module",
+                    page.span.clone(),
+                ));
+            }
             if !is_rust_type_name(&page.name.value) || !is_rust_type_name(&page.component.value) {
                 diagnostics.push(Diagnostic::error(
                     "AS3003",
@@ -182,14 +210,18 @@ fn lower_pages(
                     page.span.clone(),
                 ));
             }
-            if !valid_page_path(&page.path.value) {
+            if !(valid_page_path(&page.path.value)
+                || page.path.value == "/" && scope == PageScopeIr::Public)
+            {
                 diagnostics.push(Diagnostic::error(
                     "AS3009",
                     format!("invalid page path `{}`", page.path.value),
                     page.path.span.clone(),
                 ));
             }
-            if page.path.value == "empty"
+            let prefix = page.path.value.split('/').next().unwrap_or_default();
+            let reserved = reserved_page_path(prefix, auth.enabled, scope);
+            if reserved
                 || resource_paths.iter().any(|resource| {
                     page.path.value == *resource
                         || page.path.value.starts_with(&format!("{resource}/"))
@@ -221,9 +253,37 @@ fn lower_pages(
                 label: page.label.map_or(page.name.value, |label| label.value),
                 path: page.path.value,
                 component: page.component.value,
+                scope,
             }
         })
         .collect()
+}
+
+fn reserved_page_path(prefix: &str, auth: bool, scope: PageScopeIr) -> bool {
+    matches!(prefix, "empty" | "workspace")
+        || auth
+            && matches!(
+                prefix,
+                "login"
+                    | "register"
+                    | "forgot-password"
+                    | "reset-password"
+                    | "verify-email"
+                    | "accept-invitation"
+                    | "onboarding"
+                    | "tokens"
+                    | "admin"
+                    | "organization"
+                    | "billing"
+                    | "reports"
+                    | "audit"
+                    | "files"
+                    | "notifications"
+                    | "team"
+                    | "credits"
+                    | "results"
+            )
+        || prefix == "account" && scope != PageScopeIr::Account
 }
 
 fn valid_page_path(value: &str) -> bool {

@@ -36,7 +36,15 @@ pub(super) fn decode_rule(node: &Node) -> Result<Located<SurfaceAccessRule>, Dia
     let rule = expect_mapping(node, "access rule")?;
     ensure_known_keys(
         rule,
-        &["role", "public", "authenticated", "owner", "any", "all"],
+        &[
+            "role",
+            "public",
+            "authenticated",
+            "owner",
+            "entitlement",
+            "any",
+            "all",
+        ],
         "access rule",
     )?;
     if rule.len() != 1 {
@@ -50,6 +58,10 @@ pub(super) fn decode_rule(node: &Node) -> Result<Located<SurfaceAccessRule>, Dia
         SurfaceAccessRule::Role(expect_string(&role.value, "access `role`")?.value)
     } else if let Some(owner) = rule.get("owner") {
         SurfaceAccessRule::Owner(expect_string(&owner.value, "access `owner`")?.value)
+    } else if let Some(entitlement) = rule.get("entitlement") {
+        SurfaceAccessRule::Entitlement(
+            expect_string(&entitlement.value, "access `entitlement`")?.value,
+        )
     } else if let Some(public) = rule.get("public") {
         if !expect_bool(&public.value, "access `public`")? {
             return Err(Diagnostic::error(

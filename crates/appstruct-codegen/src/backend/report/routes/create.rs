@@ -1,7 +1,12 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-pub(super) fn source(audit: bool) -> TokenStream {
+pub(super) fn source(audit: bool, entitlement: Option<&str>) -> TokenStream {
+    let reservation = entitlement.map(|feature| {
+        quote! {
+            crate::billing::reserve_allowance(&transaction, &context, #feature, run_id).await?;
+        }
+    });
     let audit = audit.then(|| {
         quote! {
             crate::audit::record(
@@ -13,12 +18,18 @@ pub(super) fn source(audit: bool) -> TokenStream {
     quote! {
         async fn create_run(
             State(state): State<AppState>, headers: HeaderMap, Path(name): Path<String>,
-            Json(input): Json<CreateReportRun>,
+            Json(mut input): Json<CreateReportRun>,
         ) -> Result<(StatusCode, Json<ReportRun>), ApiError> {
             let context = state.mutation_context(&headers).await?;
             let actor_id = context.actor().ok_or(ApiError::Unauthorized)?.id;
             let template = template_config(&name).ok_or(ApiError::UnknownReportTemplate)?;
             let key = idempotency_key(&headers)?;
+            if input.locale.is_none() || input.timezone.is_none() {
+                if let Some(profile) = state.database.fetch_optional(Sql::bind("SELECT locale, timezone FROM \"_appstruct_product_profiles\" WHERE user_id = $1", [actor_id.into()])).await? {
+                    if input.locale.is_none() { input.locale = Some(profile.try_get("locale")?); }
+                    if input.timezone.is_none() { input.timezone = Some(profile.try_get("timezone")?); }
+                }
+            }
             let (locale, timezone, paper, orientation) = report_options(&input)?;
             let snapshot = validate_report_input(template, &input.data)?;
             let request_material = serde_json::to_vec(&serde_json::json!({
@@ -59,6 +70,7 @@ pub(super) fn source(audit: bool) -> TokenStream {
                 transaction.commit().await?;
                 return Ok((StatusCode::OK, Json(existing)));
             }
+            #reservation
             let receipt = crate::jobs::enqueue(
                 &transaction, REPORT_QUEUE, "report.render", &ReportJobPayload { run_id },
                 Some(&format!("report:{scope}")), None, tenant_id,

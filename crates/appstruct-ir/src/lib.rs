@@ -13,7 +13,9 @@ mod workflow;
 pub use auth::AuthIr;
 pub use billing::{BillingIr, BillingPlanIr};
 pub use database::{DatabaseDevMode, DatabaseIr, DatabaseMigrationPolicy, DatabaseProvider};
-pub use extension::{CommandIr, OperationTypeIr, PageIr, QueryIr, ValueFieldIr, ValueObjectIr};
+pub use extension::{
+    CommandIr, OperationTypeIr, PageIr, PageScopeIr, QueryIr, ValueFieldIr, ValueObjectIr,
+};
 pub use json::{IrJsonError, from_json};
 pub use seed::SeedIr;
 use serde::{Deserialize, Serialize};
@@ -301,6 +303,7 @@ pub enum AccessRuleIr {
     Authenticated,
     Role { role: String },
     Owner { field: FieldId },
+    Entitlement { entitlement: String },
     Any { rules: Vec<AccessRuleIr> },
     All { rules: Vec<AccessRuleIr> },
 }

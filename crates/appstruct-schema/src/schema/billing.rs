@@ -1,26 +1,20 @@
-use super::{ColumnSchema, DatabaseType, ForeignKeySchema, TableSchema, UniqueConstraintSchema};
+use super::{ColumnSchema, DatabaseType, ForeignKeySchema, TableSchema};
 use appstruct_ir::OnDeleteIr;
 
 const CUSTOMERS: &str = "_appstruct_billing_customers";
 const SUBSCRIPTIONS: &str = "_appstruct_billing_subscriptions";
 const EVENTS: &str = "_appstruct_billing_events";
+const USAGE: &str = "_appstruct_billing_usage";
 
 pub(super) fn tables() -> Vec<TableSchema> {
-    vec![customers(), subscriptions(), events()]
-}
-
-pub(super) fn unique_constraints() -> Vec<UniqueConstraintSchema> {
-    vec![UniqueConstraintSchema {
-        id: "appstruct::billing::organization_customer".to_owned(),
-        table: CUSTOMERS.to_owned(),
-        columns: vec!["organization_id".to_owned()],
-    }]
+    vec![customers(), subscriptions(), events(), usage()]
 }
 
 pub(super) fn foreign_keys() -> Vec<ForeignKeySchema> {
     vec![
         foreign_key("customer_organization", CUSTOMERS),
         foreign_key("subscription_organization", SUBSCRIPTIONS),
+        foreign_key("usage_organization", USAGE),
     ]
 }
 
@@ -29,8 +23,8 @@ fn customers() -> TableSchema {
         id: "appstruct::billing::customers".to_owned(),
         name: CUSTOMERS.to_owned(),
         columns: vec![
-            column("id", DatabaseType::Uuid, true, false, None),
-            column("organization_id", DatabaseType::Uuid, false, false, None),
+            column("id", DatabaseType::Uuid, false, false, None),
+            column("organization_id", DatabaseType::Uuid, false, true, None),
             column(
                 "provider_customer_id",
                 DatabaseType::Text,
@@ -48,7 +42,7 @@ fn subscriptions() -> TableSchema {
         id: "appstruct::billing::subscriptions".to_owned(),
         name: SUBSCRIPTIONS.to_owned(),
         columns: vec![
-            column("id", DatabaseType::Uuid, true, false, None),
+            column("id", DatabaseType::Uuid, false, false, None),
             column("organization_id", DatabaseType::Uuid, false, false, None),
             column(
                 "provider_subscription_id",
@@ -91,9 +85,30 @@ fn events() -> TableSchema {
         id: "appstruct::billing::events".to_owned(),
         name: EVENTS.to_owned(),
         columns: vec![
-            column("event_id", DatabaseType::Text, true, false, None),
+            column("event_id", DatabaseType::Text, false, false, None),
             column("event_type", DatabaseType::Text, false, false, None),
             column("payload", DatabaseType::Json, false, false, None),
+            column("created_at", DatabaseType::Datetime, false, false, None),
+        ],
+    }
+}
+
+fn usage() -> TableSchema {
+    TableSchema {
+        id: "appstruct::billing::usage".to_owned(),
+        name: USAGE.to_owned(),
+        columns: vec![
+            column("id", DatabaseType::Uuid, false, false, None),
+            column("organization_id", DatabaseType::Uuid, false, false, None),
+            column("entitlement", DatabaseType::Text, false, false, None),
+            column("free", DatabaseType::Boolean, false, false, Some("false")),
+            column(
+                "refunded",
+                DatabaseType::Boolean,
+                false,
+                false,
+                Some("false"),
+            ),
             column("created_at", DatabaseType::Datetime, false, false, None),
         ],
     }

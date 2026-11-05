@@ -122,6 +122,8 @@ pub(crate) struct SurfaceEntity {
     pub seeds: Vec<SurfaceSeed>,
     pub access: Option<SurfaceAccess>,
     pub tenant_scoped: bool,
+    /// Per-entity override of `modules.tenant.sortable_indexes`. `None` follows the project switch.
+    pub tenant_index: Option<Located<bool>>,
     pub audit_enabled: bool,
     pub soft_delete: bool,
     pub workflow: Option<SurfaceWorkflow>,
@@ -276,6 +278,7 @@ pub(crate) enum SurfaceAccessRule {
     Authenticated,
     Role(String),
     Owner(String),
+    Entitlement(String),
     Any(Vec<Located<SurfaceAccessRule>>),
     All(Vec<Located<SurfaceAccessRule>>),
 }

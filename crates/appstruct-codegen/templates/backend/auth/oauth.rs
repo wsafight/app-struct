@@ -387,6 +387,8 @@ async fn oauth_callback(
         ));
     }
     let user_id = find_or_create_oauth_user(&state, provider, &subject, &email).await?;
+    let protected = state.database.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_product_profiles\" WHERE user_id = $1 AND mfa_secret IS NOT NULL", [user_id.into()])).await?.is_some();
+    if protected { return Err(ApiError::Forbidden); }
     let (session, csrf) = state.auth.create_session(&state.database, user_id).await?;
     let mut response_headers = state.auth.session_headers(&session, &csrf);
     let secure = if state.auth.config.secure_cookie { "; Secure" } else { "" };
@@ -475,6 +477,7 @@ async fn find_or_create_oauth_user(
                 [id.into(), "".to_owned().into(), serde_json::json!([config::DEFAULT_ROLE]).into()],
             ))
             .await?;
+        crate::product::record_event(&transaction, Some(id), None, None, &format!("signup:{id}"), "signup").await?;
         id
     };
     transaction

@@ -32,10 +32,13 @@ pub(super) fn support(
     policy: &syn::Ident,
     parse_id: &TokenStream,
 ) -> Result<TokenStream, CodegenError> {
-    if ir.activity.resource_for_entity(&entity.id).is_none() {
+    if ir.activity.resource_for_entity(&entity.id).is_none()
+        && !(ir.file.enabled && ir.auth.enabled)
+    {
         return Ok(TokenStream::new());
     }
     let read_scope = access::member_scope(entity, module, &entity.access.read)?;
+    let update_scope = access::member_scope(entity, module, &entity.access.update)?;
     Ok(quote! {
         pub(crate) async fn authorize_activity_target(
             state: &AppState,
@@ -49,6 +52,27 @@ pub(super) fn support(
                 .filter(access_condition)
                 .one(context).await?.ok_or(ApiError::NotFound)?;
             if !state.extensions.#policy().can_read(context, &model).await? {
+                return Err(ApiError::NotFound);
+            }
+            Ok(())
+        }
+
+        #[allow(dead_code)]
+        pub(crate) async fn authorize_attachment_write(
+            state: &AppState,
+            context: &RequestContext<'_>,
+            record_id: &str,
+        ) -> Result<(), ApiError> {
+            authorize_activity_target(state, context, record_id).await?;
+            let id = record_id.to_owned();
+            let id = #parse_id;
+            #update_scope
+            let model = #module::select_by_id(id)
+                .filter(access_condition)
+                .one(context).await?.ok_or(ApiError::NotFound)?;
+            let input = serde_json::from_value(serde_json::json!({})).map_err(|_| ApiError::Internal)?;
+            if !state.extensions.#policy().can_read(context, &model).await?
+                || !state.extensions.#policy().can_update(context, &model, &input, &model).await? {
                 return Err(ApiError::NotFound);
             }
             Ok(())

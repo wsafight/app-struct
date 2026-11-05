@@ -12,6 +12,46 @@ preset:
   name: appstruct/saas
   version: 1
 
+modules:
+  rbac:
+    roles: [member, admin, system]
+  billing:
+    enabled: true
+    provider: stripe
+    capabilities:
+      subscriptions: true
+      customer_portal: true
+    plans:
+      - id: pro
+        price_env: APPSTRUCT_STRIPE_PRICE_PRO
+        entitlements: [reports, credits, seats]
+  jobs:
+    queues:
+      reports: { max_attempts: 3, backoff_seconds: 1 }
+      ai: { max_attempts: 1, backoff_seconds: 1 }
+      ai-maintenance: { max_attempts: 3, backoff_seconds: 10 }
+    schedules:
+      recover-ai:
+        cron: "@every 1m"
+        queue: ai-maintenance
+        kind: ai.reconcile
+        payload: '{}'
+  file:
+    allowed_content_types: [text/plain, application/json, application/pdf]
+  report:
+    enabled: true
+    queue: reports
+    entitlement: reports
+    free_runs: 3
+    reader_roles: [admin]
+    templates:
+      team-summary:
+        version: 1
+        body: "{{ input.title }}\n\n{{ input.summary }}"
+        input_schema: '{"type":"object","required":["title","summary"],"properties":{"title":{"type":"string","minLength":1,"maxLength":120},"summary":{"type":"string","minLength":1,"maxLength":10000}},"additionalProperties":false}'
+
 includes:
   - spec/identity.yaml
   - spec/work.yaml
+  - spec/product.yaml
+  - spec/collaboration.yaml

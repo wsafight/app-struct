@@ -77,7 +77,7 @@ export interface ReportRunList {{
 }}
 
 export const reportApi = {{
-  templates: () => request<ReportTemplate[]>("/api/reports/templates"),
+  templates: (options: RequestOptions = {{}}) => request<ReportTemplate[]>("/api/reports/templates", options),
   create: <T extends ReportTemplateName>(
     template: T,
     data: ReportInputMap[T],
@@ -88,10 +88,11 @@ export const reportApi = {{
     headers: {{ "Idempotency-Key": idempotencyKey }},
     body: JSON.stringify({{ data, ...options }}),
   }}),
-  list: (page = 1, pageSize = 25) =>
-    request<ReportRunList>(`/api/reports/runs?page=${{page}}&page_size=${{pageSize}}`),
-  get: (id: string) => request<ReportRun>(`/api/reports/runs/${{encodeURIComponent(id)}}`),
+  list: (page = 1, pageSize = 25, options: RequestOptions = {{}}) =>
+    request<ReportRunList>(`/api/reports/runs?page=${{page}}&page_size=${{pageSize}}`, options),
+  get: (id: string, options: RequestOptions = {{}}) => request<ReportRun>(`/api/reports/runs/${{encodeURIComponent(id)}}`, options),
   cancel: (id: string) => request<ReportRun>(`/api/reports/runs/${{encodeURIComponent(id)}}/cancel`, {{ method: "POST" }}),
+  retry: (id: string, idempotencyKey: string) => request<ReportRun>(`/api/reports/runs/${{encodeURIComponent(id)}}/retry`, {{ method: "POST", headers: {{ "Idempotency-Key": idempotencyKey }} }}),
   download: (id: string) => downloadReportPdf(id),
 }};
 

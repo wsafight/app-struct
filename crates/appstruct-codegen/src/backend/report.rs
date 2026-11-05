@@ -39,7 +39,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let renderer =
         (ir.report.renderer == appstruct_ir::ReportRendererIr::Capture).then(renderer::source);
     let routes = routes::source(ir);
-    let worker = worker::source(ir.report.renderer);
+    let worker = worker::source(ir.report.renderer, ir.report.entitlement.is_some());
     render(quote! {
         use crate::{ApiError, AppState, RequestContext};
         use axum::{

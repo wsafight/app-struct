@@ -1,7 +1,7 @@
 # AppStruct Next Product Roadmap
 
-> Status: active implementation (Phases A and B are complete; Phase C admits evidence-backed delivery work only)
-> Date: 2026-10-28
+> Status: active implementation (Phases A and B are complete; first customer-facing delivery and remaining acceptance boundaries are in section 6)
+> Date: 2026-11-05
 > Scope: product work after the M0-M6 technical preview baseline
 
 ## 1. Outcome
@@ -21,6 +21,12 @@ The recommended order is:
 GraphQL, additional databases, runtime-loaded Rust plugins, and CMS-specific page builders are not
 near-term priorities. Query capabilities should first be represented in the shared IR so REST,
 OpenAPI, generated clients, and any future protocol adapter retain identical authorization rules.
+
+The November 5, 2026 source review of Wasp and Open SaaS proposes an additional operable SaaS
+journey: public marketing and pricing pages, personal accounts, paid feature enforcement, user
+files, and business dashboards. Existing-database onboarding remains an entry point, sharing the
+same core. See the [product capability review (Chinese)](wasp-opensaas-product-review.zh-CN.md)
+for pinned sources and template limitations, and section 6 for the proposed delivery order.
 
 ## 2. Product Gaps
 
@@ -205,13 +211,43 @@ track their pending executions separately. The following conditional ideas are n
 | --- | --- |
 | Computed fields, conditional validation and complex databases | Conditional requirements and sibling comparisons are available in [form validation](form-validation.md); cross-record rules and record/state-based field permissions use extension code. Composite keys, cross-schema and deeper relations follow the real-project sample gate above. |
 | Boards, calendars, cross-resource dashboards and complete i18n | Startup English/Chinese standard copy, field display labels and shared formatting are available. Runtime language switching, multilingual Spec and new page types still require repeated project evidence. |
-| Direct, multipart and scanned file uploads | Base design on size, throughput and security needs. Reference collection does not replace reconciliation of storage orphans without metadata. |
+| User files, direct, multipart and scanned uploads | Generic user uploads and business record attachments enter the proposed section 6 product slice. Direct uploads need initiation/completion contracts; multipart and scanning remain separately scoped. Reference collection and storage reconciliation do not deliver the upload product. |
 | Job priorities and general workflows | PostgreSQL Jobs already has named queues, leases, retries, dead letters and replay; Workflow is a single-entity state machine. Measure queueing and recovery before inferring capacity from storage choice. |
 | Redis sessions and database RLS | Establish pool, authentication latency or isolation requirements. RLS must cover database roles, transactions, workers and administrator paths; tenant isolation currently runs in the application. |
-| List totals and aggregate cost | Exact COUNT remains the default; group limits do not bound scans. Use real distributions, indexes and query plans before choosing estimates, timeouts or pagination changes. A million-row benchmark option is not a completed million-row acceptance test. |
+| List totals and aggregate cost | Exact COUNT remains the default; group limits do not bound scans. Use real distributions, indexes and query plans before choosing estimates, timeouts or pagination changes. A million-row benchmark option is not a completed million-row acceptance test; the first single-host reference run and its query plans are in [observability](observability.md#million-row-reference-run). |
 | Executable third-party modules | Remote packages distribute static Artifacts. Define compilation, registration, dependencies, migrations and uninstall before executable code; dynamic libraries or WASM are not default prerequisites. |
-| Billing, platform adapters, Playground, editors, AI/MCP and hosting | Stripe Billing v1 already supports subscriptions. Rank complex billing and new delivery surfaces by repeated real-project demand. |
+| Billing, platform adapters, Playground, editors, AI/MCP and hosting | Stripe Billing v1 already supports subscriptions. Business entitlement enforcement and a bounded quota enter the proposed section 6 slice. Rank further providers, complex billing and new delivery surfaces separately. |
 
 Database recovery prioritizes verified backup restoration and forward repair without requiring automatic
 down SQL. Optimize tests using duration, failure rate and duplicate coverage. Define support for Tenant,
 Jobs, File, Mail and Billing from demand and maintenance cost rather than removing modules by count.
+
+## 6. First Product Capability Delivery (2026-11-05)
+
+The first implementation follows the source comparison order. The table records the first slice; the same-day P0–P2 follow-up supersedes its pending items in section 7. Mocked payments and module presence are not production acceptance. See [SaaS product journey](saas-product-journey.md).
+
+| Batch | Delivered | Remaining boundaries |
+| --- | --- | --- |
+| P0-A Customer application shell | Public/account/workspace routes and layouts, marketing/pricing, account and organization onboarding, preserved signup destination | Public pages remain client rendered; prerendering and static SEO HTML are not accepted |
+| P0-B Paid business features | Server-side command/query entitlements, lifetime organization report allowance, atomic reservations, idempotency, failure/cancellation refunds and upgrade UI | Not general credits or metered billing; real Stripe collection and complete crash reconciliation need separate acceptance |
+| P1-A User files | Proxied upload progress/cancel, organization/user scoped list, download, delete and reference protection | Declarative record attachments, presigned initiation/completion/expiry, multipart and scanning are not implemented |
+| P1-B Business dashboard and reference application | Team report studio connects marketing → signup/organization → upload → task → download → exhausted allowance → upgrade; metrics define source, window and freshness | Browser upgrade uses mocked APIs; visitor and settlement events remain disconnected and return unavailable metrics |
+
+Keep marketing content and specific business UI in application-owned code; the framework owns
+shared contracts and authorization. An AI example can be an optional extension of that journey,
+without making the baseline demo depend on an external model. Versioned agent guidance and one
+platform deployment walkthrough follow as separate work from a generic MCP adapter or hosted platform.
+
+## 7. Current P0–P2 delivery (2026-11-05)
+
+Implementation and regression entry points are in place. See [product capabilities](saas-product-capabilities.md) for contracts, configuration and external-acceptance boundaries.
+
+| Priority | Implemented | Boundary |
+| --- | --- | --- |
+| P0 | Record attachments/replacement/detach, staged local/S3 initiation/completion/cancel/expiry, customer results/retry | Not declarative file fields, multipart or scanning; original library visibility remains; real S3 requires operator acceptance |
+| P1 | Inbox/read state/preferences, account/TOTP/recovery, team transfer/removal and seat limits, monthly/purchased credits/refunds | Password-login MFA, not full OAuth MFA challenge; no generic metered/seat-priced subscription billing |
+| P1 | Consented visits, signup/activation windows, D7 activation retention, signed payment captures/refunds and currency-separated net receipts | Not attributed conversion, MRR or bank settlement; local events do not certify real Stripe collection |
+| P2 | Task board/calendar, unchanged snapshot/report/member approval history, optional credit-backed Ollama drafts | Application scenarios, not a general workflow engine; AI disabled by default; real service/output quality accepted separately |
+| Journey | Demo marketing/pricing prerendering and SEO metadata; existing isolated Chromium production configuration/acceptance path | Not general SSR; production domain, credentials, platform and PDF require deployment acceptance |
+
+Multipart/scanning, runtime global i18n, settlement/MRR, general cross-entity workflows, arbitrary AI providers, hosting and account deletion/export remain explicitly outside this batch.

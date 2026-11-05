@@ -1,6 +1,6 @@
 # Chromium 报表渲染器
 
-Chromium 适配器以预览形式实现。本地 PDF 和 PostgreSQL 生命周期检查已通过。生产上线前必须通过 Linux 容器验收；当前 macOS 主机没有 Docker 安装，因此尚未运行。Capture 仍是默认。
+Chromium 适配器以预览形式实现。本地 PDF 和 PostgreSQL 生命周期检查已通过。生产上线前必须通过 Linux 容器验收。`scripts/run-renderer-isolation.sh` 已于 2026-11-05 在 macOS 主机上的 Colima Linux 虚拟机（Ubuntu 24.04、aarch64、cgroup v2、Docker 29.5.2）中通过一次：渲染器单元测试 5 项全部通过，并验证了非 root 用户、只读文件系统、网络阻断、128 任务与 512 MiB cgroup 限制、进程数上限以及内存超限被杀。这只是一次本机 arm64 运行，仍须在 CI 候选提交上完成 x86_64 验收。Capture 仍是默认。
 
 ```yaml
 modules:

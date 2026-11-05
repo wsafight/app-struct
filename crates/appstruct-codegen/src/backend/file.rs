@@ -27,16 +27,19 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let metadata = metadata_source();
     let validation = validation_source();
     let lifecycle = lifecycle_source(ir)?;
+    let reconciliation = reconciliation_contract_source()?;
     render(quote! {
         use async_trait::async_trait;
         use object_store::{
             ObjectStore, ObjectStoreExt, PutMode, PutOptions, PutPayload,
             path::Path as ObjectPath,
         };
+        use futures_util::{StreamExt as _, stream::BoxStream};
         use sqlx::Row as _;
         use crate::database::{DatabaseExecutor, Database,  DbErr, Sql};
-        use std::{env, fmt, path::{Component, Path}, sync::Arc};
+        use std::{collections::HashSet, env, fmt, path::{Component, Path}, sync::Arc};
         #contract
+        #reconciliation
         #state
         #metadata
         #validation
@@ -62,11 +65,12 @@ fn contract_source() -> proc_macro2::TokenStream {
         pub enum FileError {
             Disabled, InvalidKey, InvalidName, InvalidContentType,
             TooLarge { size: u64, max: u64 }, Configuration(String),
-            Storage(String), Database(DbErr), ReferenceConflict,
+            Storage(String), Database(DbErr), ReferenceConflict, Unsupported,
         }
         impl fmt::Display for FileError {
             fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
                 match self {
+                    Self::Unsupported => formatter.write_str("file provider does not support this operation"),
                     Self::ReferenceConflict => formatter.write_str("file is unavailable, referenced, deleting, or has too many owners"),
                     Self::Disabled => formatter.write_str("file module is disabled"),
                     Self::InvalidKey => formatter.write_str("file key must be a safe relative path"),
@@ -87,6 +91,18 @@ fn contract_source() -> proc_macro2::TokenStream {
             async fn put(&self, object_key: &str, content: &[u8]) -> Result<(), FileError>;
             async fn get(&self, object_key: &str) -> Result<Vec<u8>, FileError>;
             async fn delete(&self, object_key: &str) -> Result<(), FileError>;
+            async fn signed_upload(&self, _key: &str) -> Result<Option<String>, FileError> { Ok(None) }
+            async fn get_limited(&self, key: &str, max: u64) -> Result<Vec<u8>, FileError> {
+                let bytes = self.get(key).await?;
+                let size = bytes.len() as u64;
+                if size > max { return Err(FileError::TooLarge { size, max }); }
+                Ok(bytes)
+            }
+            /// Stream every stored object. Order is not guaranteed. Providers that cannot
+            /// list keep this default, and storage reconciliation then reports `Unsupported`.
+            fn list(&self) -> BoxStream<'static, Result<StoredObject, FileError>> {
+                futures_util::stream::once(async { Err(FileError::Unsupported) }).boxed()
+            }
         }
     }
 }
@@ -97,6 +113,7 @@ fn state_source(
     max_bytes: u64,
 ) -> proc_macro2::TokenStream {
     let allowed = allowed.iter().map(|value| quote! { #value.to_owned() });
+    let staging = staging_source(max_bytes);
     quote! {
         #[derive(Clone)]
         pub struct FileState {
@@ -126,6 +143,7 @@ fn state_source(
                     &self.database, object_key, original_name, content_type, content, tenant_id,
                 ).await
             }
+            #staging
             pub(crate) async fn put_with_connection<C: DatabaseExecutor>(
                 &self, database: &C, object_key: &str, original_name: &str, content_type: &str,
                 content: &[u8], tenant_id: Option<uuid::Uuid>,
@@ -190,6 +208,34 @@ fn state_source(
                 if claimed.rows_affected() == 0 { return Err(FileError::ReferenceConflict); }
                 self.remove_claimed(database, object_key).await
             }
+        }
+    }
+}
+
+fn staging_source(max_bytes: u64) -> proc_macro2::TokenStream {
+    quote! {
+        pub async fn sign_upload(&self, key: &str) -> Result<Option<String>, FileError> {
+            validate_key(key)?;
+            self.provider.signed_upload(key).await
+        }
+        pub fn validate_upload(&self, name: &str, content_type: &str, size: u64) -> Result<(), FileError> {
+            validate_name(name)?;
+            if size > #max_bytes { return Err(FileError::TooLarge { size, max: #max_bytes }); }
+            if !self.allowed_content_types.is_empty() && !self.allowed_content_types.iter().any(|allowed| allowed == content_type) { return Err(FileError::InvalidContentType); }
+            Ok(())
+        }
+        pub async fn staged_bytes(&self, key: &str) -> Result<Vec<u8>, FileError> {
+            validate_key(key)?;
+            self.provider.get_limited(key, #max_bytes).await
+        }
+        pub async fn put_staged(&self, key: &str, bytes: &[u8]) -> Result<(), FileError> {
+            validate_key(key)?;
+            if bytes.len() as u64 > #max_bytes { return Err(FileError::TooLarge { size: bytes.len() as u64, max: #max_bytes }); }
+            self.provider.put(key, bytes).await
+        }
+        pub async fn delete_staged(&self, key: &str) -> Result<(), FileError> {
+            validate_key(key)?;
+            self.provider.delete(key).await
         }
     }
 }
@@ -267,7 +313,7 @@ fn validation_source() -> proc_macro2::TokenStream {
 }
 
 fn provider_source(ir: &AppIr) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
-    let source = object_store_provider();
+    let source = object_store_provider(ir.file.provider == FileProviderIr::S3);
     let init = match ir.file.provider {
         FileProviderIr::Local => {
             let root = &ir.file.local_root;
@@ -293,22 +339,47 @@ fn provider_source(ir: &AppIr) -> (proc_macro2::TokenStream, proc_macro2::TokenS
                 .with_region(env::var("APPSTRUCT_S3_REGION").unwrap_or_else(|_| "us-east-1".to_owned()))
                 .with_allow_http(allow_http)
                 .build().map_err(|error| FileError::Configuration(error.to_string()))?;
-            Arc::new(ObjectStoreProvider { provider_name: "s3", store: Arc::new(store) })
+            let store = Arc::new(store);
+            Arc::new(ObjectStoreProvider { provider_name: "s3", store: store.clone(), signer: Some(store) })
                 as Arc<dyn FileProvider>
         }},
     };
     (source, init)
 }
 
-fn object_store_provider() -> proc_macro2::TokenStream {
+fn object_store_provider(s3: bool) -> proc_macro2::TokenStream {
+    let signer = s3.then(|| quote! { signer: Option<Arc<dyn object_store::signer::Signer>>, });
+    let signing = s3.then(|| quote! {
+        async fn signed_upload(&self, key: &str) -> Result<Option<String>, FileError> {
+            match &self.signer {
+                Some(signer) => signer.signed_url("PUT".parse().expect("valid HTTP method"), &ObjectPath::from(key), std::time::Duration::from_secs(900)).await
+                    .map(|url| Some(url.to_string())).map_err(|error| FileError::Storage(error.to_string())),
+                None => Ok(None),
+            }
+        }
+    });
     quote! {
         struct ObjectStoreProvider {
             provider_name: &'static str,
             store: Arc<dyn ObjectStore>,
+            #signer
         }
         #[async_trait]
         impl FileProvider for ObjectStoreProvider {
             fn name(&self) -> &'static str { self.provider_name }
+            #signing
+            async fn get_limited(&self, key: &str, max: u64) -> Result<Vec<u8>, FileError> {
+                let mut stream = self.store.get(&ObjectPath::from(key)).await
+                    .map_err(|error| FileError::Storage(error.to_string()))?.into_stream();
+                let mut bytes = Vec::new();
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk.map_err(|error| FileError::Storage(error.to_string()))?;
+                    let size = bytes.len() as u64 + chunk.len() as u64;
+                    if size > max { return Err(FileError::TooLarge { size, max }); }
+                    bytes.extend_from_slice(&chunk);
+                }
+                Ok(bytes)
+            }
             async fn put(&self, object_key: &str, content: &[u8]) -> Result<(), FileError> {
                 let options = PutOptions { mode: PutMode::Create, ..PutOptions::default() };
                 self.store.put_opts(
@@ -327,11 +398,21 @@ fn object_store_provider() -> proc_macro2::TokenStream {
                     Err(error) => Err(FileError::Storage(error.to_string())),
                 }
             }
+            fn list(&self) -> BoxStream<'static, Result<StoredObject, FileError>> {
+                self.store.list(None).map(|item| item
+                    .map(|meta| StoredObject {
+                        key: meta.location.to_string(),
+                        size: meta.size,
+                        last_modified: meta.last_modified,
+                    })
+                    .map_err(|error| FileError::Storage(error.to_string()))).boxed()
+            }
         }
     }
 }
 
 fn disabled_source() -> Result<String, CodegenError> {
+    let reconciliation = reconciliation_contract_source()?;
     render(quote! {
         use crate::database::{DatabaseExecutor, Database};
         use std::{fmt, sync::Arc};
@@ -340,8 +421,10 @@ fn disabled_source() -> Result<String, CodegenError> {
         impl fmt::Display for FileError { fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result { formatter.write_str("file module is disabled") } }
         impl std::error::Error for FileError {}
         #[async_trait::async_trait] pub trait FileProvider: Send + Sync {}
+        #reconciliation
         #[derive(Clone, Default)] pub struct FileState;
         impl FileState {
+            pub async fn reconcile_storage(&self, _options: ReconcileOptions) -> Result<ReconcileReport, FileError> { Err(FileError::Disabled) }
             pub fn from_env(_database: Database) -> Result<Self, FileError> { Ok(Self) }
             pub fn with_provider(_database: Database, _provider: Arc<dyn FileProvider>, _allowed_content_types: Vec<String>) -> Self { Self }
             pub async fn put(&self, _key: &str, _name: &str, _content_type: &str, _content: &[u8], _tenant_id: Option<uuid::Uuid>) -> Result<FileMetadata, FileError> { Err(FileError::Disabled) }
@@ -354,6 +437,14 @@ fn disabled_source() -> Result<String, CodegenError> {
             pub(crate) async fn delete_with_connection(&self, _database: &crate::database::Transaction, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(), FileError> { Err(FileError::Disabled) }
         }
     })
+}
+
+fn reconciliation_contract_source() -> Result<proc_macro2::TokenStream, CodegenError> {
+    include_str!("../../templates/backend/file_reconciliation.rs")
+        .parse()
+        .map_err(|error| {
+            CodegenError::new(format!("invalid file reconciliation contract: {error}"))
+        })
 }
 
 fn lifecycle_source(ir: &AppIr) -> Result<proc_macro2::TokenStream, CodegenError> {

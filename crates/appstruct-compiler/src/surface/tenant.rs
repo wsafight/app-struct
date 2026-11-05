@@ -12,14 +12,20 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceTenant, Diag
         return Ok(SurfaceTenant::default());
     };
     let tenant = expect_mapping(&entry.value, "`modules.tenant`")?;
-    ensure_known_keys(tenant, &["enabled"], "`modules.tenant`")?;
+    ensure_known_keys(tenant, &["enabled", "sortable_indexes"], "`modules.tenant`")?;
     let enabled = tenant
         .get("enabled")
         .map(|value| expect_bool(&value.value, "`modules.tenant.enabled`"))
         .transpose()?
         .unwrap_or(true);
+    let sortable_indexes = tenant
+        .get("sortable_indexes")
+        .map(|value| expect_bool(&value.value, "`modules.tenant.sortable_indexes`"))
+        .transpose()?
+        .unwrap_or(false);
     Ok(SurfaceTenant {
         enabled,
+        sortable_indexes,
         span: Some(entry.value.span.clone()),
     })
 }

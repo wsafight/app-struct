@@ -2,23 +2,29 @@ import { t } from "../ui";
 __REACT_IMPORT__
 import { AuthProvider, RequireAuth } from "../auth/Auth";
 __RESOURCE_IMPORT__
-import { customPages } from "../generated/registry";
-import type { AppStructRegistry, PageComponentProps } from "../generated/registry";
+import { customPages, workspacePath, type AppStructRegistry } from "../generated/registry";
 import { Navigate, Outlet, RuntimeRouter, createRuntimeRouter, type RuntimeRoute } from "../navigation";
 __RESOURCE_ACCESS_IMPORT__
 __TENANT_IMPORT__
 import { Layout } from "./Layout";
 import { resourceRoutes } from "./ResourceRoutes";
+import { customPageRoutes, PageScopeLayout, workspacePages } from "./PageRoutes";
 
 __AUDIT_PAGE__
 __REPORT_PAGE__
 __BILLING_PAGE__
 __BILLING_ADMIN_PAGE__
+__FILE_PAGE__
+const NotificationsPage = lazy(() => import("../product/ProductPages").then(({ NotificationsPage: component }) => ({ default: component })));
+const InsightsPage = lazy(() => import("../product/ProductPages").then(({ InsightsPage: component }) => ({ default: component })));
+__PRODUCT_PAGES__
 const LoginPage = lazy(() => import("../auth/PublicAuthPages").then(({ LoginPage: component }) => ({ default: component })));
 const RegisterPage = lazy(() => import("../auth/PublicAuthPages").then(({ RegisterPage: component }) => ({ default: component })));
 const ForgotPasswordPage = lazy(() => import("../auth/PublicAuthPages").then(({ ForgotPasswordPage: component }) => ({ default: component })));
 const ResetPasswordPage = lazy(() => import("../auth/PublicAuthPages").then(({ ResetPasswordPage: component }) => ({ default: component })));
 const VerifyEmailPage = lazy(() => import("../auth/PublicAuthPages").then(({ VerifyEmailPage: component }) => ({ default: component })));
+const AccountPage = lazy(() => import("../auth/AccountPage").then(({ AccountPage: component }) => ({ default: component })));
+const BusinessPage = lazy(() => import("../business/BusinessPage").then(({ BusinessPage: component }) => ({ default: component })));
 const ApiTokensPage = lazy(() => import("../auth/AuthPages").then(({ ApiTokensPage: component }) => ({ default: component })));
 const AdminPage = lazy(() => import("../auth/AuthPages").then(({ AdminPage: component }) => ({ default: component })));
 const AdminUsersPage = lazy(() => import("../auth/AuthPages").then(({ AdminUsersPage: component }) => ({ default: component })));
@@ -42,6 +48,7 @@ function AuthRoot() {
 __TENANT_ROOT__
 function appRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
   return [
+    { id: "_public", component: () => <PageScopeLayout registry={registry} scope="public" />, children: customPageRoutes(registry, "public") },
     { path: "/login", component: LoginPage },
     { path: "/register", component: RegisterPage },
     { path: "/forgot-password", component: ForgotPasswordPage },
@@ -59,24 +66,40 @@ __INVITATION_ROUTE__
 function authenticatedScope(registry?: AppStructRegistry): RuntimeRoute {
   const layout: RuntimeRoute = {
     id: "_layout",
-    component: () => <Layout resources={resources} pages={customPages} />,
+    component: () => registry?.layouts?.workspace
+      ? <PageScopeLayout registry={registry} scope="workspace" />
+      : <Layout resources={resources} pages={workspacePages} />,
     children: layoutRoutes(registry),
+  };
+  const account: RuntimeRoute = {
+    id: "_account",
+    component: () => <PageScopeLayout registry={registry} scope="account" />,
+    children: [
+      { path: "/notifications", component: NotificationsPage },
+      { path: "/admin/insights", component: InsightsPage },
+      ...customPageRoutes(registry, "account"),
+      ...(!customPages.some((page) => page.path === "account") ? [{ path: "/account", component: AccountPage }] : []),
+__ONBOARDING_ROUTE__
+    ],
   };
   return __AUTHENTICATED_SCOPE__;
 }
 
 function layoutRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
   return [
-    { path: "/", component: HomeRedirect },
+    { path: workspacePath, component: HomeRedirect },
     ...resourceRoutes(registry),
 __AUDIT_ROUTE__
 __REPORT_ROUTE__
 __BILLING_ROUTE__
-    ...customPageRoutes(registry),
+__FILE_ROUTE__
+__PRODUCT_ROUTES__
+    ...customPageRoutes(registry, "workspace"),
     { path: "/empty", component: EmptyPage },
 __ORGANIZATION_ROUTE__
     { path: "/tokens", component: ApiTokensPage },
     { path: "/admin", component: AdminPage },
+    { path: "/admin/business", component: BusinessPage },
     { path: "/admin/users", component: AdminUsersPage },
     { path: "/admin/jobs", component: AdminJobsPage },
     { path: "/admin/webhooks", component: AdminWebhooksPage },
@@ -96,23 +119,4 @@ __HOME_REDIRECT__
 
 function EmptyPage() {
   return <main className="page"><h1>{t("No accessible resources")}</h1></main>;
-}
-
-function PageRendererUnavailable() {
-  return <main className="page"><div className="alert" role="alert">{t("Page renderer unavailable")}</div></main>;
-}
-
-function customPageRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
-  const pageComponents = registry?.pages as Record<string, ComponentType<PageComponentProps>> | undefined;
-  return customPages.map((page) => {
-    const Component = pageComponents?.[String(page.component)];
-    return {
-      path: absolutePath(page.path),
-      component: Component ? () => <Component resources={resources} /> : PageRendererUnavailable,
-    };
-  });
-}
-
-function absolutePath(path: string): string {
-  return `/${path.replace(/^\/+/, "")}`;
 }

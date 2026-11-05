@@ -46,6 +46,7 @@ fn allows_anonymous(rule: &SurfaceAccessRule) -> bool {
         SurfaceAccessRule::All(rules) => rules.iter().all(|rule| allows_anonymous(&rule.value)),
         SurfaceAccessRule::Authenticated
         | SurfaceAccessRule::Role(_)
-        | SurfaceAccessRule::Owner(_) => false,
+        | SurfaceAccessRule::Owner(_)
+        | SurfaceAccessRule::Entitlement(_) => false,
     }
 }

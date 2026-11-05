@@ -1,11 +1,51 @@
 use appstruct_compiler::compile_project;
-use appstruct_migrate::{IndexSchema, extract};
+use appstruct_migrate::{
+    ExecutionRisk, IndexSchema, SchemaChange, SchemaRisk, connect_database, diff, extract,
+    initial_migration, migration_sql,
+};
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::Path;
 
 type ExpectedIndex<'a> = (&'a str, &'a str, &'a [&'a str], Option<&'a str>);
 
 const JOBS_MODULE_INDEXES: &[ExpectedIndex<'_>] = &[
+    (
+        "appstruct::product::inbox",
+        "_appstruct_product_notifications",
+        &["user_id", "tenant_id", "created_at", "id"],
+        None,
+    ),
+    (
+        "appstruct::product::ledger",
+        "_appstruct_product_credit_ledger",
+        &["tenant_id", "expires_at"],
+        None,
+    ),
+    (
+        "appstruct::product::events",
+        "_appstruct_product_events",
+        &["kind", "occurred_at", "actor_id"],
+        None,
+    ),
+    (
+        "appstruct::product::retention",
+        "_appstruct_product_events",
+        &["actor_id", "kind", "occurred_at"],
+        None,
+    ),
+    (
+        "appstruct::product::payments",
+        "_appstruct_product_payments",
+        &["payment_intent"],
+        None,
+    ),
+    (
+        "appstruct::product::purchases",
+        "_appstruct_product_credit_purchases",
+        &["payment_intent"],
+        None,
+    ),
     (
         "appstruct::auth::auth_accounts_created",
         "_appstruct_auth_accounts",
@@ -152,6 +192,115 @@ fn saas_preset_emits_both_audit_timeline_indexes() {
         indexes.contains_key("appstruct::audit::audit_events_tenant_timeline"),
         "missing tenant audit timeline index"
     );
+}
+
+#[test]
+fn product_demo_schema_round_trips_postgres_without_index_drift() {
+    let Ok(url) = std::env::var("APPSTRUCT_E2E_DATABASE_URL") else {
+        return;
+    };
+    let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/saas-demo");
+    let expected = extract(&compile_project(&project).unwrap()).unwrap();
+    let schema = format!("product_index_roundtrip_{}", std::process::id());
+    let mut database = connect_database(&url).unwrap();
+    database
+        .batch_execute(&format!(
+            "CREATE SCHEMA {schema}; SET search_path TO {schema};"
+        ))
+        .unwrap();
+    database
+        .batch_execute(&initial_migration(&expected))
+        .unwrap();
+    let drift = appstruct_migrate::inspect_schema_structure(&url, &schema, &expected).unwrap();
+    database
+        .batch_execute(&format!("DROP SCHEMA {schema} CASCADE"))
+        .unwrap();
+    assert_eq!(drift, appstruct_migrate::DriftStatus::Clean);
+}
+
+#[test]
+fn tenant_sort_indexes_generate_reviewable_partial_and_full_migrations() {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");
+    let project = tempfile::tempdir().unwrap();
+    fs::create_dir(project.path().join("spec")).unwrap();
+    for relative in ["appstruct.yaml", "spec/identity.yaml", "spec/project.yaml"] {
+        fs::copy(fixture.join(relative), project.path().join(relative)).unwrap();
+    }
+    let spec = project.path().join("spec/project.yaml");
+    let source = fs::read_to_string(&spec).unwrap();
+    fs::write(
+        &spec,
+        source
+            .replacen(
+                "    tenant: true\n",
+                "    tenant: true\n    soft_delete: true\n",
+                1,
+            )
+            .replacen(
+                "    fields:\n",
+                "    fields:\n      deleted_at:\n        type: datetime\n        column: removed_at\n",
+                1,
+            ),
+    )
+    .unwrap();
+    let before = extract(&compile_project(project.path()).unwrap()).unwrap();
+    let config = project.path().join("appstruct.yaml");
+    let source = fs::read_to_string(&config).unwrap();
+    fs::write(
+        config,
+        source.replace(
+            "  tenant:\n    enabled: true\n",
+            "  tenant:\n    enabled: true\n    sortable_indexes: true\n",
+        ),
+    )
+    .unwrap();
+    let after = extract(&compile_project(project.path()).unwrap()).unwrap();
+    let plan = diff(&before, &after);
+    assert_eq!(plan.changes.len(), 3);
+    assert!(plan.changes.iter().all(|change| {
+        matches!(change.change, SchemaChange::AddIndex { .. })
+            && change.risk.schema == SchemaRisk::NonDestructive
+            && change.risk.execution == ExecutionRisk::MayLock
+    }));
+    assert!(plan.is_blocked());
+    assert!(migration_sql(&plan).is_err());
+    let sql = initial_migration(&after);
+    assert!(sql.contains("CREATE INDEX \"idx_Project_tenant_sort_name\" ON \"projects\" (\"tenant_id\", \"name\", \"id\") WHERE (\"removed_at\" IS NULL);"));
+    assert!(sql.contains("CREATE INDEX \"idx_Task_tenant_sort_created_at\" ON \"tasks\" (\"tenant_id\", \"created_at\", \"id\");"));
+    assert_live_tenant_indexes(&sql);
+}
+
+fn assert_live_tenant_indexes(sql: &str) {
+    let Ok(url) = std::env::var("APPSTRUCT_E2E_DATABASE_URL") else {
+        return;
+    };
+    let mut database = connect_database(&url).unwrap();
+    let schema = format!("tenant_sort_indexes_{}", std::process::id());
+    database
+        .batch_execute(&format!(
+            "CREATE SCHEMA {schema}; SET search_path TO {schema};"
+        ))
+        .unwrap();
+    database.batch_execute(sql).unwrap();
+    let indexes = database
+        .query(
+            "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = $1",
+            &[&schema],
+        )
+        .unwrap()
+        .into_iter()
+        .map(|row| (row.get::<_, String>(0), row.get::<_, String>(1)))
+        .collect::<BTreeMap<_, _>>();
+    database
+        .batch_execute(&format!("DROP SCHEMA {schema} CASCADE"))
+        .unwrap();
+    let projects = &indexes["idx_Project_tenant_sort_name"];
+    assert!(projects.contains("(tenant_id, name, id)"));
+    assert!(projects.contains("WHERE (removed_at IS NULL)"));
+    let tasks = &indexes["idx_Task_tenant_sort_created_at"];
+    assert!(tasks.contains("(tenant_id, created_at, id)"));
+    assert!(!tasks.contains(" WHERE "));
 }
 
 fn fixture_module_indexes(name: &str) -> BTreeMap<String, IndexSchema> {

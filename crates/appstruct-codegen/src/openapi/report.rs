@@ -8,13 +8,19 @@ pub(super) fn add(ir: &AppIr, paths: &mut Map<String, Value>, schemas: &mut Map<
     schemas.insert("CreateReportRunInput".to_owned(), create_schema(ir));
     schemas.insert("ReportRunList".to_owned(), list_schema());
     paths.insert("/api/reports/templates".to_owned(), templates_path());
-    paths.insert(
-        "/api/reports/templates/{name}/runs".to_owned(),
-        create_path(),
-    );
+    let mut create = create_path();
+    if ir.report.entitlement.is_some() {
+        create["post"]["responses"]["402"] = error_response();
+    }
+    paths.insert("/api/reports/templates/{name}/runs".to_owned(), create);
     paths.insert("/api/reports/runs".to_owned(), runs_path());
     paths.insert("/api/reports/runs/{id}".to_owned(), run_path());
     paths.insert("/api/reports/runs/{id}/cancel".to_owned(), cancel_path());
+    paths.insert("/api/reports/runs/{id}/retry".to_owned(), json!({ "post": {
+        "operationId": "retryReportRun", "tags": ["Reports"], "security": mutation_security(),
+        "parameters": [id_parameter(), { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "maxLength": 200 } }],
+        "responses": { "200": response("Idempotent retry", &schema_ref("ReportRun")), "201": response("New report run", &schema_ref("ReportRun")), "401": error_response(), "402": error_response(), "404": error_response(), "409": error_response() }
+    }}));
     paths.insert(
         "/api/reports/runs/{id}/download".to_owned(),
         download_path(),
@@ -52,7 +58,7 @@ fn create_path() -> Value {
         "responses": {
             "200": response("Existing idempotent report run", &schema_ref("ReportRun")),
             "202": response("Report run accepted", &schema_ref("ReportRun")),
-            "400": error_response(), "401": error_response(), "404": error_response(),
+            "400": error_response(), "401": error_response(), "403": error_response(), "404": error_response(),
             "409": error_response(), "422": error_response()
         }
     }})

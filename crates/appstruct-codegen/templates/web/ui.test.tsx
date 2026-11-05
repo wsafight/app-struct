@@ -1,7 +1,14 @@
 import { valueError, formatMoney } from "./field-values";
 import { fieldErrors, errorMessage } from "./resource";
 import { afterEach, expect, test } from "@rstest/core";
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from "@testing-library/react";
 import {
   AppBrand,
   configureUI,
@@ -10,6 +17,12 @@ import {
   formatDate,
   formatDateTime,
   formatNumber,
+  formatMinorMoney,
+  statusLabel,
+  LoadingState,
+  EmptyState,
+  ActionFeedback,
+  useActionFeedback,
 } from "./ui";
 
 afterEach(() => {
@@ -83,4 +96,102 @@ test("Chinese copy, validation and configured display preserve business values a
   expect(errorMessage(new Error("Too many authentication attempts"))).toBe(
     "认证尝试过于频繁，请稍后重试",
   );
+});
+
+test("product statuses and money are localized without losing integer precision", () => {
+  expect(formatMinorMoney("900719925474099315", "USD")).toContain(
+    "9,007,199,254,740,993.15",
+  );
+  expect(formatMinorMoney("123", "JPY")).not.toContain(".00");
+  expect(formatMinorMoney("1234", "KWD")).toContain("1.234");
+  expect(formatMinorMoney("-100", "USD")).toContain("1.00");
+  expect(formatMinorMoney("100", "ISK")).toContain("1.00");
+  expect(formatMinorMoney("100", "UGX")).toContain("1.00");
+  expect(formatMinorMoney("9007199254740993123456", "USD")).toContain(
+    "90,071,992,547,409,931,234.56",
+  );
+  expect(formatMinorMoney("123", "invalid")).toBe("123 INVALID (minor units)");
+  configureUI({ locale: "zh-CN" });
+  expect(statusLabel("in_progress")).toBe("进行中");
+  expect(statusLabel("approved")).toBe("已同意");
+  expect(statusLabel("custom-business-state")).toBe("custom-business-state");
+  for (const copy of [
+    "Notifications",
+    "Team settings",
+    "AI writing assistant",
+    "Month grid",
+    "Copy recovery codes",
+    "Team and account",
+  ])
+    expect(t(copy)).not.toBe(copy);
+  expect(t("Submitted {0}", { "0": "2026年11月5日" })).toBe(
+    "提交于 2026年11月5日",
+  );
+});
+
+test("shared loading, empty and retry states expose actionable accessible copy", () => {
+  let retried = 0;
+  render(
+    <>
+      <LoadingState label="Loading tasks" />
+      <EmptyState title="No results" description="Create a report first">
+        <a href="/reports">Create report</a>
+      </EmptyState>
+      <ActionFeedback
+        error="Connection failed"
+        notice="Saved"
+        onRetry={() => {
+          retried += 1;
+        }}
+      />
+    </>,
+  );
+  expect(screen.getByRole("status", { name: "Loading tasks" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "No results" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Create report" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  expect(retried).toBe(1);
+  expect(screen.getByRole("alert").textContent).toContain("Connection failed");
+});
+
+test("row actions deduplicate the same row but do not block independent rows", async () => {
+  const { result } = renderHook(() => useActionFeedback(errorMessage));
+  let finishFirst: () => void = () => undefined;
+  const operation = new Promise<void>((resolve) => {
+    finishFirst = resolve;
+  });
+  let first: Promise<boolean> = Promise.resolve(false);
+  act(() => {
+    first = result.current.run("first", () => operation, "First saved");
+  });
+  expect(result.current.isPending("first")).toBe(true);
+  expect(result.current.isPending("second")).toBe(false);
+  await act(async () => {
+    expect(
+      await result.current.run("first", async () => {
+        throw new Error("must not execute");
+      }),
+    ).toBe(false);
+  });
+  await act(async () => {
+    expect(
+      await result.current.run("second", async () => undefined, "Second saved"),
+    ).toBe(true);
+  });
+  expect(result.current.isPending("first")).toBe(true);
+  expect(result.current.notice).toBe("Second saved");
+  await act(async () => {
+    finishFirst();
+    await first;
+  });
+  expect(result.current.isPending("first")).toBe(false);
+  await act(async () => {
+    expect(
+      await result.current.run("failed", async () => {
+        throw new Error("Try later");
+      }),
+    ).toBe(false);
+  });
+  expect(result.current.error).toBe("Try later");
+  expect(result.current.isPending("failed")).toBe(false);
 });

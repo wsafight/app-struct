@@ -20,7 +20,7 @@ import { ResourceActorProvider } from "../resource";
 interface AuthContextValue {
   loading: boolean;
   user: AuthUser | null;
-  login(email: string, password: string): Promise<void>;
+  login(email: string, password: string, code?: string): Promise<void>;
   register(email: string, password: string): Promise<void>;
   logout(): Promise<void>;
 }
@@ -68,8 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       loading,
       user,
-      async login(email, password) {
-        const nextUser = await authApi.login(email, password);
+      async login(email, password, code) {
+        const nextUser = await authApi.login(email, password, code);
         await queryClient.cancelQueries();
         clearPrivateQueries(queryClient);
         queryClient.setQueryData(appQueryKeys.session, nextUser);
@@ -116,7 +116,8 @@ export function RequireAuth() {
     }
     if (redirecting.current) return;
     redirecting.current = true;
-    void navigate("/login", {
+    const next = `${location.pathname}${location.searchStr}${location.hash ? `#${location.hash.replace(/^#/, "")}` : ""}`;
+    void navigate(`/login?next=${encodeURIComponent(next)}`, {
       replace: true,
       state: {
         from: {

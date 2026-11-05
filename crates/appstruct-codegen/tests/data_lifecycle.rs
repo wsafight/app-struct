@@ -5,7 +5,24 @@ use std::{fs, path::Path};
 
 #[test]
 fn generated_file_and_audit_lifecycle() {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/operations-demo");
+    assert_lifecycle(
+        "examples/operations-demo",
+        include_str!("data_lifecycle/runtime.rs"),
+    );
+}
+
+#[test]
+fn disabled_file_reconciliation_keeps_its_public_contract() {
+    assert_lifecycle(
+        "tests/fixtures/m2-project",
+        include_str!("data_lifecycle/disabled.rs"),
+    );
+}
+
+fn assert_lifecycle(fixture: &str, runtime: &str) {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(fixture);
     let ir = appstruct_compiler::compile_project(&fixture).unwrap();
     let project = tempfile::tempdir().unwrap();
     for artifact in appstruct_codegen::plan(&ir).unwrap() {
@@ -15,11 +32,7 @@ fn generated_file_and_audit_lifecycle() {
     }
     let backend = project.path().join("backend");
     fs::create_dir(backend.join("tests")).unwrap();
-    fs::write(
-        backend.join("tests/lifecycle.rs"),
-        include_str!("data_lifecycle/runtime.rs"),
-    )
-    .unwrap();
+    fs::write(backend.join("tests/lifecycle.rs"), runtime).unwrap();
     let output = support::cargo_test(&backend.join("Cargo.toml"), "lifecycle");
     assert!(
         output.status.success(),

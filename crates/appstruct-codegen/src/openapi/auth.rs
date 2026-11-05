@@ -389,8 +389,9 @@ fn allows_anonymous(rule: &AccessRuleIr) -> bool {
         AccessRuleIr::Public => true,
         AccessRuleIr::Any { rules } => rules.iter().any(allows_anonymous),
         AccessRuleIr::All { rules } => rules.iter().all(allows_anonymous),
-        AccessRuleIr::Authenticated | AccessRuleIr::Role { .. } | AccessRuleIr::Owner { .. } => {
-            false
-        }
+        AccessRuleIr::Authenticated
+        | AccessRuleIr::Role { .. }
+        | AccessRuleIr::Owner { .. }
+        | AccessRuleIr::Entitlement { .. } => false,
     }
 }

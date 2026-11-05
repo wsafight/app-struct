@@ -13,6 +13,7 @@ mod imports;
 mod jobs;
 mod mail;
 mod module_indexes;
+mod product;
 mod realtime;
 mod report;
 mod snapshot;
@@ -161,6 +162,8 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         .collect::<Vec<_>>();
     if ir.auth.enabled {
         tables.extend(auth::tables());
+        tables.extend(product::tables());
+        foreign_keys.extend(product::foreign_keys());
         unique_constraints.extend(auth::unique_constraints());
         foreign_keys.extend(auth::foreign_keys(ir));
     }
@@ -203,7 +206,6 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
     }
     if ir.billing.enabled {
         tables.extend(billing::tables());
-        unique_constraints.extend(billing::unique_constraints());
         foreign_keys.extend(billing::foreign_keys());
     }
     Ok(DatabaseSchema {

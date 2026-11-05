@@ -36,9 +36,14 @@ fn document(ir: &AppIr) -> Value {
     }
     if ir.auth.enabled {
         auth::add(&mut paths, &mut schemas, ir);
+        business::add(&mut paths, &mut schemas);
+        product::add(ir, &mut paths, &mut schemas);
     }
     if ir.billing.enabled {
         billing::add(&mut paths, &mut schemas, ir);
+    }
+    if ir.file.enabled && ir.auth.enabled {
+        file_library::add(ir, &mut paths, &mut schemas);
     }
     if ir.tenant.enabled {
         tenant::add(&mut paths, &mut schemas);
@@ -145,8 +150,11 @@ mod audit;
 mod auth;
 mod billing;
 mod bulk;
+mod business;
 mod entity;
 mod extension;
+mod file_library;
+mod product;
 mod realtime;
 mod report;
 mod saved_views;

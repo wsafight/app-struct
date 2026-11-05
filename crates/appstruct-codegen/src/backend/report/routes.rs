@@ -7,8 +7,8 @@ mod read;
 
 #[allow(clippy::too_many_lines)]
 pub(super) fn source(ir: &AppIr) -> TokenStream {
-    let create = create::source(ir.audit.enabled);
-    let read = read::source(ir.audit.enabled);
+    let create = create::source(ir.audit.enabled, ir.report.entitlement.as_deref());
+    let read = read::source(ir.audit.enabled, ir.report.entitlement.is_some());
     quote! {
         pub fn router() -> Router<AppState> {
             Router::new()
@@ -17,7 +17,31 @@ pub(super) fn source(ir: &AppIr) -> TokenStream {
                 .route("/api/reports/runs", get(list_runs))
                 .route("/api/reports/runs/{id}", get(get_run))
                 .route("/api/reports/runs/{id}/cancel", post(cancel_run))
+                .route("/api/reports/runs/{id}/retry", post(retry_run))
                 .route("/api/reports/runs/{id}/download", get(download_run))
+        }
+
+        async fn retry_run(
+            State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>,
+        ) -> Result<(StatusCode, Json<ReportRun>), ApiError> {
+            let context = state.mutation_context(&headers).await?;
+            let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
+            let run = load_run(&state.database, id, context.tenant()).await?;
+            ensure_run_access(&context, &run)?;
+            idempotency_key(&headers)?;
+            if !matches!(run.stage.as_str(), "failed" | "cancelled") || run.expires_at <= chrono::Utc::now() {
+                return Err(ApiError::Conflict("Only retained failed or cancelled reports can be retried".to_owned()));
+            }
+            if template_config(&run.template).is_none_or(|template| template.version != run.template_version) {
+                return Err(ApiError::Conflict("The report template changed; submit a new report instead".to_owned()));
+            }
+            let snapshot = state.database.fetch_optional(Sql::bind("SELECT snapshot_ciphertext FROM \"_appstruct_report_runs\" WHERE id = $1 AND tenant_id IS NOT DISTINCT FROM $2", [id.into(), context.tenant().into()])).await?.ok_or(ApiError::NotFound)?.try_get::<String, _>("snapshot_ciphertext")?;
+            let plaintext = decrypt_snapshot(id, &snapshot).map_err(|_| ApiError::ReportConfiguration)?;
+            let input = CreateReportRun {
+                data: serde_json::from_slice(&plaintext).map_err(|_| ApiError::ReportConfiguration)?,
+                locale: Some(run.locale), timezone: Some(run.timezone), paper: Some(run.paper), orientation: Some(run.orientation),
+            };
+            create_run(State(state.clone()), headers, Path(run.template), Json(input)).await
         }
 
         async fn list_templates(

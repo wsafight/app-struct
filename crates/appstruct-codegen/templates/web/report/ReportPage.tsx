@@ -1,8 +1,8 @@
 import { formatDateTime } from "../ui";
-import { t } from "../ui";
+import { ActionFeedback, statusLabel, t, useActionFeedback } from "../ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Download, FileText, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   reportApi,
   type ReportInputMap,
@@ -10,25 +10,28 @@ import {
   type ReportTemplate,
   type ReportTemplateName,
 } from "../generated/client";
-import { appQueryKeys } from "../query";
+import { appQueryKeys, workRefreshInterval } from "../query";
 import { errorMessage, triggerDownload } from "../resource";
+__BILLING_IMPORT__;
 
 export function ReportPage() {
   const client = useQueryClient();
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<ReportTemplateName | "">("");
   const [values, setValues] = useState<Record<string, unknown>>({});
-  const [downloadError, setDownloadError] = useState("");
+  const action = useActionFeedback(errorMessage);
+  const scope = appQueryKeys.reports.all();
+  const request = useRef<{ payload: string; key: string } | null>(null);
   const pageSize = 25;
   const templates = useQuery({
     queryKey: appQueryKeys.reports.templates(),
-    queryFn: () => reportApi.templates(),
+    queryFn: ({ signal }) => reportApi.templates({ signal }),
   });
   const runs = useQuery({
     queryKey: appQueryKeys.reports.runs(page, pageSize),
-    queryFn: () => reportApi.list(page, pageSize),
-    refetchInterval: (query) =>
-      query.state.data?.data.some((run) => active(run)) ? 2_000 : false,
+    queryFn: ({ signal }) => reportApi.list(page, pageSize, { signal }),
+    refetchInterval: (query) => workRefreshInterval(query.state.data?.data),
+    refetchOnWindowFocus: true,
   });
   const create = useMutation({
     mutationFn: ({
@@ -37,42 +40,56 @@ export function ReportPage() {
     }: {
       template: ReportTemplateName;
       data: Record<string, unknown>;
-    }) =>
-      reportApi.create(
+    }) => {
+      const payload = JSON.stringify({ template, data });
+      if (request.current?.payload !== payload) {
+        request.current = { payload, key: crypto.randomUUID() };
+      }
+      return reportApi.create(
         template,
         data as ReportInputMap[ReportTemplateName],
-        crypto.randomUUID(),
-      ),
-    onSuccess: async () => {
-      setValues({});
-      await client.invalidateQueries({ queryKey: appQueryKeys.reports.all() });
+        request.current.key,
+      );
     },
-  });
-  const cancel = useMutation({
-    mutationFn: (id: string) => reportApi.cancel(id),
-    onSuccess: () =>
-      client.invalidateQueries({ queryKey: appQueryKeys.reports.all() }),
+    onSuccess: async () => {
+      request.current = null;
+      setValues({});
+      await client.invalidateQueries({ queryKey: scope });
+      await client.invalidateQueries({ queryKey: ["billing"] });
+      await client.invalidateQueries({ queryKey: appQueryKeys.product.all });
+    },
   });
   const selectedTemplate = useMemo(
     () => templates.data?.find((template) => template.name === selected),
     [selected, templates.data],
   );
-  const error = create.error ?? cancel.error ?? templates.error ?? runs.error;
+  const error = create.error ?? templates.error ?? runs.error;
   const total = runs.data?.meta.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / pageSize));
 
   async function download(run: ReportRun) {
-    setDownloadError("");
-    try {
-      const blob = await reportApi.download(run.id);
-      triggerDownload(blob, `${run.template}-${run.id}.pdf`);
-    } catch (requestError) {
-      // Surface the failure instead of rejecting: the caller invokes this with
-      // `void download(run)`, so a rethrow would be an unhandled rejection and the
-      // button would appear to do nothing.
-      setDownloadError(errorMessage(requestError));
-      await client.invalidateQueries({ queryKey: appQueryKeys.reports.all() });
-    }
+    await action.run(
+      run.id,
+      async () => {
+        const blob = await reportApi.download(run.id);
+        triggerDownload(blob, `${run.template}-${run.id}.pdf`);
+      },
+      t("Download started"),
+    );
+  }
+  async function cancel(id: string) {
+    await action.run(
+      id,
+      async () => {
+        await reportApi.cancel(id);
+        await Promise.all([
+          client.invalidateQueries({ queryKey: scope }),
+          client.invalidateQueries({ queryKey: ["billing"] }),
+          client.invalidateQueries({ queryKey: appQueryKeys.product.all }),
+        ]);
+      },
+      t("Task cancelled"),
+    );
   }
 
   return (
@@ -86,11 +103,19 @@ export function ReportPage() {
         </div>
         <FileText size={22} aria-hidden />
       </div>
-      {(error || downloadError) && (
-        <div className="alert" role="alert">
-          {error ? errorMessage(error) : downloadError}
-        </div>
-      )}
+      <ActionFeedback
+        error={error ? errorMessage(error) : action.error}
+        notice={action.notice}
+        onRetry={
+          runs.error || templates.error
+            ? () => {
+                void runs.refetch();
+                void templates.refetch();
+              }
+            : undefined
+        }
+      />
+      __BILLING_OPEN__
       <section className="report-create" aria-labelledby="new-report-heading">
         <h2 id="new-report-heading">{t("New report")}</h2>
         <div className="report-create-grid">
@@ -139,6 +164,7 @@ export function ReportPage() {
           </button>
         </div>
       </section>
+      __BILLING_CLOSE__
       <section className="table-frame report-table">
         <table>
           <thead>
@@ -175,7 +201,7 @@ export function ReportPage() {
                 <td>{formatDate(run.created_at)}</td>
                 <td>
                   <span className={`report-status ${run.stage}`}>
-                    {run.stage}
+                    {statusLabel(run.stage)}
                   </span>
                   {run.error_code && <small>{run.error_code}</small>}
                 </td>
@@ -190,14 +216,14 @@ export function ReportPage() {
                 <td>{formatDate(run.expires_at)}</td>
                 <td>
                   <div className="row-actions">
-                    {["queued", "rendering"].includes(run.stage) && (
+                    {active(run) && (
                       <button
                         type="button"
                         className="icon-button"
                         title={t("Cancel report")}
                         aria-label={t("Cancel {0}", { "0": run.template })}
-                        disabled={cancel.isPending}
-                        onClick={() => cancel.mutate(run.id)}
+                        disabled={action.isPending(run.id)}
+                        onClick={() => void cancel(run.id)}
                       >
                         <X size={16} />
                       </button>
@@ -208,6 +234,7 @@ export function ReportPage() {
                         className="icon-button"
                         title={t("Download PDF")}
                         aria-label={t("Download {0}", { "0": run.template })}
+                        disabled={action.isPending(run.id)}
                         onClick={() => void download(run)}
                       >
                         <Download size={16} />

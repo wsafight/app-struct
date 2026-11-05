@@ -2,7 +2,9 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 #[allow(clippy::too_many_lines)]
-pub(super) fn source(audit: bool) -> TokenStream {
+pub(super) fn source(audit: bool, usage: bool) -> TokenStream {
+    let refund =
+        usage.then(|| quote! { crate::billing::refund_allowance(&transaction, id).await?; });
     let cancel_audit = audit.then(|| {
         quote! {
             crate::audit::record(
@@ -76,8 +78,10 @@ pub(super) fn source(audit: bool) -> TokenStream {
             transaction.execute(Sql::bind("UPDATE \"_appstruct_report_runs\" SET stage = 'cancelled', completed_at = CURRENT_TIMESTAMP, progress = 0 WHERE id = $1",
                 [id.into()],
             )).await?;
+            #refund
             let after = load_run(&transaction, id, context.tenant()).await?;
             #cancel_audit
+            crate::product::report_finished(&transaction, id).await?;
             transaction.commit().await?;
             Ok(Json(after))
         }

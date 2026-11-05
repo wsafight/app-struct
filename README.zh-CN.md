@@ -266,6 +266,7 @@ appstruct update
 - [组织邀请](docs/organization-invitations.zh-CN.md)
 - [OAuth 与 OIDC](docs/oauth-oidc.zh-CN.md)
 - [生成应用收费](docs/billing.zh-CN.md)
+- [SaaS 产品闭环](docs/saas-product-journey.zh-CN.md)
 - [个人 API Token](docs/personal-api-tokens.zh-CN.md)
 - [实时事件与在线状态](docs/realtime.zh-CN.md)
 - [定时任务](docs/schedules.zh-CN.md)

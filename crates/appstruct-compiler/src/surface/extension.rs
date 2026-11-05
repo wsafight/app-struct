@@ -39,6 +39,7 @@ pub(crate) struct SurfacePage {
     pub label: Option<Located<String>>,
     pub path: Located<String>,
     pub component: Located<String>,
+    pub scope: Option<Located<String>>,
     pub span: SourceSpan,
 }
 
@@ -216,7 +217,11 @@ fn decode_operation(
 
 fn decode_page(name: &str, entry: &MappingEntry) -> Result<SurfacePage, Diagnostic> {
     let mapping = expect_mapping(&entry.value, "page definition")?;
-    ensure_known_keys(mapping, &["label", "path", "component"], "page definition")?;
+    ensure_known_keys(
+        mapping,
+        &["label", "path", "component", "scope"],
+        "page definition",
+    )?;
     let path = required(mapping, "path", &entry.value.span)?;
     let component = required(mapping, "component", &entry.value.span)?;
     Ok(SurfacePage {
@@ -224,6 +229,7 @@ fn decode_page(name: &str, entry: &MappingEntry) -> Result<SurfacePage, Diagnost
         label: optional_string(mapping, "label", "page `label`")?,
         path: expect_string(&path.value, "page `path`")?,
         component: expect_string(&component.value, "page `component`")?,
+        scope: optional_string(mapping, "scope", "page `scope`")?,
         span: entry.value.span.clone(),
     })
 }

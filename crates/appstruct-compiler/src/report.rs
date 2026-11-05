@@ -1,5 +1,7 @@
 use crate::surface::SurfaceReport;
-use appstruct_ir::{AuthIr, Diagnostic, FileIr, JobsIr, ReportIr, ReportTemplateIr, SourceSpan};
+use appstruct_ir::{
+    AuthIr, BillingIr, Diagnostic, FileIr, JobsIr, ReportIr, ReportTemplateIr, SourceSpan,
+};
 use std::collections::BTreeSet;
 
 const DEFAULT_MAX_INPUT_BYTES: u64 = 256 * 1024;
@@ -11,6 +13,7 @@ pub(crate) fn lower_report(
     auth: &AuthIr,
     jobs: &JobsIr,
     file: &FileIr,
+    billing: &BillingIr,
     fallback: &SourceSpan,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ReportIr {
@@ -18,6 +21,39 @@ pub(crate) fn lower_report(
         return ReportIr::default();
     }
     let span = report.span.as_ref().unwrap_or(fallback);
+    let entitlement = report.entitlement.as_ref().map(|value| value.value.clone());
+    if let Some(value) = &report.entitlement {
+        if !billing.enabled
+            || !billing
+                .plans
+                .iter()
+                .any(|plan| plan.entitlements.contains(&value.value))
+        {
+            diagnostics.push(Diagnostic::error(
+                "AS3098",
+                "report entitlement requires Billing and an entitlement declared in a plan",
+                value.span.clone(),
+            ));
+        }
+    } else if let Some(value) = &report.free_runs {
+        diagnostics.push(Diagnostic::error(
+            "AS3098",
+            "report free_runs requires an entitlement",
+            value.span.clone(),
+        ));
+    }
+    let free_runs = report.free_runs.as_ref().and_then(|value| {
+        if let Ok(limit) = u32::try_from(value.value) {
+            Some(limit)
+        } else {
+            diagnostics.push(Diagnostic::error(
+                "AS3098",
+                "report free_runs exceeds the supported range",
+                value.span.clone(),
+            ));
+            None
+        }
+    });
     let renderer = match report.renderer.as_ref().map(|value| value.value.as_str()) {
         None | Some("capture") => appstruct_ir::ReportRendererIr::Capture,
         Some("chromium") => appstruct_ir::ReportRendererIr::Chromium,
@@ -157,6 +193,8 @@ pub(crate) fn lower_report(
             .map(|role| role.value.clone())
             .collect(),
         templates,
+        entitlement,
+        free_runs,
     }
 }
 

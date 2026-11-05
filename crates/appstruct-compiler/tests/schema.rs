@@ -24,6 +24,7 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
             }
         },
         "modules": {
+            "tenant": { "enabled": true, "sortable_indexes": true },
             "mail": {
                 "provider": "smtp",
                 "templates": {
@@ -78,6 +79,7 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
                     "read": { "any": [{ "owner": "owner" }, { "role": "admin" }] }
                 },
                 "tenant": true,
+                "tenant_index": false,
                 "audit": true
             }
         },

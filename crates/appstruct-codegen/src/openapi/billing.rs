@@ -11,9 +11,13 @@ pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Valu
         "type": "object", "required": ["plan_id", "status", "current_period_end", "cancel_at_period_end"],
         "properties": { "plan_id": { "type": "string" }, "status": { "type": "string" }, "current_period_end": { "type": ["string", "null"], "format": "date-time" }, "cancel_at_period_end": { "type": "boolean" } }
     }));
+    schemas.insert("BillingAllowance".to_owned(), json!({
+        "type": "object", "required": ["entitlement", "free_limit", "used", "remaining", "paid"],
+        "properties": { "entitlement": { "type": "string" }, "free_limit": { "type": "integer", "minimum": 0 }, "used": { "type": "integer", "minimum": 0 }, "remaining": { "type": "integer", "minimum": 0 }, "paid": { "type": "boolean" } }
+    }));
     schemas.insert("BillingOverview".to_owned(), json!({
-        "type": "object", "required": ["plans", "subscription", "entitlements", "customer_portal"],
-        "properties": { "plans": { "type": "array", "items": schema_ref("BillingPlan") }, "subscription": { "anyOf": [schema_ref("BillingSubscription"), { "type": "null" }] }, "entitlements": { "type": "array", "items": { "type": "string" } }, "customer_portal": { "type": "boolean" } }
+        "type": "object", "required": ["plans", "subscription", "entitlements", "customer_portal", "checkout_available", "usage"],
+        "properties": { "plans": { "type": "array", "items": schema_ref("BillingPlan") }, "subscription": { "anyOf": [schema_ref("BillingSubscription"), { "type": "null" }] }, "entitlements": { "type": "array", "items": { "type": "string" } }, "customer_portal": { "type": "boolean" }, "checkout_available": { "type": "boolean" }, "usage": { "type": "array", "items": schema_ref("BillingAllowance") } }
     }));
     schemas.insert("BillingCheckoutInput".to_owned(), json!({
         "type": "object", "required": ["plan_id"], "properties": { "plan_id": { "type": "string", "enum": ir.billing.plans.iter().map(|plan| plan.id.clone()).collect::<Vec<_>>() } }

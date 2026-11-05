@@ -1,8 +1,12 @@
 # Chromium Report Renderer
 
 The Chromium adapter is implemented as a preview. Local PDF and PostgreSQL lifecycle checks pass.
-Linux container acceptance must pass before production rollout; it has not run on the current
-macOS host, which has no Docker installation. Capture remains the default.
+Linux container acceptance must pass before production rollout. `scripts/run-renderer-isolation.sh`
+passed once on 2026-11-05 inside a Colima Linux VM (Ubuntu 24.04, aarch64, cgroup v2, Docker 29.5.2)
+on a macOS host: the renderer unit tests (5 of 5), non-root user, read-only filesystem, blocked
+network, 128-task and 512 MiB cgroup limits, the PID limit, and the out-of-memory kill. That is a
+single local arm64 run. The x86_64 run on the CI candidate commit is still required. Capture remains
+the default.
 
 ```yaml
 modules:

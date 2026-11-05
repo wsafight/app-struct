@@ -46,3 +46,26 @@ APPSTRUCT_E2E_DATABASE_URL=postgresql://localhost/appstruct_benchmark_test \
 覆盖项：`APPSTRUCT_BENCH_ROWS`（每个租户，最多 1,000,000）、`APPSTRUCT_BENCH_ITERATIONS`（最多 10,000）、逗号分隔的 `APPSTRUCT_BENCH_CONCURRENCIES`（每个最多 64）、`APPSTRUCT_BENCH_MIXED_SECONDS`、`APPSTRUCT_BENCH_P95_MS`、`APPSTRUCT_BENCH_PROFILE`（默认 `release` 或 `debug`）以及 `APPSTRUCT_BENCH_OUTPUT`。单数的 `APPSTRUCT_BENCH_CONCURRENCY` 仍可作为单层简写接受。API/Web 端口使用现有的 `APPSTRUCT_E2E_API_PORT` 和 `APPSTRUCT_E2E_WEB_PORT` 覆盖。
 
 这默认是针对发布后端的有界闭环回归工作负载，不是生产容量估计。在同一主机、PostgreSQL 版本、数据集和构建配置上比较结果。它不建模开环到达、连接池耗尽、生产存储或网络延迟。容量规划请使用能代表部署的流量。
+
+## 百万行参考运行
+
+2026-11-04 的一次运行使用每个租户 1,000,000 行（共两个租户）、发布模式后端、PostgreSQL 17.11 和 Apple M3 Pro，后端、数据库和压测程序在同一台机器上。这只是单次样本，不是验收测试。运行以非零状态退出，因为在 24 个客户端下有两个阶段超过了默认的 500 ms 预算。没有请求错误。
+
+| 阶段 | 1 客户端 p95 | 8 客户端 p95 | 24 客户端 p95 |
+| --- | --- | --- | --- |
+| 偏移列表（页码，精确总数） | 51 ms | 408 ms | 744 ms（超预算） |
+| 聚合计数 | 49 ms | 452 ms | 692 ms（超预算） |
+| 游标列表 | 0.8 ms | 1.8 ms | 3.7 ms |
+| 单条读取 | 0.6 ms | 1.2 ms | 5.7 ms |
+| 带审计的 CRUD 旅程 | 1.5 ms | 7.8 ms | 11.6 ms |
+
+24 客户端的混合持续阶段 p95 为 570 ms，预算为 750 ms，3,733 次操作 0 错误。
+
+偏移列表会返回精确的 `meta.total`，因此每次翻页请求都要对该租户的行做一次 `COUNT(*)`。在另一个数据形态相同的单连接数据库上查看查询计划，结果是：
+
+- 精确计数是并行顺序扫描，每次约 51 ms。给未删除行建立 `(tenant_id, code, id)` 复合索引后仍是顺序扫描，因此索引无法消除这部分开销。
+- 深页 `OFFSET` 也更慢。OFFSET 为 500,000 时单页约 200 到 260 ms，OFFSET 为 990,000 时约 417 ms，冷缓存时出现过 2.6 s 的离群值。使用该复合索引后，同样的页约为 78 ms 和 127 ms。深页重要时，请通过[Schema 索引](schema-indexes.zh-CN.md)声明这样的索引；在 `tenant: true` 且启用软删除的实体上，`fields: [tenant_id, code, id]` 加 `where: deleted_at IS NULL` 会编译成该索引。
+
+游标列表不计算总数，也不跳过行，所以在这个规模下仍保持个位数毫秒。不需要页码或总数的客户端（例如移动端）可使用 `limit` 配合游标。
+
+带精确总数的页码列表仍是默认方式。在单机、24 个并发客户端下，每租户约 1,000,000 行是它可能超出默认预算的位置。本次运行没有测试估算总数或有上限的总数，因此没有修改列表契约。对单个用户而言，更有参考价值的是单客户端下约 50 ms 的单次开销。

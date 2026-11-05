@@ -1,4 +1,4 @@
-use crate::{ApiError, AppState};
+use crate::{ApiError, AppState, RequestContext};
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -10,7 +10,7 @@ use crate::database::{DatabaseExecutor,  Sql};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::Sha256;
-use std::time::Duration;
+use std::{env, time::Duration};
 
 const TRIALS_ENABLED: bool = __TRIALS__;
 const CUSTOMER_PORTAL_ENABLED: bool = __CUSTOMER_PORTAL__;
@@ -53,6 +53,8 @@ struct BillingOverview {
     subscription: Option<SubscriptionView>,
     entitlements: Vec<&'static str>,
     customer_portal: bool,
+    checkout_available: bool,
+    usage: Vec<AllowanceView>,
 }
 
 #[derive(Deserialize)]
@@ -80,6 +82,7 @@ struct BillingEventMeta { page: u64, page_size: u64, total: u64 }
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/api/product/credits/checkout", post(credit_checkout))
         .route("/api/billing", get(overview))
         .route("/api/billing/checkout", post(checkout))
         .route("/api/billing/portal", post(portal))
@@ -87,6 +90,22 @@ pub fn router() -> Router<AppState> {
         .route("/api/admin/billing/events", get(list_admin_billing_events))
         .route("/api/admin/billing/events/{event_id}/replay", post(replay_admin_billing_event))
         .layer(DefaultBodyLimit::max(65_536))
+}
+
+async fn credit_checkout(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<RedirectUrl>, ApiError> {
+    let (organization_id, email) = require_owner(&state, &headers).await?;
+    let config = config()?;
+    let price = env::var("APPSTRUCT_STRIPE_PRICE_CREDITS").ok().filter(|value| value.starts_with("price_")).ok_or_else(|| ApiError::Conflict("Credit pack checkout is not configured".to_owned()))?;
+    let credits = env::var("APPSTRUCT_CREDIT_PACK_UNITS").unwrap_or_else(|_| "100".to_owned()).parse::<i64>().ok().filter(|value| (1..=1_000_000).contains(value)).ok_or(ApiError::Internal)?;
+    let key = headers.get("Idempotency-Key").and_then(|value| value.to_str().ok()).and_then(|value| uuid::Uuid::parse_str(value).ok()).ok_or_else(|| ApiError::InvalidQuery("A UUID Idempotency-Key is required".to_owned()))?;
+    let customer = match customer_id(&state, organization_id).await? { Some(id) => id, None => create_customer(&state, &config, organization_id, &email).await? };
+    let base = state.auth.config.frontend_url.trim_end_matches('/');
+    let form = [("mode", "payment".to_owned()), ("customer", customer), ("line_items[0][price]", price), ("line_items[0][quantity]", "1".to_owned()), ("success_url", format!("{base}/credits?checkout=success")), ("cancel_url", format!("{base}/credits?checkout=cancel")), ("metadata[appstruct_credit_pack]", "v1".to_owned()), ("metadata[appstruct_organization_id]", organization_id.to_string())];
+    let result = stripe_post(&config, "/checkout/sessions", &form, Some(&format!("credit-pack:{organization_id}:{key}"))).await?;
+    let session = result["id"].as_str().ok_or(ApiError::Internal)?;
+    let url = result["url"].as_str().ok_or(ApiError::Internal)?;
+    state.database.execute(Sql::bind("INSERT INTO \"_appstruct_product_credit_purchases\" (session_id, tenant_id, credits, fulfilled, refunded_credits, created_at) VALUES ($1, $2, $3, false, 0, CURRENT_TIMESTAMP) ON CONFLICT (session_id) DO NOTHING", [session.into(), organization_id.into(), credits.into()])).await?;
+    Ok(Json(RedirectUrl { url: url.to_owned() }))
 }
 
 async fn require_billing_admin(
@@ -137,11 +156,17 @@ async fn replay_admin_billing_event(
     )).await?.ok_or(ApiError::NotFound)?;
     let event_type: String = row.try_get("event_type")?;
     let event: Value = row.try_get("payload")?;
-    let subscription_id = event.pointer("/data/object/id").and_then(Value::as_str)
-        .or_else(|| event.pointer("/data/object/subscription").and_then(Value::as_str))
-        .filter(|id| id.starts_with("sub_")).ok_or_else(|| ApiError::InvalidQuery("Billing event has no replayable subscription".to_owned()))?;
     let replay_id = format!("{event_id}:replay:{}", uuid::Uuid::now_v7());
-    reconcile_subscription(&state, &config()?, &replay_id, &event_type, subscription_id, &event).await?;
+    if matches!(event_type.as_str(), "charge.succeeded" | "charge.captured" | "charge.refunded") || event.pointer("/data/object/metadata/appstruct_credit_pack").and_then(Value::as_str) == Some("v1") {
+        let mut replay = event.clone();
+        replay["id"] = serde_json::json!(replay_id);
+        crate::product::apply_billing_event(&state.database, &replay).await?;
+    } else {
+        let subscription_id = event.pointer("/data/object/id").and_then(Value::as_str)
+            .or_else(|| event.pointer("/data/object/subscription").and_then(Value::as_str))
+            .filter(|id| id.starts_with("sub_")).ok_or_else(|| ApiError::InvalidQuery("Billing event has no replayable subscription".to_owned()))?;
+        reconcile_subscription(&state, &config()?, &replay_id, &event_type, subscription_id, &event).await?;
+    }
     let replay = state.database.fetch_optional(Sql::bind("SELECT event_id, event_type, payload, created_at FROM \"_appstruct_billing_events\" WHERE event_id = $1",
         [replay_id.into()],
     )).await?.ok_or(ApiError::Internal)?;
@@ -154,6 +179,13 @@ async fn replay_admin_billing_event(
 }
 
 pub fn validate_env() -> Result<(), String> {
+    if std::env::var("APPSTRUCT_ENV").as_deref() != Ok("production")
+        && std::env::var("APPSTRUCT_STRIPE_SECRET_KEY").is_err()
+        && std::env::var("APPSTRUCT_STRIPE_WEBHOOK_SECRET").is_err()
+        && PLANS.iter().all(|plan| std::env::var(plan.price_env).is_err())
+    {
+        return Ok(());
+    }
     let _ = config_from_env()?;
     Ok(())
 }
@@ -190,15 +222,28 @@ fn config() -> Result<BillingConfig, ApiError> {
     })
 }
 
+pub async fn has_entitlement(
+    context: &RequestContext<'_>,
+    entitlement: &str,
+) -> Result<bool, ApiError> {
+    if context.actor().is_none() {
+        return Ok(false);
+    }
+    let organization_id = context.require_tenant()?;
+    has_entitlement_on(context, organization_id, entitlement).await
+}
+
+__ACCESS__
+
 async fn overview(
     State(state): State<AppState>, headers: HeaderMap,
 ) -> Result<Json<BillingOverview>, ApiError> {
     let context = state.context(&headers).await?;
     context.actor().ok_or(ApiError::Unauthorized)?;
     let organization_id = context.require_tenant()?;
-    let subscription = current_subscription(&state, organization_id).await?;
+    let subscription = current_subscription(&state.database, organization_id).await?;
     let entitlements = subscription.as_ref().and_then(|subscription| {
-        if matches!(subscription.status.as_str(), "active" | "trialing") {
+        if subscription_active(subscription) {
             PLANS.iter().find(|plan| plan.id == subscription.plan_id)
         } else {
             None
@@ -211,6 +256,8 @@ async fn overview(
         subscription,
         entitlements,
         customer_portal: CUSTOMER_PORTAL_ENABLED,
+        checkout_available: config_from_env().is_ok(),
+        usage: allowance_views(&context).await?,
     }))
 }
 
@@ -218,7 +265,7 @@ async fn checkout(
     State(state): State<AppState>, headers: HeaderMap, Json(input): Json<CheckoutInput>,
 ) -> Result<Json<RedirectUrl>, ApiError> {
     let (organization_id, email) = require_owner(&state, &headers).await?;
-    if let Some(subscription) = current_subscription(&state, organization_id).await?
+    if let Some(subscription) = current_subscription(&state.database, organization_id).await?
         && matches!(subscription.status.as_str(), "active" | "trialing" | "past_due")
     {
         return Err(ApiError::Conflict(
@@ -285,6 +332,8 @@ async fn webhook(headers: HeaderMap, State(state): State<AppState>, body: Bytes)
     let event_id = event.get("id").and_then(Value::as_str).filter(|id| id.starts_with("evt_"))
         .ok_or_else(|| ApiError::InvalidQuery("Invalid Stripe event ID".to_owned()))?;
     let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
+    crate::product::apply_billing_event(&state.database, &event).await?;
+    if matches!(event_type, "checkout.session.completed" | "checkout.session.async_payment_succeeded") && event.pointer("/data/object/mode").and_then(Value::as_str) == Some("payment") { return Ok(StatusCode::NO_CONTENT); }
     let subscription_id = match event_type {
         "customer.subscription.created" | "customer.subscription.updated" | "customer.subscription.deleted" =>
             event.pointer("/data/object/id").and_then(Value::as_str),
@@ -300,7 +349,7 @@ fn verify_signature(headers: &HeaderMap, body: &[u8], secret: &str) -> Result<()
         .ok_or(ApiError::Forbidden)?;
     let timestamp = signature.split(',').find_map(|item| item.strip_prefix("t=")?.parse::<i64>().ok())
         .ok_or(ApiError::Forbidden)?;
-    if (chrono::Utc::now().timestamp() - timestamp).abs() > 300 { return Err(ApiError::Forbidden); }
+    if chrono::Utc::now().timestamp().abs_diff(timestamp) > 300 { return Err(ApiError::Forbidden); }
     let payload = format!("{timestamp}.{}", String::from_utf8_lossy(body));
     let verified = signature.split(',').filter_map(|item| item.strip_prefix("v1="))
         .filter_map(|hex| decode_hex(hex).ok())
@@ -332,8 +381,8 @@ async fn require_owner(state: &AppState, headers: &HeaderMap) -> Result<(uuid::U
     Ok((organization_id, actor.email.clone()))
 }
 
-async fn current_subscription(state: &AppState, organization_id: uuid::Uuid) -> Result<Option<SubscriptionView>, ApiError> {
-    let row = state.database.fetch_optional(Sql::bind("SELECT plan_id, status, current_period_end, cancel_at_period_end FROM \"_appstruct_billing_subscriptions\" WHERE organization_id = $1 ORDER BY updated_at DESC, id DESC LIMIT 1",
+async fn current_subscription<C: DatabaseExecutor>(database: &C, organization_id: uuid::Uuid) -> Result<Option<SubscriptionView>, ApiError> {
+    let row = database.fetch_optional(Sql::bind("SELECT plan_id, status, current_period_end, cancel_at_period_end FROM \"_appstruct_billing_subscriptions\" WHERE organization_id = $1 ORDER BY updated_at DESC, id DESC LIMIT 1",
         [organization_id.into()],
     )).await?;
     row.map(|row| -> Result<SubscriptionView, sqlx::Error> { Ok(SubscriptionView {

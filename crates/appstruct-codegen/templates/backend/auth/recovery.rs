@@ -112,7 +112,7 @@ async fn reset_password(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn find_user_id(state: &AppState, email: &str) -> Result<Option<uuid::Uuid>, ApiError> {
+pub(crate) async fn find_user_id(state: &AppState, email: &str) -> Result<Option<uuid::Uuid>, ApiError> {
     let sql = format!(
         "SELECT a.user_id FROM \"_appstruct_auth_accounts\" a JOIN {users} u ON u.{id} = a.user_id WHERE LOWER(u.{email}) = $1",
         users = quote_ident(config::USER_TABLE),

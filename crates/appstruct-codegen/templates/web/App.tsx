@@ -1,11 +1,7 @@
 import { t } from "../ui";
-import { useState, type ComponentType } from "react";
+import { useState } from "react";
 import { resources } from "../generated/resources";
-import { customPages } from "../generated/registry";
-import type {
-  AppStructRegistry,
-  PageComponentProps,
-} from "../generated/registry";
+import { workspacePath, type AppStructRegistry } from "../generated/registry";
 import {
   Navigate,
   Outlet,
@@ -16,17 +12,32 @@ import {
 import { ResourceActorProvider, useVisibleResources } from "../resource";
 import { Layout } from "./Layout";
 import { resourceRoutes } from "./ResourceRoutes";
+import {
+  customPageRoutes,
+  PageScopeLayout,
+  workspacePages,
+} from "./PageRoutes";
 
 export function App({ registry }: { registry?: AppStructRegistry }) {
   const [router] = useState(() => {
     const routes: RuntimeRoute[] = [
       {
+        id: "_public",
+        component: () => <PageScopeLayout registry={registry} scope="public" />,
+        children: customPageRoutes(registry, "public"),
+      },
+      {
         id: "_layout",
-        component: () => <Layout resources={resources} pages={customPages} />,
+        component: () =>
+          registry?.layouts?.workspace ? (
+            <PageScopeLayout registry={registry} scope="workspace" />
+          ) : (
+            <Layout resources={resources} pages={workspacePages} />
+          ),
         children: [
-          { path: "/", component: HomeRedirect },
+          { path: workspacePath, component: HomeRedirect },
           ...resourceRoutes(registry),
-          ...customPageRoutes(registry),
+          ...customPageRoutes(registry, "workspace"),
           { path: "/empty", component: EmptyPage },
         ],
       },
@@ -48,7 +59,7 @@ function HomeRedirect() {
   const first = useVisibleResources(resources)[0];
   return (
     <Navigate
-      to={`/${first?.slug ?? customPages[0]?.path ?? "empty"}`}
+      to={`/${first?.slug ?? workspacePages[0]?.path ?? "empty"}`}
       replace
     />
   );
@@ -60,32 +71,4 @@ function EmptyPage() {
       <h1>{t("No resources")}</h1>
     </main>
   );
-}
-
-function PageRendererUnavailable() {
-  return (
-    <main className="page">
-      <div className="alert" role="alert">
-        {t("Page renderer unavailable")}
-      </div>
-    </main>
-  );
-}
-
-function customPageRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
-  const pageComponents = registry?.pages as
-    Record<string, ComponentType<PageComponentProps>> | undefined;
-  return customPages.map((page) => {
-    const Component = pageComponents?.[String(page.component)];
-    return {
-      path: absolutePath(page.path),
-      component: Component
-        ? () => <Component resources={resources} />
-        : PageRendererUnavailable,
-    };
-  });
-}
-
-function absolutePath(path: string): string {
-  return `/${path.replace(/^\/+/, "")}`;
 }

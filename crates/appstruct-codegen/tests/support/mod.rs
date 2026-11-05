@@ -9,6 +9,15 @@ static CARGO_CHECK_LOCK: Mutex<()> = Mutex::new(());
 
 #[allow(dead_code)]
 pub fn cargo_test(manifest: &Path, test: &str) -> Output {
+    cargo_test_arguments(manifest, &["--test", test])
+}
+
+#[allow(dead_code)]
+pub fn cargo_test_lib(manifest: &Path) -> Output {
+    cargo_test_arguments(manifest, &["--lib"])
+}
+
+fn cargo_test_arguments(manifest: &Path, arguments: &[&str]) -> Output {
     let _guard = CARGO_CHECK_LOCK
         .lock()
         .expect("generated crate check lock is not poisoned");
@@ -19,7 +28,7 @@ pub fn cargo_test(manifest: &Path, test: &str) -> Output {
     let output = Command::new("cargo")
         .args(["test", "--quiet", "--manifest-path"])
         .arg(manifest)
-        .args(["--test", test])
+        .args(arguments)
         .env("CARGO_TARGET_DIR", generated_target())
         .env("CARGO_INCREMENTAL", "0")
         .env("RUSTFLAGS", "-Dwarnings")

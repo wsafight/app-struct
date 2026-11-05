@@ -92,6 +92,14 @@ fn methods() -> TokenStream {
             pub fn require_tenant(&self) -> Result<TenantId, ApiError> {
                 self.tenant.ok_or(ApiError::InvalidTenant)
             }
+            pub async fn has_entitlement(&self, entitlement: &str) -> Result<bool, ApiError> {
+                crate::billing::has_entitlement(self, entitlement).await
+            }
+            pub async fn require_entitlement(&self, entitlement: &str) -> Result<(), ApiError> {
+                self.actor().ok_or(ApiError::Unauthorized)?;
+                if self.has_entitlement(entitlement).await? { Ok(()) }
+                else { Err(ApiError::EntitlementRequired(entitlement.to_owned())) }
+            }
             pub async fn send_mail(
                 &self,
                 template: &str,

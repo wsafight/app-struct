@@ -72,6 +72,72 @@ impl FileState {
     }
 }
 
+impl FileState {
+    /// Trusted maintenance only. Never scheduled automatically. Finds storage objects that have no
+    /// `_appstruct_files` row. Report mode is the default and changes nothing. Listing order is not
+    /// guaranteed and a pass cannot be resumed, so an interrupted pass starts over.
+    pub async fn reconcile_storage(&self, options: ReconcileOptions) -> Result<ReconcileReport, FileError> {
+        let minimum = std::time::Duration::from_secs(60 * 60);
+        if options.min_age < minimum
+            || !(1..=1000).contains(&options.batch_size)
+            || options.max_listed > 1000
+            || (options.mode == ReconcileMode::Delete && !(1..=10000).contains(&options.max_deletes))
+        {
+            return Err(FileError::Configuration(
+                "reconcile needs min_age >= 1h, batch_size 1..=1000, max_listed <= 1000 and, in delete mode, max_deletes 1..=10000".to_owned(),
+            ));
+        }
+        let age = chrono::Duration::from_std(options.min_age)
+            .map_err(|error| FileError::Configuration(error.to_string()))?;
+        let cutoff = chrono::Utc::now().checked_sub_signed(age)
+            .ok_or_else(|| FileError::Configuration("reconcile min_age exceeds the supported timestamp range".to_owned()))?;
+        let mut report = ReconcileReport::default();
+        let mut batch: Vec<String> = Vec::with_capacity(options.batch_size);
+        let mut stream = self.provider.list();
+        while let Some(item) = stream.next().await {
+            let object = item?;
+            report.scanned += 1;
+            if object.last_modified > cutoff { report.too_young += 1; continue; }
+            if validate_key(&object.key).is_err() { report.foreign_keys += 1; continue; }
+            batch.push(object.key);
+            if batch.len() >= options.batch_size {
+                self.reconcile_batch(&options, &mut report, std::mem::take(&mut batch)).await?;
+            }
+        }
+        if !batch.is_empty() {
+            self.reconcile_batch(&options, &mut report, batch).await?;
+        }
+        Ok(report)
+    }
+
+    async fn reconcile_batch(&self, options: &ReconcileOptions, report: &mut ReconcileReport, keys: Vec<String>) -> Result<(), FileError> {
+        let known = self.known_keys(&keys).await?;
+        for key in keys.into_iter().filter(|key| !known.contains(key)) {
+            report.orphans += 1;
+            if report.orphan_keys.len() < options.max_listed { report.orphan_keys.push(key.clone()); }
+            if options.mode != ReconcileMode::Delete || report.deleted + report.delete_failures >= options.max_deletes as u64 {
+                continue;
+            }
+            // A late commit may have created the row since the batch lookup. Check again, then
+            // delete. This narrows the race but cannot close it; `min_age` is the real guard.
+            if !self.known_keys(std::slice::from_ref(&key)).await?.is_empty() { continue; }
+            match self.provider.delete(&key).await {
+                Ok(()) => report.deleted += 1,
+                Err(_) => report.delete_failures += 1,
+            }
+        }
+        Ok(())
+    }
+
+    async fn known_keys(&self, keys: &[String]) -> Result<HashSet<String>, FileError> {
+        let rows = self.database.fetch_all(Sql::bind(
+            r#"SELECT object_key FROM "_appstruct_files" WHERE object_key IN (SELECT jsonb_array_elements_text($1::jsonb))"#,
+            [serde_json::json!(keys).into()],
+        )).await?;
+        rows.into_iter().map(|row| row.try_get("object_key").map_err(FileError::from)).collect()
+    }
+}
+
 fn reference_owner(entity: &str, record_id: &str) -> Result<serde_json::Value, FileError> {
     if [entity, record_id].iter().any(|value| value.is_empty() || value.len() > 255 || value.chars().any(char::is_control)) {
         return Err(FileError::Configuration("file owner entity and record_id must contain 1..=255 bytes without control characters".to_owned()));

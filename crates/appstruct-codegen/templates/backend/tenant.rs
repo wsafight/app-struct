@@ -186,6 +186,8 @@ async fn create_invitation(
     let token = random_token();
     let invitation_id = uuid::Uuid::now_v7();
     let transaction = state.database.begin().await?;
+    crate::product::check_capacity(&transaction, tenant).await?;
+    lock_owner(&transaction, tenant, actor.id).await?;
     transaction.execute(Sql::bind("DELETE FROM \"_appstruct_tenant_invitations\" WHERE organization_id = $1 AND LOWER(email) = $2 AND accepted_at IS NULL",
         [tenant.into(), email.clone().into()],
     )).await?;
@@ -195,6 +197,9 @@ async fn create_invitation(
             token_hash(&token).into(), actor.id.into(),
         ],
     )).await?;
+    if let Some(user) = crate::auth::find_user_id(&state, &email).await? {
+        crate::product::notify(&transaction, user, None, &format!("invitation:{invitation_id}"), "Team invitation", "You have been invited to join a team.", &format!("/accept-invitation?token={token}")).await?;
+    }
     transaction.commit().await?;
     let invitation_url = format!("{}/accept-invitation?token={token}", state.auth.config.frontend_url);
     if let Err(error) = state.auth.mail.send_invitation(&state.database, &email, &invitation_url).await {
@@ -212,12 +217,21 @@ async fn revoke_invitation(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let (_actor, tenant) = current_owner_for_mutation(&state, &headers).await?;
+    let (actor, tenant) = current_owner_for_mutation(&state, &headers).await?;
     let id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
-    state.database.execute(Sql::bind("DELETE FROM \"_appstruct_tenant_invitations\" WHERE id = $1 AND organization_id = $2 AND accepted_at IS NULL",
+    let transaction = state.database.begin().await?;
+    lock_owner(&transaction, tenant, actor.id).await?;
+    transaction.execute(Sql::bind("DELETE FROM \"_appstruct_tenant_invitations\" WHERE id = $1 AND organization_id = $2 AND accepted_at IS NULL",
         [id.into(), tenant.into()],
     )).await?;
+    transaction.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn lock_owner<C: DatabaseExecutor>(database: &C, tenant: TenantId, actor: uuid::Uuid) -> Result<(), ApiError> {
+    database.fetch_optional(Sql::bind("SELECT id FROM \"_appstruct_tenant_organizations\" WHERE id = $1 FOR NO KEY UPDATE", [tenant.into()])).await?.ok_or(ApiError::InvalidTenant)?;
+    database.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_tenant_memberships\" WHERE organization_id = $1 AND user_id = $2 AND role = 'owner'", [tenant.into(), actor.into()])).await?.ok_or(ApiError::Forbidden)?;
+    Ok(())
 }
 
 async fn accept_invitation(
@@ -228,15 +242,20 @@ async fn accept_invitation(
     let actor = state.auth.actor_for_mutation(&state.database, &headers).await?
         .ok_or(ApiError::Unauthorized)?;
     let transaction = state.database.begin().await?;
-    let row = transaction.fetch_optional(Sql::bind("SELECT id, organization_id, email, role FROM \"_appstruct_tenant_invitations\" WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP FOR UPDATE",
+    let row = transaction.fetch_optional(Sql::bind("SELECT id, organization_id, email, role FROM \"_appstruct_tenant_invitations\" WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP",
         [token_hash(&token).into()],
     )).await?.ok_or(ApiError::InvalidInvitationToken)?;
     let invitation_id: uuid::Uuid = row.try_get("id")?;
     let organization_id: uuid::Uuid = row.try_get("organization_id")?;
+    transaction.fetch_optional(Sql::bind("SELECT id FROM \"_appstruct_tenant_organizations\" WHERE id = $1 FOR NO KEY UPDATE", [organization_id.into()])).await?.ok_or(ApiError::InvalidTenant)?;
+    transaction.fetch_optional(Sql::bind("SELECT id FROM \"_appstruct_tenant_invitations\" WHERE id = $1 AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP FOR UPDATE", [invitation_id.into()])).await?.ok_or(ApiError::InvalidInvitationToken)?;
     let email: String = row.try_get("email")?;
     let role: String = row.try_get("role")?;
     if actor.email.to_ascii_lowercase() != email.to_ascii_lowercase() {
         return Err(ApiError::Forbidden);
+    }
+    if transaction.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_tenant_memberships\" WHERE organization_id = $1 AND user_id = $2", [organization_id.into(), actor.id.into()])).await?.is_none() {
+        crate::product::check_capacity(&transaction, organization_id).await?;
     }
     transaction.execute(Sql::bind("INSERT INTO \"_appstruct_tenant_memberships\" (organization_id, user_id, role, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (organization_id, user_id) DO NOTHING",
             [organization_id.into(), actor.id.into(), role.clone().into()],

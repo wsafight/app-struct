@@ -47,4 +47,31 @@ pub struct PageIr {
     pub label: String,
     pub path: String,
     pub component: String,
+    #[serde(default, skip_serializing_if = "PageScopeIr::is_workspace")]
+    pub scope: PageScopeIr,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PageScopeIr {
+    Public,
+    Account,
+    #[default]
+    Workspace,
+}
+
+impl PageScopeIr {
+    #[must_use]
+    pub fn is_workspace(&self) -> bool {
+        *self == Self::Workspace
+    }
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Account => "account",
+            Self::Workspace => "workspace",
+        }
+    }
 }

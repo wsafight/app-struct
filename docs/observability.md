@@ -77,3 +77,26 @@ This is a bounded, closed-loop regression workload against a release backend by 
 production capacity estimate. Compare results on the same host, PostgreSQL version, dataset and
 build profile. It does not model open-loop arrivals, connection pool exhaustion, production
 storage or network latency. Use deployment-representative traffic for capacity planning.
+
+## Million-row reference run
+
+One run on 2026-11-04 used 1,000,000 rows per tenant (two tenants), a release backend, PostgreSQL 17.11 and an Apple M3 Pro, with the backend, database and load generator on the same machine. It is a single sample, not an acceptance test. The run exited non-zero because two phases exceeded the default 500 ms budget at 24 clients. There were no request errors.
+
+| Phase | 1 client p95 | 8 clients p95 | 24 clients p95 |
+| --- | --- | --- | --- |
+| Offset list (page numbers, exact total) | 51 ms | 408 ms | 744 ms (over budget) |
+| Aggregate count | 49 ms | 452 ms | 692 ms (over budget) |
+| Cursor list | 0.8 ms | 1.8 ms | 3.7 ms |
+| Individual read | 0.6 ms | 1.2 ms | 5.7 ms |
+| Audited CRUD journey | 1.5 ms | 7.8 ms | 11.6 ms |
+
+The 24-client mixed sustained phase had a p95 of 570 ms against a 750 ms budget, with 0 errors in 3,733 operations.
+
+Offset lists return an exact `meta.total`, so every page request pays for a `COUNT(*)` over the tenant's rows. Query plans on a separate single-connection database with the same data shape showed:
+
+- The exact count was a parallel sequential scan of about 51 ms per request. It stayed a sequential scan with a composite index on `(tenant_id, code, id)` restricted to live rows, so an index does not remove this cost.
+- Deep `OFFSET` pages also cost more. At offset 500,000 the page took about 200 to 260 ms, and at offset 990,000 about 417 ms, with a cold-cache outlier of 2.6 s. With that composite index the same pages took about 78 ms and 127 ms. When deep pages matter, declare such an index with [schema indexes](schema-indexes.md); on a `tenant: true` soft-delete entity, `fields: [tenant_id, code, id]` with `where: deleted_at IS NULL` compiles to that index.
+
+Cursor lists do not compute a total or skip rows, so they stay in single-digit milliseconds at this size. For clients that do not need page numbers or a total, such as a mobile client, use `limit` with cursors.
+
+Page-number lists with exact totals remain the default. Treat roughly 1,000,000 rows per tenant at 24 concurrent clients on a single host as the point where they can exceed the default budget. This run did not test estimated or capped totals, so no change to the list contract was made. Per-request cost at one client (about 50 ms) is the more relevant figure for a single user.

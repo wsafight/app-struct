@@ -84,6 +84,7 @@ pub(crate) fn build_ir(
         &auth,
         &jobs,
         &file,
+        &billing,
         &root.app_name.span,
         &mut diagnostics,
     );
@@ -100,6 +101,7 @@ pub(crate) fn build_ir(
         &known_entities,
         &known_values,
         &auth,
+        root.tenant.sortable_indexes,
         &mut diagnostics,
     );
     if let Err(errors) = appstruct_ir::validate_form_rules(&entities) {
@@ -142,6 +144,22 @@ pub(crate) fn build_ir(
         .iter()
         .map(|entity| entity.table_name.clone())
         .collect::<BTreeSet<_>>();
+    for entity in &entities {
+        let path = entity.table_name.as_str();
+        let conflicts = auth.enabled && matches!(path, "account" | "notifications")
+            || tenant.enabled && matches!(path, "team" | "credits")
+            || report.enabled && path == "results"
+            || auth.enabled && file.enabled && path == "files"
+            || tenant.enabled && path == "onboarding"
+            || path == "workspace" && pages.iter().any(|page| page.path.value == "/");
+        if conflicts {
+            diagnostics.push(Diagnostic::error(
+                "AS3012",
+                format!("resource path `{path}` conflicts with a generated route"),
+                root.app_name.span.clone(),
+            ));
+        }
+    }
     let extensions = lower_extensions(
         value_objects,
         commands,
@@ -151,6 +169,7 @@ pub(crate) fn build_ir(
             known_entities: &known_entities,
             resource_paths: &resource_paths,
             auth: &auth,
+            billing: &billing,
         },
         &mut diagnostics,
     );
@@ -245,6 +264,7 @@ fn lower_entities(
     known_entities: &BTreeSet<String>,
     known_values: &BTreeSet<String>,
     auth: &AuthIr,
+    tenant_sortable_indexes: bool,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> (Vec<EntityIr>, Vec<RelationIr>, Vec<appstruct_ir::SeedIr>) {
     let mut entities = Vec::with_capacity(surface_entities.len());
@@ -306,7 +326,13 @@ fn lower_entities(
                 entity.span.clone(),
             ));
         }
-        let indexes = build_indexes(&entity, &entity_id, &fields, diagnostics);
+        let indexes = build_indexes(
+            &entity,
+            &entity_id,
+            &fields,
+            tenant_sortable_indexes,
+            diagnostics,
+        );
         let display_field = lower_display_field(&entity, &fields, diagnostics);
         let charts = build_charts(&entity, &fields, diagnostics);
         seeds.extend(build_seeds(&entity, &entity_id, &fields, diagnostics));

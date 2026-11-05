@@ -45,6 +45,8 @@ pub enum ApiError {
     Unauthorized,
     TooManyRequests,
     Forbidden,
+    EntitlementRequired(String),
+    QuotaExceeded(String),
     NotFound,
     Conflict(String),
     Validation(Vec<FieldViolation>),
@@ -121,6 +123,8 @@ impl ApiError {
             Self::Unauthorized => ("unauthorized", "Authentication is required".to_owned()),
             Self::TooManyRequests => ("rate_limited", "Too many attempts".to_owned()),
             Self::Forbidden => ("forbidden", "The operation is not allowed".to_owned()),
+            Self::EntitlementRequired(feature) => ("entitlement_required", format!("Upgrade your plan to use {feature}")),
+            Self::QuotaExceeded(feature) => ("quota_exceeded", format!("The free allowance for {feature} is exhausted. Upgrade to continue")),
             Self::NotFound => ("not_found", "The record was not found".to_owned()),
             Self::Conflict(message) => ("conflict", message),
             Self::Validation(fields) => {
@@ -148,6 +152,8 @@ impl ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, code, message, fields) = match self {
+            Self::EntitlementRequired(feature) => (StatusCode::PAYMENT_REQUIRED, "ENTITLEMENT_REQUIRED", format!("Upgrade your plan to use {feature}"), vec![]),
+            Self::QuotaExceeded(feature) => (StatusCode::PAYMENT_REQUIRED, "QUOTA_EXCEEDED", format!("The free allowance for {feature} is exhausted. Upgrade to continue"), vec![]),
             Self::InvalidId => (
                 StatusCode::BAD_REQUEST,
                 "INVALID_ID",

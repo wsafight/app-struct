@@ -40,6 +40,8 @@ pub(super) fn cargo(ir: &AppIr) -> String {
     }
     if ir.auth.enabled {
         manifest.push_str("argon2 = \"=0.6.0\"\n");
+        manifest.push_str("data-encoding = \"=2.11.1\"\n");
+        manifest.push_str("ring = \"=0.17.14\"\n");
     }
     if ir.jobs.enabled {
         manifest.push_str("cron = \"=0.17.0\"\n");
@@ -73,7 +75,9 @@ pub(super) fn cargo(ir: &AppIr) -> String {
             );
         }
         manifest.push_str("jsonschema = \"=0.58.6\"\n");
-        manifest.push_str("ring = \"=0.17.14\"\n");
+        if !ir.auth.enabled {
+            manifest.push_str("ring = \"=0.17.14\"\n");
+        }
         if ir.report.renderer == appstruct_ir::ReportRendererIr::Chromium {
             manifest.push_str("lopdf = { version = \"=0.45.0\", default-features = false }\n");
         }

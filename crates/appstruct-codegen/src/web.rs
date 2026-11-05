@@ -44,6 +44,13 @@ fn framework_files(ir: &AppIr) -> Vec<(&'static str, String)> {
     };
     vec![
         (
+            "web/src/app/PageRoutes.tsx",
+            with_app_title(include_str!("../templates/web/PageRoutes.tsx"), &title)
+                .replace("__AUTH_LINK__", if ir.auth.enabled {
+                    "<Link to={scope === \"public\" ? \"/login\" : workspacePath}>{scope === \"public\" ? t(\"Sign in\") : t(\"Workspace\")}</Link>"
+                } else { "<Link to={workspacePath}>{t(\"Workspace\")}</Link>" }),
+        ),
+        (
             "web/index.html",
             with_app_title(include_str!("../templates/web/index.html"), &title),
         ),
@@ -226,6 +233,10 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
 fn resource_detail_source(ir: &AppIr) -> String {
     let mut detail_imports = Vec::new();
     let mut detail_extras = Vec::new();
+    if ir.file.enabled && ir.auth.enabled {
+        detail_imports.push("import { RecordAttachments } from \"../file/RecordAttachments\";");
+        detail_extras.push("{id && <RecordAttachments resource={resource.slug} recordId={id} writable={controller.canUpdate} />}");
+    }
     if ir.audit.enabled {
         detail_imports.push("import { RecordHistory } from \"../audit/RecordHistory\";");
         detail_extras.push("{id && <RecordHistory entity={resource.id} recordId={id} />}");
@@ -340,11 +351,6 @@ fn registry_source(ir: &AppIr) -> String {
         .map(|component| format!("    {component}: ComponentType<PageComponentProps>;"))
         .collect::<Vec<_>>()
         .join("\n");
-    let component_import = if field_components.is_empty() && page_components.is_empty() {
-        ""
-    } else {
-        "import type { ComponentType } from \"react\";\n\n"
-    };
     let field_registry = if field_members.is_empty() {
         "Record<string, never>".to_owned()
     } else {
@@ -360,15 +366,29 @@ fn registry_source(ir: &AppIr) -> String {
         .iter()
         .map(|page| {
             format!(
-                "  {{ name: {:?}, label: {:?}, path: {:?}, component: {:?} }},",
-                page.rust_name, page.label, page.path, page.component
+                "  {{ name: {:?}, label: {:?}, path: {:?}, component: {:?}, scope: {:?} }},",
+                page.rust_name,
+                page.label,
+                page.path,
+                page.component,
+                page.scope.as_str()
             )
         })
         .collect::<Vec<_>>()
         .join("\n");
+    let workspace_path = if ir.pages.iter().any(|page| page.path == "/") {
+        "/workspace"
+    } else {
+        "/"
+    };
     format!(
-        "{}{component_import}import type {{ ResourceDefinition }} from \"../resource\";\n\nexport interface FieldComponentProps {{\n  id: string;\n  label: string;\n  required: boolean;\n  value: string | boolean | undefined;\n  error?: string;\n  readOnly: boolean;\n  onChange(value: string | boolean): void;\n}}\n\nexport interface PageComponentProps {{\n  resources: readonly ResourceDefinition[];\n}}\n\nexport interface AppStructRegistry {{\n  fields: {field_registry};\n  pages: {page_registry};\n}}\n\nexport interface CustomPageDefinition {{\n  name: string;\n  label: string;\n  path: string;\n  component: keyof AppStructRegistry[\"pages\"];\n}}\n\nexport function defineAppStructRegistry<T extends AppStructRegistry>(registry: T): T {{ return registry; }}\n\nexport const customPages: readonly CustomPageDefinition[] = [\n{pages}\n];\n",
+        "{}{}",
         generated_header("//"),
+        include_str!("../templates/web/registry.ts")
+            .replace("__FIELD_REGISTRY__", &field_registry)
+            .replace("__PAGE_REGISTRY__", &page_registry)
+            .replace("__PAGES__", &pages)
+            .replace("__WORKSPACE_PATH__", workspace_path)
     )
 }
 

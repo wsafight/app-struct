@@ -77,6 +77,21 @@ fn assert_provider(
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();
     assert!(openapi["paths"]["/api/admin/files"]["get"].is_object());
     assert!(openapi["paths"]["/api/admin/files/{id}"]["get"].is_object());
+    assert!(openapi["paths"]["/api/files/uploads"]["post"]["responses"]["201"].is_object());
+    assert!(
+        openapi["paths"]["/api/files/records/{resource}/{record_id}/{file_id}/replace"]["put"]
+            .is_object()
+    );
+    let library = artifact_text(&artifacts, "backend/src/file_library.rs");
+    assert!(library.contains("staging/{scope}{id}"));
+    assert!(
+        library
+            .split_whitespace()
+            .collect::<String>()
+            .contains("put_with_connection(&transaction")
+    );
+    assert!(library.contains("Upload size differs from the declared size"));
+    assert_eq!(file.contains("signed_url("), provider == FileProviderIr::S3);
 
     let manifest = root.join("generated/backend/Cargo.toml");
     assert_rustfmt(&manifest);

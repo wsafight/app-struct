@@ -37,6 +37,7 @@ enum Decision {
     Denied,
     RequiresRecord,
     RequiresTenant,
+    RequiresEntitlement,
 }
 
 #[derive(Serialize)]
@@ -306,6 +307,10 @@ fn evaluate(rule: &AccessRuleIr, entity: &EntityIr, sample: &Sample<'_>) -> Eval
                 ),
             }
         }
+        AccessRuleIr::Entitlement { entitlement } => evaluation(
+            Decision::RequiresEntitlement,
+            &format!("active subscription must include entitlement `{entitlement}`"),
+        ),
         AccessRuleIr::Any { rules } | AccessRuleIr::All { rules } => {
             let any = matches!(rule, AccessRuleIr::Any { .. });
             let evaluations = rules

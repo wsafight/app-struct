@@ -1,11 +1,15 @@
 import { chinese } from "./ui-messages";
 import { Boxes } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+import Decimal from "decimal.js";
 
 const defaults = {
   workspace: "Workspace",
   resources: "Resources",
   tools: "Tools",
   apiTokens: "API tokens",
+  account: "Account",
+  files: "Files",
   administration: "Administration",
   auditLog: "Audit log",
   reports: "Reports",
@@ -166,6 +170,150 @@ export function formatNumber(
     numberFormatters.set(key, formatter);
   }
   return formatter.format(value as number);
+}
+
+export function statusLabel(value: string): string {
+  const labels: Record<string, string> = {
+    todo: "To do",
+    in_progress: "In progress",
+    done: "Done",
+    queued: "Queued",
+    running: "Running",
+    rendering: "Rendering",
+    publishing: "Publishing",
+    succeeded: "Completed",
+    failed: "Failed",
+    cancelled: "Cancelled",
+    pending: "Pending review",
+    approved: "Approved",
+    rejected: "Rejected",
+  };
+  return t(labels[value] ?? value);
+}
+
+export function formatMinorMoney(value: string, currency: string): string {
+  try {
+    if (!/^-?\d+$/.test(value)) throw new Error("Invalid minor units");
+    currency = currency.toUpperCase();
+    const currencyDigits =
+      new Intl.NumberFormat(uiLocale(), {
+        style: "currency",
+        currency,
+      }).resolvedOptions().maximumFractionDigits ?? 2;
+    const digits = ["ISK", "UGX"].includes(currency) ? 2 : currencyDigits;
+    const ExactDecimal = Decimal.clone({
+      precision: Math.max(20, value.length + 3),
+    });
+    return formatNumber(
+      new ExactDecimal(value)
+        .div(new ExactDecimal(10).pow(digits))
+        .toFixed(digits),
+      {
+        style: "currency",
+        currency,
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+      },
+    );
+  } catch {
+    return t("{amount} {currency} (minor units)", {
+      amount: value,
+      currency: currency.toUpperCase(),
+    });
+  }
+}
+
+export function LoadingState({ label = t("Loading") }: { label?: string }) {
+  return (
+    <div className="loading-state" role="status" aria-label={label}>
+      <span className="sr-only">{label}</span>
+      <div aria-hidden="true" className="skeleton-line" />
+      <div aria-hidden="true" className="skeleton-line" />
+      <div aria-hidden="true" className="skeleton-line" />
+    </div>
+  );
+}
+
+export function EmptyState({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <section className="empty-state">
+      <h2>{title}</h2>
+      {description && <p>{description}</p>}
+      {children}
+    </section>
+  );
+}
+
+export function ActionFeedback({
+  error,
+  notice,
+  onRetry,
+}: {
+  error?: string;
+  notice?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <>
+      {error && (
+        <div className="alert" role="alert">
+          <p>{error}</p>
+          {onRetry && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onRetry}
+            >
+              {t("Try again")}
+            </button>
+          )}
+        </div>
+      )}
+      {notice && (
+        <p className="success-notice" role="status">
+          {notice}
+        </p>
+      )}
+    </>
+  );
+}
+
+export function useActionFeedback(formatError: (reason: unknown) => string) {
+  const active = useRef(new Set<string>());
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  async function run(
+    key: string,
+    operation: () => Promise<unknown>,
+    success = t("Changes saved"),
+  ) {
+    if (active.current.has(key)) return false;
+    active.current.add(key);
+    setPending(new Set(active.current));
+    setError("");
+    setNotice("");
+    try {
+      await operation();
+      setNotice(success);
+      return true;
+    } catch (reason) {
+      setError(formatError(reason));
+      return false;
+    } finally {
+      active.current.delete(key);
+      setPending(new Set(active.current));
+    }
+  }
+  return { error, notice, run, isPending: (key: string) => pending.has(key) };
 }
 
 function dateFormatter(

@@ -13,7 +13,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, Outlet, useSearchParams } from "../navigation";
+import { Link, Navigate, Outlet, useSearchParams } from "../navigation";
+import { workspacePath } from "../generated/registry";
 import { PromptDialog } from "../components/Dialog";
 import {
   tenantApi,
@@ -141,7 +142,7 @@ export function RequireTenant() {
   const tenant = useTenant();
   if (tenant.loading)
     return <div className="auth-loading" aria-label={t("Loading")} />;
-  return tenant.current ? <Outlet /> : <TenantOnboarding />;
+  return tenant.current ? <Outlet key={tenant.current.id} /> : <TenantOnboarding />;
 }
 
 export function TenantSwitcher() {
@@ -398,6 +399,17 @@ export function InvitationAcceptPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export function OnboardingPage() {
+  const tenant = useTenant();
+  if (tenant.loading)
+    return <div className="auth-loading" aria-label={t("Loading")} />;
+  return tenant.current ? (
+    <Navigate to={workspacePath} replace />
+  ) : (
+    <TenantOnboarding />
   );
 }
 

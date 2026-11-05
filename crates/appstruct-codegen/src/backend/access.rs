@@ -196,13 +196,16 @@ pub(super) fn operation_allowed(rule: &AccessRuleIr) -> TokenStream {
         AccessRuleIr::Role { role } => {
             quote! { context.actor().is_some_and(|actor| actor.has_role(#role)) }
         }
+        AccessRuleIr::Entitlement { entitlement } => {
+            quote! { context.has_entitlement(#entitlement).await? }
+        }
         AccessRuleIr::Any { rules } => {
             let children = rules.iter().map(operation_allowed);
-            quote! { false #(|| #children)* }
+            quote! { (false #(|| (#children))*) }
         }
         AccessRuleIr::All { rules } => {
             let children = rules.iter().map(operation_allowed);
-            quote! { true #(&& #children)* }
+            quote! { (true #(&& (#children))*) }
         }
         AccessRuleIr::Owner { .. } => unreachable!("compiler rejects owner operation rules"),
     }
@@ -221,6 +224,11 @@ fn condition(
         AccessRuleIr::Role { role } => quote! {
             context.actor().filter(|actor| actor.has_role(#role)).map(|_| Condition::all())
         },
+        AccessRuleIr::Entitlement { .. } => {
+            return Err(CodegenError::new(
+                "entitlement access is only supported on operations",
+            ));
+        }
         AccessRuleIr::Owner { field } => {
             let field = owner_field(entity, &field.0)?;
             let column = column_ident(field)?;
@@ -270,6 +278,11 @@ fn allowed(
         AccessRuleIr::Authenticated => quote! { context.actor().is_some() },
         AccessRuleIr::Role { role } => {
             quote! { context.actor().is_some_and(|actor| actor.has_role(#role)) }
+        }
+        AccessRuleIr::Entitlement { .. } => {
+            return Err(CodegenError::new(
+                "entitlement access is only supported on operations",
+            ));
         }
         AccessRuleIr::Owner { field } => {
             let field = owner_field(entity, &field.0)?;

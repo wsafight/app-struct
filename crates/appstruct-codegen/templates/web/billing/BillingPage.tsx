@@ -4,11 +4,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, CreditCard, ExternalLink } from "lucide-react";
 import { billingApi, type BillingPlan } from "../generated/client";
 import { errorMessage } from "../resource";
+import { useSearchParams } from "../navigation";
 
 export function BillingPage() {
+  const [search] = useSearchParams();
   const billing = useQuery({
     queryKey: ["billing"],
     queryFn: ({ signal }) => billingApi.overview({ signal }),
+    refetchInterval: search.get("checkout") === "success" ? 5_000 : false,
   });
   const checkout = useMutation({
     mutationFn: billingApi.checkout,
@@ -40,17 +43,46 @@ export function BillingPage() {
           <h1>{t("Billing")}</h1>
           <p>{t("Manage the organization subscription and access.")}</p>
         </div>
-        {data.customer_portal && data.subscription && (
-          <button
-            className="button-secondary"
-            type="button"
-            onClick={() => portal.mutate()}
-            disabled={portal.isPending}
-          >
-            <ExternalLink size={16} /> {t("Manage billing")}
-          </button>
-        )}
+        {data.checkout_available &&
+          data.customer_portal &&
+          data.subscription && (
+            <button
+              className="button-secondary"
+              type="button"
+              onClick={() => portal.mutate()}
+              disabled={portal.isPending}
+            >
+              <ExternalLink size={16} /> {t("Manage billing")}
+            </button>
+          )}
       </div>
+      {!data.checkout_available && (
+        <p className="alert" role="status">
+          {t(
+            "Checkout is not configured. Your free allowance is still available.",
+          )}
+        </p>
+      )}
+      {search.get("checkout") === "success" && (
+        <p role="status">
+          {t(
+            "Payment is being confirmed. Access updates automatically after the payment event arrives.",
+          )}
+        </p>
+      )}
+      {data.usage.map((allowance) => (
+        <section className="panel" key={allowance.entitlement}>
+          <h2>{allowance.entitlement}</h2>
+          <p>
+            {allowance.paid
+              ? t("Included in your plan")
+              : t("{0} of {1} free uses remaining", {
+                  "0": allowance.remaining,
+                  "1": allowance.free_limit,
+                })}
+          </p>
+        </section>
+      ))}
       {data.subscription && (
         <section className="panel">
           <div className="section-heading">
@@ -72,15 +104,26 @@ export function BillingPage() {
           <PlanCard
             key={plan.id}
             plan={plan}
-            active={data.subscription?.plan_id === plan.id}
+            active={
+              data.subscription !== null &&
+              data.subscription.plan_id === plan.id &&
+              ["active", "trialing", "past_due"].includes(
+                data.subscription.status,
+              )
+            }
             onCheckout={() => checkout.mutate(plan.id)}
-            disabled={checkout.isPending}
+            disabled={checkout.isPending || !data.checkout_available}
           />
         ))}
       </div>
       {checkout.error && (
         <div className="alert" role="alert">
           {errorMessage(checkout.error)}
+        </div>
+      )}
+      {portal.error && (
+        <div className="alert" role="alert">
+          {errorMessage(portal.error)}
         </div>
       )}
     </main>

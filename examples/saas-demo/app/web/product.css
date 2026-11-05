@@ -1,0 +1,183 @@
+.product-page {
+  max-width: 76rem;
+  padding: 2rem clamp(1rem, 5vw, 4rem) 5rem;
+  margin: auto;
+}
+
+.planning-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+.planning-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(8rem, 1fr));
+  gap: 0.5rem;
+  min-width: 59rem;
+}
+.calendar-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.calendar-day {
+  min-width: 0;
+  min-height: 8rem;
+  border: 1px solid var(--color-border);
+  padding: 0.5rem;
+}
+.calendar-day h2 {
+  font-size: 1rem;
+}
+.calendar-day .panel {
+  padding: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.ai-answer {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.calendar-controls,
+.view-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block: 1rem;
+}
+.view-switcher [aria-pressed="true"] {
+  background: var(--color-accent);
+  color: white;
+}
+.view-switcher [aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+.planning-board > section,
+.planning-card,
+.planning-agenda {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.planning-card {
+  margin-bottom: 0.75rem;
+}
+.planning-summary {
+  margin-block: 1.5rem;
+}
+.product-grid.planning-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.product-grid.planning-summary .panel {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.85rem;
+  align-content: start;
+}
+.planning-summary span {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.planning-summary strong {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.calendar-controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+@media (max-width: 700px) {
+  .planning-board {
+    grid-template-columns: 1fr;
+  }
+}
+.product-hero {
+  padding: clamp(3rem, 9vw, 7rem) 0 4rem;
+  max-width: 56rem;
+}
+.product-eyebrow {
+  color: var(--color-accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+.product-hero h1 {
+  font-size: clamp(2.5rem, 6vw, 4.8rem);
+  line-height: 1.1;
+  letter-spacing: -0.045em;
+  margin: 1rem 0 1.5rem;
+}
+.product-hero > p:not(.product-eyebrow),
+.product-intro > p {
+  color: var(--color-muted);
+  font-size: 1.15rem;
+  line-height: 1.7;
+}
+.product-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+.product-grid .panel {
+  padding: 2rem;
+}
+.product-grid p,
+.product-grid li {
+  color: var(--color-muted);
+  line-height: 1.7;
+}
+.product-step {
+  font-size: 0.85rem;
+  color: var(--color-accent);
+}
+.product-intro {
+  margin: 3rem 0;
+  max-width: 40rem;
+}
+.product-intro h1 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: -0.03em;
+}
+.product-plans {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.product-grid .product-price {
+  font-size: 1.5rem;
+  color: var(--color-text);
+}
+.product-featured {
+  border: 2px solid var(--color-accent);
+}
+.product-plans ul {
+  padding-left: 1.25rem;
+  margin: 1.5rem 0;
+}
+.product-note {
+  color: var(--color-muted);
+  margin-top: 2rem;
+}
+.studio-run {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--color-border);
+  padding: 1rem 0;
+}
+@media (max-width: 700px) {
+  .product-grid {
+    grid-template-columns: 1fr;
+  }
+  .application-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

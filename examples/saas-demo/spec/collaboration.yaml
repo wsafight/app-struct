@@ -1,0 +1,86 @@
+domain: collaboration
+
+entities:
+  ApprovalRequest:
+    label: Approval requests
+    table: approval_requests
+    tenant: true
+    fields:
+      id: { type: uuid, primary_key: true, generated: uuid_v7 }
+      task_id: { type: relation, target: Task, column: task_id, required: true, on_delete: restrict }
+      report_run_id: { type: uuid, required: true }
+      requested_by: { type: relation, target: User, column: requested_by, required: true, on_delete: restrict }
+      reviewer_id: { type: relation, target: User, column: reviewer_id, required: true, on_delete: restrict }
+      task_snapshot: { type: json, required: true }
+      state: { type: enum, values: [pending, approved, rejected, cancelled], default: pending, filterable: true }
+      note: { type: text, max_length: 2000 }
+      created_at: { type: datetime, generated: now, sortable: true }
+      completed_at: { type: datetime }
+    indexes:
+      - fields: [task_id]
+        unique: true
+        where: "state = 'pending'"
+    access:
+      list: { any: [{ owner: requested_by }, { owner: reviewer_id }] }
+      read: { any: [{ owner: requested_by }, { owner: reviewer_id }] }
+      create: { role: system }
+      update: { role: system }
+      delete: { role: system }
+
+  ApprovalDecision:
+    label: Approval history
+    table: approval_decisions
+    tenant: true
+    fields:
+      id: { type: uuid, primary_key: true, generated: uuid_v7 }
+      request_id: { type: relation, target: ApprovalRequest, column: request_id, required: true, on_delete: restrict }
+      requested_by: { type: relation, target: User, column: requested_by, required: true, on_delete: restrict }
+      reviewer_id: { type: relation, target: User, column: reviewer_id, required: true, on_delete: restrict }
+      actor_id: { type: relation, target: User, column: actor_id, required: true, on_delete: restrict }
+      decision: { type: enum, values: [submitted, approved, rejected, cancelled], required: true }
+      note: { type: text, max_length: 2000 }
+      created_at: { type: datetime, generated: now, sortable: true }
+    access:
+      list: { any: [{ owner: requested_by }, { owner: reviewer_id }] }
+      read: { any: [{ owner: requested_by }, { owner: reviewer_id }] }
+      create: { role: system }
+      update: { role: system }
+      delete: { role: system }
+
+  AiRequest:
+    label: AI history
+    table: ai_requests
+    tenant: true
+    fields:
+      id: { type: uuid, primary_key: true, generated: uuid_v7 }
+      actor_id: { type: relation, target: User, column: actor_id, required: true, on_delete: restrict }
+      request_key: { type: string, required: true, unique: true, max_length: 200 }
+      job_id: { type: uuid }
+      prompt: { type: text, required: true, max_length: 8000 }
+      model: { type: string, required: true, max_length: 200 }
+      max_tokens: { type: integer, required: true }
+      answer: { type: text, required: true, max_length: 65536 }
+      state: { type: enum, values: [queued, running, succeeded, failed, cancelled], default: queued, filterable: true }
+      error_code: { type: string, max_length: 100 }
+      created_at: { type: datetime, generated: now, sortable: true }
+      completed_at: { type: datetime }
+    access:
+      list: { owner: actor_id }
+      read: { owner: actor_id }
+      create: { role: system }
+      update: { role: system }
+      delete: { role: system }
+
+pages:
+  Planning:
+    label: Planning
+    path: planning
+    component: PlanningPage
+  Approvals:
+    label: Approvals
+    path: approvals
+    component: ApprovalsPage
+  AiWorkspace:
+    label: AI assistant
+    path: assistant
+    component: AiWorkspacePage

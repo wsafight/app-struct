@@ -4,15 +4,18 @@ mod api;
 mod audit;
 mod auth;
 mod billing;
+mod business;
 mod context;
 mod embedded;
 mod entity;
 mod extensions;
 mod file;
+mod file_library;
 mod jobs;
 mod mail;
 mod manifest;
 mod operations;
+mod product;
 mod query;
 mod realtime;
 mod report;
@@ -217,8 +220,10 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod activity;
         mod auth;
         mod billing;
+        mod business;
         mod error;
         mod file;
+        mod file_library;
         mod jobs;
         mod import_batches;
         mod logging;
@@ -226,6 +231,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         mod metrics;
         mod openapi;
         mod operations;
+        pub mod product;
         mod realtime;
         mod report;
         mod tenant;
@@ -265,7 +271,10 @@ fn service_exports(ir: &AppIr) -> TokenStream {
         quote! { pub use activity::ActivityEntry; }
     });
     quote! {
-        pub use file::{FileError, FileMetadata, FileProvider, FileState};
+        pub use file::{
+            FileError, FileMetadata, FileProvider, FileState, ReconcileMode, ReconcileOptions,
+            ReconcileReport, StoredObject,
+        };
         pub use jobs::{
             Job, JobError, JobHandler, JobHandlerError, JobReceipt, JobWorker, JobWorkerHandle,
         };
@@ -352,6 +361,9 @@ fn service_artifacts(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     artifacts.extend(audit::plan(ir)?);
     artifacts.extend(activity::plan(ir)?);
     artifacts.extend(billing::plan(ir)?);
+    artifacts.push(file_library::artifact(ir)?);
+    artifacts.push(business::artifact(ir)?);
+    artifacts.extend(product::plan(ir)?);
     artifacts.extend(auth::plan(ir)?);
     artifacts.extend(file::plan(ir)?);
     artifacts.extend(jobs::plan(ir)?);

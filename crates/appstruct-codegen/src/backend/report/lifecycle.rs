@@ -1,13 +1,23 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-pub(super) fn source() -> TokenStream {
+pub(super) fn source(usage: bool) -> TokenStream {
+    let usage_active = usage.then(|| quote! {
+        let reservation = database.fetch_optional(Sql::bind("SELECT refunded FROM \"_appstruct_billing_usage\" WHERE id = $1", [run_id.into()]))
+            .await.map_err(|_| "REPORT_USAGE_CHECK_FAILED")?.ok_or("REPORT_USAGE_RELEASED")?;
+        if reservation.try_get::<bool, _>("refunded").map_err(|_| "REPORT_USAGE_CHECK_FAILED")? { return Err("REPORT_USAGE_RELEASED".into()); }
+    });
+    let refund = usage.then(|| quote! {
+        if stage == "failed" {
+            crate::billing::refund_allowance(&transaction, run_id).await.map_err(|_| "REPORT_REFUND_FAILED")?;
+        }
+    });
     quote! {
         pub(crate) fn retryable_job_error(kind: &str, code: &str) -> bool {
             kind != "report.render" || !matches!(code,
                 "REPORT_INVALID_TEMPLATE_ARTIFACT" | "REPORT_BLOCKED_RESOURCE" | "REPORT_RESOURCE_LIMIT"
                 | "REPORT_INVALID_OUTPUT" | "REPORT_TEMPLATE_RENDER_FAILED" | "REPORT_SNAPSHOT_INVALID"
-                | "REPORT_CANCELLED")
+                | "REPORT_CANCELLED" | "REPORT_USAGE_RELEASED")
         }
         async fn ensure_render_active<C: DatabaseExecutor>(database: &C, job: &crate::Job, run_id: uuid::Uuid) -> Result<(), String> {
             let row = database.fetch_optional(Sql::bind("SELECT r.stage::text AS stage, (j.status = 'running' AND j.attempts = $3 AND j.locked_until > clock_timestamp()) AS owned FROM \"_appstruct_report_runs\" r JOIN \"_appstruct_jobs\" j ON j.id = r.execution_job_id WHERE r.id = $1 AND j.id = $2 AND r.tenant_id IS NOT DISTINCT FROM $4",
@@ -15,6 +25,7 @@ pub(super) fn source() -> TokenStream {
             )).await.map_err(|_| "REPORT_RUN_LOAD_FAILED")?.ok_or("REPORT_LEASE_LOST")?;
             if row.try_get::<String, _>("stage").map_err(|_| "REPORT_RUN_INVALID")? == "cancelled" { return Err("REPORT_CANCELLED".into()); }
             if !row.try_get::<bool, _>("owned").map_err(|_| "REPORT_RUN_INVALID")? { return Err("REPORT_LEASE_LOST".into()); }
+            #usage_active
             Ok(())
         }
         async fn wait_for_render_stop(database: &crate::database::Database, job: &crate::Job, run_id: uuid::Uuid) -> String {
@@ -23,10 +34,14 @@ pub(super) fn source() -> TokenStream {
                 if let Err(error) = ensure_render_active(database, job, run_id).await { return error; }
             }
         }
-        async fn update_report_failure<C: DatabaseExecutor>(database: &C, job: &crate::Job, run_id: uuid::Uuid, stage: &str, code: &str) -> Result<(), String> {
-            database.execute(Sql::bind("UPDATE \"_appstruct_report_runs\" r SET stage = $3, progress = 0, error_code = $4, completed_at = CASE WHEN $3 = 'failed' THEN CURRENT_TIMESTAMP ELSE r.completed_at END FROM \"_appstruct_jobs\" j WHERE r.id = $1 AND r.execution_job_id = j.id AND j.id = $2 AND j.attempts = $5 AND j.status = 'running' AND j.locked_until > clock_timestamp() AND r.stage NOT IN ('cancelled', 'succeeded')",
+        async fn update_report_failure(database: &crate::database::Database, job: &crate::Job, run_id: uuid::Uuid, stage: &str, code: &str) -> Result<(), String> {
+            let transaction = database.begin().await.map_err(|_| "REPORT_STATE_UPDATE_FAILED")?;
+            transaction.execute(Sql::bind("UPDATE \"_appstruct_report_runs\" r SET stage = $3, progress = 0, error_code = $4, completed_at = CASE WHEN $3 = 'failed' THEN CURRENT_TIMESTAMP ELSE r.completed_at END FROM \"_appstruct_jobs\" j WHERE r.id = $1 AND r.execution_job_id = j.id AND j.id = $2 AND j.attempts = $5 AND j.status = 'running' AND j.locked_until > clock_timestamp() AND r.stage NOT IN ('cancelled', 'succeeded')",
                 [run_id.into(), job.id.into(), stage.to_owned().into(), code.to_owned().into(), job.attempts.into()],
             )).await.map_err(|_| "REPORT_STATE_UPDATE_FAILED")?;
+            #refund
+            crate::product::report_finished(&transaction, run_id).await.map_err(|_| "REPORT_NOTIFICATION_FAILED")?;
+            transaction.commit().await.map_err(|_| "REPORT_STATE_UPDATE_FAILED")?;
             Ok(())
         }
         async fn publish_report(database: &crate::database::Database, file: &crate::FileState, job: &crate::Job, work: &ReportWork, content: &[u8]) -> Result<(), String> {
@@ -48,6 +63,7 @@ pub(super) fn source() -> TokenStream {
             transaction.execute(Sql::bind("UPDATE \"_appstruct_report_runs\" SET stage = 'succeeded', progress = 100, result_file_id = $2, result_object_key = $3, error_code = NULL, completed_at = CURRENT_TIMESTAMP WHERE id = $1",
                 [work.id.into(), metadata.id.into(), object_key.into()],
             )).await.map_err(|_| "REPORT_STATE_UPDATE_FAILED")?;
+            crate::product::report_finished(&transaction, work.id).await.map_err(|_| "REPORT_NOTIFICATION_FAILED")?;
             transaction.commit().await.map_err(|_| "REPORT_PUBLISH_FAILED")?;
             Ok(())
         }

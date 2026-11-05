@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 #[allow(clippy::too_many_lines)]
-pub(super) fn source(renderer: appstruct_ir::ReportRendererIr) -> TokenStream {
+pub(super) fn source(renderer: appstruct_ir::ReportRendererIr, usage: bool) -> TokenStream {
     let adapter = (renderer == appstruct_ir::ReportRendererIr::Chromium)
         .then(|| quote! { #[cfg_attr(not(unix), allow(dead_code, unused_imports))] mod adapter; });
     let render = match renderer {
@@ -11,7 +11,7 @@ pub(super) fn source(renderer: appstruct_ir::ReportRendererIr) -> TokenStream {
         }
         appstruct_ir::ReportRendererIr::Chromium => quote! { adapter::render(&work, &input).await },
     };
-    let lifecycle = super::lifecycle::source();
+    let lifecycle = super::lifecycle::source(usage);
     quote! {
         #adapter
         #lifecycle
@@ -63,7 +63,8 @@ pub(super) fn source(renderer: appstruct_ir::ReportRendererIr) -> TokenStream {
                 if let Err(code) = &result {
                     if let Ok(payload) = serde_json::from_value::<ReportJobPayload>(job.payload.clone()) {
                         let stage = if job.attempts >= job.max_attempts || !retryable_job_error(&job.kind, code) { "failed" } else { "queued" };
-                        let _ = update_report_failure(&self.database, job, payload.run_id, stage, code).await;
+                        update_report_failure(&self.database, job, payload.run_id, stage, code)
+                            .await.map_err(crate::JobHandlerError)?;
                     }
                 }
                 result.map_err(crate::JobHandlerError)

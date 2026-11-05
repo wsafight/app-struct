@@ -44,8 +44,8 @@ use self::indexes::decode_indexes;
 use self::root::{decode_app_name, decode_string_list, decode_version};
 use self::seeds::decode_seeds;
 use self::value::{
-    ensure_known_keys, expect_mapping, expect_scalar_string, expect_sequence, expect_string,
-    optional_bool, optional_string, optional_u64, required, unknown_key_diagnostics,
+    ensure_known_keys, expect_bool, expect_mapping, expect_scalar_string, expect_sequence,
+    expect_string, optional_bool, optional_string, optional_u64, required, unknown_key_diagnostics,
 };
 use self::workflow::decode_workflow;
 use crate::yaml::{MappingEntry, Node};
@@ -209,6 +209,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
             "seeds",
             "access",
             "tenant",
+            "tenant_index",
             "audit",
             "soft_delete",
             "display_field",
@@ -261,6 +262,15 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
             .map(|access| access::decode_crud_access(&access.value))
             .transpose()?,
         tenant_scoped: optional_bool(mapping, "tenant")?,
+        tenant_index: mapping
+            .get("tenant_index")
+            .map(|entry| {
+                expect_bool(&entry.value, "entity `tenant_index`").map(|value| Located {
+                    value,
+                    span: entry.value.span.clone(),
+                })
+            })
+            .transpose()?,
         audit_enabled: optional_bool(mapping, "audit")?,
         soft_delete: optional_bool(mapping, "soft_delete")?,
         workflow: mapping

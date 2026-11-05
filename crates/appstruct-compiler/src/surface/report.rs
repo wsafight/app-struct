@@ -25,6 +25,8 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceReport, Diag
             "retention_days",
             "reader_roles",
             "templates",
+            "entitlement",
+            "free_runs",
         ],
         "`modules.report`",
     )?;
@@ -35,6 +37,8 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceReport, Diag
         .unwrap_or(true);
     Ok(SurfaceReport {
         enabled,
+        entitlement: string(report.get("entitlement"), "report entitlement")?,
+        free_runs: number(report.get("free_runs"), "report free runs")?,
         renderer: string(report.get("renderer"), "report renderer")?,
         queue: string(report.get("queue"), "report queue")?,
         max_input_bytes: number(report.get("max_input_bytes"), "report max input bytes")?,

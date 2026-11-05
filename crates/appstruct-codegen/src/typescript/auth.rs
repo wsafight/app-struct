@@ -220,8 +220,8 @@ export const adminFeatures = {{ tenant: {tenant}, audit: {audit}, jobs: {jobs}, 
 
 export const authApi = {{
   me: async (options: RequestOptions = {{}}) => (await request<AuthResponse>("/api/auth/me", options)).user,
-  login: async (email: string, password: string) => {{
-    const user = (await request<AuthResponse>("/api/auth/login", {{ method: "POST", body: JSON.stringify({{ email, password }}) }})).user;
+  login: async (email: string, password: string, code?: string) => {{
+    const user = (await request<AuthResponse>("/api/auth/login", {{ method: "POST", body: JSON.stringify({{ email, password, code }}) }})).user;
     broadcastSessionChange();
     return user;
   }},

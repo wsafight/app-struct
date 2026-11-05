@@ -48,6 +48,33 @@ field types fail compilation.
 Database import and drift checks include the method and operator class, distinguishing B-tree and
 GIN indexes on the same columns.
 
+## Tenant sort indexes
+
+Enable automatic indexes for tenant-scoped lists in `appstruct.yaml`:
+
+```yaml
+modules:
+  tenant:
+    enabled: true
+    sortable_indexes: true
+```
+
+For each `tenant: true` entity, the compiler adds a non-unique B-tree index on
+`(tenant_id, sortable_field, primary_key)` for every non-primary field marked `sortable: true`.
+Entities with `soft_delete: true` get `WHERE deleted_at IS NULL`, using the mapped database column
+when `deleted_at` declares `column`, matching generated list queries.
+An existing B-tree index with the same columns and predicate already covers the sort, including
+a unique index, so the compiler skips the duplicate.
+
+The project setting defaults to `false`, preserving existing migrations. Set `tenant_index: true`
+or `tenant_index: false` on an entity to override it; opting in requires `tenant: true`.
+Generated SQL index names must fit PostgreSQL's 63-byte limit. For longer names, declare the same
+columns and predicate under `indexes` with a shorter explicit name.
+
+These indexes improve tenant filtering and ordering. Lists with page numbers still compute an
+exact total; see the [million-row reference run](observability.md#million-row-reference-run) for
+the remaining count and deep-offset costs.
+
 ## Migrations
 
 Index definitions are included in database snapshots and generated initial migrations. Adding an

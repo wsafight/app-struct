@@ -27,6 +27,20 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             .join(",\n    ");
         include_str!("../../templates/backend/billing.rs")
             .replace("__PLANS__", &plans)
+            .replace("__ACCESS__", access_source(ir))
+            .replace(
+                "__ALLOWANCES__",
+                &ir.report
+                    .entitlement
+                    .as_ref()
+                    .map_or_else(String::new, |feature| {
+                        format!(
+                            "Allowance {{ entitlement: {:?}, free_limit: {} }}",
+                            feature,
+                            ir.report.free_runs.unwrap_or(0)
+                        )
+                    }),
+            )
             .replace(
                 "__TRIALS__",
                 if ir.billing.trials { "true" } else { "false" },
@@ -51,4 +65,16 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
 
 fn escape(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn access_source(ir: &AppIr) -> &'static str {
+    let source = include_str!("../../templates/backend/billing_access.rs");
+    if ir.report.entitlement.is_some() {
+        source
+    } else {
+        source
+            .split_once("pub(crate) async fn reserve_allowance")
+            .unwrap()
+            .0
+    }
 }

@@ -273,13 +273,15 @@ impl AuthState {
         CorsLayer::new()
             .allow_origin(self.config.allowed_origin.parse::<HeaderValue>().expect("validated origin"))
             .allow_credentials(true)
-            .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
+            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE])
             .allow_headers([
                 header::CONTENT_TYPE,
                 header::IF_MATCH,
                 header::AUTHORIZATION,
                 "x-csrf-token".parse().unwrap(),
                 "x-appstruct-tenant".parse().unwrap(),
+                "idempotency-key".parse().unwrap(),
+                "x-appstruct-visitor".parse().unwrap(),
             ])
             .expose_headers([header::ETAG])
     }

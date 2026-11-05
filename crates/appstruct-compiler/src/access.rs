@@ -1,5 +1,5 @@
 use crate::surface::{Located, SurfaceAccess, SurfaceAccessRule, SurfaceEntity, SurfaceField};
-use appstruct_ir::{AccessRuleIr, AuthIr, CrudAccessIr, Diagnostic, FieldId};
+use appstruct_ir::{AccessRuleIr, AuthIr, BillingIr, CrudAccessIr, Diagnostic, FieldId};
 
 pub(crate) fn build_access(
     entity: &SurfaceEntity,
@@ -30,20 +30,39 @@ pub(crate) fn build_access(
         return None;
     }
     Some(CrudAccessIr {
-        list: lower_rule(access.list.as_ref()?, Some(entity), auth, diagnostics)?,
-        read: lower_rule(access.read.as_ref()?, Some(entity), auth, diagnostics)?,
-        create: lower_rule(access.create.as_ref()?, Some(entity), auth, diagnostics)?,
-        update: lower_rule(access.update.as_ref()?, Some(entity), auth, diagnostics)?,
-        delete: lower_rule(access.delete.as_ref()?, Some(entity), auth, diagnostics)?,
+        list: lower_rule(access.list.as_ref()?, Some(entity), auth, None, diagnostics)?,
+        read: lower_rule(access.read.as_ref()?, Some(entity), auth, None, diagnostics)?,
+        create: lower_rule(
+            access.create.as_ref()?,
+            Some(entity),
+            auth,
+            None,
+            diagnostics,
+        )?,
+        update: lower_rule(
+            access.update.as_ref()?,
+            Some(entity),
+            auth,
+            None,
+            diagnostics,
+        )?,
+        delete: lower_rule(
+            access.delete.as_ref()?,
+            Some(entity),
+            auth,
+            None,
+            diagnostics,
+        )?,
     })
 }
 
 pub(crate) fn build_operation_access(
     rule: &Located<SurfaceAccessRule>,
     auth: &AuthIr,
+    billing: &BillingIr,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<AccessRuleIr> {
-    lower_rule(rule, None, auth, diagnostics)
+    lower_rule(rule, None, auth, Some(billing), diagnostics)
 }
 
 pub(crate) fn build_entity_operation_access(
@@ -52,7 +71,7 @@ pub(crate) fn build_entity_operation_access(
     auth: &AuthIr,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<AccessRuleIr> {
-    lower_rule(rule, Some(entity), auth, diagnostics)
+    lower_rule(rule, Some(entity), auth, None, diagnostics)
 }
 
 pub(crate) fn build_field_access(
@@ -66,18 +85,20 @@ pub(crate) fn build_field_access(
     let read = access
         .read
         .as_ref()
-        .and_then(|rule| lower_rule(rule, None, auth, diagnostics));
+        .and_then(|rule| lower_rule(rule, None, auth, None, diagnostics));
     let write = access
         .write
         .as_ref()
-        .and_then(|rule| lower_rule(rule, None, auth, diagnostics));
+        .and_then(|rule| lower_rule(rule, None, auth, None, diagnostics));
     (read, write)
 }
 
+#[allow(clippy::too_many_lines)]
 fn lower_rule(
     rule: &Located<SurfaceAccessRule>,
     entity: Option<&SurfaceEntity>,
     auth: &AuthIr,
+    billing: Option<&BillingIr>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<AccessRuleIr> {
     let lowered = match &rule.value {
@@ -85,6 +106,42 @@ fn lower_rule(
         SurfaceAccessRule::Authenticated => {
             require_auth(auth, rule, diagnostics)?;
             AccessRuleIr::Authenticated
+        }
+        SurfaceAccessRule::Entitlement(entitlement) => {
+            require_auth(auth, rule, diagnostics)?;
+            let Some(billing) = billing else {
+                diagnostics.push(Diagnostic::error(
+                    "AS3079",
+                    "entitlement rules are only valid on commands and queries",
+                    rule.span.clone(),
+                ));
+                return None;
+            };
+            if !billing.enabled {
+                diagnostics.push(Diagnostic::error(
+                    "AS3079",
+                    "entitlement access requires the Billing Module",
+                    rule.span.clone(),
+                ));
+                return None;
+            }
+            if !billing
+                .plans
+                .iter()
+                .any(|plan| plan.entitlements.iter().any(|item| item == entitlement))
+            {
+                diagnostics.push(Diagnostic::error(
+                    "AS3080",
+                    format!(
+                        "access rule references undeclared billing entitlement `{entitlement}`"
+                    ),
+                    rule.span.clone(),
+                ));
+                return None;
+            }
+            AccessRuleIr::Entitlement {
+                entitlement: entitlement.clone(),
+            }
         }
         SurfaceAccessRule::Role(role_name) => {
             require_auth(auth, rule, diagnostics)?;
@@ -141,10 +198,10 @@ fn lower_rule(
             }
         }
         SurfaceAccessRule::Any(children) => AccessRuleIr::Any {
-            rules: lower_children(children, entity, auth, diagnostics)?,
+            rules: lower_children(children, entity, auth, billing, diagnostics)?,
         },
         SurfaceAccessRule::All(children) => AccessRuleIr::All {
-            rules: lower_children(children, entity, auth, diagnostics)?,
+            rules: lower_children(children, entity, auth, billing, diagnostics)?,
         },
     };
     Some(normalize(lowered))
@@ -154,11 +211,12 @@ fn lower_children(
     children: &[Located<SurfaceAccessRule>],
     entity: Option<&SurfaceEntity>,
     auth: &AuthIr,
+    billing: Option<&BillingIr>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<Vec<AccessRuleIr>> {
     let mut lowered = children
         .iter()
-        .map(|child| lower_rule(child, entity, auth, diagnostics))
+        .map(|child| lower_rule(child, entity, auth, billing, diagnostics))
         .collect::<Option<Vec<_>>>()?;
     lowered.sort_by_key(access_key);
     lowered.dedup();
@@ -213,12 +271,13 @@ fn access_key(rule: &AccessRuleIr) -> String {
         AccessRuleIr::Authenticated => "1:authenticated".to_owned(),
         AccessRuleIr::Role { role } => format!("2:role:{role}"),
         AccessRuleIr::Owner { field } => format!("3:owner:{field}"),
+        AccessRuleIr::Entitlement { entitlement } => format!("4:entitlement:{entitlement}"),
         AccessRuleIr::Any { rules } => format!(
-            "4:any:{}",
+            "5:any:{}",
             rules.iter().map(access_key).collect::<Vec<_>>().join("|")
         ),
         AccessRuleIr::All { rules } => format!(
-            "5:all:{}",
+            "6:all:{}",
             rules.iter().map(access_key).collect::<Vec<_>>().join("|")
         ),
     }
