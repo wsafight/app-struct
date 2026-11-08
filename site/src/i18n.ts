@@ -17,7 +17,7 @@ export const ui = {
     previous: '上一篇', next: '下一篇', search: '搜索', searchDocs: '搜索文档',
     searchEmpty: '没有匹配的文档。', theme: '切换主题', menuOpen: '打开菜单', menuClose: '关闭菜单',
     lang: 'Switch to English', copy: '复制', copied: '已复制', compiler: '编译器', runtime: '运行时',
-    modules: '模块', delivery: '交付', docs: '文档', browseDocs: '浏览文档', linkHeading: '链到本节',
+    modules: '模块', delivery: '交付', docs: '文档', browseDocs: '浏览文档', linkHeading: '复制本节链接',
     quickStart: '快速开始', github: 'GitHub',
   },
 } as const;
@@ -26,7 +26,7 @@ export const githubRepo = 'https://github.com/wsafight/app-struct';
 
 export const pagesMeta = {
   home: {
-    title: {en: 'AppStruct - compile application specs into Rust systems', zh: 'AppStruct - 把应用规格编译成 Rust 全栈系统'},
+    title: {en: 'AppStruct - compile YAML specs into Rust applications', zh: 'AppStruct - 将 YAML 应用规格编译为 Rust 应用'},
     description: {
       en: 'AppStruct compiles a validated YAML App Spec into PostgreSQL migrations, an Axum backend, OpenAPI, a TypeScript client, and a React application.',
       zh: 'AppStruct 将经过校验的 YAML App Spec 编译为 PostgreSQL 迁移、Axum 后端、OpenAPI、TypeScript 客户端与 React 应用。',

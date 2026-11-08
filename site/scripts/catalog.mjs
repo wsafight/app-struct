@@ -16,7 +16,7 @@ export const pages = [
   {source:'README.md', translation:'README.zh-CN.md', slug:'start/overview', group:'start', title:{en:'Overview and quick start', zh:'概览与快速开始'}, description:{en:'Build the CLI, create a project, and understand the generated stack.', zh:'构建 CLI、创建项目并了解生成的完整技术栈。'}},
   {source:'docs/installation.md', slug:'start/installation', group:'start', title:{en:'Installation', zh:'安装'}, description:{en:'Install AppStruct from source or a verified release artifact.', zh:'从源码或校验过的发布产物安装 AppStruct。'}},
   {source:'docs/existing-database.md', slug:'start/existing-database', group:'start', title:{en:'Existing PostgreSQL', zh:'已有 PostgreSQL'}, description:{en:'Import an existing schema and review the first-run migration path.', zh:'导入已有结构，并审阅首次运行的迁移流程。'}},
-  {source:'docs/compatibility.md', slug:'start/contracts', group:'start', title:{en:'Current format contracts', zh:'当前格式契约'}, description:{en:'Read and write the current format baseline.', zh:'只读写当前格式基线。'}},
+  {source:'docs/compatibility.md', slug:'start/contracts', group:'start', title:{en:'Current format contracts', zh:'当前格式契约'}, description:{en:'Review supported read and write behavior for the current format.', zh:'查看当前格式支持的读写规则。'}},
   {source:'docs/upgrading.md', slug:'start/upgrading', group:'start', title:{en:'Upgrading', zh:'升级'}, description:{en:'Upgrade the CLI, project lock, generated artifacts, and database safely.', zh:'安全升级 CLI、项目锁、生成物与数据库。'}},
 
   {source:'docs/deployment.md', slug:'delivery/deployment', group:'delivery', title:{en:'Deployment', zh:'部署'}, description:{en:'Build immutable artifacts and run migrations as an explicit release step.', zh:'构建不可变产物，并将迁移作为显式发布步骤。'}},

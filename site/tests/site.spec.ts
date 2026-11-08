@@ -9,8 +9,8 @@ const overview = `${base}start/overview/`;
 test('homepage presents the compiler and generated runtime', async ({page}) => {
   await page.goto(home);
   await expect(page.getByRole('heading', {level: 1, name: 'AppStruct'})).toBeVisible();
-  await expect(page.locator('#compiler')).toContainText('Describe intent');
-  await expect(page.locator('#runtime')).toContainText('Useful on the first run');
+  await expect(page.locator('#compiler')).toContainText('Define the app in YAML');
+  await expect(page.locator('#runtime')).toContainText('Generated UI for common tasks');
   await expect(page.locator('.app-preview')).toBeVisible();
 });
 
@@ -23,7 +23,7 @@ test('navigation opens the documentation catalog', async ({page}, info) => {
     await page.getByRole('navigation', {name: 'Primary navigation'}).getByRole('link', {name: 'Docs'}).click();
   }
   await expect(page).toHaveURL(docs);
-  await expect(page.getByRole('heading', {level: 1, name: 'Build from one source of truth'})).toBeVisible();
+  await expect(page.getByRole('heading', {level: 1, name: 'Guides and technical reference'})).toBeVisible();
 });
 
 test('documentation renders source, contents, and adjacent pages', async ({page}, info) => {
@@ -67,7 +67,7 @@ test('theme and language controls persist preferences', async ({page}) => {
   await expect(root).not.toHaveAttribute('data-theme', before || '');
   await page.getByRole('button', {name: 'Switch to Chinese'}).click();
   await expect(root).toHaveAttribute('data-lang', 'zh');
-  await expect(page.getByText('把一份应用规格，编译成类型安全的 Rust 全栈系统。')).toBeVisible();
+  await expect(page.getByText('将 App Spec 编译为类型安全的 Rust 应用栈。')).toBeVisible();
   await page.reload();
   await expect(root).toHaveAttribute('data-lang', 'zh');
 });
