@@ -149,6 +149,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                         return Err(ApiError::Forbidden);
                     }
                     let active = #module::Model { #(#create_values,)* #active_default };
+                    validate_relations(&state, &context, &active).await?;
                     validate_candidate(&active)?;
                     let model = active.insert(&savepoint).await?;
                     state.extensions.#hooks().after_create(&context, &model).await?;

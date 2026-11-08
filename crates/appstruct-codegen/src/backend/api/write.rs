@@ -153,6 +153,7 @@ fn create_handler(
                     return Err(ApiError::Forbidden);
                 }
                 let active = #module::Model { #(#create_values,)* #active_default };
+                validate_relations(&state, &context, &active).await?;
                 validate_candidate(&active)?;
                 let model = active.insert(&transaction).await?;
                 state.extensions.#hooks().after_create(&context, &model).await?;
@@ -231,6 +232,7 @@ fn update_handler(
                 {
                     return Err(ApiError::Forbidden);
                 }
+                validate_relations(&state, &context, &active).await?;
                 validate_candidate(&active)?;
                 let after = active.update(&transaction).await?;
                 state.extensions.#hooks().after_update(&context, &before, &after).await?;

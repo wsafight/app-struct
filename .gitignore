@@ -5,6 +5,11 @@
 # Local product planning notes.
 /docs/product-roadmap.zh-CN.md
 
+# Local credentials and deployment environment files.
+.env
+.env.*
+!.env.example
+
 # Local build output and compiler caches.
 .DS_Store
 /target/

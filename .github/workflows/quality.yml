@@ -76,6 +76,29 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  saas-product-browser:
+    name: SaaS product browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      APPSTRUCT_E2E_LOG_DIR: ${{ github.workspace }}/output/e2e-logs
+      APPSTRUCT_E2E_STARTUP_TIMEOUT: '120'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/setup
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: bash scripts/run-saas-product-browser-e2e.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saas-product-browser-diagnostics
+          path: |
+            output/e2e-logs/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
   postgres:
     name: PostgreSQL (${{ matrix.suite }})
     runs-on: ubuntu-24.04

@@ -431,6 +431,8 @@ async fn stripe_subscription(config: &BillingConfig, subscription_id: &str) -> R
     response.json().await.map_err(|_| ApiError::Internal)
 }
 
+__PLAN_ID_FROM_SUBSCRIPTION__
+
 async fn reconcile_subscription(
     state: &AppState, config: &BillingConfig, event_id: &str, event_type: &str,
     subscription_id: &str, event: &Value,
@@ -448,8 +450,7 @@ async fn reconcile_subscription(
     let organization_id = remote.pointer("/metadata/appstruct_organization_id")
         .and_then(Value::as_str).and_then(|value| uuid::Uuid::parse_str(value).ok())
         .ok_or(ApiError::Internal)?;
-    let plan_id = remote.pointer("/metadata/appstruct_plan_id").and_then(Value::as_str)
-        .filter(|value| PLANS.iter().any(|plan| plan.id == *value)).ok_or(ApiError::Internal)?;
+    let plan_id = plan_id_from_subscription(config, &remote)?;
     let linked = transaction.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_billing_customers\" WHERE organization_id = $1 AND provider_customer_id = $2",
         [organization_id.into(), customer.into()],
     )).await?.is_some();

@@ -13,13 +13,14 @@ through the generated API and React tenant page.
   invitation. The generated runtime sends the link through the Auth mail sender when configured.
 - `DELETE /api/tenant/invitations/{id}` revokes a pending invitation.
 - `POST /api/tenant/invitations/{token}/accept` accepts a link for the authenticated user whose
-  normalized email matches the invitation. Membership insertion is idempotent and the token can
-  only be consumed once.
+  normalized email matches the invitation. The local account's email must already be verified.
+  Membership insertion is idempotent and the token can only be consumed once.
 
 All management operations require an authenticated organization owner, CSRF validation, and a
 valid tenant membership. Invitation tokens are random opaque values; only a SHA-256 hash is stored
 in `_appstruct_tenant_invitations`. Expired, revoked, already accepted, or email-mismatched links
-return an error without revealing organization membership.
+return an error without revealing organization membership. Token-bearing in-app notifications are
+created only for verified account emails; invitation emails are still sent normally.
 
 The web runtime exposes an Organization page from the tenant switcher. Owners can send and revoke
 invitations and see pending or accepted status. An invitation link opens the acceptance page; after

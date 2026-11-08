@@ -5,7 +5,6 @@ use quote::quote;
 
 mod input;
 mod parent;
-mod relations;
 mod rows;
 
 pub(super) struct Support {

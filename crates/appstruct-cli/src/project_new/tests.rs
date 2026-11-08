@@ -19,6 +19,14 @@ fn production_web_template_compresses_and_caches_generated_assets() {
 }
 
 #[test]
+fn project_template_ignores_environment_secrets_but_keeps_the_example() {
+    let gitignore = include_str!("../../templates/common/gitignore");
+    assert!(gitignore.lines().any(|line| line == ".env"));
+    assert!(gitignore.lines().any(|line| line == ".env.*"));
+    assert!(gitignore.lines().any(|line| line == "!.env.example"));
+}
+
+#[test]
 fn production_backend_template_persists_compilation_cache() {
     let dockerfile = include_str!("../../templates/common/Dockerfile");
     assert!(dockerfile.contains("--mount=type=cache,target=/build/target"));

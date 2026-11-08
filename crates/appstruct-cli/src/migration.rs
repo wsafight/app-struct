@@ -181,13 +181,7 @@ fn accept_plan(
     database_url: Option<&str>,
 ) -> ExitCode {
     if plan.is_empty() {
-        if !crate::report::is_json() {
-            println!("Schema snapshot is current");
-        }
-        return database::apply_if_configured(project, database_url).unwrap_or_else(|| {
-            render_dev_success(None, true, false);
-            ExitCode::SUCCESS
-        });
+        return schema_current(project, database_url);
     }
     if plan.is_blocked() {
         return crate::report::fail(
@@ -205,7 +199,45 @@ fn accept_plan(
             crate::report::ExitClass::Usage,
         );
     }
-    let sql = match migration_sql(plan) {
+    let transaction = match MigrationTransaction::acquire(project) {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            return crate::report::fail(
+                "AS4106",
+                crate::report::ErrorCategory::Transaction,
+                format!("cannot commit migration plan: {error}"),
+                crate::report::ExitClass::Environment,
+            );
+        }
+    };
+    // Another process may have committed while this plan was being rendered and accepted.
+    // Recompute from the snapshot while holding the same lock used for the commit.
+    let before = match read_snapshot(project) {
+        Ok(Some(schema)) => schema,
+        Ok(None) => empty_schema(),
+        Err(error) => {
+            return crate::report::fail(
+                "AS4101",
+                crate::report::ErrorCategory::Migration,
+                format!("cannot read schema snapshot: {error}"),
+                crate::report::ExitClass::Validation,
+            );
+        }
+    };
+    let plan = diff(&before, target);
+    if plan.is_empty() {
+        drop(transaction);
+        return schema_current(project, database_url);
+    }
+    if plan.is_blocked() {
+        return crate::report::fail(
+            "AS4102",
+            crate::report::ErrorCategory::Migration,
+            "migration contains destructive or review-required changes",
+            crate::report::ExitClass::Validation,
+        );
+    }
+    let sql = match migration_sql(&plan) {
         Ok(sql) => sql,
         Err(error) => {
             return crate::report::fail(
@@ -228,7 +260,9 @@ fn accept_plan(
         }
     };
     let sql = stamp_schema_checksum(&sql, &snapshot);
-    match write_plan(project, &sql, &snapshot) {
+    let written = write_plan(&transaction, &sql, &snapshot);
+    drop(transaction);
+    match written {
         Ok(path) => {
             if !crate::report::is_json() {
                 println!("Created safe migration {}", path.display());
@@ -248,6 +282,16 @@ fn accept_plan(
             crate::report::ExitClass::Environment,
         ),
     }
+}
+
+fn schema_current(project: &Path, database_url: Option<&str>) -> ExitCode {
+    if !crate::report::is_json() {
+        println!("Schema snapshot is current");
+    }
+    database::apply_if_configured(project, database_url).unwrap_or_else(|| {
+        render_dev_success(None, true, false);
+        ExitCode::SUCCESS
+    })
 }
 
 fn render_dev_success(path: Option<&Path>, current: bool, pending: bool) {
@@ -285,8 +329,12 @@ fn empty_schema() -> DatabaseSchema {
     }
 }
 
-fn write_plan(project: &Path, sql: &str, snapshot: &str) -> io::Result<PathBuf> {
-    MigrationTransaction::acquire(project)?.commit(sql, snapshot)
+fn write_plan(
+    transaction: &MigrationTransaction,
+    sql: &str,
+    snapshot: &str,
+) -> io::Result<PathBuf> {
+    transaction.commit(sql, snapshot)
 }
 
 fn render_plan(plan: &MigrationPlan) {

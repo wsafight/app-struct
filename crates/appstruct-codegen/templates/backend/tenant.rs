@@ -198,7 +198,9 @@ async fn create_invitation(
         ],
     )).await?;
     if let Some(user) = crate::auth::find_user_id(&state, &email).await? {
-        crate::product::notify(&transaction, user, None, &format!("invitation:{invitation_id}"), "Team invitation", "You have been invited to join a team.", &format!("/accept-invitation?token={token}")).await?;
+        if crate::auth::account_email_verified(&state, user).await? {
+            crate::product::notify(&transaction, user, None, &format!("invitation:{invitation_id}"), "Team invitation", "You have been invited to join a team.", &format!("/accept-invitation?token={token}")).await?;
+        }
     }
     transaction.commit().await?;
     let invitation_url = format!("{}/accept-invitation?token={token}", state.auth.config.frontend_url);
@@ -241,6 +243,9 @@ async fn accept_invitation(
 ) -> Result<Json<Organization>, ApiError> {
     let actor = state.auth.actor_for_mutation(&state.database, &headers).await?
         .ok_or(ApiError::Unauthorized)?;
+    if !crate::auth::account_email_verified(&state, actor.id).await? {
+        return Err(ApiError::Forbidden);
+    }
     let transaction = state.database.begin().await?;
     let row = transaction.fetch_optional(Sql::bind("SELECT id, organization_id, email, role FROM \"_appstruct_tenant_invitations\" WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP",
         [token_hash(&token).into()],

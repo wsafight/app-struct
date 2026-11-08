@@ -24,6 +24,7 @@ impl DevProcesses {
         api_port: u16,
         web_port: u16,
     ) -> io::Result<Self> {
+        let log_path = prepare_log(project)?;
         let api_url = format!("http://127.0.0.1:{api_port}");
         let web_url = format!("http://127.0.0.1:{web_port}");
         let api = start_api(project, environment, database_url, api_port, &web_url)?;
@@ -37,7 +38,6 @@ impl DevProcesses {
         };
         let mut api = api;
         let mut web = web;
-        let log_path = prepare_log(project)?;
         let logs = vec![
             log_pipe("api", api.stdout.take(), Some(log_path.clone())),
             log_pipe("api", api.stderr.take(), Some(log_path.clone())),
@@ -297,9 +297,6 @@ fn prepare_log(project: &Path) -> io::Result<std::path::PathBuf> {
 }
 
 fn terminate(child: &mut Child) {
-    if child.try_wait().ok().flatten().is_some() {
-        return;
-    }
     #[cfg(unix)]
     {
         let process_group = format!("-{}", child.id());

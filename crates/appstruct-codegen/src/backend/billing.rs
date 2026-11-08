@@ -27,6 +27,10 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             .join(",\n    ");
         include_str!("../../templates/backend/billing.rs")
             .replace("__PLANS__", &plans)
+            .replace(
+                "__PLAN_ID_FROM_SUBSCRIPTION__",
+                include_str!("../../templates/backend/billing_plan.rs"),
+            )
             .replace("__ACCESS__", access_source(ir))
             .replace(
                 "__ALLOWANCES__",
@@ -76,5 +80,85 @@ fn access_source(ir: &AppIr) -> &'static str {
             .split_once("pub(crate) async fn reserve_allowance")
             .unwrap()
             .0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Value, json};
+
+    struct BillingConfig {
+        prices: Vec<(&'static str, String)>,
+    }
+
+    #[derive(Debug)]
+    enum ApiError {
+        Internal,
+    }
+
+    include!("../../templates/backend/billing_plan.rs");
+
+    fn test_config() -> BillingConfig {
+        BillingConfig {
+            prices: vec![
+                ("pro", "price_pro".to_owned()),
+                ("team", "price_team".to_owned()),
+            ],
+        }
+    }
+
+    fn subscription(items: &Value) -> Value {
+        json!({
+            "metadata": { "appstruct_plan_id": "pro" },
+            "items": { "data": items, "has_more": false }
+        })
+    }
+
+    #[test]
+    fn plan_change_uses_current_price_instead_of_stale_metadata() {
+        let remote = subscription(&json!([{ "price": { "id": "price_team" } }]));
+        assert_eq!(
+            plan_id_from_subscription(&test_config(), &remote).unwrap(),
+            "team"
+        );
+    }
+
+    #[test]
+    fn unknown_or_missing_price_is_rejected() {
+        let cases = [
+            subscription(&json!([{ "price": { "id": "price_unknown" } }])),
+            subscription(&json!([{}])),
+            subscription(&json!([{ "price": {} }])),
+            subscription(&json!([])),
+            json!({ "metadata": { "appstruct_plan_id": "pro" } }),
+        ];
+        for remote in cases {
+            assert!(plan_id_from_subscription(&test_config(), &remote).is_err());
+        }
+    }
+
+    #[test]
+    fn multiple_or_paginated_items_are_rejected() {
+        let multiple = subscription(&json!([
+            { "price": { "id": "price_pro" } },
+            { "price": { "id": "price_team" } }
+        ]));
+        assert!(plan_id_from_subscription(&test_config(), &multiple).is_err());
+
+        let paginated = json!({
+            "items": {
+                "data": [{ "price": { "id": "price_pro" } }],
+                "has_more": true
+            }
+        });
+        assert!(plan_id_from_subscription(&test_config(), &paginated).is_err());
+    }
+
+    #[test]
+    fn ambiguous_configured_price_is_rejected() {
+        let mut config = test_config();
+        config.prices.push(("team", "price_pro".to_owned()));
+        let remote = subscription(&json!([{ "price": { "id": "price_pro" } }]));
+        assert!(plan_id_from_subscription(&config, &remote).is_err());
     }
 }

@@ -30,7 +30,6 @@ pub(super) fn support(
     let creates = super::super::create_values(entity)?;
     let updates = super::super::update_values(entity)?;
     let input = super::input::support(entity, aggregate);
-    let relations = super::relations::support(ir, entity)?;
     let create_event = events(ir, entity, &primary, "create", &quote! { model }, None);
     let update_event = events(
         ir,
@@ -44,7 +43,6 @@ pub(super) fn support(
     let event_prefix = module_name(entity);
     Ok(quote! {
         #input
-        #relations
         pub async fn collection(state: &AppState, context: &RequestContext<'_>, parent: uuid::Uuid, limit: u64) -> Result<Vec<serde_json::Value>, ApiError> {
             let count = #module::select().filter(#module::Column::#relation_column.eq(parent)).count(context).await?;
             if count > limit { return Err(invalid("Collection exceeds max_items")); }

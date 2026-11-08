@@ -59,9 +59,10 @@ Register both `/api/auth/oauth/<provider>/callback` and
 callback URL; AppStruct derives the link callback by replacing the final `/callback` segment and
 uses that same URI for authorization and token exchange.
 
-The first verified OIDC login can link an existing local user with the same normalized email.
-Only enable providers whose account and email-verification policies are trusted for this purpose;
-later logins use the stored provider subject mapping rather than email matching.
+The first verified OIDC login can link an existing local user with the same normalized email only
+when that local account's email is already verified. Otherwise the login is rejected and no provider
+mapping is created. Only enable providers whose account and email-verification policies are trusted
+for this purpose; later logins use the stored provider subject mapping rather than email matching.
 
 Authenticated users can list, link, and unlink providers from the generated account UI. Linking
 requires the active session plus short-lived state and user cookies; unlinking the final usable

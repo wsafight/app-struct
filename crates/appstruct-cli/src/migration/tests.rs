@@ -20,12 +20,53 @@ fn migration_commit_refuses_existing_staging_files() {
     let temporary = tempfile::tempdir().unwrap();
     fs::create_dir(temporary.path().join("migrations")).unwrap();
     fs::create_dir(temporary.path().join(".appstruct")).unwrap();
+    let transaction = MigrationTransaction::acquire(temporary.path()).unwrap();
     let staging = temporary.path().join("migrations/0001_appstruct.sql.tmp");
     fs::write(&staging, "preserve me\n").unwrap();
 
-    let error = write_plan(temporary.path(), "SELECT 1;\n", "{}\n").unwrap_err();
-    assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+    let error = write_plan(&transaction, "SELECT 1;\n", "{}\n").unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     assert_eq!(fs::read_to_string(staging).unwrap(), "preserve me\n");
+}
+
+#[test]
+fn accept_plan_rechecks_snapshot_after_acquiring_transaction() {
+    let project = tempfile::tempdir().unwrap();
+    let table = appstruct_migrate::TableSchema {
+        id: "notes".to_owned(),
+        name: "notes".to_owned(),
+        columns: vec![appstruct_migrate::ColumnSchema {
+            id: "notes.id".to_owned(),
+            name: "id".to_owned(),
+            data_type: appstruct_migrate::DatabaseType::Uuid,
+            nullable: false,
+            primary_key: true,
+            unique: false,
+            default: None,
+            generated: None,
+        }],
+    };
+    let mut target = empty_schema();
+    target.tables.push(table);
+    let stale_plan = diff(&empty_schema(), &target);
+    fs::create_dir_all(project.path().join(".appstruct")).unwrap();
+    fs::write(
+        project.path().join(".appstruct/schema.snapshot.json"),
+        to_json(&target).unwrap(),
+    )
+    .unwrap();
+
+    // Simulate another process committing the same target after the initial diff.
+    assert_eq!(
+        accept_plan(project.path(), &target, &stale_plan, true, None),
+        ExitCode::SUCCESS
+    );
+    let migrations = fs::read_dir(project.path().join("migrations"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|value| value == "sql"))
+        .count();
+    assert_eq!(migrations, 0);
 }
 
 #[test]

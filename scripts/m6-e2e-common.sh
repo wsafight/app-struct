@@ -6,8 +6,8 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 fi
 
 m6_init() {
-  local suite="$1" api_default="$2" web_default="$3" project_name="${4:-project}"
-  if [[ -z "${APPSTRUCT_E2E_DATABASE_URL:-}" ]]; then
+  local suite="$1" api_default="$2" web_default="$3" project_name="${4:-project}" database_required="${5:-true}"
+  if [[ "$database_required" != "false" && -z "${APPSTRUCT_E2E_DATABASE_URL:-}" ]]; then
     echo "APPSTRUCT_E2E_DATABASE_URL must name a dedicated PostgreSQL test database" >&2
     exit 2
   fi

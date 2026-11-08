@@ -13,7 +13,7 @@ mod settings;
 #[allow(unused_imports)]
 pub(crate) use session::{random_token, token_hash};
 #[allow(unused_imports)]
-pub(crate) use recovery::find_user_id;
+pub(crate) use recovery::{account_email_verified, find_user_id};
 
 pub use mail::{AuthMailSender, DevMailSender, SmtpMailSender};
 pub use session::AuthState;

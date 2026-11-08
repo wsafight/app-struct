@@ -163,6 +163,7 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
                     if !state.extensions.#policy().can_update(&context, &before, &input, &candidate).await? {
                         return Err(ApiError::Forbidden);
                     }
+                    validate_relations(&state, &context, &active).await?;
                     validate_candidate(&active)?;
                     let after = active.update(&savepoint).await?;
                     state.extensions.#hooks().after_update(&context, &before, &after).await?;

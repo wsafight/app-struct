@@ -8,6 +8,7 @@
 | Rust 格式、Clippy、workspace 测试、依赖策略与 Shell 清理回归 | 是 | 是 |
 | minimal/dashboard/saas 生成 Web 的依赖检查、格式、lint、类型、测试与构建 | 三套全部 | 三套全部 |
 | 文档类型、构建、链接与桌面/移动浏览器测试 | 是 | 是 |
+| 基于生成示例 Web 的 SaaS 产品桌面/移动浏览器旅程 | 是 | 是 |
 | PostgreSQL 迁移、结构拉取与授权契约 | 是 | 是 |
 | PostgreSQL 查询与组合运维/浏览器回归 | 是 | 是 |
 | Dashboard 浏览器、Tenant、Audit、Mail、Jobs/Webhooks/Realtime、File、SaaS、批量与 Chromium 报表 | — | 是 |

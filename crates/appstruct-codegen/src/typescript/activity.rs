@@ -98,13 +98,7 @@ async function downloadActivityAttachment(
     headers: requestHeaders(undefined, path),
   }});
   if (!response.ok) {{
-    const body = (await response.json().catch(() => null)) as ErrorEnvelope | null;
-    throw new ApiError(
-      response.status,
-      body?.error.code ?? "HTTP_ERROR",
-      body?.error.message ?? `Request failed with status ${{response.status}}`,
-      body?.error.fields,
-    );
+    throw await responseError(response);
   }}
   return response.blob();
 }}

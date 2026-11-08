@@ -261,8 +261,11 @@ async fn concurrent_invitation_acceptance_respects_the_last_seat() {
     let Some((root, database, schema, router)) = setup().await else { return; };
     let (mut owner, _) = user(&router, "seat-owner").await;
     let tenant = team(&router, &mut owner).await;
-    let (first, _) = user(&router, "seat-first").await;
-    let (second, _) = user(&router, "seat-second").await;
+    let (first, first_id) = user(&router, "seat-first").await;
+    let (second, second_id) = user(&router, "seat-second").await;
+    for user_id in [first_id, second_id] {
+        database.execute(Sql::bind("UPDATE \"_appstruct_auth_accounts\" SET email_verified_at = CURRENT_TIMESTAMP WHERE user_id = $1", [user_id.into()])).await.unwrap();
+    }
     let mut tokens = Vec::new();
     for email in ["seat-first@example.test", "seat-second@example.test"] {
         assert_eq!(request(&router, &owner, "POST", "/api/tenant/invitations", json!({ "email": email, "role": "member" }), "").await.status(), StatusCode::CREATED);

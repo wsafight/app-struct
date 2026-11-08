@@ -189,7 +189,7 @@ fn oauth_accounts() -> TableSchema {
                 "provider",
                 DatabaseType::Text,
                 false,
-                false,
+                true,
             ),
             column(
                 "oauth_accounts.subject",

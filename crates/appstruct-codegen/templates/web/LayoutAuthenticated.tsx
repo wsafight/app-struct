@@ -16,7 +16,11 @@ import { useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "../navigation";
 import { useAuth } from "../auth/Auth";
 __AUDIT_RESOURCE_IMPORT__;
-import { type ResourceDefinition, __RESOURCE_HOOKS__ } from "../resource";
+import {
+  errorMessage,
+  type ResourceDefinition,
+  __RESOURCE_HOOKS__,
+} from "../resource";
 __TENANT_IMPORT__;
 import { productApi, productFeatures } from "../generated/client";
 import { useQuery } from "@tanstack/react-query";
@@ -32,8 +36,21 @@ export function Layout({
   const auth = useAuth();
   const { pathname } = useLocation();
   const [openPath, setOpenPath] = useState<string | null>(null);
+  const [logoutPending, setLogoutPending] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
   const toggle = useRef<HTMLButtonElement>(null);
   const menuOpen = openPath === pathname;
+  async function logout() {
+    setLogoutPending(true);
+    setLogoutError("");
+    try {
+      await auth.logout();
+    } catch (reason) {
+      setLogoutError(errorMessage(reason));
+    } finally {
+      setLogoutPending(false);
+    }
+  }
   const notifications = useQuery({
     queryKey: appQueryKeys.product.notifications(1),
     queryFn: ({ signal }) => productApi.notifications(1, { signal }),
@@ -209,11 +226,17 @@ export function Layout({
             className="icon-button"
             title={uiText("signOut")}
             aria-label={uiText("signOut")}
-            onClick={() => void auth.logout()}
+            disabled={logoutPending}
+            onClick={() => void logout()}
           >
             <LogOut size={17} aria-hidden />
           </button>
         </div>
+        {logoutError && (
+          <div className="alert" role="alert">
+            {logoutError}
+          </div>
+        )}
       </aside>
       <div className="workspace">
         <header className="topbar">

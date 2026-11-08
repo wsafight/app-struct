@@ -4,6 +4,7 @@ mod bulk;
 mod fields;
 mod lookup;
 mod realtime;
+mod relations;
 mod workflow;
 mod write;
 use super::query::list_support;
@@ -68,6 +69,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         &updates,
     )?;
     let validators = validation_functions(entity)?;
+    let relation_validation = relations::support(ir, entity)?;
     let field_access = fields::support(entity, &module)?;
     let realtime = if ir.realtime.enabled {
         realtime::support(entity, &module, &policy, &parse_id)?
@@ -150,6 +152,7 @@ pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenErr
         #collection_support
         #handlers
         #validators
+        #relation_validation
         #field_access
         #realtime
         #activity

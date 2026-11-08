@@ -161,7 +161,12 @@ fn generated_web_uses_the_tanstack_runtime() {
     let list = artifact_text(&artifacts, "web/src/pages/ResourceList.tsx");
     let filters = artifact_text(&artifacts, "web/src/pages/ResourceFilters.tsx");
     let form = artifact_text(&artifacts, "web/src/pages/ResourceForm.tsx");
+    let client = artifact_text(&artifacts, "web/src/generated/client.ts");
 
+    assert!(client.contains("function parseErrorEnvelope(body: unknown)"));
+    assert!(client.contains("async function responseError(response: Response)"));
+    assert!(client.contains("throw await responseError(response);"));
+    assert!(!client.contains("body?.error.code"));
     assert!(package.contains("@tanstack/react-query"));
     assert!(package.contains("@tanstack/react-router"));
     assert!(package.contains("@tanstack/react-table"));
@@ -388,7 +393,14 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     );
     assert!(layout.contains("fallbackTitle=\"Project Hub\""));
     assert!(layout.contains("await auth.logout();"));
+    assert!(layout.contains("disabled={logoutPending}"));
+    assert!(layout.contains("setLogoutError(errorMessage(reason));"));
+    assert!(layout.contains("onClick={() => void logout()}"));
+    assert!(!layout.contains("onClick={() => void auth.logout()}"));
     assert!(!layout.contains("useNavigate"));
+    assert!(
+        !artifact_text(&artifacts, "web/src/auth-interaction.test.tsx").contains("__TENANT_MOCK__")
+    );
     assert!(artifact_text(&artifacts, "web/src/styles.css").contains(".sidebar-account"));
     let public_auth_pages = artifact_text(&artifacts, "web/src/auth/PublicAuthPages.tsx");
     assert!(public_auth_pages.contains("auth-brand\">Project Hub"));
@@ -499,7 +511,12 @@ fn oauth_enabled_auth_publishes_oidc_contracts() {
     assert!(oauth.contains("state.auth.config.secure_cookie"));
     assert!(oauth.contains("SameSite=Lax{secure}"));
     assert!(oauth.contains("const SIGNUP_DISABLED_PROVIDERS: &[&str] = &[\"oidc\"]"));
-    assert!(oauth.contains("if !signup_allowed(provider)"));
+    assert!(
+        oauth
+            .split_whitespace()
+            .collect::<String>()
+            .contains("if!signup_allowed(provider)")
+    );
     assert!(artifact_text(&artifacts, "web/src/generated/client.ts").contains("startOAuth"));
     let openapi: Value =
         serde_json::from_str(artifact_text(&artifacts, "openapi/openapi.json")).unwrap();

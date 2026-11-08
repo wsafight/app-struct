@@ -19,6 +19,33 @@ fn log_pipe_ignores_missing_handles_and_drains_available_lines() {
 }
 
 #[test]
+fn spawn_prepares_log_before_starting_processes() {
+    let project = tempfile::tempdir().unwrap();
+    fs::write(
+        project.path().join("appstruct.lock"),
+        "lock_version = 1\nproject_layout_version = 2\nappstruct = \"0.2.0\"\n",
+    )
+    .unwrap();
+    fs::create_dir_all(project.path().join(".appstruct")).unwrap();
+    fs::write(project.path().join(".appstruct/logs"), "not a directory").unwrap();
+
+    let error = match DevProcesses::spawn(
+        project.path(),
+        &ProjectEnvironment::default(),
+        "postgresql://127.0.0.1:1/appstruct?sslmode=disable",
+        3000,
+        5173,
+    ) {
+        Ok(processes) => {
+            drop(processes);
+            panic!("log preparation unexpectedly succeeded");
+        }
+        Err(error) => error,
+    };
+    assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+}
+
+#[test]
 fn terminate_stops_a_sleeping_child() {
     let mut child = Command::new("sleep")
         .arg("30")
@@ -47,6 +74,39 @@ fn terminate_isolated_group_preserves_an_unrelated_child() {
     assert!(child.try_wait().unwrap().is_some());
     assert!(!process_group_alive(&group));
     assert!(unrelated_running);
+}
+
+#[cfg(unix)]
+#[test]
+fn terminate_stops_process_group_after_parent_exits() {
+    let mut command = Command::new("sh");
+    command
+        .args(["-c", "sleep 30 &"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    isolate_process_group(&mut command);
+    let mut child = command.spawn().unwrap();
+    let process_group = format!("-{}", child.id());
+    assert!(child.wait().unwrap().success());
+    assert!(process_group_alive(&process_group));
+
+    terminate(&mut child);
+
+    let mut stopped = false;
+    for _ in 0..50 {
+        if !process_group_alive(&process_group) {
+            stopped = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    if !stopped {
+        let _ = Command::new("kill")
+            .args(["-KILL", "--", &process_group])
+            .status();
+    }
+    assert!(stopped, "descendant survived its parent's termination");
 }
 
 #[test]

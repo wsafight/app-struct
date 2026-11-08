@@ -140,7 +140,15 @@ fn runtime_source() -> String {
         list_runtime_source()
     )
 }
-fn request_runtime_source() -> &'static str {
+fn request_runtime_source() -> String {
+    format!(
+        "{}\n{}",
+        error_runtime_source(),
+        request_transport_runtime_source()
+    )
+}
+
+fn error_runtime_source() -> &'static str {
     r#"export const API_BASE = (import.meta.env.PUBLIC_API_URL as string | undefined) ?? (import.meta.env.VITE_API_URL as string | undefined) ?? (import.meta.env.PROD ? "" : "http://127.0.0.1:3000");
 
 export interface RequestOptions { signal?: AbortSignal; }
@@ -162,7 +170,41 @@ interface ErrorEnvelope {
   };
 }
 
-export class ApiError extends Error {
+function parseErrorEnvelope(body: unknown): Partial<ErrorEnvelope["error"]> {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return {};
+  const error = (body as Record<string, unknown>).error;
+  if (error === null || typeof error !== "object" || Array.isArray(error)) return {};
+  const candidate = error as Record<string, unknown>;
+  const fields = Array.isArray(candidate.fields)
+    ? candidate.fields.filter((field): field is FieldViolation =>
+        field !== null &&
+        typeof field === "object" &&
+        !Array.isArray(field) &&
+        typeof (field as Record<string, unknown>).field === "string" &&
+        typeof (field as Record<string, unknown>).message === "string")
+    : undefined;
+  return {
+    code: typeof candidate.code === "string" ? candidate.code : undefined,
+    message: typeof candidate.message === "string" ? candidate.message : undefined,
+    fields,
+  };
+}
+
+async function responseError(response: Response): Promise<ApiError> {
+  const body: unknown = await response.json().catch(() => null);
+  const error = parseErrorEnvelope(body);
+  return new ApiError(
+    response.status,
+    error.code ?? "HTTP_ERROR",
+    error.message ?? `Request failed with status ${response.status}`,
+    error.fields,
+  );
+}
+"#
+}
+
+fn request_transport_runtime_source() -> &'static str {
+    r#"export class ApiError extends Error {
   constructor(
     public readonly status: number,
     public readonly code: string,
@@ -208,16 +250,10 @@ export async function request<T>(path: string, init?: RequestInit, revisionKey?:
     credentials: "include",
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as ErrorEnvelope | null;
     if (response.status === 401 && typeof window !== "undefined") {
       window.dispatchEvent(new Event("appstruct:unauthorized"));
     }
-    throw new ApiError(
-      response.status,
-      body?.error.code ?? "HTTP_ERROR",
-      body?.error.message ?? `Request failed with status ${response.status}`,
-      body?.error.fields,
-    );
+    throw await responseError(response);
   }
   const etag = response.headers.get("ETag");
   if (etag && revisionKey) resourceEtags.set(revisionKey, etag);

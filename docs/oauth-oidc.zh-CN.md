@@ -50,7 +50,7 @@ GitHub 使用 OAuth API，需要：
 
 `GET /api/auth/oauth/<provider>/start` 创建短时 HttpOnly state cookie，并重定向到 Provider。回调会校验该 state、交换 code、获取 Provider profile，然后创建或复用本地用户。Provider subject 映射存储在 `_appstruct_auth_oauth_accounts` 中；access 和 refresh token 永不持久化。通用 OIDC 和 Google 的 userinfo 必须同时包含 `email` 与 `email_verified`；GitHub 使用 `/user/emails`，只接受 primary 且 verified 的邮箱。
 
-首次已验证的 OIDC 登录可以把相同规范化邮箱的现有本地用户关联起来。只有在账户和邮箱验证策略可信时才启用该 Provider；之后的登录使用已存储的 Provider subject 映射，而不再按邮箱匹配。
+首次已验证的 OIDC 登录可以把相同规范化邮箱的现有本地用户关联起来，但该本地账户的邮箱必须已经完成验证；否则登录会被拒绝，且不会创建 Provider 映射。只有在账户和邮箱验证策略可信时才启用该 Provider；之后的登录使用已存储的 Provider subject 映射，而不再按邮箱匹配。
 
 已登录用户可以在生成的账户界面中查看、绑定和解绑 Provider。绑定同时校验当前会话、短期 state
 和用户 cookie；解绑最后一种可用登录方式会被拒绝。

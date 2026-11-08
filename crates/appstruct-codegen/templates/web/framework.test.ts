@@ -1,5 +1,10 @@
 import { describe, expect, it } from "@rstest/core";
-import { ApiError, requestHeaders, tenantStorageKey } from "./generated/client";
+import {
+  ApiError,
+  request,
+  requestHeaders,
+  tenantStorageKey,
+} from "./generated/client";
 import { validateResourceSearch } from "./navigation";
 import {
   buildResourceFilterQuery,
@@ -344,6 +349,67 @@ describe("requestHeaders", () => {
     } finally {
       if (descriptor) Object.defineProperty(window, "localStorage", descriptor);
       else delete (window as { localStorage?: Storage }).localStorage;
+    }
+  });
+});
+
+describe("request error envelopes", () => {
+  it("parses valid error details and field violations", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "VALIDATION_FAILED",
+            message: "Check the input",
+            fields: [{ field: "title", message: "Required" }],
+          },
+        }),
+        { status: 422 },
+      );
+    try {
+      const error = await request<never>("/failure").catch(
+        (reason: unknown) => reason,
+      );
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        status: 422,
+        code: "VALIDATION_FAILED",
+        message: "Check the input",
+        fields: [{ field: "title", message: "Required" }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("falls back safely for malformed envelopes and non-JSON responses", async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      for (const body of [
+        null,
+        [],
+        { error: null },
+        { error: { code: 42, message: false, fields: "invalid" } },
+        undefined,
+      ]) {
+        globalThis.fetch = async () =>
+          new Response(body === undefined ? "not-json" : JSON.stringify(body), {
+            status: 500,
+          });
+        const error = await request<never>("/failure").catch(
+          (reason: unknown) => reason,
+        );
+        expect(error).toBeInstanceOf(ApiError);
+        expect(error).toMatchObject({
+          status: 500,
+          code: "HTTP_ERROR",
+          message: "Request failed with status 500",
+          fields: [],
+        });
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });

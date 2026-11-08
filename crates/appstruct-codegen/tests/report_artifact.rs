@@ -61,11 +61,51 @@ fn report_backend_owns_authorization_idempotency_and_dispatch() {
     assert!(client.contains("export interface ReportInputMap"));
     assert!(client.contains("\"order-summary\": { \"order_id\": string }"));
     assert!(client.contains("Idempotency-Key"));
+    assert!(client.contains("throw await responseError(response);"));
+    assert!(!client.contains("body?.error.code"));
     let app = artifact_text(&artifacts, "web/src/app/App.tsx");
     assert!(app.contains("path: \"/reports\""));
     let page = artifact_text(&artifacts, "web/src/report/ReportPage.tsx");
     assert!(page.contains("refetchInterval"));
     assert!(page.contains("reportApi.download"));
+    assert!(page.contains("withBooleanDefaults(selectedTemplate, values)"));
+    assert!(page.contains("!supportedInput(selectedTemplate)"));
+    assert!(page.contains("if (numeric && value === \"\") clear();"));
+    let interaction = artifact_text(&artifacts, "web/src/report/report-interaction.test.tsx");
+    assert!(interaction.contains("const templateName = \"order-summary\";"));
+    assert!(!interaction.contains("__REPORT_TEMPLATE_NAME__"));
+    let auth_interaction = artifact_text(&artifacts, "web/src/auth-interaction.test.tsx");
+    assert!(auth_interaction.contains("rs.mock(\"./tenant/Tenant\""));
+    assert!(!auth_interaction.contains("__TENANT_MOCK__"));
+}
+
+#[test]
+fn report_schema_types_stay_typed_while_unsupported_ui_inputs_are_rejected() {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m7-report-project");
+    let mut ir = compile_project(&fixture).unwrap();
+    ir.report.templates[0].input_schema = serde_json::json!({
+        "type": "object",
+        "required": ["mode", "tags", "options"],
+        "properties": {
+            "mode": { "type": "string", "enum": ["fast", "full"] },
+            "tags": { "type": "array", "items": { "type": "string" } },
+            "options": {
+                "type": "object",
+                "required": ["verbose"],
+                "properties": { "verbose": { "type": "boolean" } }
+            }
+        }
+    })
+    .to_string();
+    let artifacts = plan(&ir).unwrap();
+    let client = artifact_text(&artifacts, "web/src/generated/client.ts");
+    assert!(client.contains("\"mode\": \"fast\" | \"full\""));
+    assert!(client.contains("\"tags\": Array<string>"));
+    assert!(client.contains("\"options\": { \"verbose\": boolean }"));
+    let page = artifact_text(&artifacts, "web/src/report/ReportPage.tsx");
+    assert!(page.contains("{t(\"Unsupported report input type\")}"));
+    assert!(page.contains("schemaField(schema).type !== \"unsupported\""));
 }
 
 #[test]

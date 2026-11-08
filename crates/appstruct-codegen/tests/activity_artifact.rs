@@ -53,6 +53,11 @@ fn activity_backend_owns_target_authorization_and_tombstones() {
     let client = artifact_text(&artifacts, "web/src/generated/client.ts");
     assert!(client.contains("export const activityApi"));
     assert!(client.contains("export type ActivityResource = \"orders\""));
+    assert!(client.contains("throw await responseError(response);"));
+    assert!(!client.contains("body?.error.code"));
+    let interaction = artifact_text(&artifacts, "web/src/activity/activity-client.test.ts");
+    assert!(interaction.contains(".download(\"orders\", \"record-1\", \"entry-1\")"));
+    assert!(!interaction.contains("__ACTIVITY_RESOURCE__"));
     let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
     assert!(resources.contains("activity: { maxCommentBytes: 4000, attachments: true"));
     let detail = artifact_text(&artifacts, "web/src/pages/ResourceDetail.tsx");

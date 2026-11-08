@@ -123,7 +123,7 @@ pub(crate) async fn find_user_id(state: &AppState, email: &str) -> Result<Option
     )).await?.map(|row| row.try_get("user_id").map_err(ApiError::from)).transpose()
 }
 
-pub(super) async fn account_email_verified(
+pub(crate) async fn account_email_verified(
     state: &AppState, user_id: uuid::Uuid,
 ) -> Result<bool, ApiError> {
     Ok(state.database.fetch_optional(Sql::bind("SELECT email_verified_at FROM \"_appstruct_auth_accounts\" WHERE user_id = $1",

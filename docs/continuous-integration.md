@@ -9,6 +9,7 @@ before building the five platform archives or creating a draft Release.
 | Rust format, Clippy, workspace tests, dependency policy and shell cleanup | Yes | Yes |
 | Generated minimal/dashboard/saas Web audit, format, lint, types, tests and build | All three | All three |
 | Documentation types, build, links and desktop/mobile browser tests | Yes | Yes |
+| SaaS product desktop/mobile browser journeys against the generated example Web | Yes | Yes |
 | PostgreSQL migration, introspection and authorization contracts | Yes | Yes |
 | PostgreSQL query and combined operations/browser regressions | Yes | Yes |
 | Dashboard browser, Tenant, Audit, Mail, Jobs/Webhooks/Realtime, File, SaaS, bulk and Chromium reports | — | Yes |

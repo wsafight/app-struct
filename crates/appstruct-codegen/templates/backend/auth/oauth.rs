@@ -224,13 +224,19 @@ async fn unlink_account(
     }
     let transaction = state.database.begin().await?;
     let account = transaction
-        .fetch_optional(Sql::bind("SELECT (SELECT COUNT(*) FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1) AS oauth_count, a.password_hash FROM \"_appstruct_auth_accounts\" a WHERE a.user_id = $1",
+        .fetch_optional(Sql::bind("SELECT password_hash FROM \"_appstruct_auth_accounts\" WHERE user_id = $1 FOR UPDATE",
+            [actor.id.into()],
+        ))
+        .await?
+        .ok_or(ApiError::Internal)?;
+    let password_hash: String = account.try_get("password_hash")?;
+    let account = transaction
+        .fetch_optional(Sql::bind("SELECT COUNT(*) AS oauth_count FROM \"_appstruct_auth_oauth_accounts\" WHERE user_id = $1",
             [actor.id.into()],
         ))
         .await?
         .ok_or(ApiError::Internal)?;
     let count: i64 = account.try_get("oauth_count")?;
-    let password_hash: String = account.try_get("password_hash")?;
     if count <= 1 && password_hash.is_empty() {
         return Err(ApiError::Conflict(
             "The last linked login method cannot be removed".to_owned(),
@@ -447,7 +453,7 @@ async fn find_or_create_oauth_user(
     let transaction = state.database.begin().await?;
     let user_id = if let Some(row) = transaction
         .fetch_optional(Sql::bind(format!(
-                "SELECT {id} FROM {users} WHERE LOWER({email}) = $1",
+                "SELECT u.{id} AS user_id, a.email_verified_at FROM {users} u JOIN \"_appstruct_auth_accounts\" a ON a.user_id = u.{id} WHERE LOWER(u.{email}) = $1 FOR UPDATE OF a",
                 id = quote_ident(config::USER_ID_COLUMN),
                 users = quote_ident(config::USER_TABLE),
                 email = quote_ident(config::USER_EMAIL_COLUMN),
@@ -456,7 +462,15 @@ async fn find_or_create_oauth_user(
         ))
         .await?
     {
-        row.try_get(config::USER_ID_COLUMN)?
+        let verified = row
+            .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("email_verified_at")?
+            .is_some();
+        if !verified {
+            return Err(ApiError::Conflict(
+                "The local account email must be verified before OAuth login".to_owned(),
+            ));
+        }
+        row.try_get("user_id")?
     } else {
         if !signup_allowed(provider) {
             return Err(ApiError::Forbidden);

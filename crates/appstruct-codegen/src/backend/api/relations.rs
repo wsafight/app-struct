@@ -1,4 +1,4 @@
-use super::super::super::{access, module_name, parse_ident};
+use super::super::{access, module_name, parse_ident};
 use crate::CodegenError;
 use appstruct_ir::{AppIr, EntityIr, FieldTypeIr};
 use proc_macro2::TokenStream;
@@ -36,6 +36,7 @@ pub(super) fn support(ir: &AppIr, entity: &EntityIr) -> Result<TokenStream, Code
         });
     }
     Ok(quote! {
+        #[allow(unused_variables)]
         async fn validate_relations(state: &AppState, context: &RequestContext<'_>, model: &#module::Model) -> Result<(), ApiError> {
             #(#checks)*
             Ok(())

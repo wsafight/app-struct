@@ -63,6 +63,9 @@ export function ReportPage() {
     () => templates.data?.find((template) => template.name === selected),
     [selected, templates.data],
   );
+  const inputValues = selectedTemplate
+    ? withBooleanDefaults(selectedTemplate, values)
+    : values;
   const error = create.error ?? templates.error ?? runs.error;
   const total = runs.data?.meta.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -143,7 +146,7 @@ export function ReportPage() {
           {selectedTemplate && (
             <SchemaFields
               template={selectedTemplate}
-              values={values}
+              values={inputValues}
               onChange={setValues}
             />
           )}
@@ -153,11 +156,15 @@ export function ReportPage() {
             disabled={
               !selectedTemplate ||
               create.isPending ||
-              !requiredPresent(selectedTemplate, values)
+              !supportedInput(selectedTemplate) ||
+              !requiredPresent(selectedTemplate, inputValues)
             }
             onClick={() =>
               selectedTemplate &&
-              create.mutate({ template: selectedTemplate.name, data: values })
+              create.mutate({
+                template: selectedTemplate.name,
+                data: inputValues,
+              })
             }
           >
             <FileText size={16} /> {t("Generate")}
@@ -272,6 +279,11 @@ export function ReportPage() {
   );
 }
 
+type SchemaField =
+  | { type: "string" | "number" | "boolean" }
+  | { type: "enum"; options: string[] }
+  | { type: "unsupported" };
+
 function SchemaFields({
   template,
   values,
@@ -290,10 +302,44 @@ function SchemaFields({
   return (
     <>
       {Object.entries(properties).map(([name, rawSchema]) => {
-        const schema = objectValue(rawSchema);
-        const type = typeof schema.type === "string" ? schema.type : "string";
+        const field = schemaField(rawSchema);
         const set = (value: unknown) => onChange({ ...values, [name]: value });
-        if (type === "boolean")
+        const clear = () => {
+          const next = { ...values };
+          delete next[name];
+          onChange(next);
+        };
+        if (field.type === "unsupported")
+          return (
+            <label key={name}>
+              {name}
+              <input type="text" value="" disabled />
+              <small className="field-error">
+                {t("Unsupported report input type")}
+              </small>
+            </label>
+          );
+        if (field.type === "enum")
+          return (
+            <label key={name}>
+              {name}
+              <select
+                required={required.has(name)}
+                value={String(values[name] ?? "")}
+                onChange={(event) =>
+                  event.target.value === "" ? clear() : set(event.target.value)
+                }
+              >
+                <option value="">{t("Select...")}</option>
+                {field.options.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          );
+        if (field.type === "boolean")
           return (
             <label key={name} className="checkbox-field">
               <input
@@ -304,26 +350,68 @@ function SchemaFields({
               {name}
             </label>
           );
+        const numeric = field.type === "number";
         return (
           <label key={name}>
             {name}
             <input
-              type={type === "integer" || type === "number" ? "number" : "text"}
+              type={numeric ? "number" : "text"}
               required={required.has(name)}
               value={String(values[name] ?? "")}
-              onChange={(event) =>
-                set(
-                  type === "integer" || type === "number"
-                    ? Number(event.target.value)
-                    : event.target.value,
-                )
-              }
+              onChange={(event) => {
+                const value = event.target.value;
+                if (numeric && value === "") clear();
+                else set(numeric ? Number(value) : value);
+              }}
             />
           </label>
         );
       })}
     </>
   );
+}
+
+function schemaField(value: unknown): SchemaField {
+  const schema = objectValue(value);
+  if (Array.isArray(schema.enum)) {
+    const options = schema.enum.filter(
+      (option): option is string => typeof option === "string",
+    );
+    return options.length > 0 && options.length === schema.enum.length
+      ? { type: "enum", options }
+      : { type: "unsupported" };
+  }
+  switch (schema.type) {
+    case "string":
+      return { type: "string" };
+    case "integer":
+    case "number":
+      return { type: "number" };
+    case "boolean":
+      return { type: "boolean" };
+    default:
+      return { type: "unsupported" };
+  }
+}
+
+function supportedInput(template: ReportTemplate): boolean {
+  return Object.values(objectValue(template.input_schema.properties)).every(
+    (schema) => schemaField(schema).type !== "unsupported",
+  );
+}
+
+function withBooleanDefaults(
+  template: ReportTemplate,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...values };
+  for (const [name, schema] of Object.entries(
+    objectValue(template.input_schema.properties),
+  )) {
+    if (schemaField(schema).type === "boolean" && next[name] === undefined)
+      next[name] = false;
+  }
+  return next;
 }
 
 function requiredPresent(
