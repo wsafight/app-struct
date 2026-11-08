@@ -35,8 +35,8 @@ test("combined operations remain usable on desktop and mobile", async ({ page },
 
   await page.getByRole("link", { name: "Reports" }).click();
   await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
-  await expect(page.getByText("succeeded", { exact: true })).toBeVisible();
-  await expect(page.getByText("cancelled", { exact: true })).toBeVisible();
+  await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+  await expect(page.getByText("Cancelled", { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   const layout = await page.evaluate(() => {
