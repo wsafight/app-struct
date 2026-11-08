@@ -1,7 +1,8 @@
+use crate::entity_api_name;
 use appstruct_ir::{AppIr, EntityIr};
 
 pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
-    let variable = lower_camel(&entity.rust_name);
+    let variable = entity_api_name(ir, entity);
     let model = &entity.rust_name;
     let table = &entity.table_name;
     let path = format!("/api/{}/", entity.table_name);
@@ -44,7 +45,7 @@ pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
         )
     });
     format!(
-        r#"export const {variable}Api = {{
+        r#"export const {variable} = {{
   list: (query: ListQuery = {{}}, options: RequestOptions = {{}}) => request<ListResponse<Partial<{model}>>>(listPath("{path}", query), options),
   lookup: (ids: string[], options: RequestOptions = {{}}) => request<{model}[]>("{path}_lookup?" + new URLSearchParams({{ ids: ids.join(",") }}), options),
   listCursor: (query: CursorListQuery = {{}}, options: RequestOptions = {{}}) =>
@@ -76,11 +77,4 @@ pub(super) fn client(ir: &AppIr, entity: &EntityIr) -> String {
 {restore}{workflow}{collections}}};
 "#
     )
-}
-
-fn lower_camel(value: &str) -> String {
-    let mut characters = value.chars();
-    characters.next().map_or_else(String::new, |first| {
-        first.to_lowercase().chain(characters).collect()
-    })
 }
