@@ -55,7 +55,8 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
     setSubmitting(true);
     setError("");
     try {
-      if (mode === "login") await auth.login(email, password, code || undefined);
+      if (mode === "login")
+        await auth.login(email, password, code || undefined);
       else await auth.register(email, password);
       await navigate(destination, { replace: true });
     } catch (reason) {
@@ -99,7 +100,16 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
             required
           />
         </label>
-        {!registering && <label>{t("Authenticator or recovery code (if enabled)")}<input autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} /></label>}
+        {!registering && (
+          <label>
+            {t("Authenticator or recovery code (if enabled)")}
+            <input
+              autoComplete="one-time-code"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+            />
+          </label>
+        )}
         <button className="primary-button" disabled={submitting}>
           {registering ? <UserPlus size={17} /> : <LogIn size={17} />}
           {submitting
