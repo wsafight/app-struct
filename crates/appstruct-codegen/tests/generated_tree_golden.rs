@@ -23,6 +23,10 @@ const TEMPLATE_BACKED: &[(&str, &str)] = &[
         "web/pnpm-lock.yaml",
         include_str!("../templates/web/pnpm-lock.yaml"),
     ),
+    (
+        "web/pnpm-workspace.yaml",
+        include_str!("../templates/web/pnpm-workspace.yaml"),
+    ),
     ("web/.gitignore", include_str!("../templates/web/gitignore")),
 ];
 

@@ -227,6 +227,10 @@ fn page_files(ir: &AppIr) -> Vec<(&'static str, String)> {
             "web/pnpm-lock.yaml",
             include_str!("../templates/web/pnpm-lock.yaml").to_owned(),
         ),
+        (
+            "web/pnpm-workspace.yaml",
+            include_str!("../templates/web/pnpm-workspace.yaml").to_owned(),
+        ),
     ]
 }
 

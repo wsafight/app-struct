@@ -82,7 +82,11 @@ fn backend_key(project: &Path, environment: &ProjectEnvironment) -> io::Result<C
 
 fn web_key(project: &Path, environment: &ProjectEnvironment) -> io::Result<CacheKey> {
     let web = project.join("generated/web");
-    let mut files = vec![web.join("package.json"), web.join("pnpm-lock.yaml")];
+    let mut files = vec![
+        web.join("package.json"),
+        web.join("pnpm-lock.yaml"),
+        web.join("pnpm-workspace.yaml"),
+    ];
     for relative in [".npmrc", "pnpm-workspace.yaml"] {
         let path = project.join(relative);
         if path.is_file() {

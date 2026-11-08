@@ -334,7 +334,7 @@ fn m4_auth_and_owner_scope_generate_a_compilable_backend() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
     let ir = compile_project(&fixture).unwrap();
     let artifacts = plan(&ir).unwrap();
-    assert_eq!(artifacts.len(), 138);
+    assert_eq!(artifacts.len(), 139);
     let temporary = tempfile::tempdir().unwrap();
     write_artifacts(temporary.path(), &artifacts);
 
@@ -717,7 +717,7 @@ fn assert_m4_openapi_contract(artifacts: &[Artifact]) {
 
 #[allow(clippy::too_many_lines)]
 fn assert_m2_contract(artifacts: &[Artifact]) {
-    assert_eq!(artifacts.len(), 109);
+    assert_eq!(artifacts.len(), 110);
     assert!(
         artifact_text(artifacts, "backend/Cargo.toml")
             .contains("appstruct-runtime = { path = \"runtime\" }")
@@ -772,6 +772,7 @@ fn assert_m2_contract(artifacts: &[Artifact]) {
     let web_lock = artifact_text(artifacts, "web/pnpm-lock.yaml");
     assert!(web_lock.contains("lockfileVersion"));
     assert!(web_lock.contains("recharts@3.10.1"));
+    assert!(artifact_text(artifacts, "web/pnpm-workspace.yaml").contains("overrides:"));
     assert!(artifact_text(artifacts, "web/.gitignore").contains("node_modules/"));
     query_contract::assert_query_contract(artifacts);
     assert!(artifact_text(artifacts, "web/src/generated/client.ts").contains("resourceEtags"));
