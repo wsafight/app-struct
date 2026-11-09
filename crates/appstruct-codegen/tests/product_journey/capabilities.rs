@@ -336,7 +336,8 @@ async fn consented_visits_and_fully_observed_retention_have_explicit_scopes() {
     let source = |name: &str| sources.iter().find(|row| row["source"] == name);
     assert_eq!(source("newsletter").unwrap()["medium"], "email");
     assert_eq!(source("example-blog.test").unwrap()["medium"], "referral");
-    assert_eq!(source("direct").unwrap()["visitors"], 1);
+    // The unattributed visit and the sanitized hostile visit both collapse to `direct`.
+    assert_eq!(source("direct").unwrap()["visitors"], 2);
     root.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
 }
 

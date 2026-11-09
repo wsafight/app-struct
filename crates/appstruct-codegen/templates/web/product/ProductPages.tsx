@@ -509,9 +509,7 @@ export function InsightsPage() {
           <p>{t(data.definitions.funnel)}</p>
           <h2>{t("Visitor sources")}</h2>
           {data.sources.length === 0 ? (
-            <EmptyState
-              title={t("No consented visits in this window")}
-            />
+            <EmptyState title={t("No consented visits in this window")} />
           ) : (
             <section className="table-frame">
               <table>
