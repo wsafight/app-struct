@@ -14,6 +14,7 @@ test("SaaS template supports tenant work and audit on desktop and mobile", async
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page.getByRole("link", { name: "Users" })).toBeVisible();
+  await page.getByText("Advanced tools", { exact: true }).click();
   await expect(page.getByRole("link", { name: "Audit log" })).toBeVisible();
   await page.getByRole("link", { name: "Projects" }).click();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
