@@ -1,6 +1,96 @@
 use super::*;
 
 #[test]
+#[cfg(unix)]
+fn watcher_tracks_retargeted_include_directory_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let project = tempfile::tempdir().unwrap();
+    for directory in ["config", "domains/first", "domains/second"] {
+        fs::create_dir_all(project.path().join(directory)).unwrap();
+    }
+    for directory in ["first", "second"] {
+        fs::write(
+            project
+                .path()
+                .join(format!("domains/{directory}/main.yaml")),
+            "domain: example\n",
+        )
+        .unwrap();
+    }
+    fs::write(
+        project.path().join("appstruct.yaml"),
+        "includes: [config/active/main.yaml]\n",
+    )
+    .unwrap();
+    let link = project.path().join("config/active");
+    symlink("../domains/first", &link).unwrap();
+    let first = SourceFingerprints::read(project.path()).unwrap();
+    let mut watcher = ProjectWatcher::start(project.path()).unwrap();
+    symlink(
+        "../domains/second",
+        project.path().join("config/replacement"),
+    )
+    .unwrap();
+    fs::rename(project.path().join("config/replacement"), &link).unwrap();
+    assert!(
+        first
+            .changes(&SourceFingerprints::read(project.path()).unwrap())
+            .specification
+    );
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        if let Some(changes) = watcher.changes(Duration::from_millis(250)).unwrap() {
+            assert!(changes.specification && changes.backend && changes.web);
+            break;
+        }
+        assert!(Instant::now() < deadline, "include symlink was not watched");
+    }
+}
+
+#[test]
+fn watcher_and_polling_track_custom_include_edits_and_recreation() {
+    let project = tempfile::tempdir().unwrap();
+    fs::write(
+        project.path().join("appstruct.yaml"),
+        "includes: [domains/nested/main.yaml]\n",
+    )
+    .unwrap();
+    fs::create_dir_all(project.path().join("domains/nested")).unwrap();
+    let domain = project.path().join("domains/nested/main.yaml");
+    fs::write(&domain, "domain: first\n").unwrap();
+    let first = SourceFingerprints::read(project.path()).unwrap();
+    let mut watcher = ProjectWatcher::start(project.path()).unwrap();
+    fs::write(&domain, "domain: changed\n").unwrap();
+    assert!(
+        first
+            .changes(&SourceFingerprints::read(project.path()).unwrap())
+            .specification
+    );
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        if let Some(changes) = watcher.changes(Duration::from_millis(250)).unwrap() {
+            assert!(changes.specification && changes.backend && changes.web);
+            break;
+        }
+        assert!(Instant::now() < deadline, "custom include was not watched");
+    }
+    let edited = SourceFingerprints::read(project.path()).unwrap();
+    fs::remove_file(&domain).unwrap();
+    assert!(
+        edited
+            .changes(&SourceFingerprints::read(project.path()).unwrap())
+            .specification
+    );
+    fs::write(&domain, "domain: restored\n").unwrap();
+    assert!(
+        edited
+            .changes(&SourceFingerprints::read(project.path()).unwrap())
+            .specification
+    );
+}
+
+#[test]
 fn source_fingerprints_classify_project_inputs() {
     let temporary = tempfile::tempdir().unwrap();
     fs::write(temporary.path().join("appstruct.yaml"), "version: 1\n").unwrap();

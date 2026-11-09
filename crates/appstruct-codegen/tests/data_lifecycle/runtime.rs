@@ -53,6 +53,12 @@ impl FileProvider for Storage {
     async fn get(&self, key: &str) -> Result<Vec<u8>, FileError> {
         self.data.lock().unwrap().get(key).cloned().ok_or_else(|| FileError::Storage("missing".into()))
     }
+    async fn get_stream(&self, key: &str) -> Result<BoxStream<'static, Result<axum::body::Bytes, FileError>>, FileError> {
+        let bytes = self.get(key).await?;
+        let mut chunks = bytes.chunks(2).map(|chunk| Ok(axum::body::Bytes::copy_from_slice(chunk))).collect::<Vec<_>>();
+        chunks.push(Ok(axum::body::Bytes::new()));
+        Ok(futures_util::stream::iter(chunks).boxed())
+    }
     async fn delete(&self, key: &str) -> Result<(), FileError> {
         if self.fail_delete.load(Ordering::SeqCst) { return Err(FileError::Storage("injected failure".into())); }
         if self.pause_delete.swap(false, Ordering::SeqCst) {
@@ -74,6 +80,37 @@ async fn database() -> Option<(Database, Database, String)> {
     let database = Database::connect(format!("{url}{separator}options=-csearch_path%3D{schema}")).await.unwrap();
     database.execute_unprepared(include_str!("../../database/0001_initial.sql")).await.unwrap();
     Some((root, database, schema))
+}
+
+#[tokio::test]
+async fn streamed_files_validate_checksums_sizes_and_tenant_scope() {
+    let Some((root, database, schema)) = database().await else { return; };
+    let storage = Arc::new(Storage::default());
+    let files = FileState::with_provider(database, storage.clone(), vec!["text/plain".to_owned()]);
+    let metadata = files.put("streamed", "input.txt", "text/plain", b"original", None).await.unwrap();
+    let (actual, mut stream) = files.stream("streamed", None).await.unwrap();
+    assert_eq!(actual.id, metadata.id);
+    let mut output = Vec::new();
+    while let Some(chunk) = stream.next().await { output.extend(chunk.unwrap()); }
+    assert_eq!(output, b"original");
+    assert!(files.stream("streamed", Some(uuid::Uuid::now_v7())).await.is_err());
+    for invalid in [b"modified".to_vec(), b"short".to_vec(), b"too much content".to_vec()] {
+        storage.data.lock().unwrap().insert("streamed".to_owned(), invalid);
+        let (_, mut stream) = files.stream("streamed", None).await.unwrap();
+        let mut failed = false;
+        let mut received = 0;
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(chunk) => received += chunk.len(),
+                Err(_) => failed = true,
+            }
+        }
+        assert!(failed, "corrupt streams must not complete successfully");
+        assert!(received < metadata.size as usize, "corrupt streams must withhold the final content bytes even when the provider sends empty chunks");
+    }
+    files.put("empty", "empty.txt", "text/plain", b"", None).await.unwrap();
+    assert!(files.stream("empty", None).await.unwrap().1.next().await.is_none());
+    root.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
 }
 
 #[tokio::test]

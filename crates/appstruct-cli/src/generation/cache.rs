@@ -23,7 +23,18 @@ pub(super) struct CacheHit {
 }
 
 pub(super) fn load_hit(project: &Path, generated: &Path) -> io::Result<Option<CacheHit>> {
-    let key = generation_key(project)?;
+    let key = match generation_key(project) {
+        Ok(key) => key,
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::InvalidData | io::ErrorKind::NotFound
+            ) =>
+        {
+            return Ok(None);
+        }
+        Err(error) => return Err(error),
+    };
     let Some(state) = crate::cache::load::<GenerationState>(&project.join(STATE_PATH), &key)?
     else {
         return Ok(None);
@@ -72,17 +83,37 @@ fn input_fingerprint(project: &Path) -> io::Result<String> {
         .collect::<Vec<_>>();
     collect_directory(&project.join("spec"), &mut paths)?;
     collect_directory(&project.join("modules"), &mut paths)?;
+    if project.join("appstruct.yaml").is_file() {
+        paths.extend(
+            appstruct_compiler::project_include_paths(project)
+                .map_err(|diagnostics| {
+                    io::Error::new(io::ErrorKind::InvalidData, format!("{diagnostics:?}"))
+                })?
+                .into_iter()
+                .map(|path| project.join(path)),
+        );
+    }
     paths.sort();
+    paths.dedup();
     let mut hasher = Sha256::new();
     for path in paths {
         let relative = path.strip_prefix(project).map_err(io::Error::other)?;
         hasher.update(relative.to_string_lossy().as_bytes());
-        let metadata = fs::symlink_metadata(&path)?;
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                hasher.update(b"missing\0");
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         if metadata.file_type().is_symlink() {
             hasher.update(b"symlink\0");
             hasher.update(fs::read_link(&path)?.as_os_str().as_encoded_bytes());
-        } else {
+        } else if metadata.is_file() {
             hash_file(&path, &mut hasher)?;
+        } else {
+            hasher.update(b"directory\0");
         }
     }
     Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
@@ -139,19 +170,77 @@ fn hash_file(path: &Path, hasher: &mut Sha256) -> io::Result<()> {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::input_fingerprint;
     use std::fs;
+    #[cfg(unix)]
     use std::os::unix::fs::symlink;
 
     #[test]
+    #[cfg(unix)]
     fn module_cache_fingerprint_does_not_follow_directory_symlinks() {
         let project = tempfile::tempdir().unwrap();
         fs::create_dir(project.path().join("modules")).unwrap();
         symlink(project.path(), project.path().join("modules/loop")).unwrap();
 
         assert!(input_fingerprint(project.path()).is_ok());
+    }
+
+    #[test]
+    fn custom_includes_invalidate_on_edits_deletion_and_recreation() {
+        let project = tempfile::tempdir().unwrap();
+        fs::write(
+            project.path().join("appstruct.yaml"),
+            "includes: [domains/nested/main.yaml]\n",
+        )
+        .unwrap();
+        fs::create_dir_all(project.path().join("domains/nested")).unwrap();
+        let domain = project.path().join("domains/nested/main.yaml");
+        fs::write(&domain, "domain: first\n").unwrap();
+        let first = input_fingerprint(project.path()).unwrap();
+        fs::write(&domain, "domain: second\n").unwrap();
+        let second = input_fingerprint(project.path()).unwrap();
+        assert_ne!(first, second);
+        fs::remove_file(&domain).unwrap();
+        assert_ne!(second, input_fingerprint(project.path()).unwrap());
+        fs::write(&domain, "domain: second\n").unwrap();
+        assert_eq!(second, input_fingerprint(project.path()).unwrap());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn include_symlink_targets_are_fingerprinted() {
+        let project = tempfile::tempdir().unwrap();
+        fs::write(
+            project.path().join("appstruct.yaml"),
+            "includes: [domain.yaml]\n",
+        )
+        .unwrap();
+        let target = project.path().join("actual.yaml");
+        fs::write(&target, "domain: first\n").unwrap();
+        symlink("actual.yaml", project.path().join("domain.yaml")).unwrap();
+        let first = input_fingerprint(project.path()).unwrap();
+        fs::write(&target, "domain: second\n").unwrap();
+        assert_ne!(first, input_fingerprint(project.path()).unwrap());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn includes_resolve_parent_components_after_directory_symlinks() {
+        let project = tempfile::tempdir().unwrap();
+        fs::create_dir_all(project.path().join("domains/nested")).unwrap();
+        symlink("domains/nested", project.path().join("alias")).unwrap();
+        fs::write(
+            project.path().join("appstruct.yaml"),
+            "includes: [alias/../domain.yaml]\n",
+        )
+        .unwrap();
+        let domain = project.path().join("domains/domain.yaml");
+        fs::write(&domain, "domain: first\n").unwrap();
+        let first = input_fingerprint(project.path()).unwrap();
+        fs::write(&domain, "domain: second\n").unwrap();
+        assert_ne!(first, input_fingerprint(project.path()).unwrap());
     }
 
     #[test]

@@ -12,9 +12,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cargo build --locked -p appstruct-cli
-target/debug/appstruct --project "$temporary_root" new ci-check --template "${APPSTRUCT_TEMPLATE:-saas}"
-target/debug/appstruct --project "$temporary_root/ci-check" generate
+if [[ -n "${APPSTRUCT_TEMPLATE_CLI:-}" ]]; then
+  cli="$APPSTRUCT_TEMPLATE_CLI"
+  if [[ ! -x "$cli" ]]; then
+    echo "APPSTRUCT_TEMPLATE_CLI must name an executable CLI" >&2
+    exit 2
+  fi
+else
+  cargo build --locked --manifest-path "$workspace/Cargo.toml" -p appstruct-cli
+  cli="$workspace/target/debug/appstruct"
+fi
+"$cli" --project "$temporary_root" new ci-check --template "${APPSTRUCT_TEMPLATE:-saas}"
+"$cli" --project "$temporary_root/ci-check" generate
 
 cd "$temporary_root/ci-check/generated/web"
 pnpm install --frozen-lockfile

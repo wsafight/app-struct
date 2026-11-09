@@ -20,11 +20,19 @@
 `public` schema，不使用部署凭据或已有应用数据库。浏览器测试先安装固定版本的 Chromium。
 CI 为后端冷启动保留最多十分钟；本地脚本保留原有默认值，除非设置 `APPSTRUCT_E2E_STARTUP_TIMEOUT`。
 
-只缓存 Cargo registry 下载和 pnpm store，生成项目与后端 target 仍在退出时回收。
+缓存 Cargo registry 下载和 pnpm store；Linux CLI 与 Rust 检查任务另按 OS、架构、工具链和 Cargo
+锁文件/清单缓存 debug 依赖编译产物，Cargo 仍校验当前源码。三套模板下载并核验同次 workflow
+构建的 Linux CLI，不再各自编译。缓存不包含生成项目或其后端 target，这些目录仍在退出时回收。
+本地默认仍构建 CLI，只有显式设置 `APPSTRUCT_TEMPLATE_CLI` 时才复用指定的可执行文件。
 共享 runner 上的编译器/生成器测试使用 `APPSTRUCT_PERF_BUDGET_MULTIPLIER=2`；完整开发/API
 基准保留各自脚本中的预算。
 
 ## 排查失败
+
+`PostgreSQL (product)` 在每次 PR 和完整门禁中运行真实数据库产品回归，覆盖点数、签名支付事件、
+文件附件、席位并发、MFA、审批和本机模拟 AI 服务。`scripts/run-product-e2e.sh` 为这些测试显式设置
+临时测试配置，并启用 `APPSTRUCT_REQUIRE_PRODUCT_TESTS=1`；缺少必需配置会失败，而不是静默跳过。
+本地运行同样需要独立的、名称包含 `test` 或 `e2e` 的数据库，不连接真实 Stripe 或模型服务。
 
 PostgreSQL 和部署任务上传进程日志以及可用的截图/trace，保留七天。性能基准的 JSON、Prometheus
 快照和进程日志保留三十天。文档浏览器失败截图保留七天。测试在进程启动前失败时，构建输出仍在

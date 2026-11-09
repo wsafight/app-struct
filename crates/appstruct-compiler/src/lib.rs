@@ -27,7 +27,7 @@ mod webhooks;
 mod workflow;
 mod yaml;
 
-pub use loading::discover_project;
+pub use loading::{discover_project, project_include_paths};
 pub use preset::{
     CURRENT_PROJECT_LAYOUT_VERSION, PresetInfo, ProjectLayout, preset_info, project_layout,
     project_lock,

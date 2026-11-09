@@ -595,6 +595,44 @@ fn generate_fails_on_missing_user_component() {
 }
 
 #[test]
+fn generation_cache_tracks_includes_outside_spec() {
+    for relative in ["domain.yaml", "domains/nested/domain.yaml"] {
+        let temporary = tempfile::tempdir().unwrap();
+        let project = temporary.path();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m1-project");
+        copy_directory(&fixture, project);
+        let root = project.join("appstruct.yaml");
+        fs::write(
+            &root,
+            fs::read_to_string(&root)
+                .unwrap()
+                .replace("spec/project.yaml", relative),
+        )
+        .unwrap();
+        let domain = project.join(relative);
+        fs::create_dir_all(domain.parent().unwrap()).unwrap();
+        fs::rename(project.join("spec/project.yaml"), &domain).unwrap();
+        assert!(run(project, &["generate"]).status.success());
+        fs::write(
+            &domain,
+            fs::read_to_string(&domain)
+                .unwrap()
+                .replace("label: Projects", "label: Updated projects"),
+        )
+        .unwrap();
+        assert!(!run(project, &["generate", "--check"]).status.success());
+        assert!(run(project, &["generate"]).status.success());
+        assert!(
+            fs::read_to_string(project.join("generated/ir/app-ir.json"))
+                .unwrap()
+                .contains("Updated projects")
+        );
+        fs::remove_file(&domain).unwrap();
+        assert!(!run(project, &["generate", "--check"]).status.success());
+    }
+}
+
+#[test]
 fn generation_cache_hit_rechecks_app_web_changes() {
     let project = temporary_project("m3-project");
     assert!(run(&project, &["generate"]).status.success());

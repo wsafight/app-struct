@@ -2,6 +2,18 @@
 
 ## Files
 
+Library downloads use `FileState::stream`. Built-in Local/S3 providers read chunks and incrementally
+verify size and SHA-256 before yielding the final chunk. Corruption aborts the response; partial bytes
+must not be treated as a completed file. Existing custom providers can keep `get`/`put` with a buffered
+fallback, or implement `get_stream` and `put_owned` for streaming reads and shared `Bytes` writes.
+
+Upload completion prepares storage outside the database transaction, then rechecks cancellation,
+expiry and concurrent completion under a short row lock before atomically publishing metadata,
+references and the result. Retries read metadata only; losing completions clean up their unique objects.
+An uncertain commit leaves the object for storage reconciliation rather than risking deletion of a
+committed file. Proxy uploads still buffer up to the configured size limit; multipart uploads and
+scanning are not introduced by this change.
+
 After authorizing the business record, use `ctx.retain_file(key, "app::Order", record_id).await` in its transaction. On record deletion or attachment replacement, use `ctx.release_file` with the same owner. Owners are deduplicated `(entity, record_id)` pairs, limited to 1000. The last release starts retention; repeated release preserves its timestamp. The module checks the tenant; the application owns actor authorization and releasing references when records are deleted. References are not foreign keys.
 
 A trusted maintenance job can call `FileState::collect_unreferenced(30, 100).await`. Batches are limited to 100. It excludes explicit references and active Report/Activity file references. Nothing schedules deletion by default. Review candidates, retention requirements and backups in an isolated database before arranging an application Jobs handler or external maintenance process.

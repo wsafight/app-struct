@@ -23,11 +23,22 @@ or an existing application database. Browser suites install the pinned Chromium 
 starting. CI allows up to ten minutes for a cold backend startup; local scripts keep their existing
 defaults unless `APPSTRUCT_E2E_STARTUP_TIMEOUT` is set.
 
-Only Cargo registry downloads and the pnpm store are cached. Generated projects and backend
-targets remain disposable. Compiler/generator tests use `APPSTRUCT_PERF_BUDGET_MULTIPLIER=2`
+Cargo registry downloads and the pnpm store are cached. Linux CLI and Rust checks additionally
+cache debug dependency artifacts keyed by OS, architecture, toolchain and Cargo locks/manifests;
+Cargo still validates current source inputs. All three templates verify and reuse the Linux CLI
+artifact built by the same workflow instead of compiling separately. Generated projects and their
+backend targets remain disposable. Local scripts still build by default, unless an executable
+`APPSTRUCT_TEMPLATE_CLI` is explicitly provided. Compiler/generator tests use `APPSTRUCT_PERF_BUDGET_MULTIPLIER=2`
 on shared runners; the full developer/API benchmarks retain the budgets in their scripts.
 
 ## Diagnosing failures
+
+`PostgreSQL (product)` runs database-backed product regressions on every PR and full gate,
+covering credits, signed payment events, attachments, concurrent seats, MFA, approvals and a local
+AI stub. `scripts/run-product-e2e.sh` supplies disposable test settings and enables
+`APPSTRUCT_REQUIRE_PRODUCT_TESTS=1`; missing required settings fail instead of silently skipping.
+Local runs require a dedicated database containing `test` or `e2e` in its name, not real Stripe
+credentials or a model service.
 
 PostgreSQL and deployment jobs upload process logs and available screenshots/traces for seven
 days. Benchmark JSON, Prometheus snapshots and process logs are retained for thirty days.

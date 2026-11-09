@@ -11,6 +11,12 @@ fn generated_auth_security_guards_are_emitted() {
     ir.auth.oauth_providers = vec!["oidc".to_owned()];
     let artifacts = plan(&ir).unwrap();
 
+    let handlers = artifact_text(&artifacts, "backend/src/auth/handlers.rs");
+    assert!(handlers.contains("spawn_blocking"));
+    assert!(handlers.contains("Semaphore::const_new(4)"));
+    assert!(handlers.contains("DUMMY_PASSWORD_HASH.get_or_init"));
+    assert!(handlers.contains("let _permit = permit"));
+
     let sql = artifact_text(&artifacts, "database/0001_initial.sql");
     assert!(sql.contains("PRIMARY KEY (\"provider\", \"subject\")"));
     assert!(!sql.contains("\"subject\" TEXT NOT NULL PRIMARY KEY"));

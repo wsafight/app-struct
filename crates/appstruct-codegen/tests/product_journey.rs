@@ -3,8 +3,33 @@ mod support;
 
 use std::{fs, path::Path};
 
+fn require_product_environment() {
+    if std::env::var("APPSTRUCT_REQUIRE_PRODUCT_TESTS").as_deref() != Ok("1") {
+        return;
+    }
+    for name in [
+        "APPSTRUCT_E2E_DATABASE_URL",
+        "APPSTRUCT_AUTH_MFA_KEY",
+        "APPSTRUCT_REPORT_SNAPSHOT_KEY",
+        "APPSTRUCT_STRIPE_WEBHOOK_SECRET",
+        "APPSTRUCT_AI_ENDPOINT",
+        "APPSTRUCT_AI_MODEL",
+    ] {
+        assert!(
+            std::env::var(name).is_ok_and(|value| !value.is_empty()),
+            "{name} is required by the product database gate"
+        );
+    }
+    assert_eq!(
+        std::env::var("APPSTRUCT_TEAM_SEAT_LIMIT").as_deref(),
+        Ok("2")
+    );
+    assert_eq!(std::env::var("APPSTRUCT_AI_ENABLED").as_deref(), Ok("true"));
+}
+
 #[test]
 fn generated_saas_enforces_allowances_and_refunds_failed_work() {
+    require_product_environment();
     let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/saas-demo");
     let ir = appstruct_compiler::compile_project(&example).unwrap();
     let temporary = tempfile::tempdir().unwrap();
@@ -70,6 +95,7 @@ fn generated_saas_enforces_allowances_and_refunds_failed_work() {
 
 #[test]
 fn app_owned_approvals_and_ai_preserve_product_invariants() {
+    require_product_environment();
     let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/saas-demo");
     let ir = appstruct_compiler::compile_project(&example).unwrap();
     let temporary = tempfile::tempdir().unwrap();

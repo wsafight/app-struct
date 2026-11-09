@@ -1,8 +1,68 @@
 use crate::surface::Located;
 use crate::yaml;
 use appstruct_ir::{Diagnostic, SourceSpan};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// Discover project-relative include paths, symlink dependencies and their in-project targets.
+/// Missing includes remain in the result so callers can detect deletion and recreation.
+///
+/// # Errors
+///
+/// Returns diagnostics when the root YAML cannot be read or an include escapes the project.
+pub fn project_include_paths(project_root: &Path) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
+    let root = super::canonical_project_root(project_root)?;
+    let node = load_yaml(&root, &root.join("appstruct.yaml"))?;
+    let includes = node
+        .mapping()
+        .and_then(|mapping| mapping.get("includes"))
+        .and_then(|entry| entry.value.sequence())
+        .unwrap_or_default();
+    let mut paths = BTreeSet::new();
+    for include in includes {
+        let Some((value, _)) = include.scalar() else {
+            continue;
+        };
+        let mut relative = PathBuf::new();
+        for component in Path::new(value).components() {
+            match component {
+                std::path::Component::Normal(part) => {
+                    relative.push(part);
+                    let path = root.join(&relative);
+                    if fs::symlink_metadata(&path)
+                        .is_ok_and(|metadata| metadata.file_type().is_symlink())
+                    {
+                        paths.insert(relative.clone());
+                    }
+                    if let Ok(canonical) = fs::canonicalize(&path) {
+                        relative = canonical
+                            .strip_prefix(&root)
+                            .map_err(|_| {
+                                vec![Diagnostic::error(
+                                    "AS1010",
+                                    "include escapes the project root",
+                                    include.span.clone(),
+                                )]
+                            })?
+                            .to_path_buf();
+                    }
+                }
+                std::path::Component::CurDir => {}
+                std::path::Component::ParentDir if relative.pop() => {}
+                _ => {
+                    return Err(vec![Diagnostic::error(
+                        "AS1010",
+                        "include paths must stay within the project root",
+                        include.span.clone(),
+                    )]);
+                }
+            }
+        }
+        paths.insert(relative);
+    }
+    Ok(paths.into_iter().collect())
+}
 
 /// Find the nearest `AppStruct` project at or above `start`.
 ///

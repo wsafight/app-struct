@@ -3,6 +3,8 @@ use crate::{Artifact, ArtifactKind, CodegenError};
 use appstruct_ir::{AppIr, FileProviderIr};
 use quote::quote;
 
+mod transfer;
+
 pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
     let source = if ir.file.enabled {
         enabled_source(ir)?
@@ -28,6 +30,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
     let validation = validation_source();
     let lifecycle = lifecycle_source(ir)?;
     let reconciliation = reconciliation_contract_source()?;
+    let transfer = transfer::source();
     render(quote! {
         use async_trait::async_trait;
         use object_store::{
@@ -42,6 +45,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         #reconciliation
         #state
         #metadata
+        #transfer
         #validation
         #lifecycle
         #provider_source
@@ -89,7 +93,14 @@ fn contract_source() -> proc_macro2::TokenStream {
         pub trait FileProvider: Send + Sync {
             fn name(&self) -> &'static str;
             async fn put(&self, object_key: &str, content: &[u8]) -> Result<(), FileError>;
+            async fn put_owned(&self, object_key: &str, content: axum::body::Bytes) -> Result<(), FileError> {
+                self.put(object_key, &content).await
+            }
             async fn get(&self, object_key: &str) -> Result<Vec<u8>, FileError>;
+            async fn get_stream(&self, object_key: &str) -> Result<BoxStream<'static, Result<axum::body::Bytes, FileError>>, FileError> {
+                let content = self.get(object_key).await?;
+                Ok(futures_util::stream::once(async move { Ok(axum::body::Bytes::from(content)) }).boxed())
+            }
             async fn delete(&self, object_key: &str) -> Result<(), FileError>;
             async fn signed_upload(&self, _key: &str) -> Result<Option<String>, FileError> { Ok(None) }
             async fn get_limited(&self, key: &str, max: u64) -> Result<Vec<u8>, FileError> {
@@ -232,6 +243,11 @@ fn staging_source(max_bytes: u64) -> proc_macro2::TokenStream {
             validate_key(key)?;
             if bytes.len() as u64 > #max_bytes { return Err(FileError::TooLarge { size: bytes.len() as u64, max: #max_bytes }); }
             self.provider.put(key, bytes).await
+        }
+        pub(crate) async fn put_staged_owned(&self, key: &str, bytes: axum::body::Bytes) -> Result<(), FileError> {
+            validate_key(key)?;
+            if bytes.len() as u64 > #max_bytes { return Err(FileError::TooLarge { size: bytes.len() as u64, max: #max_bytes }); }
+            self.provider.put_owned(key, bytes).await
         }
         pub async fn delete_staged(&self, key: &str) -> Result<(), FileError> {
             validate_key(key)?;
@@ -381,9 +397,12 @@ fn object_store_provider(s3: bool) -> proc_macro2::TokenStream {
                 Ok(bytes)
             }
             async fn put(&self, object_key: &str, content: &[u8]) -> Result<(), FileError> {
+                self.put_owned(object_key, axum::body::Bytes::copy_from_slice(content)).await
+            }
+            async fn put_owned(&self, object_key: &str, content: axum::body::Bytes) -> Result<(), FileError> {
                 let options = PutOptions { mode: PutMode::Create, ..PutOptions::default() };
                 self.store.put_opts(
-                    &ObjectPath::from(object_key), PutPayload::from(content.to_vec()), options,
+                    &ObjectPath::from(object_key), PutPayload::from(content), options,
                 )
                     .await.map(|_| ()).map_err(|error| FileError::Storage(error.to_string()))
             }
@@ -391,6 +410,11 @@ fn object_store_provider(s3: bool) -> proc_macro2::TokenStream {
                 self.store.get(&ObjectPath::from(object_key)).await
                     .map_err(|error| FileError::Storage(error.to_string()))?.bytes().await
                     .map(|bytes| bytes.to_vec()).map_err(|error| FileError::Storage(error.to_string()))
+            }
+            async fn get_stream(&self, object_key: &str) -> Result<BoxStream<'static, Result<axum::body::Bytes, FileError>>, FileError> {
+                Ok(self.store.get(&ObjectPath::from(object_key)).await
+                    .map_err(|error| FileError::Storage(error.to_string()))?.into_stream()
+                    .map(|chunk| chunk.map_err(|error| FileError::Storage(error.to_string()))).boxed())
             }
             async fn delete(&self, object_key: &str) -> Result<(), FileError> {
                 match self.store.delete(&ObjectPath::from(object_key)).await {
@@ -430,6 +454,7 @@ fn disabled_source() -> Result<String, CodegenError> {
             pub async fn put(&self, _key: &str, _name: &str, _content_type: &str, _content: &[u8], _tenant_id: Option<uuid::Uuid>) -> Result<FileMetadata, FileError> { Err(FileError::Disabled) }
             pub(crate) async fn put_with_connection<C: DatabaseExecutor>(&self, _database: &C, _key: &str, _name: &str, _content_type: &str, _content: &[u8], _tenant_id: Option<uuid::Uuid>) -> Result<FileMetadata, FileError> { Err(FileError::Disabled) }
             pub async fn get(&self, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(FileMetadata, Vec<u8>), FileError> { Err(FileError::Disabled) }
+            pub async fn stream(&self, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(FileMetadata, futures_util::stream::BoxStream<'static, Result<axum::body::Bytes, FileError>>), FileError> { Err(FileError::Disabled) }
             pub(crate) async fn get_with_connection<C: DatabaseExecutor>(&self, _database: &C, _key: &str, _tenant_id: Option<uuid::Uuid>) -> Result<(FileMetadata, Vec<u8>), FileError> { Err(FileError::Disabled) }
             pub(crate) async fn retain_with_connection<C: DatabaseExecutor>(&self, _database: &C, _key: &str, _entity: &str, _record_id: &str, _tenant: Option<uuid::Uuid>) -> Result<(), FileError> { Err(FileError::Disabled) }
             pub(crate) async fn release_with_connection<C: DatabaseExecutor>(&self, _database: &C, _key: &str, _entity: &str, _record_id: &str, _tenant: Option<uuid::Uuid>) -> Result<(), FileError> { Err(FileError::Disabled) }
