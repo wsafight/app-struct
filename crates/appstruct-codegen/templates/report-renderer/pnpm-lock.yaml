@@ -12,14 +12,14 @@ importers:
         specifier: 3.2.1
         version: 3.2.1
       parse5:
-        specifier: 8.0.1
-        version: 8.0.1
+        specifier: 8.1.1
+        version: 8.1.1
       pdf-lib:
         specifier: 1.17.1
         version: 1.17.1
       playwright:
-        specifier: 1.64.0
-        version: 1.64.0
+        specifier: 1.65.0
+        version: 1.65.0
 
 packages:
 
@@ -33,8 +33,8 @@ packages:
     resolution: {integrity: sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0}
 
-  entities@8.0.0:
-    resolution: {integrity: sha512-zwfzJecQ/Uej6tusMqwAqU/6KL2XaB2VZ2Jg54Je6ahNBGNH6Ek6g3jjNCF0fG9EWQKGZNddNjU5F1ZQn/sBnA==}
+  entities@9.0.0:
+    resolution: {integrity: sha512-oJFNDJg3kTPwAD1cNn2+WmUq4wFoo09npc3Ydf1D7ED4smRiWrsKnaLxykrTWgyGEcusc87P5dxlAleol9kpkg==}
     engines: {node: '>=20.19.0'}
 
   mdn-data@2.27.1:
@@ -43,19 +43,19 @@ packages:
   pako@1.0.11:
     resolution: {integrity: sha512-4hLB8Py4zZce5s4yd9XzopqwVv/yGNhV1Bl8NTmCq1763HeK2+EwVTv+leGeL13Dnh2wfbqowVPXCIO0z4taYw==}
 
-  parse5@8.0.1:
-    resolution: {integrity: sha512-z1e/HMG90obSGeidlli3hj7cbocou0/wa5HacvI3ASx34PecNjNQeaHNo5WIZpWofN9kgkqV1q5YvXe3F0FoPw==}
+  parse5@8.1.1:
+    resolution: {integrity: sha512-EcR/6WDcU7b2N3vQSxKALCk9lXGtUMQxXio008OEMBE0kavu/7JLfBEeFPzi43nMqVDSbEn3QCK+BMCc9zO//w==}
 
   pdf-lib@1.17.1:
     resolution: {integrity: sha512-V/mpyJAoTsN4cnP31vc0wfNA1+p20evqqnap0KLoRUN0Yk/p3wN52DOEsL4oBFcLdb76hlpKPtzJIgo67j/XLw==}
 
-  playwright-core@1.64.0:
-    resolution: {integrity: sha512-T9r+MZkTECl2+oUcZ26YgZzTrYidTsIhYYkJix+6iDOymOb1FB2RLLSOxRGnZGv5DStt+aduIVbt+E8WygXYpg==}
+  playwright-core@1.65.0:
+    resolution: {integrity: sha512-vNSKgH6YqtN7cdT/L334zo0a+YwkrpicyrHJlWWPIm/Q+Nn2SWInil01oT0mbu96U4GgoRtCYQD9CzJQgju+lA==}
     engines: {node: '>=20'}
     hasBin: true
 
-  playwright@1.64.0:
-    resolution: {integrity: sha512-kVzTnYFYEyQ9RGzBjNCd2+yEqWmVbxl3AHPynv3qQ6JTjv4a+kwRcnqQwIpuP3NnrnIrE/Q6wWAIAvMfIE2/Yg==}
+  playwright@1.65.0:
+    resolution: {integrity: sha512-F3AMWcR44qMBt4kq+6Kb6mX7bjGXshktKFOPULd7reED6ZJWevjbNRqysP7q+AATE9kdPEZBibex1BYsvpVoeA==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -81,15 +81,15 @@ snapshots:
       mdn-data: 2.27.1
       source-map-js: 1.2.1
 
-  entities@8.0.0: {}
+  entities@9.0.0: {}
 
   mdn-data@2.27.1: {}
 
   pako@1.0.11: {}
 
-  parse5@8.0.1:
+  parse5@8.1.1:
     dependencies:
-      entities: 8.0.0
+      entities: 9.0.0
 
   pdf-lib@1.17.1:
     dependencies:
@@ -98,11 +98,11 @@ snapshots:
       pako: 1.0.11
       tslib: 1.14.1
 
-  playwright-core@1.64.0: {}
+  playwright-core@1.65.0: {}
 
-  playwright@1.64.0:
+  playwright@1.65.0:
     dependencies:
-      playwright-core: 1.64.0
+      playwright-core: 1.65.0
 
   source-map-js@1.2.1: {}
 
