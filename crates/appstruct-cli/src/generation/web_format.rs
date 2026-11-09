@@ -98,10 +98,13 @@ pub(super) fn format(project: &Path, artifacts: &mut [Artifact]) -> io::Result<F
 fn prepare_formatter(cache: &Path, artifacts: &[Artifact]) -> io::Result<Formatter> {
     let package = dependency_artifact(artifacts, "web/package.json")?;
     let lock = dependency_artifact(artifacts, "web/pnpm-lock.yaml")?;
+    let workspace = dependency_artifact(artifacts, "web/pnpm-workspace.yaml")?;
     let mut hash = Sha256::new();
     hash.update(&package.content);
     hash.update([0]);
     hash.update(&lock.content);
+    hash.update([0]);
+    hash.update(&workspace.content);
     let dependency_identity = format!("sha256:{}", hex::encode(hash.finalize()));
     let directory = cache.join("web-formatter").join(&dependency_identity[7..]);
     let ready = directory.join(".ready");
@@ -109,6 +112,7 @@ fn prepare_formatter(cache: &Path, artifacts: &[Artifact]) -> io::Result<Formatt
         fs::create_dir_all(&directory)?;
         fs::write(directory.join("package.json"), &package.content)?;
         fs::write(directory.join("pnpm-lock.yaml"), &lock.content)?;
+        fs::write(directory.join("pnpm-workspace.yaml"), &workspace.content)?;
         command(
             Command::new("pnpm").current_dir(&directory).args([
                 "install",

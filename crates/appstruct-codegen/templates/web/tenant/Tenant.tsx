@@ -142,7 +142,11 @@ export function RequireTenant() {
   const tenant = useTenant();
   if (tenant.loading)
     return <div className="auth-loading" aria-label={t("Loading")} />;
-  return tenant.current ? <Outlet key={tenant.current.id} /> : <TenantOnboarding />;
+  return tenant.current ? (
+    <Outlet key={tenant.current.id} />
+  ) : (
+    <TenantOnboarding />
+  );
 }
 
 export function TenantSwitcher() {

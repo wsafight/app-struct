@@ -1,4 +1,4 @@
-use crate::generated_header;
+use crate::{entity_api_name, generated_header};
 use appstruct_ir::{
     AccessRuleIr, AppIr, ChartDimensionIr, ChartIr, ChartKindIr, ChartMeasureIr, EntityIr, FieldIr,
     FieldSemanticIr, FieldTypeIr, GeneratedValueIr, ValueFieldIr,
@@ -11,8 +11,8 @@ pub(super) fn source(ir: &AppIr) -> String {
         .iter()
         .map(|entity| {
             format!(
-                "import {{ {}Api }} from \"./client\";",
-                lower_camel(&entity.rust_name)
+                "import {{ {} }} from \"./client\";",
+                entity_api_name(ir, entity)
             )
         })
         .collect::<Vec<_>>()
@@ -50,7 +50,7 @@ fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
         .iter()
         .find(|field| field.primary_key)
         .map_or("id", |field| field.rust_name.as_str());
-    let api = format!("{}Api", lower_camel(&entity.rust_name));
+    let api = entity_api_name(ir, entity);
     let mut workflow = workflow_source(ir, entity);
     if let Some(parent) = ir.entities.iter().find(|parent| {
         parent
@@ -379,13 +379,6 @@ fn field_kind(field_type: &FieldTypeIr) -> &'static str {
         FieldTypeIr::Enum { .. } => "enum",
         FieldTypeIr::Relation { .. } => "relation",
     }
-}
-
-fn lower_camel(value: &str) -> String {
-    let mut characters = value.chars();
-    characters.next().map_or_else(String::new, |first| {
-        first.to_lowercase().chain(characters).collect()
-    })
 }
 
 fn humanize(value: &str) -> String {

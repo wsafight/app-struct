@@ -1,0 +1,11 @@
+packages:
+  - .
+overrides:
+  brace-expansion: 5.0.12
+  minimatch: 11.0.1
+  seroval: 1.6.11
+  zod: 4.6.7
+# Rstest 0.12.x still declares happy-dom ^20; 21.0.4 passes the template suites.
+peerDependencyRules:
+  allowedVersions:
+    happy-dom: '21'

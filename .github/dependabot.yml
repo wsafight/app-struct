@@ -5,23 +5,34 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      rust:
+        patterns: ['*']
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-  - package-ecosystem: npm
-    directory: /site
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+    groups:
+      workspace:
+        patterns: ['*']
+    # astro check does not support TypeScript 7 yet.
+    ignore:
+      - dependency-name: typescript
+        versions: ['>=7.0.0, <8.0.0']
   - package-ecosystem: npm
     directory: /crates/appstruct-codegen/templates/web
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      web-template:
+        patterns: ['*']
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ['*']

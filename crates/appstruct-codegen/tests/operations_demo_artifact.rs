@@ -42,7 +42,12 @@ fn operations_demo_generation_is_deterministic_and_combined() {
     assert!(jobs.contains("APPSTRUCT_TEST_JOB_GATE"));
     let report = artifact_text(&first, "backend/src/report.rs");
     assert!(report.contains("APPSTRUCT_TEST_REPORT_FAIL_ONCE"));
+    let client = artifact_text(&first, "web/src/generated/client.ts");
+    assert_eq!(client.matches("export const productApi = {").count(), 1);
+    assert!(client.contains("export const productResourceApi = {"));
     let resources = artifact_text(&first, "web/src/generated/resources.ts");
+    assert!(resources.contains("import { productResourceApi } from \"./client\";"));
+    assert!(resources.contains("api: productResourceApi as unknown as ResourceApi"));
     assert_eq!(resources.matches("kind: \"money\"").count(), 2);
     assert!(resources.contains("currencyField: \"currency\""));
     assert!(resources.contains("fractionDigits: 2"));

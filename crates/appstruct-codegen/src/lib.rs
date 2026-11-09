@@ -5,11 +5,13 @@ mod backend;
 mod database;
 mod formatting;
 mod module_artifact;
+mod naming;
 mod openapi;
 mod typescript;
 mod web;
 
 pub use artifact::{Artifact, ArtifactKind, CodegenError};
+pub(crate) use naming::entity_api_name;
 pub use web::symbols::{RequiredSymbols, check_user_symbols, required_symbols};
 
 use appstruct_ir::{AppIr, to_canonical_json, validate_app_ir};

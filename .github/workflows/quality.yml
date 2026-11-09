@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: pnpm install --frozen-lockfile
       - name: Validate GitHub Actions workflows
@@ -52,7 +52,7 @@ jobs:
     env:
       APPSTRUCT_TEMPLATE: ${{ matrix.template }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: bash scripts/run-template-build.sh
 
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: pnpm install --frozen-lockfile
       - run: pnpm run site:check
@@ -84,7 +84,7 @@ jobs:
       APPSTRUCT_E2E_LOG_DIR: ${{ github.workspace }}/output/e2e-logs
       APPSTRUCT_E2E_STARTUP_TIMEOUT: '120'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
@@ -124,7 +124,7 @@ jobs:
       APPSTRUCT_E2E_STARTUP_TIMEOUT: '600'
       E2E_SUITE: ${{ matrix.suite }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y postgresql-client
@@ -181,7 +181,7 @@ jobs:
       APPSTRUCT_E2E_DATABASE_URL: postgresql://appstruct:appstruct-ci@127.0.0.1:5432/appstruct_deployment_e2e?sslmode=disable
       APPSTRUCT_E2E_LOG_DIR: ${{ github.workspace }}/output/e2e-logs
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: sudo apt-get update && sudo apt-get install --no-install-recommends -y postgresql-client
       - run: pnpm install --frozen-lockfile
@@ -206,7 +206,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build native CLI and test local archive installation
         run: |
           $ErrorActionPreference = 'Stop'
@@ -234,7 +234,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: bash scripts/run-renderer-isolation.sh
 
   packages:
@@ -243,7 +243,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: bash scripts/verify-packages.sh
 
@@ -272,7 +272,7 @@ jobs:
       APPSTRUCT_E2E_LOG_DIR: ${{ github.workspace }}/output/e2e-logs
       BENCHMARK_WORKLOAD: ${{ matrix.workload }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
       - run: sudo apt-get update && sudo apt-get install --no-install-recommends -y postgresql-client
       - run: bash "scripts/run-$BENCHMARK_WORKLOAD-benchmark.sh"
