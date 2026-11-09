@@ -26,12 +26,13 @@ struct ProviderCapability {
 }
 
 const OIDC_CAPABILITIES: &[&str] = &["login", "signup", "account_linking"];
-const BILLING_CAPABILITIES: &[&str] = &[
+const STRIPE_CAPABILITIES: &[&str] = &[
     "subscriptions",
     "trials",
     "customer_portal",
     "stripe_webhooks",
 ];
+const POLAR_CAPABILITIES: &[&str] = &["subscriptions", "customer_portal", "standard_webhooks"];
 const OIDC_ENV: &[&str] = &[
     "APPSTRUCT_OIDC_AUTHORIZATION_URL",
     "APPSTRUCT_OIDC_TOKEN_URL",
@@ -54,6 +55,11 @@ const STRIPE_ENV: &[&str] = &[
     "APPSTRUCT_STRIPE_SECRET_KEY",
     "APPSTRUCT_STRIPE_WEBHOOK_SECRET",
     "APPSTRUCT_STRIPE_PRICE_<PLAN>",
+];
+const POLAR_ENV: &[&str] = &[
+    "APPSTRUCT_POLAR_ACCESS_TOKEN",
+    "APPSTRUCT_POLAR_WEBHOOK_SECRET",
+    "APPSTRUCT_POLAR_PRICE_<PLAN>",
 ];
 
 pub(crate) fn run() -> ExitCode {
@@ -81,12 +87,20 @@ pub(crate) fn run() -> ExitCode {
             ],
         },
         billing: BillingCapabilities {
-            providers: vec![ProviderCapability {
-                id: "stripe",
-                status: "supported",
-                capabilities: BILLING_CAPABILITIES,
-                required_env: STRIPE_ENV,
-            }],
+            providers: vec![
+                ProviderCapability {
+                    id: "stripe",
+                    status: "supported",
+                    capabilities: STRIPE_CAPABILITIES,
+                    required_env: STRIPE_ENV,
+                },
+                ProviderCapability {
+                    id: "polar",
+                    status: "supported",
+                    capabilities: POLAR_CAPABILITIES,
+                    required_env: POLAR_ENV,
+                },
+            ],
         },
     };
     if crate::report::is_json() {

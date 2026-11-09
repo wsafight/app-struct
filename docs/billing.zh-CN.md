@@ -1,6 +1,6 @@
 # 生成应用收费
 
-生成应用可以按 Spec 启用 Stripe Billing v1，为租户组织提供订阅收费：
+生成应用可以按 Spec 启用 Billing v1，为租户组织提供订阅收费。支持两个 Provider：`stripe`（省略 `provider` 时的默认值）和 `polar`：
 
 ```yaml
 modules:
@@ -18,7 +18,34 @@ modules:
         entitlements: [projects, seats]
 ```
 
-编译器会生成收费表、组织所有者结账和客户门户路由、订阅页面、OpenAPI/TypeScript 客户端以及带签名校验的 Stripe Webhook。Webhook 事件 ID 会在事务提交前记录，订阅状态按 Stripe 事件时间单调更新，因此重复或乱序事件不会重复开通权益或回退旧状态。
+编译器会生成收费表、组织所有者结账和客户门户路由、订阅页面、OpenAPI/TypeScript 客户端以及带签名校验的 Webhook。Webhook 事件 ID 会在事务提交前记录，订阅状态按 Provider 事件时间单调更新，因此重复或乱序事件不会重复开通权益或回退旧状态。
+
+## Provider：Polar
+
+设置 `provider: polar` 通过 [Polar](https://polar.sh) 收费。Polar v1 支持 `subscriptions` 和 `customer_portal`；`trials` 和 `metered_usage` 会在编译期被拒绝。每个 `price_env` 必须保存 Polar **产品 UUID**（而不是 Stripe `price_...` ID）；套餐从订阅的 `product_id` 解析，无法被元数据伪造：
+
+```yaml
+modules:
+  billing:
+    enabled: true
+    provider: polar
+    capabilities:
+      subscriptions: true
+      customer_portal: true
+    plans:
+      - id: pro
+        price_env: APPSTRUCT_POLAR_PRICE_PRO
+        entitlements: [projects, seats]
+```
+
+运行时配置：
+
+- `APPSTRUCT_POLAR_ACCESS_TOKEN` —— Organization Access Token，仅作为 Bearer 凭证保存在服务端。
+- `APPSTRUCT_POLAR_WEBHOOK_SECRET` —— Polar 控制台生成的 `whsec_…` 端点密钥。
+- `APPSTRUCT_POLAR_PRODUCT_CREDITS` —— 可选，点数包商品 UUID。
+- 每个声明的 `price_env` 对应一个 Polar 产品 UUID。
+
+生成的 Webhook 路由是 `POST /api/billing/polar/webhook`。投递使用 Standard Webhooks 方案（`webhook-id`、`webhook-timestamp`、`webhook-signature` 头）：时间戳必须在五分钟容差内，HMAC-SHA256 签名做常量时间比较，`webhook-id` 用于重复投递去重。签名校验通过后订阅状态始终从 Polar API 重新拉取，伪造或过期载荷无法凭空开通权益。组织通过 `external_customer_id` 关联。
 
 业务命令和查询可以要求套餐权益。服务端会根据当前组织的有效订阅检查权益，客户端隐藏按钮或伪造请求都不能绕过限制：
 

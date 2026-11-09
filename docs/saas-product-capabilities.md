@@ -8,7 +8,7 @@ The SaaS demo now extends the unchanged starter preset with the following bounde
 | P0 | `/results` | Customer progress, cancel, errors, retention, download and retry as a new run, separate from operator Jobs administration |
 | P1 | `/notifications`, `/account` | Inbox/read state/preferences, profile, report defaults, verified email change, password/session/token controls, encrypted TOTP and one-time recovery codes |
 | P1 | `/team`, `/credits` | Rename/transfer/remove members, capacity checks at invitation and acceptance, monthly/purchased buckets, ledger, hosted top-up and refund deductions |
-| P1 | `/admin/insights` | Consented first-party traffic, registration/activation window counts, fully observed D7 activation retention and currency-separated payment captures/refunds |
+| P1 | `/admin/insights` | Consented first-party traffic with UTM/referrer source attribution, registration/activation window counts, fully observed D7 activation retention and currency-separated payment captures/refunds |
 | P2 | `/planning`, `/approvals` | Shared Task board/calendar and resource counts; unchanged-task snapshot approval with supporting report, another member and immutable decisions |
 | P2 | `/assistant` | Optional Ollama draft example, idempotent credit reservation, Jobs, authenticated SSE snapshots, personal history, cancel/failure refunds and interruption recovery |
 
@@ -36,7 +36,7 @@ Profile locale/timezone become defaults only when report creation omits them. No
 | `APPSTRUCT_STRIPE_PRICE_CREDITS`, `APPSTRUCT_CREDIT_PACK_UNITS` | Server-owned hosted top-up price and units, default 100 |
 | `APPSTRUCT_DAILY_VISIT_EVENT_LIMIT` | 100000 accepted visit events per UTC day |
 
-Monthly credits are spent first. Reservations/refunds commit with business state, are serialized/idempotent and refund to the original bucket without resurrecting expired allowance. Upgrades top up the current grant; downgrades do not claw it back. Purchased balances do not expire. Signed paid Checkout events fulfill known purchases; proportional refunds deduct credits once despite duplicate/reordered events. Refund debt blocks further use until covered. This is not metered Stripe billing, seat-priced subscriptions or invoicing/tax infrastructure. The existing lifetime three-report allowance remains independent.
+Monthly credits are spent first. Reservations/refunds commit with business state, are serialized/idempotent and refund to the original bucket without resurrecting expired allowance. Upgrades top up the current grant; downgrades do not claw it back. Purchased balances do not expire. Signed paid checkout/order events fulfill known purchases (Stripe Checkout sessions or Polar orders, depending on `modules.billing.provider`); proportional refunds deduct credits once despite duplicate/reordered events. Refund debt blocks further use until covered. This is not metered billing, seat-priced subscriptions or invoicing/tax infrastructure. The existing lifetime three-report allowance remains independent.
 
 Traffic is opt-in and deduplicated by visitor/day/page, not raw pageviews. Funnel figures are window counts, not attributed cohort conversion. Captured/refunded sums are currency-separated strings in minor units, before fees, not MRR or bank settlement. No third-party tracker is injected.
 
@@ -70,7 +70,7 @@ For production run `appstruct build` first, then `pnpm saas:build` from the repo
 
 Capture remains development-only. Set `modules.report.renderer: chromium`, regenerate, combine production Compose with `generated/report-renderer/compose.yaml`, keep a stable snapshot key and follow [renderer isolation/acceptance](report-renderer.md). Do not deploy unsandboxed Chromium. Real Stripe collection, real S3 bucket CORS/credentials and target-platform PDF acceptance require the operator's deployment credentials.
 
-`cargo test -p appstruct-codegen --test product_journey` compiles shared APIs and application tests. Database tests skip without `APPSTRUCT_E2E_DATABASE_URL`. For real local validation provide an isolated database, capture mail, temporary file root, test snapshot/MFA keys, seat limit 2 and test Stripe secret/webhook/Pro-price values. Enable AI tests with `APPSTRUCT_AI_ENABLED=true`, model `test-model` and endpoint `http://127.0.0.1:<unused-port>/api/generate`; the test starts its own NDJSON stub, not a real model or Stripe call.
+`cargo test -p appstruct-codegen --test product_journey` compiles shared APIs and application tests. Database tests skip without `APPSTRUCT_E2E_DATABASE_URL`. For real local validation provide an isolated database, capture mail, temporary file root, test snapshot/MFA keys, seat limit 2 and test payment credentials (e.g. Stripe secret/webhook/price values, or the Polar equivalents when `provider: polar`). Enable AI tests with `APPSTRUCT_AI_ENABLED=true`, model `test-model` and endpoint `http://127.0.0.1:<unused-port>/api/generate`; the test starts its own NDJSON stub, not a real model or payment call.
 
 Browser mocks use `APPSTRUCT_E2E_SAAS_PRODUCT=1 PLAYWRIGHT_BASE_URL=http://127.0.0.1:5173 pnpm exec playwright test tests/e2e/saas-product.spec.ts`. Full renderer scripts reset the public schema: use a fresh dedicated database whose name contains test/e2e. Mock browsers, signed local events and model stubs are not external-provider acceptance.
 

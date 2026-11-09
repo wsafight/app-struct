@@ -7,8 +7,10 @@ export const chinese: Readonly<Record<string, string>> = {
   "Distinct actors completing business work": "完成业务操作的去重用户数",
   "First activation cohort from the last 30 days, observed at age 7–8 days; only fully observed cohorts":
     "近 30 天首次激活的用户群，在激活后第 7 至 8 天观察；仅统计观察期完整的群组",
-  "Stripe captured payments minus recorded refunds, grouped by currency, in minor units; before fees, not bank settlement or MRR":
-    "Stripe 已收款减去已记录退款，按币种统计，原始值以最小货币单位计；不扣手续费，不代表银行结算金额或月经常性收入（MRR）",
+  "Captured payments minus recorded refunds, grouped by currency, in minor units; before fees, not bank settlement or MRR":
+    "已收款减去已记录退款，按币种统计，原始值以最小货币单位计；不扣手续费，不代表银行结算金额或月经常性收入（MRR）",
+  "Visitor sources derived from consented UTM parameters or the HTTPS referrer domain; visits without either count as direct":
+    "访客来源来自已同意的 UTM 参数或 HTTPS referrer 域名；两者皆无的访问计为直接访问",
   "Window counts, not an attributed cohort conversion rate":
     "仅为统计窗口内的数量，不代表归因到同一用户群的转化率",
   "{amount} {currency} (minor units)": "{amount} {currency}（最小货币单位）",
@@ -16,8 +18,8 @@ export const chinese: Readonly<Record<string, string>> = {
   "A new task was created": "已创建新的任务",
   "A payment refund left a credit debt. Add credits before continuing.":
     "支付退款导致点数欠款，请补充点数后继续。",
-  "AI is disabled. Configure APPSTRUCT_AI_ENABLED, APPSTRUCT_AI_MODEL and the server-side Ollama endpoint. Other product features work without a model service.":
-    "AI 尚未启用。请配置 APPSTRUCT_AI_ENABLED、APPSTRUCT_AI_MODEL 和服务端 Ollama 地址。其他产品功能无需模型服务即可使用。",
+  "AI is disabled. Configure APPSTRUCT_AI_ENABLED, APPSTRUCT_AI_MODEL and the server-side model endpoint. Other product features work without a model service.":
+    "AI 尚未启用。请配置 APPSTRUCT_AI_ENABLED、APPSTRUCT_AI_MODEL 和服务端模型地址。其他产品功能无需模型服务即可使用。",
   "AI writing assistant": "AI 写作助手",
   "AI assistant": "AI 助手",
   "Account security": "账户安全",
@@ -184,8 +186,8 @@ export const chinese: Readonly<Record<string, string>> = {
   "Open authenticator": "打开认证器",
   "Open your workspace": "进入工作空间",
   "Opening checkout...": "正在打开收银台…",
-  "Optional Ollama adapter. Each request reserves one credit; final failure or cancellation returns it. Only send data approved for your configured model service.":
-    "可选的 Ollama 写作服务。每次请求预占一点，最终失败或取消会返还。请仅提交允许发送至该模型服务的数据。",
+  "Optional AI adapter (local Ollama or an HTTPS OpenAI-compatible endpoint). Each request reserves one credit; final failure or cancellation returns it. Only send data approved for your configured model service.":
+    "可选的 AI 写作服务（本地 Ollama 或 HTTPS OpenAI 兼容端点）。每次请求预占一点，最终失败或取消会返还。请仅提交允许发送至该模型服务的数据。",
   "Optional first-party visit measurement uses a random browser ID, page and UTC date. No third-party tracking script is loaded.":
     "可选的第一方访问统计仅使用随机浏览器标识、页面和 UTC 日期，不加载第三方追踪脚本。",
   Owner: "所有者",
@@ -237,6 +239,8 @@ export const chinese: Readonly<Record<string, string>> = {
   "Revoke all sessions and API tokens": "撤销全部会话和 API 令牌",
   Sat: "周六",
   "Save preferences": "保存偏好",
+  Medium: "渠道",
+  Source: "来源",
   "Save recovery codes": "保存恢复码",
   "Save your recovery codes now": "请立即保存恢复码",
   "Scan the QR code": "扫描二维码",
@@ -325,6 +329,7 @@ export const chinese: Readonly<Record<string, string>> = {
   "Verify a code": "验证验证码",
   "Visit measurement is unavailable.": "访问统计暂不可用。",
   "Visit measurement preference": "访问统计偏好",
+  "Visitor sources": "访客来源",
   Visitors: "访客",
   Wed: "周三",
   "What should the assistant draft?": "希望助手撰写什么内容？",
@@ -600,6 +605,7 @@ export const chinese: Readonly<Record<string, string>> = {
   "No activity yet": "暂无动态",
   "No audit events": "暂无审计事件",
   "No changes recorded": "暂无变更记录",
+  "No consented visits in this window": "此窗口内暂无已同意的访问记录",
   "No field changes": "没有字段变更",
   "No files found": "未找到文件",
   "No grouping": "不分组",

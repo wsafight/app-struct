@@ -6,10 +6,12 @@ use std::sync::Arc;
 
 #[test]
 fn ndjson_limits_errors_and_final_line() {
+    let provider = AiProvider::Ollama;
     let mut answer = String::new();
-    assert!(!append_line(br#"{"response":"Hello ","done":false}"#, &mut answer, 20).unwrap());
+    assert!(!append_line(&provider, br#"{"response":"Hello ","done":false}"#, &mut answer, 20).unwrap());
     assert!(
         append_line(
+            &provider,
             br#"{"response":"world","done":true,"eval_count":2}"#,
             &mut answer,
             20
@@ -18,20 +20,55 @@ fn ndjson_limits_errors_and_final_line() {
     );
     assert_eq!(answer, "Hello world");
     assert_eq!(
-        append_line(br#"{"error":"model failed"}"#, &mut answer, 20),
+        append_line(&provider, br#"{"error":"model failed"}"#, &mut answer, 20),
         Err("AI_PROVIDER_FAILED")
     );
     assert_eq!(
-        append_line(b"not json", &mut answer, 20),
+        append_line(&provider, b"not json", &mut answer, 20),
         Err("AI_INVALID_RESPONSE")
     );
     assert_eq!(
-        append_line(br#"{"done":true,"eval_count":21}"#, &mut answer, 20),
+        append_line(&provider, br#"{"done":true,"eval_count":21}"#, &mut answer, 20),
         Err("AI_OUTPUT_LIMIT")
     );
     answer = "x".repeat(65536);
     assert_eq!(
-        append_line(br#"{"response":"x"}"#, &mut answer, 20),
+        append_line(&provider, br#"{"response":"x"}"#, &mut answer, 20),
+        Err("AI_OUTPUT_LIMIT")
+    );
+}
+
+#[test]
+fn openai_sse_deltas_and_done_marker() {
+    let provider = AiProvider::OpenAi;
+    let mut answer = String::new();
+    // Non-data lines and comments are ignored.
+    assert!(!append_line(&provider, b": keep-alive", &mut answer, 20).unwrap());
+    assert!(!append_line(
+        &provider,
+        br#"data: {"choices":[{"delta":{"content":"Hello "},"finish_reason":null}]}"#,
+        &mut answer,
+        20
+    ).unwrap());
+    assert!(append_line(
+        &provider,
+        br#"data: {"choices":[{"delta":{"content":"world"},"finish_reason":"stop"}]}"#,
+        &mut answer,
+        20
+    ).unwrap());
+    assert_eq!(answer, "Hello world");
+    assert!(append_line(&provider, b"data: [DONE]", &mut answer, 20).unwrap());
+    assert_eq!(
+        append_line(&provider, br#"data: {"error":{"message":"boom"}}"#, &mut answer, 20),
+        Err("AI_PROVIDER_FAILED")
+    );
+    assert_eq!(
+        append_line(&provider, b"data: not json", &mut answer, 20),
+        Err("AI_INVALID_RESPONSE")
+    );
+    answer = "x".repeat(65536);
+    assert_eq!(
+        append_line(&provider, br#"data: {"choices":[{"delta":{"content":"x"}}]}"#, &mut answer, 20),
         Err("AI_OUTPUT_LIMIT")
     );
 }

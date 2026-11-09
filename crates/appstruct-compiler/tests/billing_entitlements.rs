@@ -41,6 +41,46 @@ fn lowers_entitlement_access_for_business_operations() {
 }
 
 #[test]
+fn accepts_polar_provider_and_rejects_unknown_providers() {
+    let source =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");
+    let temporary = tempfile::tempdir().unwrap();
+    fs::create_dir(temporary.path().join("spec")).unwrap();
+    for relative in ["appstruct.yaml", "spec/identity.yaml", "spec/project.yaml"] {
+        fs::copy(source.join(relative), temporary.path().join(relative)).unwrap();
+    }
+    let appstruct = temporary.path().join("appstruct.yaml");
+    let original = fs::read_to_string(&appstruct).unwrap();
+    let with_billing = |provider: &str| {
+        original.replacen(
+            "  tenant:\n    enabled: true\n",
+            &format!(
+                "  tenant:\n    enabled: true\n  billing:\n    enabled: true\n    provider: {provider}\n    capabilities:\n      subscriptions: true\n    plans:\n      - id: pro\n        price_env: APPSTRUCT_POLAR_PRICE_PRO\n        entitlements: [reports]\n"
+            ),
+            1,
+        )
+    };
+    fs::write(&appstruct, with_billing("polar")).unwrap();
+    let ir = compile_project(temporary.path()).unwrap();
+    assert_eq!(ir.billing.provider.as_deref(), Some("polar"));
+
+    fs::write(&appstruct, with_billing("lemonsqueezy")).unwrap();
+    let errors = compile_project(temporary.path()).unwrap_err();
+    assert!(errors.iter().any(|error| error.code == "AS3073"));
+
+    fs::write(
+        &appstruct,
+        with_billing("polar").replace(
+            "subscriptions: true",
+            "subscriptions: true\n      trials: true",
+        ),
+    )
+    .unwrap();
+    let errors = compile_project(temporary.path()).unwrap_err();
+    assert!(errors.iter().any(|error| error.code == "AS3084"));
+}
+
+#[test]
 fn rejects_entitlement_access_without_a_declared_plan_entitlement() {
     let source =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");

@@ -607,6 +607,46 @@ fn stripe_billing_admin_contract_generates_a_compilable_backend() {
 }
 
 #[test]
+fn polar_billing_generates_a_compilable_backend() {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");
+    let mut ir = compile_project(&fixture).unwrap();
+    ir.billing = appstruct_ir::BillingIr {
+        enabled: true,
+        provider: Some("polar".to_owned()),
+        subscriptions: true,
+        trials: false,
+        customer_portal: true,
+        metered_usage: false,
+        plans: vec![appstruct_ir::BillingPlanIr {
+            id: "pro".to_owned(),
+            price_env: "APPSTRUCT_POLAR_PRICE_PRO".to_owned(),
+            trial_days: None,
+            entitlements: vec!["projects".to_owned()],
+        }],
+    };
+    let artifacts = plan(&ir).unwrap();
+    let billing = artifact_text(&artifacts, "backend/src/billing.rs");
+    assert!(billing.contains("const PROVIDER: &str = \"polar\""));
+    assert!(billing.contains("/api/billing/polar/webhook"));
+    assert!(billing.contains("polar_verify_signature"));
+    let payments = artifact_text(&artifacts, "backend/src/product/payments.rs");
+    assert!(payments.contains("apply_polar_order"));
+    assert!(payments.contains("order.paid"));
+
+    let temporary = tempfile::tempdir().unwrap();
+    write_artifacts(temporary.path(), &artifacts);
+    let manifest = temporary.path().join("generated/backend/Cargo.toml");
+    assert_rustfmt(&manifest);
+    let checked = cargo_check(&manifest, true);
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+}
+
+#[test]
 fn m6_tenant_contract_generates_a_compilable_backend() {
     let fixture =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");

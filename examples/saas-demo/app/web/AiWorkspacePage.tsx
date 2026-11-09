@@ -122,7 +122,7 @@ export function AiWorkspacePage() {
       <h1>{t("AI writing assistant")}</h1>
       <p>
         {t(
-          "Optional Ollama adapter. Each request reserves one credit; final failure or cancellation returns it. Only send data approved for your configured model service.",
+          "Optional AI adapter (local Ollama or an HTTPS OpenAI-compatible endpoint). Each request reserves one credit; final failure or cancellation returns it. Only send data approved for your configured model service.",
         )}
       </p>
       <p>
@@ -133,7 +133,7 @@ export function AiWorkspacePage() {
       {capabilities.data && !capabilities.data.enabled && (
         <p role="status">
           {t(
-            "AI is disabled. Configure APPSTRUCT_AI_ENABLED, APPSTRUCT_AI_MODEL and the server-side Ollama endpoint. Other product features work without a model service.",
+            "AI is disabled. Configure APPSTRUCT_AI_ENABLED, APPSTRUCT_AI_MODEL and the server-side model endpoint. Other product features work without a model service.",
           )}
         </p>
       )}

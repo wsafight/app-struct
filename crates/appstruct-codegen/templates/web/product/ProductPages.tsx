@@ -507,6 +507,33 @@ export function InsightsPage() {
             ))}
           </section>
           <p>{t(data.definitions.funnel)}</p>
+          <h2>{t("Visitor sources")}</h2>
+          {data.sources.length === 0 ? (
+            <EmptyState
+              title={t("No consented visits in this window")}
+            />
+          ) : (
+            <section className="table-frame">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t("Source")}</th>
+                    <th>{t("Medium")}</th>
+                    <th>{t("Visitors")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.sources.map((row) => (
+                    <tr key={`${row.source}:${row.medium ?? ""}`}>
+                      <td>{row.source}</td>
+                      <td>{row.medium ?? "—"}</td>
+                      <td>{formatNumber(row.visitors)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
           <section className="panel">
             <h2>{t("Day-7 retention")}</h2>
             <p>
@@ -565,6 +592,7 @@ export function InsightsPage() {
                           activated: "Activated users",
                           retention_d7: "Day-7 retention",
                           revenue: "Payment receipts and refunds",
+                          sources: "Visitor sources",
                           funnel: "Funnel",
                         } as Record<string, string>
                       )[name] ?? name,
