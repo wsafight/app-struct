@@ -10,6 +10,12 @@ use axum::{Json, Router};
 use sqlx::Row as _;
 use crate::database::{DatabaseExecutor,  Sql};
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+use std::time::Duration;
+use tokio::sync::Semaphore;
+
+static PASSWORD_WORK: Semaphore = Semaphore::const_new(4);
+static DUMMY_PASSWORD_HASH: OnceLock<String> = OnceLock::new();
 
 pub(super) fn router() -> Router<AppState> {
     Router::new()
@@ -68,7 +74,7 @@ async fn register(
     state.auth.validate_origin(&headers)?;
     let email = validate_credentials(input)?;
     state.auth.consume_auth_rate_limit(&state.database, &format!("register:{}", email.email)).await?;
-    let password_hash = hash_password(&email.password)?;
+    let password_hash = hash_password(&email.password).await?;
     let user_id = uuid::Uuid::now_v7();
     let roles = vec![config::DEFAULT_ROLE.to_owned()];
     let transaction = state.database.begin().await?;
@@ -128,11 +134,8 @@ async fn login(
         .await?;
     let stored = row
         .as_ref()
-        .and_then(|value| value.try_get::<String, _>("password_hash").ok())
-        .unwrap_or_else(dummy_password_hash);
-    let valid = PasswordHash::new(&stored)
-        .ok()
-        .is_some_and(|hash| Argon2::default().verify_password(input.password.as_bytes(), &hash).is_ok());
+        .and_then(|value| value.try_get::<String, _>("password_hash").ok());
+    let valid = verify_password(input.password, stored).await?;
     let Some(row) = row.filter(|_| valid) else {
         return Err(ApiError::Unauthorized);
     };
@@ -296,15 +299,68 @@ pub(super) fn validate_password(value: &str) -> Result<(), ApiError> {
     if (12..=1024).contains(&value.len()) { Ok(()) } else { Err(ApiError::InvalidCredentialsInput) }
 }
 
-pub(super) fn hash_password(value: &str) -> Result<String, ApiError> {
-    Argon2::default()
-        .hash_password(value.as_bytes())
-        .map(|hash| hash.to_string())
-        .map_err(|_| ApiError::Internal)
+async fn password_work<Output: Send + 'static>(
+    work: impl FnOnce() -> Result<Output, ApiError> + Send + 'static,
+) -> Result<Output, ApiError> {
+    let permit = tokio::time::timeout(Duration::from_secs(5), PASSWORD_WORK.acquire())
+        .await.map_err(|_| ApiError::TooManyRequests)?
+        .map_err(|_| ApiError::Internal)?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        work()
+    }).await.map_err(|_| ApiError::Internal)?
 }
 
-fn dummy_password_hash() -> String {
-    hash_password("invalid-password-value").expect("static password is hashable")
+pub(super) async fn hash_password(value: &str) -> Result<String, ApiError> {
+    let value = value.to_owned();
+    password_work(move || encode_password(&value)).await
+}
+
+fn encode_password(value: &str) -> Result<String, ApiError> {
+    Argon2::default().hash_password(value.as_bytes())
+        .map(|hash| hash.to_string()).map_err(|_| ApiError::Internal)
+}
+
+pub(super) async fn verify_password(value: String, stored: Option<String>) -> Result<bool, ApiError> {
+    password_work(move || {
+        let stored = stored.as_deref().unwrap_or_else(|| dummy_password_hash());
+        Ok(PasswordHash::new(stored).is_ok_and(|hash| {
+            Argon2::default().verify_password(value.as_bytes(), &hash).is_ok()
+        }))
+    }).await
+}
+
+fn dummy_password_hash() -> &'static str {
+    DUMMY_PASSWORD_HASH.get_or_init(|| encode_password("invalid-password-value").expect("static password is hashable"))
+}
+
+#[cfg(test)]
+mod password_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn password_hashes_verify_and_unknown_accounts_reuse_a_dummy() {
+        let stored = hash_password("a-long-test-password").await.unwrap();
+        assert!(verify_password("a-long-test-password".to_owned(), Some(stored.clone())).await.unwrap());
+        assert!(!verify_password("an-incorrect-password".to_owned(), Some(stored)).await.unwrap());
+        assert!(!verify_password("an-incorrect-password".to_owned(), None).await.unwrap());
+        let first = DUMMY_PASSWORD_HASH.get().unwrap().as_ptr();
+        assert!(!verify_password("an-incorrect-password".to_owned(), None).await.unwrap());
+        assert_eq!(first, DUMMY_PASSWORD_HASH.get().unwrap().as_ptr());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn password_work_does_not_block_the_async_runtime() {
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (release, waiting) = std::sync::mpsc::channel();
+        let worker = tokio::spawn(password_work(move || {
+            started.send(()).unwrap();
+            waiting.recv_timeout(Duration::from_secs(5)).map_err(|_| ApiError::Internal)
+        }));
+        ready.await.unwrap();
+        release.send(()).unwrap();
+        worker.await.unwrap().unwrap();
+    }
 }
 
 fn api_token_from_row(row: crate::database::PgRow) -> Result<ApiToken, sqlx::Error> {

@@ -42,6 +42,7 @@ enum WatchMode {
 struct NativeWatcher {
     _watcher: RecommendedWatcher,
     events: Receiver<notify::Result<Event>>,
+    includes: Vec<PathBuf>,
 }
 
 impl ProjectWatcher {
@@ -116,9 +117,33 @@ impl NativeWatcher {
                     .map_err(notify_error)?;
             }
         }
+        let includes = include_paths(project);
+        let mut parents = std::collections::BTreeSet::new();
+        for path in &includes {
+            let mut parent = path.parent();
+            while let Some(directory) = parent {
+                if directory.is_dir() {
+                    parents.insert(directory.to_path_buf());
+                    break;
+                }
+                parent = directory.parent();
+            }
+        }
+        for directory in parents {
+            if directory != project
+                && !["spec", "modules", "app/backend", "app/web", ".cargo"]
+                    .iter()
+                    .any(|relative| directory.starts_with(project.join(relative)))
+            {
+                watcher
+                    .watch(&directory, RecursiveMode::NonRecursive)
+                    .map_err(notify_error)?;
+            }
+        }
         Ok(Self {
             _watcher: watcher,
             events,
+            includes,
         })
     }
 
@@ -132,7 +157,11 @@ impl NativeWatcher {
             }
             match self.events.recv_timeout(remaining) {
                 Ok(event) => {
-                    changes.merge(changes_from_event(project, event.map_err(notify_error)?));
+                    changes.merge(changes_from_event(
+                        project,
+                        event.map_err(notify_error)?,
+                        &self.includes,
+                    ));
                     if !changes.is_empty() {
                         break;
                     }
@@ -146,7 +175,11 @@ impl NativeWatcher {
         loop {
             match self.events.recv_timeout(DEBOUNCE) {
                 Ok(event) => {
-                    changes.merge(changes_from_event(project, event.map_err(notify_error)?));
+                    changes.merge(changes_from_event(
+                        project,
+                        event.map_err(notify_error)?,
+                        &self.includes,
+                    ));
                 }
                 Err(RecvTimeoutError::Timeout) => return Ok(Some(changes)),
                 Err(RecvTimeoutError::Disconnected) => {
@@ -157,12 +190,22 @@ impl NativeWatcher {
     }
 }
 
-fn changes_from_event(project: &Path, event: Event) -> ProjectChanges {
+fn changes_from_event(project: &Path, event: Event, includes: &[PathBuf]) -> ProjectChanges {
     if matches!(event.kind, EventKind::Access(_)) {
         return ProjectChanges::default();
     }
     let mut changes = ProjectChanges::default();
     for path in event.paths {
+        if includes
+            .iter()
+            .any(|include| include == &path || include.starts_with(&path))
+        {
+            changes.merge(ProjectChanges {
+                specification: true,
+                backend: true,
+                web: true,
+            });
+        }
         changes.merge(classify_path(project, &path));
     }
     changes
@@ -230,18 +273,7 @@ struct SourceFingerprints {
 impl SourceFingerprints {
     fn read(project: &Path) -> io::Result<Self> {
         Ok(Self {
-            specification: fingerprint(
-                project,
-                &[
-                    "appstruct.yaml",
-                    "appstruct.lock",
-                    "appstruct.modules.lock",
-                    ".env",
-                    ".npmrc",
-                    "pnpm-workspace.yaml",
-                ],
-                &["spec", "modules"],
-            )?,
+            specification: specification_fingerprint(project)?,
             backend: fingerprint(
                 project,
                 &["rust-toolchain.toml", "rust-toolchain"],
@@ -260,6 +292,32 @@ impl SourceFingerprints {
     }
 }
 
+fn include_paths(project: &Path) -> Vec<PathBuf> {
+    appstruct_compiler::project_include_paths(project)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|path| project.join(path))
+        .collect()
+}
+
+fn specification_fingerprint(project: &Path) -> io::Result<[u8; 32]> {
+    let mut hash = Sha256::new();
+    hash.update(fingerprint(
+        project,
+        &[
+            "appstruct.yaml",
+            "appstruct.lock",
+            "appstruct.modules.lock",
+            ".env",
+            ".npmrc",
+            "pnpm-workspace.yaml",
+        ],
+        &["spec", "modules"],
+    )?);
+    hash.update(fingerprint_paths(project, include_paths(project))?);
+    Ok(hash.finalize().into())
+}
+
 fn fingerprint(project: &Path, files: &[&str], directories: &[&str]) -> io::Result<[u8; 32]> {
     let mut paths = files
         .iter()
@@ -269,18 +327,31 @@ fn fingerprint(project: &Path, files: &[&str], directories: &[&str]) -> io::Resu
     for directory in directories {
         collect_files(&project.join(directory), &mut paths)?;
     }
+    fingerprint_paths(project, paths)
+}
+
+fn fingerprint_paths(project: &Path, mut paths: Vec<PathBuf>) -> io::Result<[u8; 32]> {
     paths.sort();
     let mut hash = Sha256::new();
     for path in paths {
         let relative = path.strip_prefix(project).map_err(io::Error::other)?;
         hash.update(relative.to_string_lossy().as_bytes());
         hash.update([0]);
-        let metadata = fs::symlink_metadata(&path)?;
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                hash.update(b"missing\0");
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         if metadata.file_type().is_symlink() {
             hash.update(b"symlink\0");
             hash.update(fs::read_link(path)?.as_os_str().as_encoded_bytes());
-        } else {
+        } else if metadata.is_file() {
             hash.update(fingerprint::digest(&path)?);
+        } else {
+            hash.update(b"directory\0");
         }
         hash.update([0]);
     }

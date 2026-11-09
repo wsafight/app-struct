@@ -1,8 +1,7 @@
-use super::{config, handlers::{hash_password, normalize_email, quote_ident, validate_password}, session::{random_token, token_hash}};
+use super::{config, handlers::{hash_password, normalize_email, quote_ident, validate_password, verify_password}, session::{random_token, token_hash}};
 use crate::{ApiError, AppState};
 use crate::database::{DatabaseExecutor, Sql, Transaction};
 use axum::{Json, Router, extract::State, http::{HeaderMap, StatusCode}, routing::{get, post}};
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use base64::Engine as _;
 use ring::{aead, hmac, rand::{SecureRandom, SystemRandom}};
 use serde::Deserialize;
@@ -55,7 +54,7 @@ async fn reauthenticate(state: &AppState, headers: &HeaderMap, proof: &Proof) ->
     state.auth.consume_auth_rate_limit(&state.database, &format!("settings:{}", user.id)).await?;
     let row = state.database.fetch_optional(Sql::bind("SELECT password_hash FROM \"_appstruct_auth_accounts\" WHERE user_id = $1", [user.id.into()])).await?.ok_or(ApiError::Unauthorized)?;
     let stored = row.try_get::<String, _>("password_hash")?;
-    if !PasswordHash::new(&stored).is_ok_and(|hash| Argon2::default().verify_password(proof.password.as_bytes(), &hash).is_ok()) { return Err(ApiError::Unauthorized); }
+    if !verify_password(proof.password.clone(), Some(stored)).await? { return Err(ApiError::Unauthorized); }
     Ok(user.id)
 }
 
@@ -180,7 +179,7 @@ struct PasswordInput { password: String, code: Option<String>, new_password: Str
 async fn change_password(State(state): State<AppState>, headers: HeaderMap, Json(input): Json<PasswordInput>) -> Result<StatusCode, ApiError> {
     validate_password(&input.new_password)?;
     let user = reauthenticate(&state, &headers, &Proof { password: input.password, code: input.code.clone() }).await?;
-    let hash = hash_password(&input.new_password)?;
+    let hash = hash_password(&input.new_password).await?;
     let transaction = state.database.begin().await?;
     verify_mfa(&transaction, user, input.code.as_deref()).await?;
     transaction.execute(Sql::bind("UPDATE \"_appstruct_auth_accounts\" SET password_hash = $2 WHERE user_id = $1", [user.into(), hash.into()])).await?;

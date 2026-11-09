@@ -1,5 +1,10 @@
 # Authentication and email limits
 
+Argon2 hashing and verification run on blocking workers, with at most four concurrent computations
+per API process. Waiting more than five seconds for a slot returns 429. Started computations keep
+their slot even if the request is cancelled. Unknown accounts reuse a process-wide lazily initialized
+dummy hash instead of computing an extra hash on every failed login.
+
 The generated backend stores one-minute fixed-window counters in PostgreSQL's `_appstruct_auth_login_attempts` table. Each key allows 10 attempts per window, starting with its first request. The next request after expiry starts a new window. Updates are atomic and shared by API replicas.
 
 | Endpoint | Key | When counted |

@@ -93,7 +93,7 @@ async fn reset_password(
     }
     state.auth.validate_origin(&headers)?;
     validate_password(&input.password)?;
-    let password_hash = hash_password(&input.password)?;
+    let password_hash = hash_password(&input.password).await?;
     let transaction = state.database.begin().await?;
     let row = transaction.fetch_optional(Sql::bind("SELECT user_id FROM \"_appstruct_auth_password_resets\" WHERE token_hash = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP FOR UPDATE",
         [token_hash(&input.token).into()],

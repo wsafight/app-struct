@@ -1,5 +1,9 @@
 name: AppStruct toolchain
 description: Install the repository's Rust, Node.js and pnpm toolchains and restore dependency caches.
+inputs:
+  cache-build:
+    description: Cache Cargo debug dependency artifacts; Cargo still validates current workspace inputs.
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -26,3 +30,11 @@ runs:
         key: cargo-dependencies-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
         restore-keys: |
           cargo-dependencies-${{ runner.os }}-
+    - uses: actions/cache@v4
+      if: inputs.cache-build == 'true'
+      with:
+        path: |
+          target/debug/.fingerprint
+          target/debug/build
+          target/debug/deps
+        key: cargo-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}

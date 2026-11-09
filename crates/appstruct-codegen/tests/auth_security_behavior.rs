@@ -7,6 +7,12 @@ use std::{fs, path::Path};
 
 #[test]
 fn generated_auth_security_behaviors_hold() {
+    if std::env::var("APPSTRUCT_REQUIRE_PRODUCT_TESTS").as_deref() == Ok("1") {
+        assert!(
+            std::env::var("APPSTRUCT_E2E_DATABASE_URL").is_ok_and(|value| !value.is_empty()),
+            "APPSTRUCT_E2E_DATABASE_URL is required by the product database gate"
+        );
+    }
     let fixture =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m6-tenant-project");
     let mut ir = compile_project(&fixture).unwrap();
@@ -31,6 +37,13 @@ fn generated_auth_security_behaviors_hold() {
         include_str!("auth_security_behavior/runtime.rs"),
     )
     .unwrap();
+    let unit_tests = support::cargo_test_lib(&manifest);
+    assert!(
+        unit_tests.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&unit_tests.stdout),
+        String::from_utf8_lossy(&unit_tests.stderr)
+    );
     let output = support::cargo_test(&manifest, "auth_security");
     if !output.status.success() {
         let generated = project.keep();

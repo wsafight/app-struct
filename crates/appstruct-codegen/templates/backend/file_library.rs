@@ -102,36 +102,68 @@ async fn upload_status(State(state): State<AppState>, headers: HeaderMap, Path(i
 
 async fn upload_content(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>, body: Bytes) -> Result<StatusCode, ApiError> {
     let context = state.mutation_context(&headers).await?;
-    let transaction = state.database.begin().await?;
-    let row = upload_row(&transaction, &context, &id, true).await?;
+    let row = upload_row(&state.database, &context, &id, false).await?;
     upload_pending(&row)?;
     if row.try_get::<Option<uuid::Uuid>, _>("file_id")?.is_some() { return Err(ApiError::Conflict("Upload is already complete".to_owned())); }
     if body.len() as i64 != row.try_get::<i64, _>("size")? { return Err(ApiError::InvalidQuery("Upload size differs from the declared size".to_owned())); }
-    state.file.put_staged(&row.try_get::<String, _>("object_key")?, &body).await.map_err(file_error)?;
-    transaction.commit().await?;
+    let key = row.try_get::<String, _>("object_key")?;
+    state.file.put_staged_owned(&key, body).await.map_err(file_error)?;
+    let current = upload_row(&state.database, &context, &id, false).await?;
+    let pending = upload_pending(&current).and_then(|()| {
+        if current.try_get::<Option<uuid::Uuid>, _>("file_id")?.is_some() {
+            Err(ApiError::Conflict("Upload is already complete".to_owned()))
+        } else { Ok(()) }
+    });
+    if pending.is_err() {
+        if let Err(error) = state.file.delete_staged(&key).await { tracing::warn!(%error, "staged upload cleanup deferred to reconciliation"); }
+    }
+    pending?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 async fn complete_upload(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>) -> Result<Json<FileMetadata>, ApiError> {
     let context = state.mutation_context(&headers).await?;
-    let transaction = state.database.begin().await?;
-    let row = upload_row(&transaction, &context, &id, true).await?;
-    if let Some(file_id) = row.try_get::<Option<uuid::Uuid>, _>("file_id")? {
-        let key = owned_key(&state, &context, &file_id.to_string()).await?;
-        let (metadata, _) = state.file.get(&key, context.tenant()).await.map_err(file_error)?;
-        return Ok(Json(metadata));
-    }
+    let row = upload_row(&state.database, &context, &id, false).await?;
+    if let Some(metadata) = completed_metadata(&state, &context, &row).await? { return Ok(Json(metadata)); }
     upload_pending(&row)?;
     let staged = row.try_get::<String, _>("object_key")?;
-    let content = state.file.staged_bytes(&staged).await.map_err(file_error)?;
+    let content = match state.file.staged_bytes(&staged).await {
+        Ok(content) => content,
+        Err(error) => {
+            let latest = upload_row(&state.database, &context, &id, false).await?;
+            if let Some(metadata) = completed_metadata(&state, &context, &latest).await? { return Ok(Json(metadata)); }
+            return Err(file_error(error));
+        }
+    };
     if content.len() as i64 != row.try_get::<i64, _>("size")? { return Err(ApiError::InvalidQuery("Upload size differs from the declared size".to_owned())); }
     let key = format!("{}{}", prefix(&context)?, uuid::Uuid::now_v7());
-    let metadata = state.file.put_with_connection(&transaction, &key, &row.try_get::<String, _>("original_name")?, &row.try_get::<String, _>("content_type")?, &content, context.tenant()).await.map_err(file_error)?;
-    state.file.retain_with_connection(&transaction, &key, "appstruct::file::library", &metadata.id.to_string(), context.tenant()).await.map_err(file_error)?;
-    transaction.execute(Sql::bind("UPDATE \"_appstruct_file_uploads\" SET file_id = $2 WHERE id = $1", [row.try_get::<uuid::Uuid, _>("id")?.into(), metadata.id.into()])).await?;
-    transaction.commit().await?;
-    if let Err(error) = state.file.delete_staged(&staged).await { tracing::warn!(%error, "staged upload cleanup deferred to reconciliation"); }
-    Ok(Json(metadata))
+    let prepared = state.file.prepare_owned(&key, &row.try_get::<String, _>("original_name")?, &row.try_get::<String, _>("content_type")?, Bytes::from(content)).await.map_err(file_error)?;
+    let mut commit_started = false;
+    let result: Result<FileMetadata, ApiError> = async {
+        let transaction = state.database.begin().await?;
+        let current = upload_row(&transaction, &context, &id, true).await?;
+        if let Some(metadata) = completed_metadata(&state, &context, &current).await? { return Ok(metadata); }
+        upload_pending(&current)?;
+        let metadata = state.file.publish_prepared(&transaction, &prepared, context.tenant()).await.map_err(file_error)?;
+        state.file.retain_with_connection(&transaction, &key, "appstruct::file::library", &metadata.id.to_string(), context.tenant()).await.map_err(file_error)?;
+        transaction.execute(Sql::bind("UPDATE \"_appstruct_file_uploads\" SET file_id = $2 WHERE id = $1", [current.try_get::<uuid::Uuid, _>("id")?.into(), metadata.id.into()])).await?;
+        commit_started = true;
+        transaction.commit().await?;
+        Ok(metadata)
+    }.await;
+    if !commit_started {
+        if let Err(error) = state.file.delete_staged(&key).await { tracing::warn!(%error, "unpublished upload cleanup deferred to reconciliation"); }
+    }
+    if result.is_ok() {
+        if let Err(error) = state.file.delete_staged(&staged).await { tracing::warn!(%error, "staged upload cleanup deferred to reconciliation"); }
+    }
+    result.map(Json)
+}
+
+async fn completed_metadata(state: &AppState, context: &RequestContext<'_>, row: &crate::database::PgRow) -> Result<Option<FileMetadata>, ApiError> {
+    let Some(file_id) = row.try_get::<Option<uuid::Uuid>, _>("file_id")? else { return Ok(None); };
+    let key = owned_key(state, context, &file_id.to_string()).await?;
+    state.file.metadata(&key, context.tenant()).await.map(Some).map_err(file_error)
 }
 
 async fn cancel_upload(State(state): State<AppState>, headers: HeaderMap, Path(id): Path<String>) -> Result<StatusCode, ApiError> {
@@ -273,19 +305,9 @@ async fn upload_file(
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .unwrap_or("application/octet-stream");
+    let prepared = state.file.prepare_owned(&key, &input.name, content_type, body).await.map_err(file_error)?;
     let transaction = state.database.begin().await?;
-    let metadata = state
-        .file
-        .put_with_connection(
-            &transaction,
-            &key,
-            &input.name,
-            content_type,
-            &body,
-            context.tenant(),
-        )
-        .await
-        .map_err(file_error)?;
+    let metadata = state.file.publish_prepared(&transaction, &prepared, context.tenant()).await.map_err(file_error)?;
     state
         .file
         .retain_with_connection(
@@ -321,10 +343,11 @@ async fn download_file(
     let key = owned_key(&state, &context, &id).await?;
     let (metadata, bytes) = state
         .file
-        .get(&key, context.tenant())
+        .stream(&key, context.tenant())
         .await
         .map_err(file_error)?;
-    let mut response = Response::new(Body::from(bytes));
+    let mut response = Response::new(Body::from_stream(bytes));
+    response.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from_str(&metadata.size.to_string()).map_err(|_| ApiError::Internal)?);
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_str(&metadata.content_type).map_err(|_| ApiError::Internal)?,

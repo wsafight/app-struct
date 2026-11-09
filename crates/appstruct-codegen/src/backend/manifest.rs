@@ -54,6 +54,8 @@ pub(super) fn cargo(ir: &AppIr) -> String {
     }
     if ir.webhooks.enabled || ir.billing.enabled {
         manifest.push_str("hmac = \"=0.13.0\"\n");
+    }
+    if ir.webhooks.enabled || ir.billing.enabled || ir.file.enabled {
         manifest.push_str("sha2 = \"=0.11.0\"\n");
     }
     if ir.file.enabled {

@@ -20,6 +20,26 @@ env:
   APPSTRUCT_PERF_BUDGET_MULTIPLIER: '2'
 
 jobs:
+  cli:
+    name: Linux CLI artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          cache-build: 'true'
+      - run: cargo build --locked -p appstruct-cli
+      - run: sha256sum target/debug/appstruct > target/debug/appstruct.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appstruct-cli-linux-${{ github.sha }}
+          path: |
+            target/debug/appstruct
+            target/debug/appstruct.sha256
+          compression-level: 0
+          retention-days: 1
+
   rust:
     name: Rust
     runs-on: ubuntu-24.04
@@ -27,6 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
+        with:
+          cache-build: 'true'
       - run: pnpm install --frozen-lockfile
       - name: Validate GitHub Actions workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=''
@@ -38,11 +60,13 @@ jobs:
         run: |
           for script in scripts/*.sh; do bash -n "$script"; done
           bash scripts/test-e2e-cleanup.sh
+          bash scripts/test-template-build.sh
       - run: cargo install cargo-deny --locked --version 0.20.2
       - run: cargo deny check
 
   templates:
     name: Template (${{ matrix.template }})
+    needs: cli
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -51,9 +75,15 @@ jobs:
         template: [minimal, dashboard, saas]
     env:
       APPSTRUCT_TEMPLATE: ${{ matrix.template }}
+      APPSTRUCT_TEMPLATE_CLI: ${{ github.workspace }}/target/debug/appstruct
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with:
+          name: appstruct-cli-linux-${{ github.sha }}
+          path: target/debug
+      - run: sha256sum -c target/debug/appstruct.sha256 && chmod +x target/debug/appstruct
       - run: bash scripts/run-template-build.sh
 
   docs:
@@ -106,7 +136,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.full && '["authorization", "m6-query", "operations", "m5-browser", "m6-tenant", "m6-audit", "m6-mail", "m6-jobs", "m6-file", "m6-saas", "m6-bulk", "chromium-report"]' || '["authorization", "m6-query", "operations"]') }}
+        suite: ${{ fromJSON(inputs.full && '["authorization", "product", "m6-query", "operations", "m5-browser", "m6-tenant", "m6-audit", "m6-mail", "m6-jobs", "m6-file", "m6-saas", "m6-bulk", "chromium-report"]' || '["authorization", "product", "m6-query", "operations"]') }}
     services:
       postgres:
         image: postgres:17

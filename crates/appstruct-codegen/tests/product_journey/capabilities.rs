@@ -4,6 +4,36 @@ use uuid::Uuid;
 
 const PASSWORD: &str = "Product-Capabilities-Password-2026";
 
+#[derive(Default)]
+struct TransferStorage {
+    objects: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+    pause: std::sync::atomic::AtomicBool,
+    reads: std::sync::atomic::AtomicUsize,
+    entered: tokio::sync::Notify,
+    resume: tokio::sync::Notify,
+}
+
+#[async_trait::async_trait]
+impl appstruct_generated_backend::FileProvider for TransferStorage {
+    fn name(&self) -> &'static str { "transfer-test" }
+    async fn put(&self, key: &str, content: &[u8]) -> Result<(), appstruct_generated_backend::FileError> {
+        if self.pause.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            self.entered.notify_one();
+            self.resume.notified().await;
+        }
+        self.objects.lock().unwrap().insert(key.to_owned(), content.to_vec());
+        Ok(())
+    }
+    async fn get(&self, key: &str) -> Result<Vec<u8>, appstruct_generated_backend::FileError> {
+        self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.objects.lock().unwrap().get(key).cloned().ok_or_else(|| appstruct_generated_backend::FileError::Storage("missing".to_owned()))
+    }
+    async fn delete(&self, key: &str) -> Result<(), appstruct_generated_backend::FileError> {
+        self.objects.lock().unwrap().remove(key);
+        Ok(())
+    }
+}
+
 async fn setup() -> Option<(Database, Database, String, Router)> {
     let url = std::env::var("APPSTRUCT_E2E_DATABASE_URL").ok()?;
     let root = Database::connect(&url).await.unwrap();
@@ -55,6 +85,50 @@ async fn staged(router: &Router, session: &Session, content: &str) -> Value {
     let file = json_body(completed).await;
     assert_eq!(json_body(request(router, session, "POST", &path, json!({}), "").await).await, file);
     file
+}
+
+#[tokio::test]
+async fn slow_uploads_do_not_hold_row_locks_and_concurrent_completion_is_idempotent() {
+    let Some((root, database, schema, _)) = setup().await else { return; };
+    let storage = std::sync::Arc::new(TransferStorage::default());
+    let files = FileState::with_provider(database.clone(), storage.clone(), vec!["text/plain".to_owned()]);
+    let router = router_with_services(database.clone(), AppExtensions::builder().build(), AuthState::from_env().unwrap(), MailState::from_env(database.clone()).unwrap(), files);
+    let (mut session, _) = user(&router, "slow-upload").await;
+    team(&router, &mut session).await;
+    for cancel in [true, false] {
+        let upload = json_body(request(&router, &session, "POST", "/api/files/uploads", json!({ "name": "input.txt", "content_type": "text/plain", "size": 7 }), "").await).await;
+        assert_eq!(bytes(&router, &session, "PUT", upload["upload_url"].as_str().unwrap(), "content").await.status(), StatusCode::NO_CONTENT);
+        let id = upload["id"].as_str().unwrap().to_owned();
+        let path = format!("/api/files/uploads/{id}/complete");
+        storage.pause.store(true, std::sync::atomic::Ordering::SeqCst);
+        let pending = {
+            let router = router.clone(); let session = session.clone(); let path = path.clone();
+            tokio::spawn(async move { request(&router, &session, "POST", &path, json!({}), "").await })
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(5), storage.entered.notified()).await.unwrap();
+        let transaction = database.begin().await.unwrap();
+        transaction.fetch_optional(Sql::bind("SELECT id FROM \"_appstruct_file_uploads\" WHERE id = $1 FOR UPDATE NOWAIT", [Uuid::parse_str(&id).unwrap().into()])).await.expect("storage I/O must not hold the upload row lock");
+        transaction.commit().await.unwrap();
+        if cancel {
+            assert_eq!(request(&router, &session, "DELETE", &format!("/api/files/uploads/{id}"), json!({}), "").await.status(), StatusCode::NO_CONTENT);
+            storage.resume.notify_one();
+            assert_eq!(pending.await.unwrap().status(), StatusCode::CONFLICT);
+            assert!(storage.objects.lock().unwrap().is_empty());
+        } else {
+            let winner = request(&router, &session, "POST", &path, json!({}), "").await;
+            assert_eq!(winner.status(), StatusCode::OK);
+            let winner = json_body(winner).await;
+            storage.resume.notify_one();
+            let slower = pending.await.unwrap();
+            assert_eq!(slower.status(), StatusCode::OK);
+            assert_eq!(json_body(slower).await, winner);
+            let reads = storage.reads.load(std::sync::atomic::Ordering::SeqCst);
+            assert_eq!(json_body(request(&router, &session, "POST", &path, json!({}), "").await).await, winner);
+            assert_eq!(storage.reads.load(std::sync::atomic::Ordering::SeqCst), reads, "completion retries must not download the stored file");
+            assert_eq!(storage.objects.lock().unwrap().len(), 1);
+        }
+    }
+    root.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
 }
 
 #[tokio::test]

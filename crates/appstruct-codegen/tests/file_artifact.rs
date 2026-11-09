@@ -48,6 +48,8 @@ fn assert_provider(
     assert!(file.contains("tenant_id IS NOT DISTINCT FROM"));
     assert!(file.contains("put_with_connection<C: DatabaseExecutor>"));
     assert!(file.contains("load_metadata<C: DatabaseExecutor>"));
+    assert!(file.contains("pub async fn stream("));
+    assert!(file.contains("PutPayload::from(content)"));
     let delete = &file[file.find("pub async fn delete").expect("delete handler")..];
     let metadata = delete.find("DELETE FROM").expect("metadata delete");
     let storage = delete.find("self.provider.delete").expect("storage delete");
@@ -84,12 +86,8 @@ fn assert_provider(
     );
     let library = artifact_text(&artifacts, "backend/src/file_library.rs");
     assert!(library.contains("staging/{scope}{id}"));
-    assert!(
-        library
-            .split_whitespace()
-            .collect::<String>()
-            .contains("put_with_connection(&transaction")
-    );
+    assert!(library.contains("publish_prepared(&transaction"));
+    assert!(library.contains("Body::from_stream(bytes)"));
     assert!(library.contains("Upload size differs from the declared size"));
     assert_eq!(file.contains("signed_url("), provider == FileProviderIr::S3);
 
