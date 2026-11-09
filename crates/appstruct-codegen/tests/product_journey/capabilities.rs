@@ -314,6 +314,12 @@ async fn consented_visits_and_fully_observed_retention_have_explicit_scopes() {
     let visitor = Uuid::now_v7();
     assert_eq!(request(&router, &admin, "POST", "/api/product/visits", json!({ "visitor_id": visitor, "page": "/", "consent": false }), "").await.status(), StatusCode::BAD_REQUEST);
     for _ in 0..2 { assert_eq!(request(&router, &admin, "POST", "/api/product/visits", json!({ "visitor_id": visitor, "page": "/", "consent": true }), "").await.status(), StatusCode::NO_CONTENT); }
+    let attributed = Uuid::now_v7();
+    assert_eq!(request(&router, &admin, "POST", "/api/product/visits", json!({ "visitor_id": attributed, "page": "/pricing", "consent": true, "utm_source": "newsletter", "utm_medium": "email", "utm_campaign": "launch_2026" }), "").await.status(), StatusCode::NO_CONTENT);
+    let referred = Uuid::now_v7();
+    assert_eq!(request(&router, &admin, "POST", "/api/product/visits", json!({ "visitor_id": referred, "page": "/pricing", "consent": true, "referrer": "https://www.example-blog.test/posts/review?utm_x=1" }), "").await.status(), StatusCode::NO_CONTENT);
+    let hostile = Uuid::now_v7();
+    assert_eq!(request(&router, &admin, "POST", "/api/product/visits", json!({ "visitor_id": hostile, "page": "/", "consent": true, "referrer": "javascript:alert(1)", "utm_source": "a'; DROP TABLE x;--" }), "").await.status(), StatusCode::NO_CONTENT);
     appstruct_generated_backend::product::record_event(&database, Some(actor), Some(visitor), None, "cohort", "activation").await.unwrap();
     database.execute_unprepared("UPDATE \"_appstruct_product_events\" SET occurred_at = CURRENT_TIMESTAMP - INTERVAL '10 days' WHERE event_key = 'cohort'").await.unwrap();
     appstruct_generated_backend::product::record_event(&database, Some(actor), None, None, "returned", "activation").await.unwrap();
@@ -321,11 +327,17 @@ async fn consented_visits_and_fully_observed_retention_have_explicit_scopes() {
     let insight = request(&router, &admin, "GET", "/api/product/insights", json!({}), "").await;
     assert_eq!(insight.status(), StatusCode::OK);
     let insight = json_body(insight).await;
-    assert_eq!(insight["visitors"], 1);
+    assert_eq!(insight["visitors"], 4);
     assert_eq!(insight["signups"], 1);
     assert_eq!(insight["retention_d7"]["eligible"], 1);
     assert_eq!(insight["retention_d7"]["returned"], 1);
     assert!(insight["definitions"]["funnel"].as_str().unwrap().contains("not an attributed"));
+    let sources = insight["sources"].as_array().unwrap();
+    let source = |name: &str| sources.iter().find(|row| row["source"] == name);
+    assert_eq!(source("newsletter").unwrap()["medium"], "email");
+    assert_eq!(source("example-blog.test").unwrap()["medium"], "referral");
+    // The unattributed visit and the sanitized hostile visit both collapse to `direct`.
+    assert_eq!(source("direct").unwrap()["visitors"], 2);
     root.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE")).await.unwrap();
 }
 

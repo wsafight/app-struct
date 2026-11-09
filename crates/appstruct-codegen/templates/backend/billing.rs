@@ -12,9 +12,11 @@ use serde_json::{Value, json};
 use sha2::Sha256;
 use std::{env, time::Duration};
 
+const PROVIDER: &str = "__PROVIDER__";
 const TRIALS_ENABLED: bool = __TRIALS__;
 const CUSTOMER_PORTAL_ENABLED: bool = __CUSTOMER_PORTAL__;
 const STRIPE_API: &str = "https://api.stripe.com/v1";
+const POLAR_API: &str = "https://api.polar.sh/v1";
 const PLANS: &[Plan] = &[
     __PLANS__
 ];
@@ -49,6 +51,7 @@ struct SubscriptionView {
 
 #[derive(Serialize)]
 struct BillingOverview {
+    provider: &'static str,
     plans: Vec<PlanView>,
     subscription: Option<SubscriptionView>,
     entitlements: Vec<&'static str>,
@@ -81,25 +84,44 @@ struct BillingEventList { data: Vec<BillingEvent>, meta: BillingEventMeta }
 struct BillingEventMeta { page: u64, page_size: u64, total: u64 }
 
 pub fn router() -> Router<AppState> {
-    Router::new()
+    let router = Router::new()
         .route("/api/product/credits/checkout", post(credit_checkout))
         .route("/api/billing", get(overview))
         .route("/api/billing/checkout", post(checkout))
         .route("/api/billing/portal", post(portal))
-        .route("/api/billing/stripe/webhook", post(webhook))
         .route("/api/admin/billing/events", get(list_admin_billing_events))
-        .route("/api/admin/billing/events/{event_id}/replay", post(replay_admin_billing_event))
-        .layer(DefaultBodyLimit::max(65_536))
+        .route("/api/admin/billing/events/{event_id}/replay", post(replay_admin_billing_event));
+    let router = if PROVIDER == "polar" {
+        router.route("/api/billing/polar/webhook", post(polar_webhook))
+    } else {
+        router.route("/api/billing/stripe/webhook", post(webhook))
+    };
+    router.layer(DefaultBodyLimit::max(65_536))
 }
 
 async fn credit_checkout(State(state): State<AppState>, headers: HeaderMap) -> Result<Json<RedirectUrl>, ApiError> {
     let (organization_id, email) = require_owner(&state, &headers).await?;
     let config = config()?;
-    let price = env::var("APPSTRUCT_STRIPE_PRICE_CREDITS").ok().filter(|value| value.starts_with("price_")).ok_or_else(|| ApiError::Conflict("Credit pack checkout is not configured".to_owned()))?;
-    let credits = env::var("APPSTRUCT_CREDIT_PACK_UNITS").unwrap_or_else(|_| "100".to_owned()).parse::<i64>().ok().filter(|value| (1..=1_000_000).contains(value)).ok_or(ApiError::Internal)?;
     let key = headers.get("Idempotency-Key").and_then(|value| value.to_str().ok()).and_then(|value| uuid::Uuid::parse_str(value).ok()).ok_or_else(|| ApiError::InvalidQuery("A UUID Idempotency-Key is required".to_owned()))?;
+    let credits = env::var("APPSTRUCT_CREDIT_PACK_UNITS").unwrap_or_else(|_| "100".to_owned()).parse::<i64>().ok().filter(|value| (1..=1_000_000).contains(value)).ok_or(ApiError::Internal)?;
     let customer = match customer_id(&state, organization_id).await? { Some(id) => id, None => create_customer(&state, &config, organization_id, &email).await? };
     let base = state.auth.config.frontend_url.trim_end_matches('/');
+    if PROVIDER == "polar" {
+        let product = env::var("APPSTRUCT_POLAR_PRODUCT_CREDITS").ok().and_then(|value| uuid::Uuid::parse_str(value.trim()).ok()).ok_or_else(|| ApiError::Conflict("Credit pack checkout is not configured".to_owned()))?;
+        let result = polar_post(&config, "/checkouts/", &json!({
+            "products": [product.to_string()],
+            "success_url": format!("{base}/credits?checkout=success&checkout_id={{CHECKOUT_ID}}"),
+            "external_customer_id": organization_id.to_string(),
+            "customer_email": email,
+            "customer_metadata": { "appstruct_credit_pack": "v1", "appstruct_organization_id": organization_id.to_string() },
+            "metadata": { "appstruct_credit_pack": "v1" },
+        })).await?;
+        let session = result["id"].as_str().and_then(|value| uuid::Uuid::parse_str(value).ok()).map(|value| value.to_string()).ok_or(ApiError::Internal)?;
+        let url = result["url"].as_str().filter(|value| value.starts_with("https://")).ok_or(ApiError::Internal)?;
+        state.database.execute(Sql::bind("INSERT INTO \"_appstruct_product_credit_purchases\" (session_id, tenant_id, credits, fulfilled, refunded_credits, created_at) VALUES ($1, $2, $3, false, 0, CURRENT_TIMESTAMP) ON CONFLICT (session_id) DO NOTHING", [session.into(), organization_id.into(), credits.into()])).await?;
+        return Ok(Json(RedirectUrl { url: url.to_owned() }));
+    }
+    let price = env::var("APPSTRUCT_STRIPE_PRICE_CREDITS").ok().filter(|value| value.starts_with("price_")).ok_or_else(|| ApiError::Conflict("Credit pack checkout is not configured".to_owned()))?;
     let form = [("mode", "payment".to_owned()), ("customer", customer), ("line_items[0][price]", price), ("line_items[0][quantity]", "1".to_owned()), ("success_url", format!("{base}/credits?checkout=success")), ("cancel_url", format!("{base}/credits?checkout=cancel")), ("metadata[appstruct_credit_pack]", "v1".to_owned()), ("metadata[appstruct_organization_id]", organization_id.to_string())];
     let result = stripe_post(&config, "/checkout/sessions", &form, Some(&format!("credit-pack:{organization_id}:{key}"))).await?;
     let session = result["id"].as_str().ok_or(ApiError::Internal)?;
@@ -157,14 +179,19 @@ async fn replay_admin_billing_event(
     let event_type: String = row.try_get("event_type")?;
     let event: Value = row.try_get("payload")?;
     let replay_id = format!("{event_id}:replay:{}", uuid::Uuid::now_v7());
-    if matches!(event_type.as_str(), "charge.succeeded" | "charge.captured" | "charge.refunded") || event.pointer("/data/object/metadata/appstruct_credit_pack").and_then(Value::as_str) == Some("v1") {
+    let replayable_payment = matches!(event_type.as_str(), "charge.succeeded" | "charge.captured" | "charge.refunded" | "order.paid" | "order.refunded" | "order.updated")
+        || event.pointer("/data/object/metadata/appstruct_credit_pack").and_then(Value::as_str) == Some("v1")
+        || event.pointer("/data/metadata/appstruct_credit_pack").and_then(Value::as_str) == Some("v1");
+    if replayable_payment {
         let mut replay = event.clone();
         replay["id"] = serde_json::json!(replay_id);
         crate::product::apply_billing_event(&state.database, &replay).await?;
     } else {
         let subscription_id = event.pointer("/data/object/id").and_then(Value::as_str)
             .or_else(|| event.pointer("/data/object/subscription").and_then(Value::as_str))
-            .filter(|id| id.starts_with("sub_")).ok_or_else(|| ApiError::InvalidQuery("Billing event has no replayable subscription".to_owned()))?;
+            .or_else(|| event.pointer("/data/subscription_id").and_then(Value::as_str))
+            .or_else(|| event.pointer("/data/id").and_then(Value::as_str))
+            .filter(|id| id.starts_with("sub_") || uuid::Uuid::parse_str(id).is_ok()).ok_or_else(|| ApiError::InvalidQuery("Billing event has no replayable subscription".to_owned()))?;
         reconcile_subscription(&state, &config()?, &replay_id, &event_type, subscription_id, &event).await?;
     }
     let replay = state.database.fetch_optional(Sql::bind("SELECT event_id, event_type, payload, created_at FROM \"_appstruct_billing_events\" WHERE event_id = $1",
@@ -180,8 +207,17 @@ async fn replay_admin_billing_event(
 
 pub fn validate_env() -> Result<(), String> {
     if std::env::var("APPSTRUCT_ENV").as_deref() != Ok("production")
+        && PROVIDER == "stripe"
         && std::env::var("APPSTRUCT_STRIPE_SECRET_KEY").is_err()
         && std::env::var("APPSTRUCT_STRIPE_WEBHOOK_SECRET").is_err()
+        && PLANS.iter().all(|plan| std::env::var(plan.price_env).is_err())
+    {
+        return Ok(());
+    }
+    if std::env::var("APPSTRUCT_ENV").as_deref() != Ok("production")
+        && PROVIDER == "polar"
+        && std::env::var("APPSTRUCT_POLAR_ACCESS_TOKEN").is_err()
+        && std::env::var("APPSTRUCT_POLAR_WEBHOOK_SECRET").is_err()
         && PLANS.iter().all(|plan| std::env::var(plan.price_env).is_err())
     {
         return Ok(());
@@ -195,19 +231,33 @@ fn config_from_env() -> Result<BillingConfig, String> {
         std::env::var(name)
             .ok()
             .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| format!("{name} is required when Stripe Billing is enabled"))
+            .ok_or_else(|| format!("{name} is required when billing is enabled"))
     };
-    let secret_key = required("APPSTRUCT_STRIPE_SECRET_KEY")?;
-    let webhook_secret = required("APPSTRUCT_STRIPE_WEBHOOK_SECRET")?;
-    if !secret_key.starts_with("sk_") || !webhook_secret.starts_with("whsec_") {
-        return Err("Stripe Billing credentials have invalid prefixes".to_owned());
-    }
+    let (secret_key, webhook_secret) = if PROVIDER == "polar" {
+        let token = required("APPSTRUCT_POLAR_ACCESS_TOKEN")?;
+        let secret = required("APPSTRUCT_POLAR_WEBHOOK_SECRET")?;
+        (token, secret)
+    } else {
+        let secret_key = required("APPSTRUCT_STRIPE_SECRET_KEY")?;
+        let webhook_secret = required("APPSTRUCT_STRIPE_WEBHOOK_SECRET")?;
+        if !secret_key.starts_with("sk_") || !webhook_secret.starts_with("whsec_") {
+            return Err("Stripe Billing credentials have invalid prefixes".to_owned());
+        }
+        (secret_key, webhook_secret)
+    };
+    let valid_price = |price: &str| {
+        if PROVIDER == "polar" {
+            uuid::Uuid::parse_str(price).is_ok()
+        } else {
+            price.starts_with("price_")
+        }
+    };
     let prices = PLANS
         .iter()
         .map(|plan| {
             let price = required(plan.price_env)?;
-            if !price.starts_with("price_") {
-                return Err(format!("{} must be a Stripe Price ID", plan.price_env));
+            if !valid_price(&price) {
+                return Err(format!("{} must be a {} price identifier", plan.price_env, PROVIDER));
             }
             Ok((plan.id, price))
         })
@@ -250,6 +300,7 @@ async fn overview(
         }
     }).map_or_else(Vec::new, |plan| plan.entitlements.to_vec());
     Ok(Json(BillingOverview {
+        provider: PROVIDER,
         plans: PLANS.iter().map(|plan| PlanView {
             id: plan.id, trial_days: plan.trial_days, entitlements: plan.entitlements,
         }).collect(),
@@ -283,6 +334,25 @@ async fn checkout(
         None => create_customer(&state, &config, organization_id, &email).await?,
     };
     let base_url = state.auth.config.frontend_url.trim_end_matches('/');
+    let request_key = headers
+        .get("Idempotency-Key")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty() && value.len() <= 255)
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("appstruct-checkout-{organization_id}-{}", uuid::Uuid::now_v7()));
+    if PROVIDER == "polar" {
+        let price_uuid = uuid::Uuid::parse_str(price).map_err(|_| ApiError::Internal)?;
+        let result = polar_post(&config, "/checkouts/", &json!({
+            "products": [price_uuid.to_string()],
+            "success_url": format!("{base_url}/billing?checkout=success&checkout_id={{CHECKOUT_ID}}"),
+            "external_customer_id": organization_id.to_string(),
+            "customer_email": email,
+            "customer_metadata": { "appstruct_organization_id": organization_id.to_string(), "appstruct_plan_id": plan.id },
+            "metadata": { "appstruct_organization_id": organization_id.to_string(), "appstruct_plan_id": plan.id, "appstruct_request_key": request_key },
+        })).await?;
+        let url = result["url"].as_str().filter(|value| value.starts_with("https://")).ok_or(ApiError::Internal)?;
+        return Ok(Json(RedirectUrl { url: url.to_owned() }));
+    }
     let mut form = vec![
         ("mode", "subscription".to_owned()),
         ("customer", customer),
@@ -299,12 +369,6 @@ async fn checkout(
             form.push(("subscription_data[trial_period_days]", days.to_string()));
         }
     }
-    let request_key = headers
-        .get("Idempotency-Key")
-        .and_then(|value| value.to_str().ok())
-        .filter(|value| !value.is_empty() && value.len() <= 255)
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("appstruct-checkout-{organization_id}-{}", uuid::Uuid::now_v7()));
     let result = stripe_post(&config, "/checkout/sessions", &form, Some(&request_key)).await?;
     let url = result.get("url").and_then(Value::as_str).ok_or(ApiError::Internal)?;
     Ok(Json(RedirectUrl { url: url.to_owned() }))
@@ -317,6 +381,14 @@ async fn portal(
     let (organization_id, _) = require_owner(&state, &headers).await?;
     let customer = customer_id(&state, organization_id).await?.ok_or(ApiError::NotFound)?;
     let base_url = state.auth.config.frontend_url.trim_end_matches('/');
+    if PROVIDER == "polar" {
+        let result = polar_post(&config()?, "/customer-sessions/", &json!({
+            "customer_id": customer,
+            "return_url": format!("{base_url}/billing"),
+        })).await?;
+        let url = result["customer_portal_url"].as_str().filter(|value| value.starts_with("https://")).ok_or(ApiError::Internal)?;
+        return Ok(Json(RedirectUrl { url: url.to_owned() }));
+    }
     let result = stripe_post(&config()?, "/billing_portal/sessions", &[
         ("customer", customer),
         ("return_url", format!("{base_url}/billing")),
@@ -344,6 +416,26 @@ async fn webhook(headers: HeaderMap, State(state): State<AppState>, body: Bytes)
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn polar_webhook(headers: HeaderMap, State(state): State<AppState>, body: Bytes) -> Result<StatusCode, ApiError> {
+    let config = config()?;
+    let event_id = polar_verify_signature(&headers, &body, &config.webhook_secret)?;
+    let mut event: Value = serde_json::from_slice(&body).map_err(|_| ApiError::InvalidQuery("Invalid Polar event".to_owned()))?;
+    // The Standard Webhooks delivery id is the deduplication key; the payload has none.
+    event["id"] = Value::String(event_id.clone());
+    let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
+    crate::product::apply_billing_event(&state.database, &event).await?;
+    let subscription_id = match event_type {
+        "subscription.created" | "subscription.active" | "subscription.canceled"
+        | "subscription.uncanceled" | "subscription.cycled" | "subscription.past_due"
+        | "subscription.revoked" | "subscription.paused" | "subscription.resumed"
+        | "subscription.updated" | "subscription.migrated" =>
+            event.pointer("/data/id").and_then(Value::as_str),
+        _ => return Ok(StatusCode::NO_CONTENT),
+    }.filter(|id| uuid::Uuid::parse_str(id).is_ok()).ok_or_else(|| ApiError::InvalidQuery("Missing Polar subscription ID".to_owned()))?;
+    reconcile_subscription(&state, &config, &event_id, event_type, subscription_id, &event).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn verify_signature(headers: &HeaderMap, body: &[u8], secret: &str) -> Result<(), ApiError> {
     let signature = headers.get("stripe-signature").and_then(|value| value.to_str().ok())
         .ok_or(ApiError::Forbidden)?;
@@ -361,6 +453,41 @@ fn verify_signature(headers: &HeaderMap, body: &[u8], secret: &str) -> Result<()
     if verified { Ok(()) } else { Err(ApiError::Forbidden) }
 }
 
+/// Standard Webhooks verification (`webhook-id`/`webhook-timestamp`/`webhook-signature`).
+/// Secrets generated on or after 2026-09-08 use the raw secret bytes; older secrets must be
+/// base64-decoded first (their `whsec_`-prefixed form is the base64 of the raw key).
+fn polar_verify_signature(headers: &HeaderMap, body: &[u8], secret: &str) -> Result<String, ApiError> {
+    let message_id = headers.get("webhook-id").and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty() && value.len() <= 128)
+        .ok_or(ApiError::Forbidden)?.to_owned();
+    let timestamp = headers.get("webhook-timestamp").and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<i64>().ok())
+        .ok_or(ApiError::Forbidden)?;
+    if chrono::Utc::now().timestamp().abs_diff(timestamp) > 300 { return Err(ApiError::Forbidden); }
+    let signatures = headers.get("webhook-signature").and_then(|value| value.to_str().ok())
+        .ok_or(ApiError::Forbidden)?;
+    // Two signing schemes exist by secret generation date: Standard Webhooks keys are
+    // base64-decoded after `whsec_`, older Polar secrets sign with the raw UTF-8 bytes.
+    // Try both candidates so either dashboard secret verifies.
+    let candidates = secret
+        .strip_prefix("whsec_")
+        .and_then(decode_base64)
+        .into_iter()
+        .chain(std::iter::once(secret.as_bytes().to_vec()));
+    let payload = format!("{message_id}.{timestamp}.{}", String::from_utf8_lossy(body));
+    let verified = signatures.split(' ')
+        .filter_map(|item| item.strip_prefix("v1,"))
+        .filter_map(|encoded| decode_base64(encoded))
+        .any(|expected| {
+            candidates.clone().any(|key| {
+                let mut mac = Hmac::<Sha256>::new_from_slice(&key).expect("HMAC accepts any key length");
+                mac.update(payload.as_bytes());
+                mac.verify_slice(&expected).is_ok()
+            })
+        });
+    if verified { Ok(message_id) } else { Err(ApiError::Forbidden) }
+}
+
 fn decode_hex(value: &str) -> Result<Vec<u8>, ()> {
     if value.len() != 64 { return Err(()); }
     value.as_bytes().chunks_exact(2).map(|chunk| {
@@ -368,6 +495,11 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, ()> {
         let low = (chunk[1] as char).to_digit(16).ok_or(())?;
         Ok(((high << 4) | low) as u8)
     }).collect()
+}
+
+fn decode_base64(value: &str) -> Option<Vec<u8>> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.decode(value).ok()
 }
 
 async fn require_owner(state: &AppState, headers: &HeaderMap) -> Result<(uuid::Uuid, String), ApiError> {
@@ -401,20 +533,40 @@ async fn customer_id(state: &AppState, organization_id: uuid::Uuid) -> Result<Op
 }
 
 async fn create_customer(state: &AppState, config: &BillingConfig, organization_id: uuid::Uuid, email: &str) -> Result<String, ApiError> {
+    if PROVIDER == "polar" {
+        let result = polar_post(config, "/customers/", &json!({
+            "email": email,
+            "external_id": organization_id.to_string(),
+            "metadata": { "appstruct_organization_id": organization_id.to_string() },
+        })).await;
+        let customer = match result {
+            Ok(value) => value.get("id").and_then(Value::as_str).and_then(|id| uuid::Uuid::parse_str(id).ok().map(|value| value.to_string())),
+            // A concurrent checkout may already have registered this external customer.
+            Err(_) => polar_get(config, &format!("/customers/external-id/{organization_id}")).await.ok()
+                .and_then(|value| value.get("id").and_then(Value::as_str).and_then(|id| uuid::Uuid::parse_str(id).ok().map(|uuid| uuid.to_string()))),
+        }.ok_or(ApiError::Internal)?;
+        state.database.execute(Sql::bind("INSERT INTO \"_appstruct_billing_customers\" (id, organization_id, provider, provider_customer_id, created_at) VALUES ($1, $2, 'polar', $3, CURRENT_TIMESTAMP) ON CONFLICT (organization_id) DO NOTHING",
+            [uuid::Uuid::now_v7().into(), organization_id.into(), customer.into()],
+        )).await?;
+        return customer_id(state, organization_id).await?.ok_or(ApiError::Internal);
+    }
     let result = stripe_post(config, "/customers", &[
         ("email", email.to_owned()),
         ("metadata[appstruct_organization_id]", organization_id.to_string()),
     ], Some(&format!("appstruct-customer-{organization_id}"))).await?;
     let customer = result.get("id").and_then(Value::as_str).filter(|id| id.starts_with("cus_"))
         .ok_or(ApiError::Internal)?;
-    state.database.execute(Sql::bind("INSERT INTO \"_appstruct_billing_customers\" (id, organization_id, provider_customer_id, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (organization_id) DO NOTHING",
+    state.database.execute(Sql::bind("INSERT INTO \"_appstruct_billing_customers\" (id, organization_id, provider, provider_customer_id, created_at) VALUES ($1, $2, 'stripe', $3, CURRENT_TIMESTAMP) ON CONFLICT (organization_id) DO NOTHING",
         [uuid::Uuid::now_v7().into(), organization_id.into(), customer.into()],
     )).await?;
     customer_id(state, organization_id).await?.ok_or(ApiError::Internal)
 }
 
 async fn stripe_post(config: &BillingConfig, path: &str, form: &[(&str, String)], idempotency_key: Option<&str>) -> Result<Value, ApiError> {
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().map_err(|_| ApiError::Internal)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .build().map_err(|_| ApiError::Internal)?;
     let mut request = client.post(format!("{STRIPE_API}{path}"))
         .bearer_auth(&config.secret_key).form(form);
     if let Some(key) = idempotency_key { request = request.header("Idempotency-Key", key); }
@@ -424,8 +576,34 @@ async fn stripe_post(config: &BillingConfig, path: &str, form: &[(&str, String)]
 }
 
 async fn stripe_subscription(config: &BillingConfig, subscription_id: &str) -> Result<Value, ApiError> {
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build().map_err(|_| ApiError::Internal)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .build().map_err(|_| ApiError::Internal)?;
     let response = client.get(format!("{STRIPE_API}/subscriptions/{subscription_id}"))
+        .bearer_auth(&config.secret_key).send().await.map_err(|_| ApiError::Internal)?;
+    if !response.status().is_success() { return Err(ApiError::Internal); }
+    response.json().await.map_err(|_| ApiError::Internal)
+}
+
+async fn polar_post(config: &BillingConfig, path: &str, body: &Value) -> Result<Value, ApiError> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .build().map_err(|_| ApiError::Internal)?;
+    let response = client.post(format!("{POLAR_API}{path}"))
+        .bearer_auth(&config.secret_key).json(body)
+        .send().await.map_err(|_| ApiError::Internal)?;
+    if !response.status().is_success() { return Err(ApiError::Internal); }
+    response.json().await.map_err(|_| ApiError::Internal)
+}
+
+async fn polar_get(config: &BillingConfig, path: &str) -> Result<Value, ApiError> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .build().map_err(|_| ApiError::Internal)?;
+    let response = client.get(format!("{POLAR_API}{path}"))
         .bearer_auth(&config.secret_key).send().await.map_err(|_| ApiError::Internal)?;
     if !response.status().is_success() { return Err(ApiError::Internal); }
     response.json().await.map_err(|_| ApiError::Internal)
@@ -445,28 +623,83 @@ async fn reconcile_subscription(
         [event_id.into()],
     )).await?.is_some();
     if seen { transaction.commit().await?; return Ok(()); }
-    let remote = stripe_subscription(config, subscription_id).await?;
-    let customer = remote.get("customer").and_then(Value::as_str).ok_or(ApiError::Internal)?;
-    let organization_id = remote.pointer("/metadata/appstruct_organization_id")
-        .and_then(Value::as_str).and_then(|value| uuid::Uuid::parse_str(value).ok())
-        .ok_or(ApiError::Internal)?;
-    let plan_id = plan_id_from_subscription(config, &remote)?;
+    let (remote, event_created) = if PROVIDER == "polar" {
+        let remote = polar_get(config, &format!("/subscriptions/{subscription_id}")).await?;
+        let created = event.get("timestamp").and_then(Value::as_str)
+            .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+            .map(|value| value.timestamp())
+            .ok_or(ApiError::Internal)?;
+        (remote, created)
+    } else {
+        let remote = stripe_subscription(config, subscription_id).await?;
+        let created = event.get("created").and_then(Value::as_i64).ok_or(ApiError::Internal)?;
+        (remote, created)
+    };
+    let (customer, organization_id, plan_id, status, period_end, cancel_at_period_end) = if PROVIDER == "polar" {
+        let customer = remote.get("customer_id").and_then(Value::as_str)
+            .filter(|id| uuid::Uuid::parse_str(id).is_ok())
+            .ok_or(ApiError::Internal)?;
+        let external = remote.pointer("/customer/external_id").and_then(Value::as_str)
+            .and_then(|value| uuid::Uuid::parse_str(value).ok());
+        let organization_id = match external {
+            Some(id) => id,
+            None => {
+                let customer_detail = polar_get(config, &format!("/customers/{customer}")).await?;
+                customer_detail.get("external_id").and_then(Value::as_str)
+                    .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                    .ok_or(ApiError::Internal)?
+            }
+        };
+        let plan_id = polar_plan_id(config, &remote)?;
+        let status = remote.get("status").and_then(Value::as_str).ok_or(ApiError::Internal)?;
+        let period_end = remote.get("current_period_end").and_then(Value::as_str)
+            .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+            .map(|value| value.with_timezone(&chrono::Utc));
+        let cancel_at_period_end = remote.get("cancel_at_period_end").and_then(Value::as_bool).unwrap_or(false);
+        (customer.to_owned(), organization_id, plan_id.to_owned(), status.to_owned(), period_end, cancel_at_period_end)
+    } else {
+        let customer = remote.get("customer").and_then(Value::as_str).ok_or(ApiError::Internal)?;
+        let organization_id = remote.pointer("/metadata/appstruct_organization_id")
+            .and_then(Value::as_str).and_then(|value| uuid::Uuid::parse_str(value).ok())
+            .ok_or(ApiError::Internal)?;
+        let plan_id = plan_id_from_subscription(config, &remote)?.to_owned();
+        let status = remote.get("status").and_then(Value::as_str).ok_or(ApiError::Internal)?.to_owned();
+        let period_end = remote.get("current_period_end").and_then(Value::as_i64)
+            .or_else(|| remote.pointer("/items/data/0/current_period_end").and_then(Value::as_i64))
+            .and_then(|seconds| chrono::DateTime::<chrono::Utc>::from_timestamp(seconds, 0));
+        let cancel_at_period_end = remote.get("cancel_at_period_end").and_then(Value::as_bool).unwrap_or(false);
+        (customer.to_owned(), organization_id, plan_id, status, period_end, cancel_at_period_end)
+    };
     let linked = transaction.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_billing_customers\" WHERE organization_id = $1 AND provider_customer_id = $2",
         [organization_id.into(), customer.into()],
     )).await?.is_some();
     if !linked { return Err(ApiError::Internal); }
-    let status = remote.get("status").and_then(Value::as_str).ok_or(ApiError::Internal)?;
-    let period_end = remote.get("current_period_end").and_then(Value::as_i64)
-        .or_else(|| remote.pointer("/items/data/0/current_period_end").and_then(Value::as_i64))
-        .and_then(|seconds| chrono::DateTime::<chrono::Utc>::from_timestamp(seconds, 0));
-    let cancel_at_period_end = remote.get("cancel_at_period_end").and_then(Value::as_bool).unwrap_or(false);
-    let event_created = event.get("created").and_then(Value::as_i64).ok_or(ApiError::Internal)?;
-    transaction.execute(Sql::bind("INSERT INTO \"_appstruct_billing_subscriptions\" (id, organization_id, provider_subscription_id, plan_id, status, current_period_end, cancel_at_period_end, provider_event_created_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (provider_subscription_id) DO UPDATE SET plan_id = EXCLUDED.plan_id, status = EXCLUDED.status, current_period_end = EXCLUDED.current_period_end, cancel_at_period_end = EXCLUDED.cancel_at_period_end, provider_event_created_at = EXCLUDED.provider_event_created_at, updated_at = CURRENT_TIMESTAMP WHERE \"_appstruct_billing_subscriptions\".provider_event_created_at <= EXCLUDED.provider_event_created_at",
-        [uuid::Uuid::now_v7().into(), organization_id.into(), subscription_id.into(), plan_id.into(), status.into(), period_end.into(), cancel_at_period_end.into(), event_created.into()],
+    transaction.execute(Sql::bind("INSERT INTO \"_appstruct_billing_subscriptions\" (id, organization_id, provider, provider_subscription_id, plan_id, status, current_period_end, cancel_at_period_end, provider_event_created_at, created_at, updated_at) VALUES ($1, $2, $9, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (provider_subscription_id) DO UPDATE SET plan_id = EXCLUDED.plan_id, status = EXCLUDED.status, current_period_end = EXCLUDED.current_period_end, cancel_at_period_end = EXCLUDED.cancel_at_period_end, provider_event_created_at = EXCLUDED.provider_event_created_at, updated_at = CURRENT_TIMESTAMP WHERE \"_appstruct_billing_subscriptions\".provider_event_created_at <= EXCLUDED.provider_event_created_at",
+        [uuid::Uuid::now_v7().into(), organization_id.into(), subscription_id.into(), plan_id.into(), status.into(), period_end.into(), cancel_at_period_end.into(), event_created.into(), PROVIDER.into()],
     )).await?;
     transaction.execute(Sql::bind("INSERT INTO \"_appstruct_billing_events\" (event_id, event_type, payload, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
         [event_id.into(), event_type.into(), json!(event).into()],
     )).await?;
     transaction.commit().await?;
     Ok(())
+}
+
+/// Polar entitlements resolve from the subscription's product, not metadata: plan
+/// `price_env` values hold Polar product UUIDs, the same ids sent in checkout `products`.
+fn polar_plan_id(config: &BillingConfig, subscription: &Value) -> Result<&'static str, ApiError> {
+    let product_id = subscription
+        .get("product_id")
+        .and_then(Value::as_str)
+        .filter(|id| uuid::Uuid::parse_str(id).is_ok())
+        .ok_or(ApiError::Internal)?;
+    let mut matches = config
+        .prices
+        .iter()
+        .filter(|(_, configured_price)| configured_price.as_str() == product_id)
+        .map(|(plan_id, _)| *plan_id);
+    let plan_id = matches.next().ok_or(ApiError::Internal)?;
+    if matches.next().is_some() {
+        return Err(ApiError::Internal);
+    }
+    Ok(plan_id)
 }

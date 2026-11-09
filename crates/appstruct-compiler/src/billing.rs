@@ -33,10 +33,11 @@ pub(crate) fn lower_billing(
         ));
     }
     let provider = billing.provider.as_ref().map(|value| value.value.clone());
-    if provider.as_deref() != Some("stripe") {
+    let provider = provider.unwrap_or_else(|| "stripe".to_owned());
+    if !matches!(provider.as_str(), "stripe" | "polar") {
         diagnostics.push(Diagnostic::error(
             "AS3073",
-            "billing currently supports only `provider: stripe`",
+            "billing currently supports `provider: stripe` and `provider: polar`",
             billing.provider.as_ref().map_or_else(
                 || billing.span.clone().unwrap_or_else(|| fallback.clone()),
                 |value| value.span.clone(),
@@ -46,14 +47,23 @@ pub(crate) fn lower_billing(
     if !billing.subscriptions {
         diagnostics.push(Diagnostic::error(
             "AS3074",
-            "Stripe Billing v1 requires `capabilities.subscriptions: true`",
+            format!(
+                "Billing v1 requires `capabilities.subscriptions: true` for provider `{provider}`"
+            ),
             billing.span.clone().unwrap_or_else(|| fallback.clone()),
         ));
     }
     if billing.metered_usage {
         diagnostics.push(Diagnostic::error(
             "AS3075",
-            "Stripe Billing v1 does not support `capabilities.metered_usage` yet",
+            "Billing v1 does not support `capabilities.metered_usage` yet",
+            billing.span.clone().unwrap_or_else(|| fallback.clone()),
+        ));
+    }
+    if billing.trials && provider == "polar" {
+        diagnostics.push(Diagnostic::error(
+            "AS3084",
+            "billing `capabilities.trials` is not supported for provider `polar` yet",
             billing.span.clone().unwrap_or_else(|| fallback.clone()),
         ));
     }
@@ -64,6 +74,19 @@ pub(crate) fn lower_billing(
             billing.span.clone().unwrap_or_else(|| fallback.clone()),
         ));
     }
+    let plans = lower_plans(billing, diagnostics);
+    BillingIr {
+        enabled: true,
+        provider: Some(provider),
+        subscriptions: billing.subscriptions,
+        trials: billing.trials,
+        customer_portal: billing.customer_portal,
+        metered_usage: false,
+        plans,
+    }
+}
+
+fn lower_plans(billing: &SurfaceBilling, diagnostics: &mut Vec<Diagnostic>) -> Vec<BillingPlanIr> {
     let mut ids = BTreeSet::new();
     let mut plans = Vec::with_capacity(billing.plans.len());
     for plan in &billing.plans {
@@ -92,15 +115,7 @@ pub(crate) fn lower_billing(
         });
     }
     plans.sort_by(|left, right| left.id.cmp(&right.id));
-    BillingIr {
-        enabled: true,
-        provider,
-        subscriptions: billing.subscriptions,
-        trials: billing.trials,
-        customer_portal: billing.customer_portal,
-        metered_usage: false,
-        plans,
-    }
+    plans
 }
 
 fn validate_plan(

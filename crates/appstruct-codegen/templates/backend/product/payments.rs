@@ -1,8 +1,17 @@
 use super::*;
 use crate::database::Database;
 
+const POLAR: bool = __POLAR__;
+
 pub async fn apply_billing_event(database: &Database, event: &Value) -> Result<(), ApiError> {
     if !__BILLING__ { return Ok(()); }
+    if POLAR {
+        let kind = event["type"].as_str().unwrap_or("");
+        if matches!(kind, "order.paid" | "order.updated" | "order.refunded") {
+            return apply_polar_order(database, event).await;
+        }
+        return Ok(());
+    }
     let kind = event["type"].as_str().unwrap_or("");
     let object = &event["data"]["object"];
     let checkout = matches!(kind, "checkout.session.completed" | "checkout.session.async_payment_succeeded") && object["mode"] == "payment" && object["metadata"]["appstruct_credit_pack"] == "v1";
@@ -39,6 +48,51 @@ pub async fn apply_billing_event(database: &Database, event: &Value) -> Result<(
                 for row in purchases { refund_purchase(&transaction, &row.try_get::<String, _>("session_id")?).await?; }
             }
         }
+    }
+    transaction.execute(Sql::bind("INSERT INTO \"_appstruct_billing_events\" (event_id, event_type, payload, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (event_id) DO NOTHING", [event_id.into(), kind.into(), event.clone().into()])).await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
+/// Polar `order.*` events carry the order object at `data`. Paid orders record revenue,
+/// fulfill credit pack purchases and keep refund state monotonic inside one transaction.
+async fn apply_polar_order(database: &Database, event: &Value) -> Result<(), ApiError> {
+    let kind = event["type"].as_str().unwrap_or("");
+    let order = &event["data"];
+    let event_id = event["id"].as_str().ok_or(ApiError::Internal)?;
+    let order_id = order["id"].as_str().filter(|value| uuid::Uuid::parse_str(value).is_ok()).ok_or(ApiError::Internal)?;
+    let transaction = database.begin().await?;
+    transaction.fetch_optional(Sql::bind("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [format!("product-payment:{event_id}").into()])).await?;
+    if transaction.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_billing_events\" WHERE event_id = $1", [event_id.into()])).await?.is_some() { transaction.commit().await?; return Ok(()); }
+    let customer = order["customer_id"].as_str().ok_or(ApiError::Internal)?;
+    let row = transaction.fetch_optional(Sql::bind("SELECT organization_id FROM \"_appstruct_billing_customers\" WHERE provider = 'polar' AND provider_customer_id = $1", [customer.into()])).await?;
+    if let Some(row) = row {
+        let tenant = row.try_get::<uuid::Uuid, _>("organization_id")?;
+        transaction.fetch_optional(Sql::bind("SELECT id FROM \"_appstruct_tenant_organizations\" WHERE id = $1 FOR NO KEY UPDATE", [tenant.into()])).await?.ok_or(ApiError::InvalidTenant)?;
+        let currency = order["currency"].as_str().filter(|value| value.len() == 3 && value.bytes().all(|byte| byte.is_ascii_lowercase())).ok_or(ApiError::Internal)?;
+        let captured = if kind == "order.paid" {
+            order["total_amount"].as_i64().or_else(|| order["amount"].as_i64()).unwrap_or(0).max(0)
+        } else {
+            0
+        };
+        let refunded = order["refunded_amount"].as_i64().unwrap_or(0).max(0);
+        let paid_at = order["paid_at"].as_str()
+            .or_else(|| order["created_at"].as_str())
+            .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+            .map(|value| value.with_timezone(&chrono::Utc))
+            .ok_or(ApiError::Internal)?;
+        let charge_id = format!("polar:order:{order_id}");
+        transaction.execute(Sql::bind("INSERT INTO \"_appstruct_product_payments\" (charge_id, tenant_id, payment_intent, currency, captured, refunded, paid_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP) ON CONFLICT (charge_id) DO UPDATE SET captured = GREATEST(\"_appstruct_product_payments\".captured, EXCLUDED.captured), refunded = GREATEST(\"_appstruct_product_payments\".refunded, EXCLUDED.refunded), updated_at = CURRENT_TIMESTAMP", [charge_id.clone().into(), tenant.into(), charge_id.clone().into(), currency.into(), captured.into(), refunded.into(), paid_at.into()])).await?;
+        // Credit pack fulfillment: the checkout id stored at purchase time identifies the order.
+        let session = order["checkout_id"].as_str().or_else(|| order["checkout"]["id"].as_str());
+        if kind == "order.paid" && order["metadata"]["appstruct_credit_pack"].as_str() == Some("v1") {
+            if let Some(session) = session {
+                let update = transaction.fetch_optional(Sql::bind("UPDATE \"_appstruct_product_credit_purchases\" SET fulfilled = true, payment_intent = $2 WHERE session_id = $1 AND NOT fulfilled RETURNING credits", [session.into(), charge_id.clone().into()])).await?;
+                if let Some(update) = update { credits::ledger(&transaction, tenant, None, &format!("purchase:{session}"), update.try_get("credits")?, "purchase", None).await?; }
+            }
+        }
+        let purchases = transaction.fetch_all(Sql::bind("SELECT session_id FROM \"_appstruct_product_credit_purchases\" WHERE payment_intent = $1 AND fulfilled", [charge_id.into()])).await?;
+        for purchase in purchases { refund_purchase(&transaction, &purchase.try_get::<String, _>("session_id")?).await?; }
     }
     transaction.execute(Sql::bind("INSERT INTO \"_appstruct_billing_events\" (event_id, event_type, payload, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (event_id) DO NOTHING", [event_id.into(), kind.into(), event.clone().into()])).await?;
     transaction.commit().await?;

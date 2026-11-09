@@ -26,6 +26,10 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             .collect::<Vec<_>>()
             .join(",\n    ");
         include_str!("../../templates/backend/billing.rs")
+            .replace(
+                "__PROVIDER__",
+                ir.billing.provider.as_deref().unwrap_or("stripe"),
+            )
             .replace("__PLANS__", &plans)
             .replace(
                 "__PLAN_ID_FROM_SUBSCRIPTION__",

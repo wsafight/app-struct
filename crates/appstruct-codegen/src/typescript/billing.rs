@@ -12,7 +12,7 @@ pub(super) fn source(ir: &AppIr) -> String {
         r#"export interface BillingPlan {{ id: string; trial_days: number | null; entitlements: string[]; }}
 export interface BillingSubscription {{ plan_id: string; status: string; current_period_end: string | null; cancel_at_period_end: boolean; }}
 export interface BillingAllowance {{ entitlement: string; free_limit: number; used: number; remaining: number; paid: boolean; }}
-export interface BillingOverview {{ plans: BillingPlan[]; subscription: BillingSubscription | null; entitlements: string[]; customer_portal: boolean; checkout_available: boolean; usage: BillingAllowance[]; }}
+export interface BillingOverview {{ provider: "{provider}"; plans: BillingPlan[]; subscription: BillingSubscription | null; entitlements: string[]; customer_portal: boolean; checkout_available: boolean; usage: BillingAllowance[]; }}
 export interface BillingEvent {{ event_id: string; event_type: string; payload: Record<string, unknown>; created_at: string; }}
 export interface BillingEventList {{ data: BillingEvent[]; meta: {{ page: number; page_size: number; total: number }}; }}
 export const billingFeatures = {{ plans: [{plans}] as const }};
@@ -25,6 +25,8 @@ export const billingAdminApi = {{
   events: (page = 1, pageSize = 25, options: RequestOptions = {{}}) => request<BillingEventList>(`/api/admin/billing/events?page=${{page}}&page_size=${{pageSize}}`, options),
   replayEvent: (eventId: string) => request<BillingEvent>(`/api/admin/billing/events/${{encodeURIComponent(eventId)}}/replay`, {{ method: "POST" }}),
 }};
-"#
+"#,
+        provider = ir.billing.provider.as_deref().unwrap_or("stripe"),
+        plans = plans,
     )
 }

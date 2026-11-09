@@ -30,16 +30,48 @@ pub fn router() -> Router<AppState> {
         .route("/api/product/assistant/{id}/cancel", post(cancel))
 }
 
-fn configuration() -> Result<(String, String, i32), ApiError> {
+#[derive(Clone, PartialEq, Eq)]
+enum AiProvider {
+    /// Local Ollama; plain http is allowed only for loopback.
+    Ollama,
+    /// OpenAI-compatible chat completions; requires HTTPS and a server-side API key.
+    OpenAi,
+}
+
+struct AiConfig {
+    provider: AiProvider,
+    endpoint: String,
+    api_key: Option<String>,
+    model: String,
+    max_tokens: i32,
+}
+
+fn configuration() -> Result<AiConfig, ApiError> {
     if std::env::var("APPSTRUCT_AI_ENABLED").as_deref() != Ok("true") {
         return Err(ApiError::Conflict(
-            "AI is disabled; configure the optional Ollama adapter first".to_owned(),
+            "AI is disabled; configure the optional AI adapter first".to_owned(),
         ));
     }
+    let provider = match std::env::var("APPSTRUCT_AI_PROVIDER")
+        .unwrap_or_else(|_| "ollama".to_owned())
+        .as_str()
+    {
+        "ollama" => AiProvider::Ollama,
+        "openai" => AiProvider::OpenAi,
+        _ => return Err(ApiError::Conflict(
+            "APPSTRUCT_AI_PROVIDER must be `ollama` or `openai`".to_owned(),
+        )),
+    };
+    let default_endpoint = match provider {
+        AiProvider::Ollama => "http://127.0.0.1:11434/api/generate",
+        AiProvider::OpenAi => "https://api.openai.com/v1/chat/completions",
+    };
     let endpoint = std::env::var("APPSTRUCT_AI_ENDPOINT")
-        .unwrap_or_else(|_| "http://127.0.0.1:11434/api/generate".to_owned());
+        .unwrap_or_else(|_| default_endpoint.to_owned());
     let url = reqwest::Url::parse(&endpoint).map_err(|_| ApiError::Internal)?;
-    if !matches!(url.scheme(), "http" | "https")
+    let loopback = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
+    let secure_scheme = url.scheme() == "https" || (provider == AiProvider::Ollama && url.scheme() == "http" && loopback);
+    if !secure_scheme
         || !url.username().is_empty()
         || url.password().is_some()
         || url.query().is_some()
@@ -47,17 +79,34 @@ fn configuration() -> Result<(String, String, i32), ApiError> {
     {
         return Err(ApiError::Internal);
     }
+    // Remote providers must always use HTTPS so prompts and keys never travel in clear text.
+    if provider == AiProvider::OpenAi && url.scheme() != "https" {
+        return Err(ApiError::Internal);
+    }
+    let api_key = if provider == AiProvider::OpenAi {
+        let key = std::env::var("APPSTRUCT_AI_API_KEY")
+            .ok()
+            .filter(|value| !value.trim().is_empty() && value.len() <= 512
+                && !value.chars().any(char::is_whitespace))
+            .ok_or_else(|| ApiError::Conflict(
+                "APPSTRUCT_AI_API_KEY is required for provider `openai`".to_owned(),
+            ))?;
+        Some(key)
+    } else {
+        None
+    };
     let model = std::env::var("APPSTRUCT_AI_MODEL")
         .ok()
-        .filter(|name| !name.trim().is_empty() && name.len() <= 200)
+        .filter(|name| !name.trim().is_empty() && name.len() <= 200
+            && name.chars().all(|c| c.is_ascii() && !c.is_control() && c != ' '))
         .ok_or_else(|| ApiError::Conflict("APPSTRUCT_AI_MODEL is required".to_owned()))?;
     let tokens = std::env::var("APPSTRUCT_AI_MAX_TOKENS")
         .unwrap_or_else(|_| "512".to_owned())
         .parse::<i32>()
         .ok()
-        .filter(|limit| (1..=2048).contains(limit))
+        .filter(|limit| (1..=4096).contains(limit))
         .ok_or(ApiError::Internal)?;
-    Ok((endpoint, model, tokens))
+    Ok(AiConfig { provider, endpoint, api_key, model, max_tokens: tokens })
 }
 
 async fn capabilities(
@@ -69,8 +118,16 @@ async fn capabilities(
         .await?
         .actor()
         .ok_or(ApiError::Unauthorized)?;
+    let config = configuration();
+    let provider = config
+        .as_ref()
+        .map(|value| match value.provider {
+            AiProvider::Ollama => "ollama",
+            AiProvider::OpenAi => "openai",
+        })
+        .unwrap_or("ollama");
     Ok(Json(
-        json!({ "enabled": configuration().is_ok(), "provider": "ollama", "credit_cost": 1, "max_prompt_bytes": 8000, "max_output_bytes": 65536, "max_parallel_per_team": 2 }),
+        json!({ "enabled": config.is_ok(), "provider": provider, "credit_cost": 1, "max_prompt_bytes": 8000, "max_output_bytes": 65536, "max_parallel_per_team": 2 }),
     ))
 }
 
@@ -107,7 +164,9 @@ async fn submit(
     headers: HeaderMap,
     Json(input): Json<Prompt>,
 ) -> Result<Json<Value>, ApiError> {
-    let (_, model, max_tokens) = configuration()?;
+    let config = configuration()?;
+    let model = config.model;
+    let max_tokens = config.max_tokens;
     let context = state.mutation_context(&headers).await?;
     let actor = context.actor().ok_or(ApiError::Unauthorized)?;
     let tenant = context.require_tenant()?;
@@ -294,7 +353,7 @@ async fn write_answer(
 }
 
 async fn generate(database: &Database, job: &Job, id: Uuid) -> Result<(), &'static str> {
-    let (endpoint, _, _) = configuration().map_err(|_| "AI_NOT_CONFIGURED")?;
+    let config = configuration().map_err(|_| "AI_NOT_CONFIGURED")?;
     let row = database.fetch_optional(Sql::bind("SELECT prompt, model, max_tokens FROM ai_requests WHERE id = $1 AND job_id = $2 AND tenant_id IS NOT DISTINCT FROM $3", [id.into(), job.id.into(), job.tenant_id.into()])).await.map_err(|_| "AI_LOAD_FAILED")?.ok_or("AI_REQUEST_MISSING")?;
     let prompt: String = row.try_get("prompt").map_err(|_| "AI_LOAD_FAILED")?;
     let model: String = row.try_get("model").map_err(|_| "AI_LOAD_FAILED")?;
@@ -306,7 +365,21 @@ async fn generate(database: &Database, job: &Job, id: Uuid) -> Result<(), &'stat
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| "AI_PROVIDER_UNAVAILABLE")?;
-    let response = client.post(endpoint).json(&json!({ "model": model, "prompt": prompt, "stream": true, "options": { "num_predict": max_tokens } })).send().await.map_err(|_| "AI_PROVIDER_UNAVAILABLE")?.error_for_status().map_err(|_| "AI_PROVIDER_UNAVAILABLE")?;
+    let request = match config.provider {
+        AiProvider::Ollama => client.post(&config.endpoint).json(
+            &json!({ "model": model, "prompt": prompt, "stream": true, "options": { "num_predict": max_tokens } }),
+        ),
+        AiProvider::OpenAi => client
+            .post(&config.endpoint)
+            .bearer_auth(config.api_key.as_deref().ok_or("AI_NOT_CONFIGURED")?)
+            .json(&json!({
+                "model": model,
+                "messages": [{ "role": "user", "content": prompt }],
+                "max_completion_tokens": max_tokens,
+                "stream": true,
+            })),
+    };
+    let response = request.send().await.map_err(|_| "AI_PROVIDER_UNAVAILABLE")?.error_for_status().map_err(|_| "AI_PROVIDER_UNAVAILABLE")?;
     let mut stream = response.bytes_stream();
     let mut buffer = Vec::new();
     let mut answer = String::new();
@@ -321,7 +394,7 @@ async fn generate(database: &Database, job: &Job, id: Uuid) -> Result<(), &'stat
             if line.iter().all(u8::is_ascii_whitespace) {
                 continue;
             }
-            done = append_line(&line, &mut answer, max_tokens)?;
+            done = append_line(&config.provider, &line, &mut answer, max_tokens)?;
             write_answer(database, job, id, &answer).await?;
             if done {
                 break;
@@ -332,7 +405,7 @@ async fn generate(database: &Database, job: &Job, id: Uuid) -> Result<(), &'stat
         }
     }
     if !done && !buffer.iter().all(u8::is_ascii_whitespace) {
-        done = append_line(&buffer, &mut answer, max_tokens)?;
+        done = append_line(&config.provider, &buffer, &mut answer, max_tokens)?;
         write_answer(database, job, id, &answer).await?;
     }
     if !done {
@@ -344,7 +417,14 @@ async fn generate(database: &Database, job: &Job, id: Uuid) -> Result<(), &'stat
     Ok(())
 }
 
-fn append_line(line: &[u8], answer: &mut String, max_tokens: i32) -> Result<bool, &'static str> {
+fn append_line(provider: &AiProvider, line: &[u8], answer: &mut String, max_tokens: i32) -> Result<bool, &'static str> {
+    match provider {
+        AiProvider::Ollama => append_ollama_line(line, answer, max_tokens),
+        AiProvider::OpenAi => append_openai_line(line, answer),
+    }
+}
+
+fn append_ollama_line(line: &[u8], answer: &mut String, max_tokens: i32) -> Result<bool, &'static str> {
     let value: Value = serde_json::from_slice(line).map_err(|_| "AI_INVALID_RESPONSE")?;
     if value.get("error").is_some() {
         return Err("AI_PROVIDER_FAILED");
@@ -360,6 +440,39 @@ fn append_line(line: &[u8], answer: &mut String, max_tokens: i32) -> Result<bool
         return Err("AI_OUTPUT_LIMIT");
     }
     Ok(value["done"].as_bool() == Some(true))
+}
+
+/// OpenAI-compatible servers stream `data: {json}` lines terminated by `data: [DONE]`.
+/// The job writes snapshots to the database, so clients still stream over the SSE endpoint.
+fn append_openai_line(line: &[u8], answer: &mut String) -> Result<bool, &'static str> {
+    let data = match line.strip_prefix(b"data:") {
+        Some(rest) => rest,
+        None => return Ok(false),
+    };
+    let data = std::str::from_utf8(data).map_err(|_| "AI_INVALID_RESPONSE")?.trim();
+    if data == "[DONE]" {
+        return Ok(true);
+    }
+    if data.is_empty() {
+        return Ok(false);
+    }
+    let value: Value = serde_json::from_str(data).map_err(|_| "AI_INVALID_RESPONSE")?;
+    if value.get("error").is_some() {
+        return Err("AI_PROVIDER_FAILED");
+    }
+    for choice in value["choices"].as_array().into_iter().flatten() {
+        if let Some(text) = choice.pointer("/delta/content").and_then(Value::as_str) {
+            answer.push_str(text);
+        }
+        if answer.len() > 65536 {
+            return Err("AI_OUTPUT_LIMIT");
+        }
+        // "stop" and "length" both terminate the completion; other reasons still finish the stream.
+        if choice["finish_reason"].is_string() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 async fn finish(

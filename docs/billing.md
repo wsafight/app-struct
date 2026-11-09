@@ -1,6 +1,6 @@
 # Generated application billing
 
-Generated applications can opt into Stripe Billing v1 with a tenant scoped organization subscription:
+Generated applications can opt into Billing v1 with a tenant scoped organization subscription. Two providers are supported: `stripe` (default when `provider` is omitted) and `polar`:
 
 ```yaml
 modules:
@@ -18,7 +18,34 @@ modules:
         entitlements: [projects, seats]
 ```
 
-The compiler generates the billing tables, organization owner checkout and customer portal routes, a subscription page, OpenAPI and TypeScript clients, and a signed Stripe webhook endpoint. Webhook event IDs are stored before a transaction commits and subscription updates are monotonic by Stripe event time, so retries and out of order delivery do not reapply old access.
+The compiler generates the billing tables, organization owner checkout and customer portal routes, a subscription page, OpenAPI and TypeScript clients, and a signed webhook endpoint. Webhook event IDs are stored before a transaction commits and subscription updates are monotonic by provider event time, so retries and out of order delivery do not reapply old access.
+
+## Provider: Polar
+
+Set `provider: polar` to bill through [Polar](https://polar.sh). Polar v1 supports `subscriptions` and `customer_portal`; `trials` and `metered_usage` are rejected at compile time. Each `price_env` must hold a Polar **product UUID** (not a Stripe `price_...` id); the subscription plan resolves from `product_id`, so plan metadata cannot be forged:
+
+```yaml
+modules:
+  billing:
+    enabled: true
+    provider: polar
+    capabilities:
+      subscriptions: true
+      customer_portal: true
+    plans:
+      - id: pro
+        price_env: APPSTRUCT_POLAR_PRICE_PRO
+        entitlements: [projects, seats]
+```
+
+Runtime configuration uses:
+
+- `APPSTRUCT_POLAR_ACCESS_TOKEN` — Organization Access Token sent as a bearer token; keep it server-side only.
+- `APPSTRUCT_POLAR_WEBHOOK_SECRET` — the `whsec_…` endpoint secret from the Polar dashboard.
+- `APPSTRUCT_POLAR_PRODUCT_CREDITS` — optional product UUID for credit pack purchases.
+- one Polar product UUID for every declared `price_env`.
+
+The generated webhook route is `POST /api/billing/polar/webhook`. Deliveries are verified with the Standard Webhooks scheme (`webhook-id`, `webhook-timestamp`, `webhook-signature` headers): the delivery timestamp must be within five minutes, the HMAC-SHA256 signature is compared in constant time, and `webhook-id` deduplicates retries. Subscription state is always re-fetched from the Polar API after signature verification, so a forged or stale payload cannot fabricate access. Organizations are linked through `external_customer_id`.
 
 Business operations can require a declared plan entitlement. The entitlement is checked on the server against the active organization subscription, so a hidden or forged client button cannot bypass the gate:
 
@@ -56,4 +83,4 @@ Configure secrets only at runtime:
 
 Development may omit all Stripe secrets and prices: free usage remains available and checkout is explicitly disabled. Partial credentials fail startup; production requires complete configuration. The checkout return page polls subscription state, but never grants access based only on `checkout=success`; signed webhook state remains authoritative.
 
-Stripe Checkout and the Customer Portal handle payment details. The generated application stores provider IDs, subscription status, period end, cancellation state, and plan entitlements. Metered usage is not supported in Billing v1. `appstruct capabilities --format json` reports the supported provider capabilities.
+Stripe Checkout and the Polar/Stripe Customer Portal handle payment details. The generated application stores provider IDs, subscription status, period end, cancellation state, and plan entitlements. Metered usage is not supported in Billing v1, and providers cannot be mixed in one project. `appstruct capabilities --format json` reports the supported provider capabilities.

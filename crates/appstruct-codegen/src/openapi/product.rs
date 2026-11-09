@@ -142,7 +142,7 @@ fn engagement(paths: &mut Map<String, Value>) {
         "post",
         "recordConsentedVisit",
         Some(
-            json!({ "type": "object", "required": ["visitor_id", "page", "consent"], "additionalProperties": false, "properties": { "visitor_id": uuid(), "page": { "enum": ["/", "/pricing"] }, "consent": { "const": true } } }),
+            json!({ "type": "object", "required": ["visitor_id", "page", "consent"], "additionalProperties": false, "properties": { "visitor_id": uuid(), "page": { "enum": ["/", "/pricing"] }, "consent": { "const": true }, "referrer": { "type": "string", "maxLength": 512 }, "utm_source": { "type": "string", "maxLength": 64 }, "utm_medium": { "type": "string", "maxLength": 64 }, "utm_campaign": { "type": "string", "maxLength": 64 } } }),
         ),
         None,
         false,

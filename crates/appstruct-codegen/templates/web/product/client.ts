@@ -60,11 +60,28 @@ export interface ProductInsights {
     net_minor: string;
     paying_organizations: number;
   }[];
+  sources: {
+    source: string;
+    medium: string | null;
+    visitors: number;
+  }[];
   definitions: Record<string, string>;
 }
 export interface SecurityProof {
   password: string;
   code?: string;
+}
+
+function visitAttribution() {
+  if (typeof window === "undefined") return {};
+  const params = new URLSearchParams(window.location.search);
+  const utm = (name: string) => params.get(name) ?? undefined;
+  return {
+    referrer: document.referrer || undefined,
+    utm_source: utm("utm_source"),
+    utm_medium: utm("utm_medium"),
+    utm_campaign: utm("utm_campaign"),
+  };
 }
 export const productFeatures = {
   team: __TENANT__,
@@ -152,6 +169,11 @@ export const productApi = {
   recordVisit: (visitorId: string, page: "/" | "/pricing") =>
     request<void>("/api/product/visits", {
       method: "POST",
-      body: JSON.stringify({ visitor_id: visitorId, page, consent: true }),
+      body: JSON.stringify({
+        visitor_id: visitorId,
+        page,
+        consent: true,
+        ...visitAttribution(),
+      }),
     }),
 };

@@ -67,6 +67,14 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
                 if ir.billing.enabled { "true" } else { "false" },
             )
             .replace(
+                "__POLAR__",
+                if ir.billing.enabled && ir.billing.provider.as_deref() == Some("polar") {
+                    "true"
+                } else {
+                    "false"
+                },
+            )
+            .replace(
                 "__REPORT__",
                 if ir.report.enabled { "true" } else { "false" },
             );
