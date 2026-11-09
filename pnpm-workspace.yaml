@@ -3,6 +3,8 @@ packages:
 allowBuilds:
   esbuild: true
 overrides:
+  '@emnapi/runtime': 1.11.3
+  '@emnapi/core': 1.11.3
   'astro>sharp': 0.35.5
   'unifont>undici': 8.12.2
   'cheerio>undici': 7.30.1
