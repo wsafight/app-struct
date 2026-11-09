@@ -20,6 +20,7 @@ test("audit snapshots remain tenant isolated on desktop and mobile", async ({ pa
   await page.getByRole("combobox", { name: /^Owner\b/ }).selectOption({ label: email });
   await page.getByRole("button", { name: "Save" }).click();
 
+  await page.getByText("Advanced tools", { exact: true }).click();
   await page.getByRole("link", { name: "Audit log" }).click();
   await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
   await expect(page.getByText("1 events", { exact: true })).toBeVisible();

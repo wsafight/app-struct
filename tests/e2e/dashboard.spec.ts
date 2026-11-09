@@ -36,7 +36,7 @@ test("dashboard registration and project lifecycle", async ({
   ).toBeVisible();
 
   await page
-    .getByRole("navigation", { name: "Resources" })
+    .getByRole("navigation", { name: "Main navigation" })
     .getByRole("link", { name: "Projects", exact: true })
     .click();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
@@ -62,7 +62,7 @@ test("dashboard registration and project lifecycle", async ({
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await page
-    .getByRole("navigation", { name: "Resources" })
+    .getByRole("navigation", { name: "Main navigation" })
     .getByRole("link", { name: "Projects", exact: true })
     .click();
   await expect(page.getByRole("row").filter({ hasText: renamedProject })).toBeVisible();
