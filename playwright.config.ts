@@ -1,34 +1,15 @@
-import { defineConfig, devices } from "@playwright/test";
+import { devices } from "@playwright/test";
+import { makeConfig } from "./tests/playwright.base";
 
-export default defineConfig({
-  testDir: "./tests/e2e",
-  fullyParallel: false,
-  forbidOnly: true,
-  retries: 0,
-  reporter: "line",
-  timeout: 30_000,
-  use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:55200",
-    screenshot: "only-on-failure",
-    trace: "retain-on-failure",
+export default makeConfig("./tests/e2e", 55200, [
+  {
+    name: "chromium-mobile",
+    testMatch: "saas-product.spec.ts",
+    use: {
+      ...devices["Desktop Chrome"],
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+    },
   },
-  projects: [
-    {
-      name: "chromium-desktop",
-      use: {
-        ...devices["Desktop Chrome"],
-        viewport: { width: 1440, height: 900 },
-      },
-    },
-    {
-      name: "chromium-mobile",
-      testMatch: "saas-product.spec.ts",
-      use: {
-        ...devices["Desktop Chrome"],
-        viewport: { width: 390, height: 844 },
-        isMobile: true,
-        hasTouch: true,
-      },
-    },
-  ],
-});
+]);

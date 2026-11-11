@@ -95,7 +95,8 @@ async fn postgres_sqlx_binds_and_transaction_ownership() {
     let count_sql = format!("SELECT count(*) AS count FROM {table}");
     let transaction = database.begin().await.unwrap();
     {
-        let context = RequestContext::transaction(&transaction, &mail, None, None);
+        let context =
+            RequestContext::transaction(&transaction, &mail, Option::<Actor>::None, None);
         context.database().execute(statement(1)).await.unwrap();
         let row = context.database().fetch_optional(Sql::new(format!("SELECT * FROM {table}"))).await.unwrap().unwrap();
         assert_eq!(row.try_get::<String, _>("value").unwrap(), "'; DROP TABLE projects; --");

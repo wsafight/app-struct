@@ -32,11 +32,29 @@ allow = [
 ]
 
 [bans]
-multiple-versions = "warn"
+# Deny new duplicates; the unavoidable ones below are skipped explicitly.
+# `cron` pulls the entire phf@0.11 / rand@0.8 / syn@2 / winnow@0.7 subtree; most
+# of it disappears if `cron` is replaced with a lighter parser.
+multiple-versions = "deny"
 wildcards = "deny"
-# `postgres` and the ICU stack are pulled in transitively; a single-version policy
-# would require upstream releases we do not control.
 highlight = "all"
+skip = [
+  { name = "phf", version = "0.11" },
+  { name = "phf_generator", version = "0.11" },
+  { name = "phf_macros", version = "0.11" },
+  { name = "phf_shared", version = "0.11" },
+  { name = "phf", version = "0.13" },
+  { name = "phf_shared", version = "0.13" },
+  { name = "rand", version = "0.8" },
+  { name = "rand_core", version = "0.6" },
+  { name = "syn", version = "2" },
+  { name = "winnow", version = "0.7" },
+  { name = "const-oid", version = "0.9" },
+  # Target-gated duplicates seen on non-Linux builds.
+  { name = "base64", version = "0.22" },
+  { name = "wasi", version = "0.11" },
+  { name = "windows-sys", version = "0.60" },
+]
 
 [sources]
 unknown-registry = "deny"

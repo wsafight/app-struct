@@ -174,3 +174,70 @@ m6_run_playwright() {
   env PLAYWRIGHT_BASE_URL="http://127.0.0.1:$web_port" "$@" \
     pnpm exec playwright test --config "$config"
 }
+
+# Assert $APPSTRUCT_E2E_DATABASE_URL names a dedicated test database, then reset
+# its public schema. The name must contain `e2e` or `test`.
+m6_require_test_db() {
+  local database_name
+  database_name="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c 'SELECT current_database()')"
+  case "$database_name" in
+    *e2e*|*test*) ;;
+    *)
+      echo "refusing to reset database '$database_name'; use a dedicated database containing e2e or test in its name" >&2
+      exit 2
+      ;;
+  esac
+  psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 \
+    -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public' >/dev/null
+}
+
+# Register an account over HTTP. `$api` must point at the dev server.
+# Optional $4 password (default "correct-horse-battery"), optional $5 role:
+# when set, the account's roles are updated via psql and the user id is
+# printed on stdout.
+m6_register() {
+  local jar="$1" email="$2" output="$3" password="${4:-correct-horse-battery}" role="${5:-}" user_id
+  curl --fail --silent --show-error -c "$jar" -b "$jar" \
+    -H "Content-Type: application/json" \
+    -d "{\"email\":\"$email\",\"password\":\"$password\"}" \
+    "$api/api/auth/register" >"$output"
+  if [[ -n "$role" ]]; then
+    user_id="$(jq -er '.user.id' "$output")"
+    psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 \
+      -c "UPDATE \"_appstruct_auth_accounts\" SET roles = '[\"$role\"]'::jsonb WHERE user_id = '$user_id'::uuid" \
+      >/dev/null
+    printf '%s' "$user_id"
+  fi
+}
+
+m6_csrf_token() {
+  awk '$6 == "appstruct_csrf" { print $7 }' "$1"
+}
+
+m6_create_org() {
+  local jar="$1" name="$2" output="$3" csrf
+  csrf="$(m6_csrf_token "$jar")"
+  curl --fail --silent --show-error -c "$jar" -b "$jar" \
+    -H "Content-Type: application/json" -H "X-CSRF-Token: $csrf" \
+    -d "{\"name\":\"$name\"}" "$api/api/tenant/organizations" >"$output"
+}
+
+# assert_status <expected> <jar> <tenant> <method> <path> <output> [curl args...]
+m6_assert_status() {
+  local expected="$1" jar="$2" tenant="$3" method="$4" path="$5" output="$6"
+  shift 6
+  local status
+  local -a request_args=(-X "$method")
+  if [[ -n "$tenant" ]]; then
+    request_args+=(-H "X-AppStruct-Tenant: $tenant")
+  fi
+  request_args+=("$@")
+  status="$(curl --silent --show-error -o "$output" -w '%{http_code}' -b "$jar" \
+    "${request_args[@]}" "$api$path")"
+  if [[ "$status" != "$expected" ]]; then
+    echo "expected HTTP $expected from $method $path for tenant '$tenant', got $status" >&2
+    cat "$output" >&2
+    tail -n 160 "${log:-/dev/null}" >&2 || true
+    exit 1
+  fi
+}

@@ -6,8 +6,6 @@ import SearchDialog from '../components/SearchDialog.astro';
 interface Props { title: string; titleZh?: string; description: string; descriptionZh?: string; home?: boolean; }
 const {title, titleZh = title, description, descriptionZh = description, home = false} = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
-const english = new URL(Astro.url.pathname, Astro.site); english.searchParams.set('lang', 'en');
-const chinese = new URL(Astro.url.pathname, Astro.site); chinese.searchParams.set('lang', 'zh');
 ---
 <!doctype html>
 <html lang="en" data-lang="en" data-theme="dark" data-title-en={title} data-title-zh={titleZh} data-desc-en={description} data-desc-zh={descriptionZh}>
@@ -18,9 +16,8 @@ const chinese = new URL(Astro.url.pathname, Astro.site); chinese.searchParams.se
     <meta name="description" content={description} />
     <meta name="theme-color" content="#101311" />
     <link rel="canonical" href={canonical} />
-    <link rel="alternate" hreflang="en" href={english} />
-    <link rel="alternate" hreflang="zh-CN" href={chinese} />
-    <link rel="alternate" hreflang="x-default" href={canonical} />
+    <!-- Both languages render into one page (toggled client-side via ?lang=/stored
+         preference), so there are no per-language URLs to reference with hreflang. -->
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />

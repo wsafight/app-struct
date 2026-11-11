@@ -21,7 +21,10 @@ struct CachedDigest {
 static DIGESTS: OnceLock<Mutex<BTreeMap<PathBuf, CachedDigest>>> = OnceLock::new();
 
 pub(crate) fn digest(path: &Path) -> io::Result<[u8; 32]> {
-    let metadata = fs::metadata(path)?;
+    // Canonicalize so the same file reached via different relative paths
+    // shares one cache entry.
+    let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
+    let metadata = fs::metadata(&path)?;
     let stamp = FileStamp {
         length: metadata.len(),
         modified: metadata.modified().ok(),
@@ -30,16 +33,16 @@ pub(crate) fn digest(path: &Path) -> io::Result<[u8; 32]> {
     if let Some(cached) = cache
         .lock()
         .map_err(|_| io::Error::other("file fingerprint cache lock was poisoned"))?
-        .get(path)
+        .get(&path)
         .copied()
         && cached.stamp == stamp
     {
         return Ok(cached.digest);
     }
 
-    let mut file = File::open(path)?;
+    let mut file = File::open(&path)?;
     let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 8 * 1024];
+    let mut buffer = vec![0_u8; 64 * 1024];
     loop {
         let read = file.read(&mut buffer)?;
         if read == 0 {
@@ -51,6 +54,6 @@ pub(crate) fn digest(path: &Path) -> io::Result<[u8; 32]> {
     cache
         .lock()
         .map_err(|_| io::Error::other("file fingerprint cache lock was poisoned"))?
-        .insert(path.to_owned(), CachedDigest { stamp, digest });
+        .insert(path, CachedDigest { stamp, digest });
     Ok(digest)
 }

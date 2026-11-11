@@ -147,7 +147,8 @@ pub fn search_term_is_valid(term: &str) -> bool {
 /// Builds a SQL `LIKE` pattern for substring search with `%`, `_`, and `\` escaped.
 #[must_use]
 pub fn like_contains_pattern(term: &str) -> String {
-    let mut pattern = String::from("%");
+    let mut pattern = String::with_capacity(term.len() + 2);
+    pattern.push('%');
     for character in term.chars() {
         if matches!(character, '\\' | '%' | '_') {
             pattern.push('\\');

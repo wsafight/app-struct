@@ -20,20 +20,7 @@ targets=(
   "$workspace/target/appstruct-generated-tests"
   "$workspace/target/llvm-cov-target"
   "$workspace/target/package"
-  "$workspace/target/m6-e2e-audit"
-  "$workspace/target/m6-e2e-bulk"
-  "$workspace/target/m6-e2e-file"
-  "$workspace/target/m6-e2e-jobs"
-  "$workspace/target/m6-e2e-mail"
-  "$workspace/target/m6-e2e-saas"
-  "$workspace/target/m6-e2e-saas-product"
-  "$workspace/target/m6-e2e-tenant"
-  "$workspace/target/m6-e2e-query"
-  "$workspace/target/m6-e2e-m5"
-  "$workspace/target/m6-e2e-operations"
-  "$workspace/target/m6-e2e-chromium-report"
-  "$workspace/target/m6-e2e-benchmark"
-  "$workspace/target/m6-e2e-deployment"
+  "$workspace"/target/m6-e2e-*/
 )
 
 removed=0

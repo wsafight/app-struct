@@ -11,12 +11,7 @@ cp tests/e2e/dashboard.external.yaml "$project/appstruct.yaml"
 mkdir -p "$project/.appstruct/cache" "$m6_backend_target"
 ln -s "$m6_backend_target" "$project/.appstruct/cache/backend-target"
 
-set -m
-DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
-  target/debug/appstruct --project "$project" dev --no-open --api-port "$api_port" --web-port "$web_port" \
-  >"$log" 2>&1 &
-dev_pid=$!
-set +m
+m6_start_dev
 
 for ((attempt = 0; attempt < startup_timeout; attempt += 1)); do
   if curl --fail --silent --max-time 2 "http://127.0.0.1:$api_port/health/ready" >/dev/null 2>&1 \

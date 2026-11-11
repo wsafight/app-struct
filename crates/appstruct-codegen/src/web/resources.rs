@@ -1,11 +1,35 @@
 use crate::{entity_api_name, generated_header};
 use appstruct_ir::{
-    AccessRuleIr, AppIr, ChartDimensionIr, ChartIr, ChartKindIr, ChartMeasureIr, EntityIr, FieldIr,
-    FieldSemanticIr, FieldTypeIr, GeneratedValueIr, ValueFieldIr,
+    AccessRuleIr, AppIr, ChartDimensionIr, ChartIr, ChartKindIr, ChartMeasureIr, EntityId,
+    EntityIr, FieldIr, FieldSemanticIr, FieldTypeIr, GeneratedValueIr, ValueFieldIr, ValueObjectIr,
 };
+use std::collections::HashMap;
 use std::fmt::Write;
 
+struct IrIndex<'ir> {
+    entities_by_id: HashMap<&'ir EntityId, &'ir EntityIr>,
+    value_objects_by_id: HashMap<&'ir str, &'ir ValueObjectIr>,
+}
+
+impl<'ir> IrIndex<'ir> {
+    fn new(ir: &'ir AppIr) -> Self {
+        Self {
+            entities_by_id: ir
+                .entities
+                .iter()
+                .map(|entity| (&entity.id, entity))
+                .collect(),
+            value_objects_by_id: ir
+                .value_objects
+                .iter()
+                .map(|value| (value.id.as_str(), value))
+                .collect(),
+        }
+    }
+}
+
 pub(super) fn source(ir: &AppIr) -> String {
+    let index = IrIndex::new(ir);
     let imports = ir
         .entities
         .iter()
@@ -20,7 +44,7 @@ pub(super) fn source(ir: &AppIr) -> String {
     let resources = ir
         .entities
         .iter()
-        .map(|entity| resource_source(ir, entity))
+        .map(|entity| resource_source(ir, &index, entity))
         .collect::<Vec<_>>()
         .join(",\n");
     format!(
@@ -32,7 +56,12 @@ pub(super) fn source(ir: &AppIr) -> String {
     )
 }
 
-fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
+fn resource_source(ir: &AppIr, index: &IrIndex<'_>, entity: &EntityIr) -> String {
+    let fields_by_id: HashMap<_, _> = entity
+        .fields
+        .iter()
+        .map(|field| (&field.id, field))
+        .collect();
     let fields = entity
         .fields
         .iter()
@@ -42,7 +71,7 @@ fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
                 Some(GeneratedValueIr::Revision | GeneratedValueIr::Tenant)
             )
         })
-        .map(|field| field_source(entity, field))
+        .map(|field| field_source(&fields_by_id, entity, field))
         .collect::<Vec<_>>()
         .join(",\n");
     let primary_key = entity
@@ -51,7 +80,7 @@ fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
         .find(|field| field.primary_key)
         .map_or("id", |field| field.rust_name.as_str());
     let api = entity_api_name(ir, entity);
-    let mut workflow = workflow_source(ir, entity);
+    let mut workflow = workflow_source(index, entity);
     if let Some(parent) = ir.entities.iter().find(|parent| {
         parent
             .views
@@ -63,7 +92,7 @@ fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
     }
     if !entity.views.aggregates.is_empty() {
         let collections = entity.views.aggregates.iter().map(|aggregate| {
-            let child = ir.entities.iter().find(|child| child.id == aggregate.child).expect("validated child");
+            let child = index.entities_by_id.get(&aggregate.child).expect("validated child");
             let relation = &child.fields.iter().find(|field| field.id == aggregate.relation).expect("validated relation").rust_name;
             serde_json::json!({ "name": aggregate.name, "child": aggregate.child.0, "relation": relation, "maxItems": aggregate.max_items, "states": aggregate.states })
         }).collect::<Vec<_>>();
@@ -79,7 +108,7 @@ fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
             .views
             .charts
             .iter()
-            .map(|chart| chart_source(ir, entity, chart))
+            .map(|chart| chart_source(index, entity, chart))
             .collect::<Vec<_>>();
         writeln!(
             workflow,
@@ -92,7 +121,7 @@ fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
         .views
         .display_field
         .as_ref()
-        .and_then(|id| entity.fields.iter().find(|field| field.id == *id))
+        .and_then(|id| fields_by_id.get(id).copied())
     {
         writeln!(workflow, "  displayField: {:?},", field.rust_name).unwrap();
     }
@@ -114,11 +143,11 @@ fn resource_source(ir: &AppIr, entity: &EntityIr) -> String {
     )
 }
 
-fn chart_source(ir: &AppIr, entity: &EntityIr, chart: &ChartIr) -> serde_json::Value {
+fn chart_source(index: &IrIndex<'_>, entity: &EntityIr, chart: &ChartIr) -> serde_json::Value {
     let dimension = chart
         .dimension
         .as_ref()
-        .map(|dimension| chart_dimension(ir, entity, dimension));
+        .map(|dimension| chart_dimension(index, entity, dimension));
     let measure = match &chart.measure {
         ChartMeasureIr::Count => "count".to_owned(),
         ChartMeasureIr::Sum { field } => format!("sum:{}", chart_field(entity, field).rust_name),
@@ -145,7 +174,7 @@ fn chart_source(ir: &AppIr, entity: &EntityIr, chart: &ChartIr) -> serde_json::V
     value
 }
 
-fn chart_dimension(ir: &AppIr, entity: &EntityIr, dimension: &ChartDimensionIr) -> String {
+fn chart_dimension(index: &IrIndex<'_>, entity: &EntityIr, dimension: &ChartDimensionIr) -> String {
     match dimension {
         ChartDimensionIr::Field { field } => chart_field(entity, field).rust_name.clone(),
         ChartDimensionIr::RelationField { relation, field } => {
@@ -153,10 +182,9 @@ fn chart_dimension(ir: &AppIr, entity: &EntityIr, dimension: &ChartDimensionIr) 
             let FieldTypeIr::Relation { target } = &relation.ty else {
                 unreachable!("validated chart relation dimension")
             };
-            let target = ir
-                .entities
-                .iter()
-                .find(|entity| entity.id == *target)
+            let target = index
+                .entities_by_id
+                .get(target)
                 .expect("validated chart relation target");
             let field = chart_field(target, field);
             format!("{}.{}", relation.api_name, field.rust_name)
@@ -184,7 +212,7 @@ fn activity_source(ir: &AppIr, entity: &EntityIr) -> String {
         .unwrap_or_default()
 }
 
-fn workflow_source(ir: &AppIr, entity: &EntityIr) -> String {
+fn workflow_source(index: &IrIndex<'_>, entity: &EntityIr) -> String {
     let Some(workflow) = &entity.workflow else {
         return String::new();
     };
@@ -198,10 +226,9 @@ fn workflow_source(ir: &AppIr, entity: &EntityIr) -> String {
                 format!("to: {:?}", transition.to),
             ];
             if let Some(input) = &transition.input {
-                let value = ir
-                    .value_objects
-                    .iter()
-                    .find(|value| value.id == *input)
+                let value = index
+                    .value_objects_by_id
+                    .get(input.as_str())
                     .expect("IR validation guarantees workflow input exists");
                 let fields = value
                     .fields
@@ -272,7 +299,13 @@ fn audit_access_source(ir: &AppIr) -> String {
     serde_json::to_string(&rule).expect("access IR is serializable")
 }
 
-fn field_source(entity: &EntityIr, field: &FieldIr) -> String {
+fn field_source<'entity>(
+    fields_by_id: &HashMap<&appstruct_ir::FieldId, &'entity FieldIr>,
+    entity: &EntityIr,
+    field: &'entity FieldIr,
+) -> String {
+    let entity_field =
+        |id: &appstruct_ir::FieldId| fields_by_id.get(id).copied().expect("validated field");
     let mut properties = vec![
         format!("name: {:?}", field.rust_name),
         format!("apiName: {:?}", field.api_name),
@@ -306,11 +339,7 @@ fn field_source(entity: &EntityIr, field: &FieldIr) -> String {
         properties.push(format!("maxLength: {limit}"));
     }
     if let Some(rule) = &field.validation.required_when {
-        let source = entity
-            .fields
-            .iter()
-            .find(|other| other.id == rule.field)
-            .expect("validated condition");
+        let source = entity_field(&rule.field);
         properties.push(format!(
             "requiredWhen: {{field: {:?}, equals: {}}}",
             source.rust_name,
@@ -318,11 +347,7 @@ fn field_source(entity: &EntityIr, field: &FieldIr) -> String {
         ));
     }
     if let Some(id) = &field.validation.greater_than {
-        let source = entity
-            .fields
-            .iter()
-            .find(|other| other.id == *id)
-            .expect("validated comparison");
+        let source = entity_field(id);
         properties.push(format!("greaterThan: {:?}", source.rust_name));
     }
     if let Some(minimum) = &field.validation.minimum {
@@ -339,11 +364,7 @@ fn field_source(entity: &EntityIr, field: &FieldIr) -> String {
         fraction_digits,
     }) = &field.ui_semantic
     {
-        let currency = entity
-            .fields
-            .iter()
-            .find(|candidate| candidate.id == *currency_field)
-            .expect("IR validation guarantees a money currency field");
+        let currency = entity_field(currency_field);
         properties.push(format!(
             "semantic: {{ kind: \"money\", currencyField: {:?}, fractionDigits: {fraction_digits} }}",
             currency.rust_name,

@@ -78,9 +78,9 @@ pub(super) fn support(
             if !(#create_allowed) { return Err(access_denied(context)); }
             if !state.extensions.#policy().can_create(context, &input).await? { return Err(ApiError::Forbidden); }
             let active = #module::Model { #(#creates,)* };
-            let candidate = active.clone();
+            let candidate = &active;
             if candidate.#relation_name != parent { return Err(invalid("Parent relation cannot change")); }
-            validate_relations(state, context, &candidate).await?;
+            validate_relations(state, context, candidate).await?;
             validate_candidate(&active)?;
             let model = active.insert(context).await?;
             state.extensions.#hooks().after_create(context, &model).await?;
@@ -99,11 +99,11 @@ pub(super) fn support(
             let mut active = before.clone();
             #(#updates)*
             active.revision = before.revision.checked_add(1).ok_or(ApiError::Internal)?;
-            let candidate = active.clone();
+            let candidate = &active;
             if candidate.#relation_name != parent { return Err(invalid("Parent relation cannot change")); }
             if !(#update_allowed) { return Err(access_denied(context)); }
-            if !state.extensions.#policy().can_update(context, &before, &input, &candidate).await? { return Err(ApiError::Forbidden); }
-            validate_relations(state, context, &candidate).await?;
+            if !state.extensions.#policy().can_update(context, &before, &input, candidate).await? { return Err(ApiError::Forbidden); }
+            validate_relations(state, context, candidate).await?;
             validate_candidate(&active)?;
             let after = active.update(context).await?;
             state.extensions.#hooks().after_update(context, &before, &after).await?;
@@ -123,7 +123,7 @@ pub(super) fn support(
         pub async fn committed(state: &AppState, context: &RequestContext<'_>, operation: crate::HookOperation, model: &#module::Model) {
             let suffix = match operation { crate::HookOperation::Create => "created", crate::HookOperation::Delete => "deleted", _ => "updated" };
             publish_realtime_event(state, context, &format!("{}.{}", #event_prefix, suffix), model);
-            run_after_commit(state, operation, model, context.actor().cloned(), context.tenant()).await;
+            run_after_commit(state, operation, model, context.shared_actor(), context.tenant()).await;
         }
     })
 }

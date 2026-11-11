@@ -9,7 +9,9 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 const FORMAT_CACHE_LIMIT: usize = 4_096;
-type FormatCache = HashMap<[u8; 32], Vec<u8>>;
+/// Formatted output keyed by content hash; the tick evicts the oldest entries
+/// when the cache overflows instead of discarding the whole cache.
+type FormatCache = HashMap<[u8; 32], (u64, Vec<u8>)>;
 
 pub(super) fn format_rust_artifacts(
     artifacts: &mut [Artifact],
@@ -41,14 +43,15 @@ pub(super) fn format_rust_artifacts(
             .map_err(|_| CodegenError::new("Rust format cache lock was poisoned"))?;
         for index in rust_indexes {
             let key = format_cache_key(&artifacts[index], rustfmt_identity.as_deref());
-            if let Some(content) = cache.get(&key) {
+            if let Some((_, content)) = cache.get(&key) {
                 artifacts[index].content.clone_from(content);
                 memory_hits += 1;
             } else if let Some(content) =
                 persistent_cache.and_then(|directory| read_persistent_format(directory, &key))
             {
                 artifacts[index].content.clone_from(&content);
-                cache.insert(key, content);
+                let tick = next_cache_tick();
+                cache.insert(key, (tick, content));
                 persistent_hits += 1;
             } else {
                 cache_keys.insert(index, key);
@@ -79,10 +82,16 @@ pub(super) fn format_rust_artifacts(
         let mut cache = cache
             .lock()
             .map_err(|_| CodegenError::new("Rust format cache lock was poisoned"))?;
-        if cache.len() + cached.len() > FORMAT_CACHE_LIMIT {
-            cache.clear();
+        let excess = cache
+            .len()
+            .saturating_add(cached.len())
+            .saturating_sub(FORMAT_CACHE_LIMIT);
+        if excess > 0 {
+            evict_oldest(&mut cache, excess);
         }
-        cache.extend(cached.iter().cloned());
+        for (key, content) in &cached {
+            cache.insert(*key, (next_cache_tick(), content.clone()));
+        }
     }
     if let Some(directory) = persistent_cache {
         for (key, content) in &cached {
@@ -186,10 +195,9 @@ fn split_formatted_artifacts(
         let (source, after_end) = after_start
             .split_once(&end)
             .ok_or_else(|| CodegenError::new("rustfmt removed an artifact end marker"))?;
-        formatted.push((
-            *index,
-            format!("{}\n", source.trim_matches('\n')).into_bytes(),
-        ));
+        let mut content = source.trim_matches('\n').to_owned();
+        content.push('\n');
+        formatted.push((*index, content.into_bytes()));
         remainder = after_end;
     }
     Ok(formatted)
@@ -198,6 +206,24 @@ fn split_formatted_artifacts(
 fn rust_format_cache() -> &'static Mutex<FormatCache> {
     static CACHE: OnceLock<Mutex<FormatCache>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn next_cache_tick() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static TICK: AtomicU64 = AtomicU64::new(0);
+    TICK.fetch_add(1, Ordering::Relaxed)
+}
+
+fn evict_oldest(cache: &mut FormatCache, excess: usize) {
+    if excess >= cache.len() {
+        cache.clear();
+        return;
+    }
+    let mut keys = cache.keys().copied().collect::<Vec<_>>();
+    keys.sort_unstable_by_key(|key| cache[key].0);
+    for key in keys.into_iter().take(excess) {
+        cache.remove(&key);
+    }
 }
 
 fn format_cache_key(artifact: &Artifact, rustfmt_identity: Option<&str>) -> [u8; 32] {

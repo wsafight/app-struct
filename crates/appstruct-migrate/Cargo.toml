@@ -13,21 +13,18 @@ categories = ["database"]
 
 [dependencies]
 appstruct-core.workspace = true
-appstruct-contracts.workspace = true
 appstruct-ir.workspace = true
 appstruct-schema.workspace = true
-native-tls.workspace = true
 postgres.workspace = true
-postgres-native-tls.workspace = true
+rustls.workspace = true
+rustls-native-certs.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+tokio-postgres-rustls.workspace = true
 
 [dev-dependencies]
 appstruct-compiler.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
-
-[target.'cfg(target_env = "musl")'.dependencies]
-native-tls = { workspace = true, features = ["vendored"] }
 
 [lints]
 workspace = true

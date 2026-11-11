@@ -71,15 +71,9 @@ curl --fail --silent --max-time 2 "$secondary_api/health/ready" >/dev/null
 
 jar="$temporary_root/jobs.cookies"
 email="jobs-$RANDOM-$$@example.com"
-curl --fail --silent --show-error -c "$jar" -b "$jar" \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"$email\",\"password\":\"correct-horse-battery\"}" \
-  "$api/api/auth/register" >"$temporary_root/user.json"
-csrf="$(awk '$6 == "appstruct_csrf" { print $7 }' "$jar")"
-curl --fail --silent --show-error -c "$jar" -b "$jar" \
-  -H "Content-Type: application/json" -H "X-CSRF-Token: $csrf" \
-  -d '{"name":"Jobs Tenant"}' "$api/api/tenant/organizations" \
-  >"$temporary_root/tenant.json"
+m6_register "$jar" "$email" "$temporary_root/user.json"
+csrf="$(m6_csrf_token "$jar")"
+m6_create_org "$jar" "Jobs Tenant" "$temporary_root/tenant.json"
 tenant="$(jq -er '.id' "$temporary_root/tenant.json")"
 user="$(jq -er '.user.id' "$temporary_root/user.json")"
 
@@ -188,12 +182,9 @@ jq -e '.error.code == "CONCURRENT_MODIFICATION"' \
   "$temporary_root/private-view-stale.json" >/dev/null
 
 second_jar="$temporary_root/shared.cookies"
-curl --fail --silent --show-error -c "$second_jar" -b "$second_jar" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"shared@example.com","password":"correct-horse-battery"}' \
-  "$api/api/auth/register" >"$temporary_root/shared-user.json"
+m6_register "$second_jar" "shared@example.com" "$temporary_root/shared-user.json"
 second_user="$(jq -er '.user.id' "$temporary_root/shared-user.json")"
-second_csrf="$(awk '$6 == "appstruct_csrf" { print $7 }' "$second_jar")"
+second_csrf="$(m6_csrf_token "$second_jar")"
 psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 -c \
   "INSERT INTO \"_appstruct_tenant_memberships\" (organization_id, user_id, role, created_at) VALUES ('$tenant', '$second_user', 'member', CURRENT_TIMESTAMP)" \
   >/dev/null

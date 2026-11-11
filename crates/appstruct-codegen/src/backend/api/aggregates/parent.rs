@@ -44,7 +44,7 @@ pub(super) fn support(
         async fn #read(State(state): State<AppState>, Path(id): Path<uuid::Uuid>, headers: HeaderMap) -> Result<([(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
             let request = state.context(&headers).await?;
             let transaction = state.database.begin().await?;
-            let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, request.actor().cloned(), request.tenant());
+            let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, request.shared_actor(), request.tenant());
             #scope
             let parent = #module::select_by_id(id).filter(access_condition).lock_shared().one(&transaction).await?.ok_or(ApiError::NotFound)?;
             if !state.extensions.#policy().can_read(&context, &parent).await? { return Err(ApiError::NotFound); }
@@ -62,7 +62,7 @@ pub(super) fn support(
             let transaction = state.database.begin().await?;
             let mut events = Vec::new();
             let (after, response) = {
-                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, request.actor().cloned(), request.tenant());
+                let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, request.shared_actor(), request.tenant());
                 #scope
                 let before = #module::select_by_id(id).filter(access_condition).lock_exclusive().one(&transaction).await?.ok_or(ApiError::NotFound)?;
                 if !state.extensions.#policy().can_read(&context, &before).await? { return Err(ApiError::NotFound); }
@@ -70,8 +70,8 @@ pub(super) fn support(
                 #guard
                 let mut active = before.clone();
                 active.revision = before.revision.checked_add(1).ok_or(ApiError::Internal)?;
-                let candidate = active.clone();
-                if !(#allowed) || !state.extensions.#policy().can_update(&context, &before, &UpdateInput::default(), &candidate).await? {
+                let candidate = &active;
+                if !(#allowed) || !state.extensions.#policy().can_update(&context, &before, &UpdateInput::default(), candidate).await? {
                     return Err(access_denied(&context));
                 }
                 let mut created = BTreeMap::new();
@@ -92,7 +92,7 @@ pub(super) fn support(
                     events.push((crate::HookOperation::Create, model));
                 }
                 let collection = rows::collection(&state, &context, id, #limit).await?;
-                if !state.extensions.#policy().can_update(&context, &before, &UpdateInput::default(), &candidate).await? { return Err(ApiError::Forbidden); }
+                if !state.extensions.#policy().can_update(&context, &before, &UpdateInput::default(), candidate).await? { return Err(ApiError::Forbidden); }
                 validate_candidate(&active)?;
                 let after = active.update(&transaction).await?;
                 #audit
@@ -102,7 +102,7 @@ pub(super) fn support(
             };
             transaction.commit().await?;
             publish_realtime_event(&state, &request, #event, &after);
-            run_after_commit(&state, crate::HookOperation::Update, &after, request.actor().cloned(), request.tenant()).await;
+            run_after_commit(&state, crate::HookOperation::Update, &after, request.shared_actor(), request.tenant()).await;
             for (operation, model) in events { rows::committed(&state, &request, operation, &model).await; }
             Ok((etag_header(&after), Json(response)))
         }

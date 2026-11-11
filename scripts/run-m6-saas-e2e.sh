@@ -23,10 +23,7 @@ api="http://127.0.0.1:$api_port"
 email="saas-admin@example.test"
 password="AppStruct-SaaS-E2E-2026"
 cookie_jar="$temporary_root/admin.cookies"
-curl --fail --silent --show-error -c "$cookie_jar" -b "$cookie_jar" \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"$email\",\"password\":\"$password\"}" \
-  "$api/api/auth/register" >"$temporary_root/admin.json"
+m6_register "$cookie_jar" "$email" "$temporary_root/admin.json" "$password"
 DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
   target/debug/appstruct --project "$project" auth bootstrap-admin --email "$email"
 DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
@@ -34,11 +31,8 @@ DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \
 bootstrap_events="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
   "SELECT count(*) FROM \"_appstruct_audit_events\" WHERE entity = '_appstruct_auth_accounts' AND operation = 'update'")"
 [[ "$bootstrap_events" == "1" ]]
-csrf="$(awk '$6 == "appstruct_csrf" { print $7 }' "$cookie_jar")"
-curl --fail --silent --show-error -c "$cookie_jar" -b "$cookie_jar" \
-  -H "Content-Type: application/json" -H "X-CSRF-Token: $csrf" \
-  -d '{"name":"Alpha workspace"}' "$api/api/tenant/organizations" \
-  >"$temporary_root/organization.json"
+csrf="$(m6_csrf_token "$cookie_jar")"
+m6_create_org "$cookie_jar" "Alpha workspace" "$temporary_root/organization.json"
 
 m6_typecheck_web
 m6_run_playwright playwright.saas.config.ts \

@@ -7,7 +7,7 @@ use crate::{
     UniqueConstraintSchema,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -114,6 +114,12 @@ pub fn diff(before: &DatabaseSchema, after: &DatabaseSchema) -> MigrationPlan {
     let mut changes = Vec::new();
     let old_tables = by_id(&before.tables, |table| table.id.as_str());
     let new_tables = by_id(&after.tables, |table| table.id.as_str());
+    let added_table_names: BTreeSet<&str> = after
+        .tables
+        .iter()
+        .filter(|table| !old_tables.contains_key(table.id.as_str()))
+        .map(|table| table.name.as_str())
+        .collect();
     for table in &after.tables {
         match old_tables.get(table.id.as_str()) {
             None => changes.push(planned(
@@ -146,17 +152,17 @@ pub fn diff(before: &DatabaseSchema, after: &DatabaseSchema) -> MigrationPlan {
             ));
         }
     }
-    diff_unique_constraints(before, after, &old_tables, &mut changes);
+    diff_unique_constraints(before, after, &added_table_names, &mut changes);
     diff_indexes(before, after, &old_tables, &mut changes);
     diff_seeds(before, after, &mut changes);
-    diff_foreign_keys(before, after, &old_tables, &mut changes);
+    diff_foreign_keys(before, after, &added_table_names, &mut changes);
     MigrationPlan { changes }
 }
 
 fn diff_unique_constraints(
     before: &DatabaseSchema,
     after: &DatabaseSchema,
-    old_tables: &BTreeMap<&str, &TableSchema>,
+    added_table_names: &BTreeSet<&str>,
     changes: &mut Vec<PlannedChange>,
 ) {
     let old = by_id(&before.unique_constraints, |constraint| {
@@ -171,9 +177,7 @@ fn diff_unique_constraints(
                 SchemaChange::AddUniqueConstraint {
                     constraint: constraint.clone(),
                 },
-                if after.tables.iter().any(|table| {
-                    table.name == constraint.table && !old_tables.contains_key(table.id.as_str())
-                }) {
+                if added_table_names.contains(constraint.table.as_str()) {
                     safe()
                 } else {
                     may_lock()
@@ -247,7 +251,7 @@ fn diff_columns(before: &TableSchema, after: &TableSchema, changes: &mut Vec<Pla
 fn diff_foreign_keys(
     before: &DatabaseSchema,
     after: &DatabaseSchema,
-    old_tables: &BTreeMap<&str, &TableSchema>,
+    added_table_names: &BTreeSet<&str>,
     changes: &mut Vec<PlannedChange>,
 ) {
     let old = by_id(&before.foreign_keys, |foreign_key| foreign_key.id.as_str());
@@ -258,10 +262,7 @@ fn diff_foreign_keys(
                 SchemaChange::AddForeignKey {
                     foreign_key: foreign_key.clone(),
                 },
-                if after.tables.iter().any(|table| {
-                    table.name == foreign_key.source_table
-                        && !old_tables.contains_key(table.id.as_str())
-                }) {
+                if added_table_names.contains(foreign_key.source_table.as_str()) {
                     safe()
                 } else {
                     may_lock()

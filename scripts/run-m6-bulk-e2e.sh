@@ -10,17 +10,11 @@ m6_wait_for_dev
 api="http://127.0.0.1:$api_port"
 jar="$temporary_root/bulk.cookies"
 
-curl --fail --silent --show-error -c "$jar" -b "$jar" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"bulk@example.com","password":"correct-horse-battery"}' \
-  "$api/api/auth/register" >"$temporary_root/user.json"
+m6_register "$jar" "bulk@example.com" "$temporary_root/user.json"
 user_id="$(jq -er '.user.id' "$temporary_root/user.json")"
-csrf="$(awk '$6 == "appstruct_csrf" { print $7 }' "$jar")"
+csrf="$(m6_csrf_token "$jar")"
 
-curl --fail --silent --show-error -c "$jar" -b "$jar" \
-  -H "Content-Type: application/json" -H "X-CSRF-Token: $csrf" \
-  -d '{"name":"Bulk Tenant"}' "$api/api/tenant/organizations" \
-  >"$temporary_root/tenant.json"
+m6_create_org "$jar" "Bulk Tenant" "$temporary_root/tenant.json"
 tenant="$(jq -er '.id' "$temporary_root/tenant.json")"
 
 csv_payload=$'code,title,secret\nalpha,Alpha,"private, ""quoted""\nline"\nalpha,Duplicate,duplicate-secret\nbeta,Beta,beta-secret\n'

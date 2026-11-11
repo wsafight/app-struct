@@ -5,9 +5,9 @@ mod project;
 
 use crate::DatabaseSchema;
 use postgres::{Client, Config, NoTls, config::SslMode};
-use postgres_native_tls::MakeTlsConnector;
 use std::fmt;
 use std::path::Path;
+use tokio_postgres_rustls::MakeRustlsConnect;
 
 use project::{MigrationFile, ProjectMigrations, reconcile};
 
@@ -134,12 +134,17 @@ pub fn connect_database(database_url: &str) -> Result<Client, MigrationError> {
     let result = if config.get_ssl_mode() == SslMode::Disable {
         config.connect(NoTls)
     } else {
-        let connector = native_tls::TlsConnector::builder()
-            .build()
-            .map_err(|error| {
-                MigrationError::Database(format!("cannot initialize PostgreSQL TLS: {error}"))
-            })?;
-        config.connect(MakeTlsConnector::new(connector))
+        let mut roots = rustls::RootCertStore::empty();
+        let certificates = rustls_native_certs::load_native_certs();
+        for certificate in certificates.certs {
+            if roots.add(certificate).is_err() {
+                // Skip malformed platform roots; verified peers still have the rest.
+            }
+        }
+        let tls = rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        config.connect(MakeRustlsConnect::new(tls))
     };
     result.map_err(|error| {
         MigrationError::Database(format!(

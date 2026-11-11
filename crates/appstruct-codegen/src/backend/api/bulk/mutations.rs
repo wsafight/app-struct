@@ -26,7 +26,7 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
         ) -> Result<Json<BulkResult>, ApiError> {
             let context = state.mutation_context(&headers).await?;
             if !bulk_request_size_is_valid(input.ids.len(), input.expected_revisions.len()) { return Err(ApiError::InvalidQuery(format!("bulk requests must contain between 1 and {MAX_BULK_ITEMS} ids"))); }
-            let actor = context.actor().cloned();
+            let actor = context.shared_actor();
             let tenant = context.tenant();
             let transaction = state.database.begin().await?;
             let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };
@@ -59,11 +59,11 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
                     let mut active = before.clone();
                     active.deleted_at = None;
                     active.revision = before.revision.checked_add(1).ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
-                    let candidate = active.clone();
+                    let candidate = &active;
                     if !(#update_allowed) {
                         return Err(access_denied(&context));
                     }
-                    if !state.extensions.#policy().can_update(&context, &before, &input, &candidate).await? {
+                    if !state.extensions.#policy().can_update(&context, &before, &input, candidate).await? {
                         return Err(ApiError::Forbidden);
                     }
                     validate_candidate(&active)?;
@@ -123,7 +123,7 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
             authorize_update_fields(&context, &input.patch)?;
             state.extensions.#hooks().before_validate_update(&context, &mut input.patch).await?;
             validate_update(&input.patch)?;
-            let actor = context.actor().cloned();
+            let actor = context.shared_actor();
             let tenant = context.tenant();
             let transaction = state.database.begin().await?;
             let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };
@@ -156,11 +156,11 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
                     let mut active = before.clone();
                     #(#updates)*
                     active.revision = before.revision.checked_add(1).ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
-                    let candidate = active.clone();
+                    let candidate = &active;
                     if !(#update_allowed) {
                         return Err(access_denied(&context));
                     }
-                    if !state.extensions.#policy().can_update(&context, &before, &input, &candidate).await? {
+                    if !state.extensions.#policy().can_update(&context, &before, &input, candidate).await? {
                         return Err(ApiError::Forbidden);
                     }
                     validate_relations(&state, &context, &active).await?;
@@ -234,7 +234,7 @@ pub(super) fn delete(context: &BulkContext<'_>) -> TokenStream {
         ) -> Result<Json<BulkResult>, ApiError> {
             let context = state.mutation_context(&headers).await?;
             if !bulk_request_size_is_valid(input.ids.len(), input.expected_revisions.len()) { return Err(ApiError::InvalidQuery(format!("bulk requests must contain between 1 and {MAX_BULK_ITEMS} ids"))); }
-            let actor = context.actor().cloned();
+            let actor = context.shared_actor();
             let tenant = context.tenant();
             let transaction = state.database.begin().await?;
             let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };

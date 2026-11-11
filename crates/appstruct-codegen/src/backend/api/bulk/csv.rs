@@ -108,7 +108,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                 return Err(ApiError::InvalidQuery("CSV headers must be nonempty and unique".to_owned()));
             }
             if header_row.iter().map(String::as_str).any(|name| !expected.contains(&name)) { return Err(ApiError::InvalidQuery("CSV contains an unknown column".to_owned())); }
-            let actor = context.actor().cloned(); let tenant = context.tenant(); let transaction = state.database.begin().await?;
+            let actor = context.shared_actor(); let tenant = context.tenant(); let transaction = state.database.begin().await?;
             if let Some(result) = crate::import_batches::begin(&transaction, &context, #entity_id, batch, &body).await? {
                 return Ok(Json(result));
             }
