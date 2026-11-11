@@ -38,14 +38,14 @@ cron = "0.17.0"
 ctrlc = "3.5.2"
 dotenvy = "0.15.7"
 ed25519-dalek = "3.0.0"
-minijinja = "=3.0.0"
+minijinja = "=3.1.0"
 notify = "8.2.0"
 # oxc_* crates must move in lockstep: they share internal types across crate
 # boundaries, so mixed patch versions break the build.
-oxc_parser = "=0.154.0"
-oxc_span = "=0.154.0"
-oxc_allocator = "=0.154.0"
-oxc_ast = "=0.154.0"
+oxc_parser = "=0.157.0"
+oxc_span = "=0.157.0"
+oxc_allocator = "=0.157.0"
+oxc_ast = "=0.157.0"
 postgres = "0.19.14"
 rustls = "0.23.46"
 rustls-native-certs = "0.8.2"
@@ -53,7 +53,7 @@ tokio-postgres-rustls = "0.14.0"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
 reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "rustls"] }
-saphyr-parser = "0.2.1"
+saphyr-parser = "0.3.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.153"
 sha2 = "0.11.0"
@@ -61,7 +61,7 @@ similar = "3.2.0"
 toml = "1.1.8"
 syn = { version = "3.0.7", features = ["full"] }
 tempfile = "3.27.0"
-jsonschema = { version = "0.58.6", default-features = false }
+jsonschema = { version = "0.60.2", default-features = false }
 hex = "0.4.3"
 tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "sync", "time"] }
 uuid = { version = "1.28.0", features = ["serde", "v7"] }
