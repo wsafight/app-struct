@@ -31,7 +31,7 @@ jobs:
           cache-build: 'true'
       - run: cargo build --locked -p appstruct-cli
       - run: sha256sum target/debug/appstruct > target/debug/appstruct.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: appstruct-cli-linux-${{ github.sha }}
           path: |
@@ -85,7 +85,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: appstruct-cli-linux-${{ github.sha }}
           path: target/debug
@@ -104,7 +104,7 @@ jobs:
       - run: pnpm run site:build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run site:test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: docs-diagnostics
@@ -125,7 +125,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: bash scripts/run-saas-product-browser-e2e.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: saas-product-browser-diagnostics
@@ -190,7 +190,7 @@ jobs:
           cargo test --locked -p appstruct-codegen --test auth_rate_limit --test data_lifecycle --test extension_journey --test import_batches --test form_rules
       - name: Run PostgreSQL suite
         run: bash "scripts/run-$E2E_SUITE-e2e.sh"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: postgres-${{ matrix.suite }}-diagnostics
@@ -228,7 +228,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: bash scripts/run-deployment-e2e.sh --docker
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: deployment-diagnostics
@@ -262,7 +262,7 @@ jobs:
           $version = ($metadata.packages | Where-Object { $_.name -eq 'appstruct-cli' }).version
           ./scripts/package-release.ps1 -Version $version -Binary 'target/x86_64-pc-windows-msvc/release/appstruct.exe' -OutputDir dist
           ./scripts/test-installer.ps1 -ArchiveDir dist -Version $version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: windows-installer-archives
@@ -323,7 +323,7 @@ jobs:
           cache-key: ${{ matrix.workload }}
       - run: sudo apt-get update && sudo apt-get install --no-install-recommends -y postgresql-client
       - run: bash "scripts/run-$BENCHMARK_WORKLOAD-benchmark.sh"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: benchmark-${{ matrix.workload }}
