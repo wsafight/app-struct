@@ -4,6 +4,9 @@ inputs:
   cache-build:
     description: Cache Cargo debug dependency artifacts; Cargo still validates current workspace inputs.
     default: 'false'
+  cache-key:
+    description: Disambiguating suffix for the build-artifact cache so jobs do not overwrite each other's target/ cache.
+    default: ''
 runs:
   using: composite
   steps:
@@ -37,4 +40,4 @@ runs:
           target/debug/.fingerprint
           target/debug/build
           target/debug/deps
-        key: cargo-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}
+        key: cargo-build-${{ github.job }}-${{ inputs.cache-key }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}

@@ -16,9 +16,7 @@ m6_cleanup_extra() {
     "${compose[@]}" down --volumes --remove-orphans
   fi
 }
-database_name="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c 'SELECT current_database()')"
-case "$database_name" in *test*|*e2e*) ;; *) echo 'Dedicated test database required' >&2; exit 2 ;; esac
-psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public' >/dev/null
+m6_require_test_db
 m6_build_cli
 cli="$workspace/target/debug/appstruct"
 "$cli" --project "$temporary_root" new deployment-smoke --template minimal

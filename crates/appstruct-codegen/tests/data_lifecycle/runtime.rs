@@ -133,7 +133,8 @@ async fn configured_lifecycle() {
     let Some((root, db, schema)) = database().await else { return; };
     audit::validate_env().unwrap();
     let mail = MailState::default();
-    let context = RequestContext::connection(&db, &mail, None, None);
+    let context =
+        RequestContext::connection(&db, &mail, None::<appstruct_generated_backend::Actor>, None);
     let snapshot = serde_json::json!({"email":"private@example.test","secret":"private","name":"keep"});
     audit::record(&db, &context, "app::Project", "1".into(), "create", None, Some(&snapshot)).await.unwrap();
     let event = db.fetch_optional(Sql::new("SELECT after FROM _appstruct_audit_events")).await.unwrap().unwrap();
@@ -161,7 +162,14 @@ async fn configured_lifecycle() {
     assert!(files.retain("live", "app::Project", "2", Some(uuid::Uuid::now_v7())).await.is_err());
     let tx = db.begin().await.unwrap();
     let realtime = RealtimeState::default();
-    let ctx = RequestContext::transaction_with_file(&tx, &mail, &files, &realtime, None, None);
+    let ctx = RequestContext::transaction_with_file(
+        &tx,
+        &mail,
+        &files,
+        &realtime,
+        None::<appstruct_generated_backend::Actor>,
+        None,
+    );
     ctx.retain_file("rollback", "app::Project", "1").await.unwrap();
     tx.rollback().await.unwrap();
     let owners: serde_json::Value = db.fetch_optional(Sql::new("SELECT reference_owners FROM _appstruct_files WHERE object_key='rollback'")).await.unwrap().unwrap().try_get("reference_owners").unwrap();

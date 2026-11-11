@@ -181,7 +181,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             Json(input): Json<CreateCommentInput>,
         ) -> Result<Json<ActivityEntry>, ApiError> {
             let outer = state.mutation_context(&headers).await?;
-            let actor = outer.actor().cloned().ok_or(ApiError::Unauthorized)?;
+            let actor = outer.shared_actor().ok_or(ApiError::Unauthorized)?;
             let tenant_id = outer.tenant();
             let body = sanitize_text(&input.body, #max_comment_bytes, "comment")?;
             let transaction = state.database.begin().await?;
@@ -210,7 +210,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             Path((resource, record_id, entry_id)): Path<(String, String, String)>,
         ) -> Result<Json<ActivityEntry>, ApiError> {
             let outer = state.mutation_context(&headers).await?;
-            let actor = outer.actor().cloned().ok_or(ApiError::Unauthorized)?;
+            let actor = outer.shared_actor().ok_or(ApiError::Unauthorized)?;
             let tenant_id = outer.tenant();
             let entry_id = uuid::Uuid::parse_str(&entry_id).map_err(|_| ApiError::InvalidId)?;
             let transaction = state.database.begin().await?;
@@ -242,7 +242,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
             Json(input): Json<ModerateInput>,
         ) -> Result<Json<ActivityEntry>, ApiError> {
             let outer = state.mutation_context(&headers).await?;
-            let actor = outer.actor().cloned().ok_or(ApiError::Unauthorized)?;
+            let actor = outer.shared_actor().ok_or(ApiError::Unauthorized)?;
             if !(#admin_allowed) { return Err(ApiError::Forbidden); }
             let reason = sanitize_text(&input.reason, 1_000, "moderation reason")?;
             let tenant_id = outer.tenant();

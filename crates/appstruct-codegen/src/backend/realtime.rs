@@ -91,7 +91,7 @@ fn enabled_source(ir: &AppIr) -> Result<String, CodegenError> {
         ) -> Result<Sse<impl futures_core::Stream<Item = Result<Event, Infallible>>>, ApiError> {
             validate_scope(&query)?;
             let context = scoped_context(&state, headers, query.tenant_id).await?;
-            let actor = context.actor().ok_or(ApiError::Unauthorized)?.clone();
+            let actor = context.shared_actor().ok_or(ApiError::Unauthorized)?;
             let tenant_id = context.tenant();
             let resource = query.resource.clone().ok_or_else(|| {
                 ApiError::InvalidQuery("realtime resource is required".to_owned())

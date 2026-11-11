@@ -17,7 +17,7 @@ pub(super) fn contract() -> TokenStream {
             mail: &'db crate::MailState,
             file: Option<&'db crate::FileState>,
             realtime: Option<&'db crate::RealtimeState>,
-            actor: Option<Actor>,
+            actor: Option<Arc<Actor>>,
             tenant: Option<TenantId>,
         }
 
@@ -33,29 +33,29 @@ fn methods() -> TokenStream {
             pub fn connection(
                 database: &'db Database,
                 mail: &'db crate::MailState,
-                actor: Option<Actor>,
+                actor: Option<impl Into<Arc<Actor>>>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Connection(database), mail, file: None, realtime: None, actor, tenant }
+                Self { database: RequestDatabase::Connection(database), mail, file: None, realtime: None, actor: actor.map(Into::into), tenant }
             }
 
             pub fn transaction(
                 database: &'db Transaction,
                 mail: &'db crate::MailState,
-                actor: Option<Actor>,
+                actor: Option<impl Into<Arc<Actor>>>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Transaction(database), mail, file: None, realtime: None, actor, tenant }
+                Self { database: RequestDatabase::Transaction(database), mail, file: None, realtime: None, actor: actor.map(Into::into), tenant }
             }
 
             pub fn connection_with_file(
                 database: &'db Database,
                 mail: &'db crate::MailState,
                 file: &'db crate::FileState,
-                actor: Option<Actor>,
+                actor: Option<impl Into<Arc<Actor>>>,
                 tenant: Option<TenantId>,
             ) -> Self {
-                Self { database: RequestDatabase::Connection(database), mail, file: Some(file), realtime: None, actor, tenant }
+                Self { database: RequestDatabase::Connection(database), mail, file: Some(file), realtime: None, actor: actor.map(Into::into), tenant }
             }
 
             pub(crate) fn connection_with_services(
@@ -63,12 +63,12 @@ fn methods() -> TokenStream {
                 mail: &'db crate::MailState,
                 file: &'db crate::FileState,
                 realtime: &'db crate::RealtimeState,
-                actor: Option<Actor>,
+                actor: Option<impl Into<Arc<Actor>>>,
                 tenant: Option<TenantId>,
             ) -> Self {
                 Self {
                     database: RequestDatabase::Connection(database), mail, file: Some(file),
-                    realtime: Some(realtime), actor, tenant,
+                    realtime: Some(realtime), actor: actor.map(Into::into), tenant,
                 }
             }
 
@@ -77,17 +77,18 @@ fn methods() -> TokenStream {
                 mail: &'db crate::MailState,
                 file: &'db crate::FileState,
                 realtime: &'db crate::RealtimeState,
-                actor: Option<Actor>,
+                actor: Option<impl Into<Arc<Actor>>>,
                 tenant: Option<TenantId>,
             ) -> Self {
                 Self {
                     database: RequestDatabase::Transaction(database), mail, file: Some(file),
-                    realtime: Some(realtime), actor, tenant,
+                    realtime: Some(realtime), actor: actor.map(Into::into), tenant,
                 }
             }
 
             pub fn database(&self) -> &Self { self }
-            pub fn actor(&self) -> Option<&Actor> { self.actor.as_ref() }
+            pub fn actor(&self) -> Option<&Actor> { self.actor.as_deref() }
+            pub(crate) fn shared_actor(&self) -> Option<Arc<Actor>> { self.actor.clone() }
             pub fn tenant(&self) -> Option<TenantId> { self.tenant }
             pub fn require_tenant(&self) -> Result<TenantId, ApiError> {
                 self.tenant.ok_or(ApiError::InvalidTenant)

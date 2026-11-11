@@ -254,7 +254,7 @@ pub(super) fn support(
         ) -> Result<([(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
             let expected = expected_revision(&headers)?;
             let context = state.mutation_context(&headers).await?;
-            let actor = context.actor().cloned();
+            let actor = context.shared_actor();
             let tenant = context.tenant();
             let raw_input = input
                 .map_err(|error| ApiError::InvalidWorkflowInput(error.body_text()))?.0;

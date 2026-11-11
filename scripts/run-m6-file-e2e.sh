@@ -12,15 +12,9 @@ m6_wait_for_dev
 api="http://127.0.0.1:$api_port"
 jar="$temporary_root/file.cookies"
 email="file-$RANDOM-$$@example.com"
-curl --fail --silent --show-error -c "$jar" -b "$jar" \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"$email\",\"password\":\"correct-horse-battery\"}" \
-  "$api/api/auth/register" >"$temporary_root/user.json"
-csrf="$(awk '$6 == "appstruct_csrf" { print $7 }' "$jar")"
-curl --fail --silent --show-error -c "$jar" -b "$jar" \
-  -H "Content-Type: application/json" -H "X-CSRF-Token: $csrf" \
-  -d '{"name":"File Tenant"}' "$api/api/tenant/organizations" \
-  >"$temporary_root/tenant.json"
+m6_register "$jar" "$email" "$temporary_root/user.json"
+csrf="$(m6_csrf_token "$jar")"
+m6_create_org "$jar" "File Tenant" "$temporary_root/tenant.json"
 tenant="$(jq -er '.id' "$temporary_root/tenant.json")"
 
 file_id="$(APPSTRUCT_FILE_ROOT="$storage" DATABASE_URL="$APPSTRUCT_E2E_DATABASE_URL" \

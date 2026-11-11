@@ -133,7 +133,7 @@ fn create_handler(
             Json(mut input): Json<CreateInput>,
         ) -> Result<(StatusCode, [(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
             let context = state.mutation_context(&headers).await?;
-            let actor = context.actor().cloned();
+            let actor = context.shared_actor();
             let tenant = context.tenant();
             authorize_create_fields(&context, &input)?;
             state.extensions.#hooks().before_validate_create(&context, &mut input).await?;
@@ -194,7 +194,7 @@ fn update_handler(
         ) -> Result<([(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
             let expected = expected_revision(&headers)?;
             let context = state.mutation_context(&headers).await?;
-            let actor = context.actor().cloned();
+            let actor = context.shared_actor();
             let tenant = context.tenant();
             authorize_update_fields(&context, &input)?;
             state.extensions.#hooks().before_validate_update(&context, &mut input).await?;
@@ -223,12 +223,12 @@ fn update_handler(
                 #(#updates)*
                 active.revision = before.revision.checked_add(1)
                     .ok_or_else(|| sqlx::Error::Protocol("revision overflow".to_owned()))?;
-                let candidate = active.clone();
+                let candidate = &active;
                 if !(#update_allowed) {
                     return Err(access_denied(&context));
                 }
                 if !state.extensions.#policy()
-                    .can_update(&context, &before, &input, &candidate).await?
+                    .can_update(&context, &before, &input, candidate).await?
                 {
                     return Err(ApiError::Forbidden);
                 }
@@ -285,7 +285,7 @@ fn delete_handler(
         ) -> Result<StatusCode, ApiError> {
             let expected = expected_revision(&headers)?;
             let context = state.mutation_context(&headers).await?;
-            let actor = context.actor().cloned();
+            let actor = context.shared_actor();
             let tenant = context.tenant();
             let id = #parse_id;
             let transaction = state.database.begin().await?;
@@ -390,7 +390,7 @@ fn helper_functions(
             state: &AppState,
             operation: crate::HookOperation,
             model: &#module::Model,
-            actor: Option<crate::Actor>,
+            actor: Option<std::sync::Arc<crate::Actor>>,
             tenant: Option<crate::TenantId>,
         ) {
             let context = RequestContext::connection_with_services(

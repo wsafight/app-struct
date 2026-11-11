@@ -1,8 +1,9 @@
 use appstruct_ir::{
-    AppIr, DatabaseProvider, FieldTypeIr, GeneratedValueIr, IrValidationErrors, OnDeleteIr,
-    validate_app_ir,
+    AppIr, DatabaseProvider, EntityId, EntityIr, FieldTypeIr, GeneratedValueIr, IrValidationErrors,
+    OnDeleteIr, validate_app_ir,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 mod activity;
 mod audit;
@@ -123,6 +124,11 @@ pub struct SeedValueSchema {
 /// Returns all IR invariant violations before schema traversal begins.
 pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
     validate_app_ir(ir)?;
+    let entities_by_id: HashMap<&EntityId, &EntityIr> = ir
+        .entities
+        .iter()
+        .map(|entity| (&entity.id, entity))
+        .collect();
     let mut tables = ir
         .entities
         .iter()
@@ -135,7 +141,7 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
                 .map(|field| ColumnSchema {
                     id: field.id.0.clone(),
                     name: field.column_name.clone(),
-                    data_type: database_type(ir, &field.ty),
+                    data_type: database_type(&entities_by_id, &field.ty),
                     nullable: field.nullable,
                     primary_key: field.primary_key,
                     unique: field.unique,
@@ -154,11 +160,11 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
     tables.push(imports::table());
     let mut indexes = entity_indexes(ir);
     indexes.extend(module_indexes::indexes(ir));
-    let seeds = entity_seeds(ir);
+    let seeds = entity_seeds(ir, &entities_by_id);
     let mut foreign_keys = ir
         .relations
         .iter()
-        .map(|relation| foreign_key(ir, relation))
+        .map(|relation| foreign_key(&entities_by_id, relation))
         .collect::<Vec<_>>();
     if ir.auth.enabled {
         tables.extend(auth::tables());
@@ -246,11 +252,11 @@ fn entity_indexes(ir: &AppIr) -> Vec<IndexSchema> {
         .collect()
 }
 
-fn entity_seeds(ir: &AppIr) -> Vec<SeedSchema> {
+fn entity_seeds(ir: &AppIr, entities_by_id: &HashMap<&EntityId, &EntityIr>) -> Vec<SeedSchema> {
     ir.seeds
         .iter()
         .filter_map(|seed| {
-            let entity = ir.entities.iter().find(|entity| entity.id == seed.entity)?;
+            let entity = entities_by_id.get(&seed.entity)?;
             let values = seed
                 .values
                 .iter()
@@ -261,7 +267,7 @@ fn entity_seeds(ir: &AppIr) -> Vec<SeedSchema> {
                     Some(SeedValueSchema {
                         column: field.column_name.clone(),
                         value: value.clone(),
-                        data_type: database_type(ir, &field.ty),
+                        data_type: database_type(entities_by_id, &field.ty),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -287,7 +293,10 @@ fn tenant_unique_constraint(entity: &appstruct_ir::EntityIr) -> UniqueConstraint
     }
 }
 
-fn database_type(ir: &AppIr, field_type: &FieldTypeIr) -> DatabaseType {
+fn database_type(
+    entities_by_id: &HashMap<&EntityId, &EntityIr>,
+    field_type: &FieldTypeIr,
+) -> DatabaseType {
     match field_type {
         FieldTypeIr::Uuid => DatabaseType::Uuid,
         FieldTypeIr::String | FieldTypeIr::Text => DatabaseType::Text,
@@ -302,31 +311,28 @@ fn database_type(ir: &AppIr, field_type: &FieldTypeIr) -> DatabaseType {
             values: values.clone(),
         },
         FieldTypeIr::Relation { target } => {
-            let target = ir
-                .entities
-                .iter()
-                .find(|entity| entity.id == *target)
+            let target = entities_by_id
+                .get(target)
                 .expect("compiler resolved relation target");
             let key = target
                 .fields
                 .iter()
                 .find(|field| field.primary_key)
                 .expect("compiler validated primary key");
-            database_type(ir, &key.ty)
+            database_type(entities_by_id, &key.ty)
         }
     }
 }
 
-fn foreign_key(ir: &AppIr, relation: &appstruct_ir::RelationIr) -> ForeignKeySchema {
-    let source = ir
-        .entities
-        .iter()
-        .find(|entity| entity.id == relation.source)
+fn foreign_key(
+    entities_by_id: &HashMap<&EntityId, &EntityIr>,
+    relation: &appstruct_ir::RelationIr,
+) -> ForeignKeySchema {
+    let source = entities_by_id
+        .get(&relation.source)
         .expect("compiler resolved relation source");
-    let target = ir
-        .entities
-        .iter()
-        .find(|entity| entity.id == relation.target)
+    let target = entities_by_id
+        .get(&relation.target)
         .expect("compiler resolved relation target");
     let source_field = source
         .fields

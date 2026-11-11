@@ -9,9 +9,7 @@ m6_cleanup_extra() {
   m6_stop_process "$renderer_pid" TERM || true
   rm -r "$socket_root"
 }
-database_name="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -c 'SELECT current_database()')"
-case "$database_name" in *test*|*e2e*) ;; *) echo "Dedicated test database required" >&2; exit 2 ;; esac
-psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public' >/dev/null
+m6_require_test_db
 m6_prepare_fixture m7-report-project
 cp "$workspace/tests/e2e/report-chromium.external.yaml" "$project/appstruct.yaml"
 cp -R "$workspace/examples/operations-demo/app/backend/." "$project/app/backend/"
@@ -35,9 +33,9 @@ m6_start_dev APPSTRUCT_REPORT_RENDERER_SOCKET="$socket_root/proxy.sock" \
 m6_wait_for_dev 300
 api="http://127.0.0.1:$api_port"
 jar="$temporary_root/session.cookies"
-curl -fsS -c "$jar" -H 'Content-Type: application/json' -d '{"email":"renderer@example.test","password":"AppStruct-Renderer-2026"}' "$api/api/auth/register" >"$temporary_root/user.json"
-csrf="$(awk '$6 == "appstruct_csrf" {print $7}' "$jar")"
-curl -fsS -b "$jar" -H 'Content-Type: application/json' -H "X-CSRF-Token: $csrf" -d '{"name":"Renderer acceptance"}' "$api/api/tenant/organizations" >"$temporary_root/tenant.json"
+m6_register "$jar" "renderer@example.test" "$temporary_root/user.json" "AppStruct-Renderer-2026"
+csrf="$(m6_csrf_token "$jar")"
+m6_create_org "$jar" "Renderer acceptance" "$temporary_root/tenant.json"
 tenant="$(jq -er '.id' "$temporary_root/tenant.json")"
 request=(-b "$jar" -H 'Content-Type: application/json' -H "X-CSRF-Token: $csrf" -H "X-AppStruct-Tenant: $tenant")
 create_run() {

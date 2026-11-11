@@ -4,16 +4,7 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/m6-e2e-common.sh"
 m6_init operations 33900 55900 operations-e2e
 
-database_name="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c 'SELECT current_database()')"
-case "$database_name" in
-  *e2e*|*test*) ;;
-  *)
-    echo "refusing to reset database '$database_name'; use a dedicated database containing e2e or test in its name" >&2
-    exit 2
-    ;;
-esac
-psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 \
-  -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public' >/dev/null
+m6_require_test_db
 
 mkdir -p "$project"
 cp -R "$workspace/examples/operations-demo/." "$project/"
@@ -36,54 +27,14 @@ supplier_jar="$temporary_root/supplier.cookies"
 auditor_jar="$temporary_root/auditor.cookies"
 admin_jar="$temporary_root/admin.cookies"
 
-register() {
-  local role="$1" jar="$2" email="$3" output="$4" user_id
-  curl --fail --silent --show-error -c "$jar" -b "$jar" \
-    -H "Content-Type: application/json" \
-    -d "{\"email\":\"$email\",\"password\":\"$password\"}" \
-    "$api/api/auth/register" >"$output"
-  user_id="$(jq -er '.user.id' "$output")"
-  psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 \
-    -c "UPDATE \"_appstruct_auth_accounts\" SET roles = '[\"$role\"]'::jsonb WHERE user_id = '$user_id'::uuid" \
-    >/dev/null
-  printf '%s' "$user_id"
-}
+operator_id="$(m6_register "$operator_jar" "operator@operations.example.test" "$temporary_root/operator.json" "$password" operator)"
+supplier_id="$(m6_register "$supplier_jar" "supplier@operations.example.test" "$temporary_root/supplier.json" "$password" supplier)"
+auditor_id="$(m6_register "$auditor_jar" "auditor@operations.example.test" "$temporary_root/auditor.json" "$password" auditor)"
+admin_id="$(m6_register "$admin_jar" "admin@operations.example.test" "$temporary_root/admin.json" "$password" admin)"
 
-csrf_token() {
-  awk '$6 == "appstruct_csrf" { print $7 }' "$1"
-}
-
-assert_status() {
-  local expected="$1" jar="$2" tenant="$3" method="$4" path="$5" output="$6"
-  shift 6
-  local status
-  local -a request_args=(-X "$method")
-  if [[ -n "$tenant" ]]; then
-    request_args+=(-H "X-AppStruct-Tenant: $tenant")
-  fi
-  request_args+=("$@")
-  status="$(curl --silent --show-error -o "$output" -w '%{http_code}' -b "$jar" \
-    "${request_args[@]}" "$api$path")"
-  if [[ "$status" != "$expected" ]]; then
-    echo "expected HTTP $expected from $method $path for tenant '$tenant', got $status" >&2
-    cat "$output" >&2
-    tail -n 160 "$log" >&2
-    exit 1
-  fi
-}
-
-operator_id="$(register operator "$operator_jar" "operator@operations.example.test" "$temporary_root/operator.json")"
-supplier_id="$(register supplier "$supplier_jar" "supplier@operations.example.test" "$temporary_root/supplier.json")"
-auditor_id="$(register auditor "$auditor_jar" "auditor@operations.example.test" "$temporary_root/auditor.json")"
-admin_id="$(register admin "$admin_jar" "admin@operations.example.test" "$temporary_root/admin.json")"
-
-operator_csrf="$(csrf_token "$operator_jar")"
-curl --fail --silent --show-error -b "$operator_jar" \
-  -H "Content-Type: application/json" -H "X-CSRF-Token: $operator_csrf" \
-  -d '{"name":"Operations Alpha"}' "$api/api/tenant/organizations" >"$temporary_root/alpha.json"
-curl --fail --silent --show-error -b "$operator_jar" \
-  -H "Content-Type: application/json" -H "X-CSRF-Token: $operator_csrf" \
-  -d '{"name":"Operations Beta"}' "$api/api/tenant/organizations" >"$temporary_root/beta.json"
+operator_csrf="$(m6_csrf_token "$operator_jar")"
+m6_create_org "$operator_jar" "Operations Alpha" "$temporary_root/alpha.json"
+m6_create_org "$operator_jar" "Operations Beta" "$temporary_root/beta.json"
 alpha="$(jq -er '.id' "$temporary_root/alpha.json")"
 beta="$(jq -er '.id' "$temporary_root/beta.json")"
 [[ "$alpha" != "$beta" ]]
@@ -118,58 +69,58 @@ jq -e --arg tenant "$alpha" '.tenant_id == $tenant' "$temporary_root/order.json"
 
 source "$workspace/scripts/operations-aggregate-checks.sh"
 
-assert_status 404 "$operator_jar" "$beta" GET "/api/orders/$order_id" "$temporary_root/cross-tenant.json"
+m6_assert_status 404 "$operator_jar" "$beta" GET "/api/orders/$order_id" "$temporary_root/cross-tenant.json"
 for audience in owner-other-tenant supplier-same-tenant; do
   if [[ "$audience" == owner-other-tenant ]]; then
     scope_jar="$operator_jar" scope_tenant="$beta"
   else
     scope_jar="$supplier_jar" scope_tenant="$alpha"
   fi
-  assert_status 200 "$scope_jar" "$scope_tenant" GET '/api/orders/' "$temporary_root/scoped-list.json"
+  m6_assert_status 200 "$scope_jar" "$scope_tenant" GET '/api/orders/' "$temporary_root/scoped-list.json"
   jq -e '.data == [] and .meta.total == 0' "$temporary_root/scoped-list.json" >/dev/null
-  assert_status 200 "$scope_jar" "$scope_tenant" GET "/api/orders/_lookup?ids=$order_id" "$temporary_root/scoped-lookup.json"
+  m6_assert_status 200 "$scope_jar" "$scope_tenant" GET "/api/orders/_lookup?ids=$order_id" "$temporary_root/scoped-lookup.json"
   jq -e '. == []' "$temporary_root/scoped-lookup.json" >/dev/null
-  assert_status 200 "$scope_jar" "$scope_tenant" GET '/api/orders/_aggregate?metrics=count' "$temporary_root/scoped-count.json"
+  m6_assert_status 200 "$scope_jar" "$scope_tenant" GET '/api/orders/_aggregate?metrics=count' "$temporary_root/scoped-count.json"
   jq -e '.data[0].count == 0' "$temporary_root/scoped-count.json" >/dev/null
-  assert_status 200 "$scope_jar" "$scope_tenant" GET '/api/orders/_export.csv' "$temporary_root/scoped-export.csv"
+  m6_assert_status 200 "$scope_jar" "$scope_tenant" GET '/api/orders/_export.csv' "$temporary_root/scoped-export.csv"
   [[ "$(wc -l < "$temporary_root/scoped-export.csv" | tr -d ' ')" == 1 ]]
-  assert_status 404 "$scope_jar" "$scope_tenant" GET "/api/orders/$order_id/_transitions" "$temporary_root/scoped-transitions.json"
-  assert_status 404 "$scope_jar" "$scope_tenant" GET "/api/orders/$order_id/_aggregates/lines" "$temporary_root/scoped-collection.json"
+  m6_assert_status 404 "$scope_jar" "$scope_tenant" GET "/api/orders/$order_id/_transitions" "$temporary_root/scoped-transitions.json"
+  m6_assert_status 404 "$scope_jar" "$scope_tenant" GET "/api/orders/$order_id/_aggregates/lines" "$temporary_root/scoped-collection.json"
 done
-assert_status 200 "$operator_jar" "$alpha" GET "/api/orders/_lookup?ids=$order_id" "$temporary_root/own-lookup.json"
+m6_assert_status 200 "$operator_jar" "$alpha" GET "/api/orders/_lookup?ids=$order_id" "$temporary_root/own-lookup.json"
 jq -e --arg id "$order_id" 'length == 1 and .[0].id == $id' "$temporary_root/own-lookup.json" >/dev/null
-assert_status 200 "$operator_jar" "$beta" GET '/api/order_lines/?filter%5Border.status%5D=draft' "$temporary_root/scoped-relation.json"
+m6_assert_status 200 "$operator_jar" "$beta" GET '/api/order_lines/?filter%5Border.status%5D=draft' "$temporary_root/scoped-relation.json"
 jq -e '.data == [] and .meta.total == 0' "$temporary_root/scoped-relation.json" >/dev/null
-supplier_csrf="$(csrf_token "$supplier_jar")"
-assert_status 404 "$supplier_jar" "$alpha" POST "/api/orders/$order_id/_transitions/approve" \
+supplier_csrf="$(m6_csrf_token "$supplier_jar")"
+m6_assert_status 404 "$supplier_jar" "$alpha" POST "/api/orders/$order_id/_transitions/approve" \
   "$temporary_root/supplier-transition.json" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $supplier_csrf" \
   -H "If-Match: \"rev-$revision\"" -d '{}'
 
-assert_status 200 "$operator_jar" "$alpha" POST "/api/orders/$order_id/_transitions/submit" \
+m6_assert_status 200 "$operator_jar" "$alpha" POST "/api/orders/$order_id/_transitions/submit" \
   "$temporary_root/submitted.json" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $operator_csrf" \
   -H "If-Match: \"rev-$revision\"" -d '{}'
 revision="$(jq -er '.revision' "$temporary_root/submitted.json")"
 
-auditor_csrf="$(csrf_token "$auditor_jar")"
-assert_status 200 "$auditor_jar" "$alpha" POST "/api/orders/$order_id/_transitions/approve" \
+auditor_csrf="$(m6_csrf_token "$auditor_jar")"
+m6_assert_status 200 "$auditor_jar" "$alpha" POST "/api/orders/$order_id/_transitions/approve" \
   "$temporary_root/approved.json" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $auditor_csrf" \
   -H "If-Match: \"rev-$revision\"" -d '{}'
 revision="$(jq -er '.revision' "$temporary_root/approved.json")"
 jq -e '.status == "approved"' "$temporary_root/approved.json" >/dev/null
-assert_status 409 "$operator_jar" "$alpha" POST "/api/orders/$order_id/_aggregates/lines" \
+m6_assert_status 409 "$operator_jar" "$alpha" POST "/api/orders/$order_id/_aggregates/lines" \
   "$temporary_root/frozen-collection.json" -H "Content-Type: application/json" \
   -H "X-CSRF-Token: $operator_csrf" -H "If-Match: \"rev-$revision\"" \
   --data-binary "@$temporary_root/create-lines.json"
 
-assert_status 200 "$operator_jar" "$alpha" PATCH "/api/orders/$order_id" \
+m6_assert_status 200 "$operator_jar" "$alpha" PATCH "/api/orders/$order_id" \
   "$temporary_root/first-update.json" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $operator_csrf" \
   -H "If-Match: \"rev-$revision\"" -d '{"notes":"Revision winner"}'
 current_revision="$(jq -er '.revision' "$temporary_root/first-update.json")"
-assert_status 412 "$operator_jar" "$alpha" PATCH "/api/orders/$order_id" \
+m6_assert_status 412 "$operator_jar" "$alpha" PATCH "/api/orders/$order_id" \
   "$temporary_root/revision-conflict.json" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $operator_csrf" \
   -H "If-Match: \"rev-$revision\"" -d '{"notes":"Revision loser"}'
@@ -178,48 +129,48 @@ jq -e '.error.code == "CONCURRENT_MODIFICATION"' "$temporary_root/revision-confl
 jq -cn --arg id "$order_id" --argjson revision "$current_revision" '{
   ids: [$id], patch: {status: "draft"}, expected_revisions: {($id): $revision}
 }' >"$temporary_root/bulk-workflow.json"
-assert_status 200 "$operator_jar" "$alpha" PATCH "/api/orders/_bulk" \
+m6_assert_status 200 "$operator_jar" "$alpha" PATCH "/api/orders/_bulk" \
   "$temporary_root/bulk-workflow-result.json" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $operator_csrf" \
   --data-binary "@$temporary_root/bulk-workflow.json"
-assert_status 200 "$operator_jar" "$alpha" GET "/api/orders/$order_id" "$temporary_root/after-bulk.json"
+m6_assert_status 200 "$operator_jar" "$alpha" GET "/api/orders/$order_id" "$temporary_root/after-bulk.json"
 jq -e '.status == "approved"' "$temporary_root/after-bulk.json" >/dev/null
 
 csv_payload=$'number,owner,status\nOPS-BYPASS,'"$operator_id"$',draft\n'
-assert_status 400 "$operator_jar" "$alpha" POST "/api/orders/_import.csv" \
+m6_assert_status 400 "$operator_jar" "$alpha" POST "/api/orders/_import.csv" \
   "$temporary_root/csv-workflow.json" \
   -H "Content-Type: text/csv" -H "X-CSRF-Token: $operator_csrf" --data-binary "$csv_payload"
 
 comment_payload='{"body":"Approved for fulfillment","attachment":{"name":"approval.txt","content_type":"text/plain","content_base64":"YXBwcm92ZWQ="}}'
-assert_status 200 "$operator_jar" "$alpha" POST "/api/activity/orders/$order_id/comments" \
+m6_assert_status 200 "$operator_jar" "$alpha" POST "/api/activity/orders/$order_id/comments" \
   "$temporary_root/comment.json" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $operator_csrf" -d "$comment_payload"
 entry_id="$(jq -er '.id' "$temporary_root/comment.json")"
-assert_status 200 "$operator_jar" "$alpha" GET "/api/activity/orders/$order_id?limit=20" "$temporary_root/activity.json"
+m6_assert_status 200 "$operator_jar" "$alpha" GET "/api/activity/orders/$order_id?limit=20" "$temporary_root/activity.json"
 jq -e --arg actor "$operator_id" --arg tenant "$alpha" '
   ([.data[] | select(.kind == "comment" and .body == "Approved for fulfillment" and .actor_id == $actor and .tenant_id == $tenant)] | length) == 1 and
   ([.data[] | select(.event == "created")] | length) == 1 and
   ([.data[] | select(.event == "workflow.submit")] | length) == 1 and
   ([.data[] | select(.event == "workflow.approve")] | length) == 1
 ' "$temporary_root/activity.json" >/dev/null
-assert_status 200 "$operator_jar" "$alpha" GET "/api/activity/orders/$order_id/$entry_id/attachment" "$temporary_root/approval.txt"
+m6_assert_status 200 "$operator_jar" "$alpha" GET "/api/activity/orders/$order_id/$entry_id/attachment" "$temporary_root/approval.txt"
 [[ "$(cat "$temporary_root/approval.txt")" == "approved" ]]
-assert_status 404 "$supplier_jar" "$alpha" GET "/api/activity/orders/$order_id/$entry_id/attachment" "$temporary_root/supplier-attachment.json"
-assert_status 404 "$operator_jar" "$beta" GET "/api/activity/orders/$order_id/$entry_id/attachment" "$temporary_root/cross-attachment.json"
-assert_status 404 "$operator_jar" "$beta" GET "/api/activity/orders/$order_id?limit=20" "$temporary_root/cross-activity.json"
+m6_assert_status 404 "$supplier_jar" "$alpha" GET "/api/activity/orders/$order_id/$entry_id/attachment" "$temporary_root/supplier-attachment.json"
+m6_assert_status 404 "$operator_jar" "$beta" GET "/api/activity/orders/$order_id/$entry_id/attachment" "$temporary_root/cross-attachment.json"
+m6_assert_status 404 "$operator_jar" "$beta" GET "/api/activity/orders/$order_id?limit=20" "$temporary_root/cross-activity.json"
 
 report_body="{\"data\":{\"order_id\":\"$order_id\",\"order_number\":\"OPS-CANCEL\"}}"
-assert_status 202 "$operator_jar" "$alpha" POST "/api/reports/templates/order-summary/runs" \
+m6_assert_status 202 "$operator_jar" "$alpha" POST "/api/reports/templates/order-summary/runs" \
   "$temporary_root/cancel-run.json" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $operator_csrf" \
   -H "Idempotency-Key: operations-cancel" -d "$report_body"
 cancel_id="$(jq -er '.id' "$temporary_root/cancel-run.json")"
-assert_status 200 "$operator_jar" "$alpha" POST "/api/reports/runs/$cancel_id/cancel" \
+m6_assert_status 200 "$operator_jar" "$alpha" POST "/api/reports/runs/$cancel_id/cancel" \
   "$temporary_root/cancelled.json" -H "X-CSRF-Token: $operator_csrf"
 jq -e '.stage == "cancelled"' "$temporary_root/cancelled.json" >/dev/null
 
 report_body="{\"data\":{\"order_id\":\"$order_id\",\"order_number\":\"OPS-RETRY-ONCE\"}}"
-assert_status 202 "$operator_jar" "$alpha" POST "/api/reports/templates/order-summary/runs" \
+m6_assert_status 202 "$operator_jar" "$alpha" POST "/api/reports/templates/order-summary/runs" \
   "$temporary_root/retry-run.json" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $operator_csrf" \
   -H "Idempotency-Key: operations-retry" -d "$report_body"
@@ -228,7 +179,7 @@ touch "$job_gate"
 
 report_stage=""
 for _ in {1..160}; do
-  assert_status 200 "$operator_jar" "$alpha" GET "/api/reports/runs/$report_id" "$temporary_root/report-status.json"
+  m6_assert_status 200 "$operator_jar" "$alpha" GET "/api/reports/runs/$report_id" "$temporary_root/report-status.json"
   report_stage="$(jq -er '.stage' "$temporary_root/report-status.json")"
   if [[ "$report_stage" == "succeeded" ]]; then break; fi
   sleep 0.1
@@ -241,12 +192,12 @@ fi
 attempts="$(psql "$APPSTRUCT_E2E_DATABASE_URL" -At -v ON_ERROR_STOP=1 -c \
   "SELECT attempts FROM \"_appstruct_jobs\" WHERE id = (SELECT execution_job_id FROM \"_appstruct_report_runs\" WHERE id = '$report_id')")"
 [[ "$attempts" == "2" ]]
-assert_status 200 "$operator_jar" "$alpha" GET "/api/reports/runs/$report_id/download" "$temporary_root/order.pdf"
+m6_assert_status 200 "$operator_jar" "$alpha" GET "/api/reports/runs/$report_id/download" "$temporary_root/order.pdf"
 [[ "$(head -c 8 "$temporary_root/order.pdf")" == "%PDF-1.4" ]]
-assert_status 404 "$operator_jar" "$beta" GET "/api/reports/runs/$report_id/download" "$temporary_root/cross-report.json"
-assert_status 403 "$supplier_jar" "$alpha" GET "/api/reports/runs/$report_id/download" "$temporary_root/supplier-report.json"
+m6_assert_status 404 "$operator_jar" "$beta" GET "/api/reports/runs/$report_id/download" "$temporary_root/cross-report.json"
+m6_assert_status 403 "$supplier_jar" "$alpha" GET "/api/reports/runs/$report_id/download" "$temporary_root/supplier-report.json"
 
-assert_status 200 "$auditor_jar" "$alpha" GET "/api/audit/events?page_size=100" "$temporary_root/audit.json"
+m6_assert_status 200 "$auditor_jar" "$alpha" GET "/api/audit/events?page_size=100" "$temporary_root/audit.json"
 jq -e --arg tenant "$alpha" --arg operator "$operator_id" --arg auditor "$auditor_id" '
   ([.data[] | select(.operation == "workflow.submit" and .tenant_id == $tenant and .actor_id == $operator)] | length) == 1 and
   ([.data[] | select(.operation == "workflow.approve" and .tenant_id == $tenant and .actor_id == $auditor)] | length) == 1 and

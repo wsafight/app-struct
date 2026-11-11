@@ -108,3 +108,10 @@ The workflow rejects a tag whose version does not match Cargo metadata. Inspect 
 verify the installer checksums, and test one fresh installation before publishing the draft. The
 workflow never makes a release public automatically. Linux binaries currently target glibc;
 musl and Alpine are not part of this release matrix.
+
+To exercise the same packaging and installer test against a local build without tagging:
+
+```bash
+scripts/check-local-installer.sh            # packages target/debug/appstruct, verifies the archive and installer
+scripts/check-local-installer.sh <binary>   # same for a custom binary path
+```
