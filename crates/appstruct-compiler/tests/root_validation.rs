@@ -60,3 +60,30 @@ fn rejects_invalid_entity_names_and_missing_primary_keys() {
     let found = codes(&diagnostics);
     assert!(found.contains(&"AS2001") || found.contains(&"AS2004"));
 }
+
+#[test]
+fn lowers_and_validates_allow_unmanaged_tables() {
+    let default_ir = compile(
+        "version: 1\napp:\n  name: brownfield\ndatabase:\n  provider: postgres\nincludes: []\n",
+    )
+    .unwrap();
+    assert!(!default_ir.database.allow_unmanaged_tables);
+
+    let enabled_ir = compile(
+        "version: 1\napp:\n  name: brownfield\ndatabase:\n  provider: postgres\n  allow_unmanaged_tables: true\nincludes: []\n",
+    )
+    .unwrap();
+    assert!(enabled_ir.database.allow_unmanaged_tables);
+
+    let invalid_bool = compile(
+        "version: 1\napp:\n  name: brownfield\ndatabase:\n  provider: postgres\n  allow_unmanaged_tables: nope\nincludes: []\n",
+    )
+    .unwrap_err();
+    assert!(codes(&invalid_bool).contains(&"AS1007"));
+
+    let unknown_key = compile(
+        "version: 1\napp:\n  name: brownfield\ndatabase:\n  provider: postgres\n  extra_option: true\nincludes: []\n",
+    )
+    .unwrap_err();
+    assert!(codes(&unknown_key).contains(&"AS1012"));
+}

@@ -11,7 +11,7 @@ pub(super) fn artifact(ir: &AppIr) -> Result<Artifact, CodegenError> {
         let quote = |value: &str| format!("\"{}\"", value.replace('"', "\"\""));
         let scope = if entity.tenant_scoped { " AND tenant_id = $2" } else { " AND $2::uuid IS NOT DISTINCT FROM $2::uuid" };
         let query = format!("SELECT 1 FROM {} WHERE {}::text = $1{scope}", quote(&entity.table_name), quote(&primary.column_name));
-        format!("{:?} => database.fetch_optional(Sql::bind({query:?}, [record_id.into(), tenant.into()])).await?.is_some()", entity.table_name)
+        format!("{:?} | {:?} => database.fetch_optional(Sql::bind({query:?}, [record_id.into(), tenant.into()])).await?.is_some()", entity.table_name, entity.id.0)
     }).collect::<Vec<_>>().join(",\n");
     let canonical = ir.entities.iter().map(|entity| {
         let primary = entity.fields.iter().find(|field| field.primary_key).expect("validated primary key");

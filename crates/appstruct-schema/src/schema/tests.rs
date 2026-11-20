@@ -45,3 +45,16 @@ fn extract_rejects_invalid_ir() {
     ir.ir_version = 0;
     assert!(extract(&ir).is_err());
 }
+
+#[test]
+fn extract_and_json_preserve_allow_unmanaged_tables() {
+    let mut ir: AppIr =
+        serde_json::from_str(include_str!("../../../../tests/golden/m0-app-ir.json")).unwrap();
+    assert!(!extract(&ir).unwrap().allow_unmanaged_tables);
+
+    ir.database.allow_unmanaged_tables = true;
+    let schema = extract(&ir).unwrap();
+    assert!(schema.allow_unmanaged_tables);
+    let round_tripped = from_json(&to_json(&schema).unwrap()).unwrap();
+    assert!(round_tripped.allow_unmanaged_tables);
+}

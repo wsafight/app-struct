@@ -507,7 +507,7 @@ fn allow_unmanaged_tables_permits_partial_baseline_while_detecting_managed_drift
     client.batch_execute(&initial).unwrap();
     client
         .batch_execute(
-            "CREATE TABLE legacy_events (id BIGINT PRIMARY KEY, code TEXT NOT NULL UNIQUE); CREATE INDEX idx_legacy_code ON legacy_events (code);",
+            "CREATE TABLE legacy_events (id BIGINT PRIMARY KEY, note_id UUID REFERENCES notes(id) ON DELETE CASCADE, code TEXT NOT NULL UNIQUE); CREATE INDEX idx_legacy_code ON legacy_events (code);",
         )
         .unwrap();
 
@@ -520,7 +520,7 @@ fn allow_unmanaged_tables_permits_partial_baseline_while_detecting_managed_drift
         DriftStatus::Detected(ref issues) if issues.iter().any(|issue| issue.contains("unexpected table `legacy_events`"))
     ));
 
-    // Enabling allow_unmanaged_tables allows baseline and status while keeping managed checks strict:
+    // Enabling allow_unmanaged_tables allows baseline and status while ignoring unmanaged tables, indexes, constraints, and FKs:
     schema.allow_unmanaged_tables = true;
     let partial_project = write_project(&schema);
     let baseline =
@@ -532,12 +532,14 @@ fn allow_unmanaged_tables_permits_partial_baseline_while_detecting_managed_drift
         DriftStatus::Clean
     );
 
-    // Drift on a managed table is still caught:
+    // Drift on a managed table (unexpected index or column) is still caught:
     client
-        .batch_execute("ALTER TABLE notes ADD COLUMN unexpected_col TEXT")
+        .batch_execute("CREATE INDEX idx_notes_unexpected ON notes (title); ALTER TABLE notes ADD COLUMN unexpected_col TEXT;")
         .unwrap();
     assert!(matches!(
         status_project(partial_project.path(), &url).unwrap().drift,
-        DriftStatus::Detected(ref issues) if issues.iter().any(|issue| issue.contains("unexpected column `notes.unexpected_col`"))
+        DriftStatus::Detected(ref issues)
+            if issues.iter().any(|issue| issue.contains("unexpected column `notes.unexpected_col`"))
+                && issues.iter().any(|issue| issue.contains("unexpected index on `notes` (title)"))
     ));
 }

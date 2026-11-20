@@ -126,6 +126,69 @@ fn validates_money_ui_semantics_without_trusting_the_compiler() {
 }
 
 #[test]
+fn validates_file_ui_semantics_without_trusting_the_compiler() {
+    let mut base: appstruct_ir::AppIr =
+        serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();
+    base.file.enabled = true;
+    base.file.allowed_content_types = vec!["text/plain".to_owned()];
+    let field = base.entities[0]
+        .fields
+        .iter_mut()
+        .find(|field| field.api_name == "name")
+        .unwrap();
+    field.ty = FieldTypeIr::Uuid;
+    field.capabilities.searchable = false;
+    field.ui_semantic = Some(FieldSemanticIr::File);
+    validate_app_ir(&base).unwrap();
+
+    let mut with_component = base.clone();
+    with_component.entities[0]
+        .fields
+        .iter_mut()
+        .find(|field| field.api_name == "name")
+        .unwrap()
+        .ui_component = Some("FileUpload".to_owned());
+    assert!(validate_app_ir(&with_component).is_err());
+
+    let mut non_uuid = base.clone();
+    non_uuid.entities[0]
+        .fields
+        .iter_mut()
+        .find(|field| field.api_name == "name")
+        .unwrap()
+        .ty = FieldTypeIr::String;
+    assert!(validate_app_ir(&non_uuid).is_err());
+
+    let mut generated = base.clone();
+    generated.entities[0]
+        .fields
+        .iter_mut()
+        .find(|field| field.api_name == "name")
+        .unwrap()
+        .generated = Some(GeneratedValueIr::UuidV7);
+    assert!(validate_app_ir(&generated).is_err());
+
+    let mut primary_key = base.clone();
+    primary_key.entities[0]
+        .fields
+        .iter_mut()
+        .find(|field| field.primary_key)
+        .unwrap()
+        .ui_semantic = Some(FieldSemanticIr::File);
+    assert!(validate_app_ir(&primary_key).is_err());
+
+    let mut file_disabled = base.clone();
+    file_disabled.file.enabled = false;
+    let errors = validate_app_ir(&file_disabled).unwrap_err();
+    assert!(
+        errors
+            .errors()
+            .iter()
+            .any(|error| error.message.contains("enabled auth and file modules"))
+    );
+}
+
+#[test]
 fn rejects_owner_rules_on_field_access() {
     let mut ir: appstruct_ir::AppIr =
         serde_json::from_str(include_str!("../../../tests/golden/m0-app-ir.json")).unwrap();

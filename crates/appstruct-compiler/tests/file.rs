@@ -58,6 +58,38 @@ fn file_requires_valid_content_types() {
     assert_diagnostic(temporary.path(), "AS3057");
 }
 
+#[test]
+fn lowers_file_ui_semantic_and_requires_enabled_file_module() {
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("spec/project.yaml"),
+        "      created_at:\n        type: datetime\n        generated: now",
+        "      attachment:\n        type: uuid\n        ui:\n          semantic: file\n      created_at:\n        type: datetime\n        generated: now",
+    );
+    let ir = compile_project(temporary.path()).unwrap();
+    let project = ir
+        .entities
+        .iter()
+        .find(|entity| entity.rust_name == "Project")
+        .unwrap();
+    let attachment = project
+        .fields
+        .iter()
+        .find(|field| field.api_name == "attachment")
+        .unwrap();
+    assert_eq!(
+        attachment.ui_semantic,
+        Some(appstruct_ir::FieldSemanticIr::File)
+    );
+
+    replace(
+        &temporary.path().join("appstruct.yaml"),
+        "  file:\n    enabled: true",
+        "  file:\n    enabled: false",
+    );
+    assert_diagnostic(temporary.path(), "AS2020");
+}
+
 fn copied_fixture() -> tempfile::TempDir {
     let temporary = tempfile::tempdir().unwrap();
     fs::create_dir(temporary.path().join("spec")).unwrap();

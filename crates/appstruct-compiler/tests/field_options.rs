@@ -203,6 +203,49 @@ fn rejects_invalid_money_ui_semantics() {
 }
 
 #[test]
+fn rejects_invalid_file_ui_semantics_and_surface_ui_shapes() {
+    for fields in [
+        "      attachment:\n        type: uuid\n        ui:\n          semantic: file\n",
+        "      attachment:\n        type: string\n        ui:\n          semantic: file\n",
+        "      attachment:\n        type: uuid\n        generated: uuid_v7\n        ui:\n          semantic: file\n",
+    ] {
+        let diagnostics = compile_fields(fields).unwrap_err();
+        assert!(
+            codes(&diagnostics).contains(&"AS2020"),
+            "missing AS2020 for {fields}: {diagnostics:#?}"
+        );
+    }
+
+    let pk_file = tempfile::tempdir().unwrap();
+    fs::create_dir_all(pk_file.path().join("spec")).unwrap();
+    fs::write(
+        pk_file.path().join("appstruct.yaml"),
+        "version: 1\napp:\n  name: field-options\ndatabase:\n  provider: postgres\nincludes:\n  - spec/domain.yaml\n",
+    )
+    .unwrap();
+    fs::write(
+        pk_file.path().join("spec/domain.yaml"),
+        "domain: core\nentities:\n  Item:\n    fields:\n      id:\n        type: uuid\n        primary_key: true\n        ui:\n          semantic: file\n    access:\n      list: { public: true }\n      read: { public: true }\n      create: { public: true }\n      update: { public: true }\n      delete: { public: true }\n",
+    )
+    .unwrap();
+    assert!(codes(&compile_project(pk_file.path()).unwrap_err()).contains(&"AS2020"));
+
+    for fields in [
+        "      attachment:\n        type: uuid\n        ui:\n          semantic: file\n          currency_field: c\n",
+        "      attachment:\n        type: uuid\n        ui:\n          semantic: file\n          fraction_digits: 2\n",
+        "      attachment:\n        type: uuid\n        ui:\n          semantic: unknown\n",
+        "      attachment:\n        type: uuid\n        ui:\n          component: FilePicker\n          semantic: file\n",
+        "      attachment:\n        type: uuid\n        ui: {}\n",
+    ] {
+        let diagnostics = compile_fields(fields).unwrap_err();
+        assert!(
+            codes(&diagnostics).contains(&"AS1007"),
+            "missing AS1007 for {fields}: {diagnostics:#?}"
+        );
+    }
+}
+
+#[test]
 fn rejects_invalid_field_and_column_names_and_duplicate_columns() {
     let name = compile_fields("      BadName:\n        type: string\n").unwrap_err();
     assert!(codes(&name).contains(&"AS2001"));

@@ -775,7 +775,7 @@ async fn export_data(
         .collect::<Result<Vec<_>, ApiError>>()?;
     let view_rows = transaction
         .fetch_all(Sql::bind(
-            "SELECT id, resource, name, scope, tenant_id, state, created_at, updated_at FROM \"_appstruct_auth_saved_views\" WHERE owner_id = $1 ORDER BY created_at, id",
+            "SELECT id, resource, name, visibility, tenant_id, query, created_at, updated_at FROM \"_appstruct_saved_views\" WHERE owner_id = $1 ORDER BY created_at, id",
             [user.into()],
         ))
         .await?;
@@ -786,9 +786,9 @@ async fn export_data(
                 "id": row.try_get::<uuid::Uuid, _>("id")?,
                 "resource": row.try_get::<String, _>("resource")?,
                 "name": row.try_get::<String, _>("name")?,
-                "scope": row.try_get::<String, _>("scope")?,
+                "visibility": row.try_get::<String, _>("visibility")?,
                 "tenant_id": row.try_get::<Option<uuid::Uuid>, _>("tenant_id")?,
-                "state": row.try_get::<Value, _>("state")?,
+                "query": row.try_get::<String, _>("query")?,
                 "created_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("created_at")?,
                 "updated_at": row.try_get::<chrono::DateTime<chrono::Utc>, _>("updated_at")?,
             }))

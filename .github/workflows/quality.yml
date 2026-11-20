@@ -185,9 +185,9 @@ jobs:
       - name: Verify migration and database introspection contracts
         if: matrix.suite == 'authorization'
         run: |
-          cargo test --locked -p appstruct-migrate --test postgres
+          cargo test --locked -p appstruct-migrate --test postgres --test module_indexes
           cargo test --locked -p appstruct-cli --test db_pull_cli --test migration_baseline
-          cargo test --locked -p appstruct-codegen --test auth_rate_limit --test data_lifecycle --test extension_journey --test import_batches --test form_rules
+          cargo test --locked -p appstruct-codegen --test auth_rate_limit --test data_lifecycle --test extension_journey --test import_batches --test form_rules --test relation_access
       - name: Run PostgreSQL suite
         run: bash "scripts/run-$E2E_SUITE-e2e.sh"
       - uses: actions/upload-artifact@v4

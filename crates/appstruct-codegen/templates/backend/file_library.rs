@@ -437,7 +437,12 @@ async fn delete_file(
     let owners: serde_json::Value = row.try_get("reference_owners")?;
     for owner in owners.as_array().ok_or(ApiError::Internal)? {
         if let (Some(entity), Some(record_id)) = (owner["entity"].as_str(), owner["record_id"].as_str()) {
-            if let Some(resource) = entity.strip_prefix("attachment:") {
+            let target = entity.strip_prefix("attachment:").or_else(|| {
+                entity
+                    .strip_prefix("field:")
+                    .and_then(|rest| rest.rsplit_once(':').map(|(owner, _)| owner))
+            });
+            if let Some(resource) = target {
                 if !record_exists(&transaction, resource, record_id, context.tenant()).await? {
                     state.file.release_with_connection(&transaction, &key, entity, record_id, context.tenant()).await.map_err(file_error)?;
                 }

@@ -313,4 +313,52 @@ mod tests {
         assert_eq!(decode_cursor(""), None);
         assert_eq!(bulk_failure("1", "AS1", "nope").code, "AS1");
     }
+
+    #[test]
+    fn list_query_and_page_meta_serialize_bounded_count_contract() {
+        let query: ListQuery = serde_json::from_value(serde_json::json!({
+            "page": 2,
+            "page_size": 25,
+            "count": "bounded",
+            "where": "{\"field\":\"status\"}",
+            "filter[status]": "active"
+        }))
+        .unwrap();
+        assert_eq!(query.page, Some(2));
+        assert_eq!(query.count.as_deref(), Some("bounded"));
+        assert_eq!(query.expression.as_deref(), Some("{\"field\":\"status\"}"));
+        assert_eq!(
+            query.filters.get("filter[status]").map(String::as_str),
+            Some("active")
+        );
+
+        let legacy = serde_json::to_value(ListMeta::Page {
+            page: 1,
+            page_size: 25,
+            total: 42,
+            total_exact: None,
+        })
+        .unwrap();
+        assert_eq!(
+            legacy,
+            serde_json::json!({ "page": 1, "page_size": 25, "total": 42 })
+        );
+
+        let capped = serde_json::to_value(ListMeta::Page {
+            page: 1,
+            page_size: 25,
+            total: DEFAULT_BOUNDED_LIST_COUNT,
+            total_exact: Some(false),
+        })
+        .unwrap();
+        assert_eq!(
+            capped,
+            serde_json::json!({
+                "page": 1,
+                "page_size": 25,
+                "total": 10_000,
+                "total_exact": false
+            })
+        );
+    }
 }

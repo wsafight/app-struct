@@ -205,6 +205,91 @@ fn database_pull_preflight_reports_structure_before_adoption_without_changing_co
     assert_eq!(count, 1);
 }
 
+#[test]
+fn database_pull_preflight_allows_omitted_tables_when_allow_unmanaged_tables_is_enabled() {
+    let Ok(database_url) = std::env::var("APPSTRUCT_E2E_DATABASE_URL") else {
+        return;
+    };
+    let schema = format!(
+        "appstruct_preflight_unmanaged_{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let mut client = appstruct_migrate::connect_database(&database_url).unwrap();
+    client
+        .batch_execute(&format!(
+            "CREATE SCHEMA {schema};
+             CREATE TABLE {schema}.\"_appstruct_import_batches\" (scope text PRIMARY KEY, request_digest text NOT NULL, result jsonb, created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP);
+             CREATE TABLE {schema}.notes (id uuid PRIMARY KEY, title text NOT NULL, revision bigint NOT NULL DEFAULT 1);
+             CREATE TABLE {schema}.legacy_audit (tenant_id uuid NOT NULL, seq bigint NOT NULL, PRIMARY KEY (tenant_id, seq));"
+        ))
+        .unwrap();
+    let _guard = SchemaGuard {
+        client,
+        schema: schema.clone(),
+    };
+
+    let strict = tempfile::tempdir().unwrap();
+    fs::write(
+        strict.path().join("appstruct.yaml"),
+        "version: 1\napp: { name: strict-demo }\ndatabase: { provider: postgres, dev: { mode: external } }\nincludes: []\n",
+    )
+    .unwrap();
+    let strict_out = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .arg("--project")
+        .arg(strict.path())
+        .args([
+            "db", "pull", "--schema", &schema, "--access", "public", "--format", "json",
+        ])
+        .env("DATABASE_URL", &database_url)
+        .output()
+        .unwrap();
+    assert!(strict_out.status.success());
+    let strict_json: serde_json::Value = serde_json::from_slice(&strict_out.stdout).unwrap();
+    assert_eq!(strict_json["result"]["preflight"]["status"], "blocked");
+    assert_eq!(
+        strict_json["result"]["preflight"]["allow_unmanaged_tables"],
+        false
+    );
+    assert_eq!(
+        strict_json["result"]["preflight"]["omitted_tables"],
+        serde_json::json!(["legacy_audit"])
+    );
+
+    let brownfield = tempfile::tempdir().unwrap();
+    fs::write(
+        brownfield.path().join("appstruct.yaml"),
+        "version: 1\napp: { name: brownfield-demo }\ndatabase: { provider: postgres, allow_unmanaged_tables: true, dev: { mode: external } }\nincludes: []\n",
+    )
+    .unwrap();
+    let brownfield_out = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .arg("--project")
+        .arg(brownfield.path())
+        .args([
+            "db", "pull", "--schema", &schema, "--access", "public", "--format", "json",
+        ])
+        .env("DATABASE_URL", &database_url)
+        .output()
+        .unwrap();
+    assert!(brownfield_out.status.success());
+    let brownfield_json: serde_json::Value =
+        serde_json::from_slice(&brownfield_out.stdout).unwrap();
+    assert_eq!(
+        brownfield_json["result"]["preflight"]["status"], "structure_matches",
+        "{brownfield_json:#}"
+    );
+    assert_eq!(
+        brownfield_json["result"]["preflight"]["allow_unmanaged_tables"],
+        true
+    );
+    assert_eq!(
+        brownfield_json["result"]["preflight"]["omitted_tables"],
+        serde_json::json!(["legacy_audit"])
+    );
+}
+
 impl Drop for SchemaGuard {
     fn drop(&mut self) {
         let _ = self

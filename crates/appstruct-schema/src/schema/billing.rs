@@ -25,13 +25,7 @@ fn customers() -> TableSchema {
         columns: vec![
             column("id", DatabaseType::Uuid, false, false, None),
             column("organization_id", DatabaseType::Uuid, false, true, None),
-            column(
-                "provider",
-                DatabaseType::Text,
-                false,
-                false,
-                Some("'stripe'"),
-            ),
+            column("provider", DatabaseType::Text, false, false, Some("stripe")),
             column(
                 "provider_customer_id",
                 DatabaseType::Text,
@@ -51,13 +45,7 @@ fn subscriptions() -> TableSchema {
         columns: vec![
             column("id", DatabaseType::Uuid, false, false, None),
             column("organization_id", DatabaseType::Uuid, false, false, None),
-            column(
-                "provider",
-                DatabaseType::Text,
-                false,
-                false,
-                Some("'stripe'"),
-            ),
+            column("provider", DatabaseType::Text, false, false, Some("stripe")),
             column(
                 "provider_subscription_id",
                 DatabaseType::Text,

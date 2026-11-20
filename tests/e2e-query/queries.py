@@ -69,6 +69,10 @@ for index, score in enumerate(scores):
 page = client.request("/api/entries/", {"page": 2, "page_size": 4, "sort": "score,-title"})
 assert page["meta"] == {"page": 2, "page_size": 4, "total": 15}
 assert len(page["data"]) == 4 and all("secret" not in row for row in page["data"])
+bounded_small = client.request("/api/entries/", {"page": 1, "page_size": 4, "count": "bounded"})
+assert bounded_small["meta"] == {"page": 1, "page_size": 4, "total": 15, "total_exact": True}
+client.request("/api/entries/", {"count": "invalid"}, status=400)
+client.request("/api/entries/", {"limit": 3, "count": "bounded"}, status=400)
 
 for sort in ["score,-title", "-score,title", "created_at,-title", "-amount,title"]:
     query = {"sort": sort, "fields": "id,title,amount"}
@@ -175,7 +179,11 @@ subprocess.run(["psql", os.environ["APPSTRUCT_E2E_DATABASE_URL"], "-v", "ON_ERRO
 trend = client.request("/api/entries/_aggregate", {"group_by": "created_at", "time_bucket": "day", "q": "Import"})
 assert trend["data"] == [{"count": 1, "group_created_at": "2026-12-31"}, {"count": 1, "group_created_at": "2027-01-01"}]
 
-# A result above the export cap must fail before sending the CSV header.
+# A result above the export cap must fail before sending the CSV header, and bounded count caps at 10,000.
 subprocess.run(["psql", os.environ["APPSTRUCT_E2E_DATABASE_URL"], "-v", "ON_ERROR_STOP=1", "-v", f"tenant={alpha}"], input="INSERT INTO entries (id,title,status,tenant_id,revision) SELECT md5('overflow-' || i::text)::uuid, 'Overflow ' || i, 'todo', :'tenant'::uuid, 1 FROM generate_series(1,10001) i;", text=True, check=True, stdout=subprocess.DEVNULL)
+bounded_large = client.request("/api/entries/", {"page": 1, "page_size": 5, "count": "bounded"})
+assert bounded_large["meta"] == {"page": 1, "page_size": 5, "total": 10000, "total_exact": False}
+exact_large = client.request("/api/entries/", {"page": 1, "page_size": 5, "count": "exact"})
+assert exact_large["meta"] == {"page": 1, "page_size": 5, "total": 10018}
 client.request("/api/entries/_export.csv", status=400)
 print("Query E2E passed: page totals, signed cursors, filters, facets, JSON CSV retry, UTC trends and tenant/field access.")

@@ -348,6 +348,20 @@ async fn oauth_only_password_setup_data_export_and_account_deletion_preserve_inv
     let profile = json_body(profile_res).await;
     assert_eq!(profile["has_password"], false);
 
+    // Seed a saved view and verify personal data export includes it:
+    database
+        .execute(Sql::bind(
+            "INSERT INTO \"_appstruct_saved_views\" (id, owner_id, scope_key, tenant_id, resource, name, query, visibility, revision, created_at, updated_at) VALUES ($1, $2, $3, $4, 'projects', 'My active', 'sort=-created_at', 'private', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            [
+                Uuid::now_v7().into(),
+                member_id.into(),
+                owner_session.tenant.clone().into(),
+                Uuid::parse_str(&owner_session.tenant).unwrap().into(),
+            ],
+        ))
+        .await
+        .unwrap();
+
     // Export personal data as OAuth-only user:
     let export_res = request(
         &router,
@@ -361,6 +375,8 @@ async fn oauth_only_password_setup_data_export_and_account_deletion_preserve_inv
     let exported = json_body(export_res).await;
     assert_eq!(exported["account"]["email"], "member-oauth@example.test");
     assert_eq!(exported["organizations"].as_array().unwrap().len(), 1);
+    assert_eq!(exported["saved_views"][0]["name"], "My active");
+    assert_eq!(exported["saved_views"][0]["query"], "sort=-created_at");
 
     // Set initial password as OAuth-only user:
     let new_pw = "Initial-OAuth-Password-2026";
@@ -447,6 +463,168 @@ async fn oauth_only_password_setup_data_export_and_account_deletion_preserve_inv
     )
     .await;
     assert_eq!(member_delete.status(), StatusCode::NO_CONTENT);
+
+    root.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn account_security_enforces_reauth_last_admin_and_former_owner_reassignment() {
+    let Some((root, database, schema, router)) = setup().await else {
+        return;
+    };
+    let (mut admin_session, admin_id) = user(&router, "sole-admin@example.test").await;
+    team(&router, &mut admin_session).await;
+    database
+        .execute(Sql::bind(
+            "UPDATE \"_appstruct_auth_accounts\" SET roles = '[\"admin\"]'::jsonb, email_verified_at = CURRENT_TIMESTAMP WHERE user_id = $1",
+            [admin_id.into()],
+        ))
+        .await
+        .unwrap();
+
+    let (co_admin_session, co_admin_id) = user(&router, "co-admin@example.test").await;
+    let (oauth_session, oauth_id) = user(&router, "pure-oauth@example.test").await;
+    database
+        .execute(Sql::bind(
+            "UPDATE \"_appstruct_auth_accounts\" SET password_hash = '' WHERE user_id = $1",
+            [oauth_id.into()],
+        ))
+        .await
+        .unwrap();
+
+    // Password-backed user cannot skip or spoof password reauthentication:
+    for (path, payload) in [
+        ("/api/auth/settings/password", json!({ "new_password": "Changed-Password-2026" })),
+        ("/api/auth/settings/export", json!({})),
+        ("/api/auth/settings/delete", json!({ "password": "wrong-password-2026" })),
+    ] {
+        let res = request(&router, &co_admin_session, "POST", path, payload).await;
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{path} must require valid password");
+    }
+
+    // OAuth-only user rejects unexpected password or bearer-token-only mutation, then deletes cleanly with empty proof:
+    let unexpected_pw = request(
+        &router,
+        &oauth_session,
+        "POST",
+        "/api/auth/settings/delete",
+        json!({ "password": PASSWORD }),
+    )
+    .await;
+    assert_eq!(unexpected_pw.status(), StatusCode::UNAUTHORIZED);
+
+    let token_res = request(
+        &router,
+        &oauth_session,
+        "POST",
+        "/api/auth/tokens",
+        json!({ "name": "cli" }),
+    )
+    .await;
+    assert_eq!(token_res.status(), StatusCode::CREATED);
+    let bearer = json_body(token_res).await["token"].as_str().unwrap().to_owned();
+    let bearer_delete = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/settings/delete")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bearer_delete.status(), StatusCode::UNAUTHORIZED);
+
+    let oauth_delete = request(&router, &oauth_session, "POST", "/api/auth/settings/delete", json!({})).await;
+    assert_eq!(oauth_delete.status(), StatusCode::NO_CONTENT);
+    let after_oauth_delete = request(&router, &oauth_session, "GET", "/api/auth/settings", json!({})).await;
+    assert_eq!(after_oauth_delete.status(), StatusCode::UNAUTHORIZED);
+
+    // Sole admin cannot delete account while other users exist:
+    let last_admin_blocked = request(
+        &router,
+        &admin_session,
+        "POST",
+        "/api/auth/settings/delete",
+        json!({ "password": PASSWORD }),
+    )
+    .await;
+    assert_eq!(last_admin_blocked.status(), StatusCode::CONFLICT);
+
+    // Promote co_admin_id to admin, add to org, create an invitation from admin_id, transfer org ownership, then delete admin_id:
+    let org_id = Uuid::parse_str(&admin_session.tenant).unwrap();
+    database
+        .execute(Sql::bind(
+            "UPDATE \"_appstruct_auth_accounts\" SET roles = '[\"admin\"]'::jsonb WHERE user_id = $1",
+            [co_admin_id.into()],
+        ))
+        .await
+        .unwrap();
+    database
+        .execute(Sql::bind(
+            "INSERT INTO \"_appstruct_tenant_memberships\" (organization_id, user_id, role, created_at) VALUES ($1, $2, 'member', CURRENT_TIMESTAMP)",
+            [org_id.into(), co_admin_id.into()],
+        ))
+        .await
+        .unwrap();
+    let invite_res = request(
+        &router,
+        &admin_session,
+        "POST",
+        "/api/tenant/invitations",
+        json!({ "email": "pending-invitee@example.test", "role": "member" }),
+    )
+    .await;
+    assert_eq!(invite_res.status(), StatusCode::CREATED);
+
+    let transfer_res = request(
+        &router,
+        &admin_session,
+        "POST",
+        "/api/product/team/transfer",
+        json!({ "member_id": co_admin_id }),
+    )
+    .await;
+    assert_eq!(transfer_res.status(), StatusCode::NO_CONTENT);
+
+    let admin_delete = request(
+        &router,
+        &admin_session,
+        "POST",
+        "/api/auth/settings/delete",
+        json!({ "password": PASSWORD }),
+    )
+    .await;
+    assert_eq!(admin_delete.status(), StatusCode::NO_CONTENT);
+
+    let org_creator: Uuid = database
+        .fetch_optional(Sql::bind(
+            "SELECT created_by FROM \"_appstruct_tenant_organizations\" WHERE id = $1",
+            [org_id.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("created_by")
+        .unwrap();
+    let inviter: Uuid = database
+        .fetch_optional(Sql::bind(
+            "SELECT invited_by FROM \"_appstruct_tenant_invitations\" WHERE organization_id = $1",
+            [org_id.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("invited_by")
+        .unwrap();
+    assert_eq!(org_creator, co_admin_id);
+    assert_eq!(inviter, co_admin_id);
 
     root.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
