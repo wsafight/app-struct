@@ -14,15 +14,15 @@
     "test": "playwright test"
   },
   "dependencies": {
-    "@astrojs/sitemap": "3.7.4",
-    "@lucide/astro": "1.70.0",
-    "astro": "7.4.7",
+    "@astrojs/sitemap": "3.7.5",
+    "@lucide/astro": "1.74.0",
+    "astro": "7.4.12",
     "remark": "15.0.1",
     "unist-util-visit": "5.2.0"
   },
   "devDependencies": {
-    "@astrojs/check": "0.9.11",
-    "@playwright/test": "1.65.0",
+    "@astrojs/check": "0.9.12",
+    "@playwright/test": "1.65.1",
     "cheerio": "1.2.0",
     "pagefind": "1.6.0",
     "typescript": "6.0.3"
