@@ -108,6 +108,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
             database_provider: database.provider,
             database_mode: database.mode,
             database_migration: database.migration,
+            database_allow_unmanaged_tables: database.allow_unmanaged_tables,
             preset: preset?,
             expanded_modules: modules?,
             auth: auth?,
@@ -312,23 +313,7 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
     )?;
     let type_node = required(mapping, "type", &entry.value.span)?;
     let type_name = expect_string(&type_node.value, "field `type`")?;
-
-    let mut flags = FieldFlags::default();
-    flags.set(
-        FieldFlags::PRIMARY_KEY,
-        optional_bool(mapping, "primary_key")?,
-    );
-    flags.set(FieldFlags::REQUIRED, optional_bool(mapping, "required")?);
-    flags.set(FieldFlags::UNIQUE, optional_bool(mapping, "unique")?);
-    flags.set(
-        FieldFlags::SEARCHABLE,
-        optional_bool(mapping, "searchable")?,
-    );
-    flags.set(
-        FieldFlags::FILTERABLE,
-        optional_bool(mapping, "filterable")?,
-    );
-    flags.set(FieldFlags::SORTABLE, optional_bool(mapping, "sortable")?);
+    let flags = decode_field_flags(mapping)?;
     let ui = mapping
         .get("ui")
         .map(|ui| extension::decode_field_ui(&ui.value))
@@ -381,6 +366,28 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             .transpose()?,
         span: entry.value.span.clone(),
     })
+}
+
+fn decode_field_flags(
+    mapping: &std::collections::BTreeMap<String, MappingEntry>,
+) -> Result<FieldFlags, Diagnostic> {
+    let mut flags = FieldFlags::default();
+    flags.set(
+        FieldFlags::PRIMARY_KEY,
+        optional_bool(mapping, "primary_key")?,
+    );
+    flags.set(FieldFlags::REQUIRED, optional_bool(mapping, "required")?);
+    flags.set(FieldFlags::UNIQUE, optional_bool(mapping, "unique")?);
+    flags.set(
+        FieldFlags::SEARCHABLE,
+        optional_bool(mapping, "searchable")?,
+    );
+    flags.set(
+        FieldFlags::FILTERABLE,
+        optional_bool(mapping, "filterable")?,
+    );
+    flags.set(FieldFlags::SORTABLE, optional_bool(mapping, "sortable")?);
+    Ok(flags)
 }
 
 fn decode_required_when(

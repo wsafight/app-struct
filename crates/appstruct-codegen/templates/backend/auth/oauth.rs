@@ -5,8 +5,8 @@ use crate::{ApiError, AppState};
 use axum::extract::{Path, State};
 use axum::http::HeaderMap;
 use axum::response::Redirect;
-use axum::routing::{delete, get};
-use axum::Router;
+use axum::routing::{delete, get, post};
+use axum::{Json, Router};
 use sqlx::Row as _;
 use crate::database::{DatabaseExecutor,  Sql};
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,8 @@ pub(super) fn router() -> Router<AppState> {
     if !ENABLED_PROVIDERS.is_empty() {
         router = router
             .route("/api/auth/accounts", get(list_accounts))
-            .route("/api/auth/accounts/{provider}", delete(unlink_account));
+            .route("/api/auth/accounts/{provider}", delete(unlink_account))
+            .route("/api/auth/oauth/mfa", post(complete_oauth_mfa));
     }
     if enabled("oidc") {
         router = router
@@ -394,10 +395,30 @@ async fn oauth_callback(
     }
     let user_id = find_or_create_oauth_user(&state, provider, &subject, &email).await?;
     let protected = state.database.fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_product_profiles\" WHERE user_id = $1 AND mfa_secret IS NOT NULL", [user_id.into()])).await?.is_some();
-    if protected { return Err(ApiError::Forbidden); }
+    let secure = if state.auth.config.secure_cookie { "; Secure" } else { "" };
+    if protected {
+        let challenge = super::settings::seal_oauth_mfa_challenge(user_id)?;
+        let mut response_headers = HeaderMap::new();
+        response_headers.append(
+            axum::http::header::SET_COOKIE,
+            format!(
+                "appstruct_oauth_mfa={challenge}; Path=/api/auth/oauth/mfa; Max-Age=300; HttpOnly; SameSite=Lax{secure}"
+            )
+            .parse()
+            .map_err(|_| ApiError::Internal)?,
+        );
+        response_headers.append(
+            axum::http::header::SET_COOKIE,
+            format!(
+                "appstruct_oauth_state=; Path=/api/auth/oauth/{provider}; Max-Age=0; HttpOnly; SameSite=Lax{secure}"
+            )
+            .parse()
+            .map_err(|_| ApiError::Internal)?,
+        );
+        return Ok((response_headers, Redirect::temporary("/login?oauth_mfa=1")));
+    }
     let (session, csrf) = state.auth.create_session(&state.database, user_id).await?;
     let mut response_headers = state.auth.session_headers(&session, &csrf);
-    let secure = if state.auth.config.secure_cookie { "; Secure" } else { "" };
     response_headers.append(
         axum::http::header::SET_COOKIE,
         format!(
@@ -407,6 +428,88 @@ async fn oauth_callback(
         .map_err(|_| ApiError::Internal)?,
     );
     Ok((response_headers, Redirect::temporary("/")))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OAuthMfaInput {
+    code: String,
+}
+
+#[derive(Serialize)]
+struct OAuthAuthResponse {
+    user: crate::Actor,
+    email_verified: bool,
+}
+
+async fn complete_oauth_mfa(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<OAuthMfaInput>,
+) -> Result<(HeaderMap, Json<OAuthAuthResponse>), ApiError> {
+    state.auth.validate_origin(&headers)?;
+    let encoded =
+        cookie_value(&headers, "appstruct_oauth_mfa").ok_or(ApiError::InvalidOAuthState)?;
+    let user_id = super::settings::unseal_oauth_mfa_challenge(&encoded)?;
+    state
+        .auth
+        .consume_auth_rate_limit(&state.database, &format!("mfa:{user_id}"))
+        .await?;
+    let transaction = state.database.begin().await?;
+    let has_mfa = transaction
+        .fetch_optional(Sql::bind(
+            "SELECT 1 FROM \"_appstruct_product_profiles\" WHERE user_id = $1 AND mfa_secret IS NOT NULL",
+            [user_id.into()],
+        ))
+        .await?
+        .is_some();
+    if !has_mfa {
+        return Err(ApiError::InvalidOAuthState);
+    }
+    super::settings::verify_mfa(&transaction, user_id, Some(input.code.trim())).await?;
+    let account_sql = format!(
+        "SELECT u.{email} AS email, a.roles, a.email_verified_at FROM \"_appstruct_auth_accounts\" a JOIN {users} u ON u.{id} = a.user_id WHERE a.user_id = $1",
+        email = quote_ident(config::USER_EMAIL_COLUMN),
+        users = quote_ident(config::USER_TABLE),
+        id = quote_ident(config::USER_ID_COLUMN),
+    );
+    let row = transaction
+        .fetch_optional(Sql::bind(account_sql, [user_id.into()]))
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    let email_verified = row
+        .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("email_verified_at")?
+        .is_some();
+    let roles: serde_json::Value = row.try_get("roles")?;
+    let roles = serde_json::from_value(roles).map_err(|_| ApiError::Internal)?;
+    let user = crate::Actor {
+        id: user_id,
+        email: row.try_get("email")?,
+        roles,
+    };
+    let (session, csrf) = state.auth.create_session(&transaction, user_id).await?;
+    transaction.commit().await?;
+    let mut response_headers = state.auth.session_headers(&session, &csrf);
+    let secure = if state.auth.config.secure_cookie {
+        "; Secure"
+    } else {
+        ""
+    };
+    response_headers.append(
+        axum::http::header::SET_COOKIE,
+        format!(
+            "appstruct_oauth_mfa=; Path=/api/auth/oauth/mfa; Max-Age=0; HttpOnly; SameSite=Lax{secure}"
+        )
+        .parse()
+        .map_err(|_| ApiError::Internal)?,
+    );
+    Ok((
+        response_headers,
+        Json(OAuthAuthResponse {
+            user,
+            email_verified,
+        }),
+    ))
 }
 
 async fn github_email(access_token: &str) -> Result<(String, bool), ApiError> {

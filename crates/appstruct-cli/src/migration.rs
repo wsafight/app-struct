@@ -262,6 +262,14 @@ fn accept_plan(
     let sql = stamp_schema_checksum(&sql, &snapshot);
     let written = write_plan(&transaction, &sql, &snapshot);
     drop(transaction);
+    finish_written_plan(project, written, database_url)
+}
+
+fn finish_written_plan(
+    project: &Path,
+    written: std::io::Result<std::path::PathBuf>,
+    database_url: Option<&str>,
+) -> ExitCode {
     match written {
         Ok(path) => {
             if !crate::report::is_json() {
@@ -321,6 +329,7 @@ fn empty_schema() -> DatabaseSchema {
     DatabaseSchema {
         schema_version: SCHEMA_VERSION,
         provider: DatabaseProvider::Postgres,
+        allow_unmanaged_tables: false,
         tables: Vec::new(),
         unique_constraints: Vec::new(),
         indexes: Vec::new(),

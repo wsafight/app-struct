@@ -189,6 +189,7 @@ async fn provider_keys_are_composite_and_concurrent_unlink_preserves_a_login_met
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn invitations_require_verified_email_before_token_delivery_or_acceptance() {
     let Some((root, database, schema, router)) = setup().await else {
         return;
@@ -308,6 +309,145 @@ async fn invitations_require_verified_email_before_token_delivery_or_acceptance(
     )
     .await;
     assert_eq!(response.status(), StatusCode::OK);
+    root.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn oauth_only_password_setup_data_export_and_account_deletion_preserve_invariants() {
+    let Some((root, database, schema, router)) = setup().await else {
+        return;
+    };
+    let (mut owner_session, owner_id) = user(&router, "owner-delete@example.test").await;
+    team(&router, &mut owner_session).await;
+    let (mut member_session, member_id) = user(&router, "member-oauth@example.test").await;
+    // Simulate an OAuth-only account for member_id:
+    database
+        .execute(Sql::bind(
+            "UPDATE \"_appstruct_auth_accounts\" SET password_hash = '', email_verified_at = CURRENT_TIMESTAMP WHERE user_id = $1",
+            [member_id.into()],
+        ))
+        .await
+        .unwrap();
+    database
+        .execute(Sql::bind(
+            "INSERT INTO \"_appstruct_tenant_memberships\" (organization_id, user_id, role, created_at) VALUES ($1, $2, 'member', CURRENT_TIMESTAMP)",
+            [
+                Uuid::parse_str(&owner_session.tenant).unwrap().into(),
+                member_id.into(),
+            ],
+        ))
+        .await
+        .unwrap();
+
+    // Profile reports has_password = false for OAuth-only user:
+    let profile_res = request(&router, &member_session, "GET", "/api/auth/settings", json!({})).await;
+    assert_eq!(profile_res.status(), StatusCode::OK);
+    let profile = json_body(profile_res).await;
+    assert_eq!(profile["has_password"], false);
+
+    // Export personal data as OAuth-only user:
+    let export_res = request(
+        &router,
+        &member_session,
+        "POST",
+        "/api/auth/settings/export",
+        json!({}),
+    )
+    .await;
+    assert_eq!(export_res.status(), StatusCode::OK);
+    let exported = json_body(export_res).await;
+    assert_eq!(exported["account"]["email"], "member-oauth@example.test");
+    assert_eq!(exported["organizations"].as_array().unwrap().len(), 1);
+
+    // Set initial password as OAuth-only user:
+    let new_pw = "Initial-OAuth-Password-2026";
+    let set_pw = request(
+        &router,
+        &member_session,
+        "POST",
+        "/api/auth/settings/password",
+        json!({ "new_password": new_pw }),
+    )
+    .await;
+    assert_eq!(set_pw.status(), StatusCode::NO_CONTENT);
+
+    // Re-login with newly set password:
+    let login_res = request(
+        &router,
+        &Session::default(),
+        "POST",
+        "/api/auth/login",
+        json!({ "email": "member-oauth@example.test", "password": new_pw }),
+    )
+    .await;
+    assert_eq!(login_res.status(), StatusCode::OK);
+    let cookies = login_res
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .map(|v| v.to_str().unwrap().split(';').next().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    member_session.csrf = cookies
+        .iter()
+        .find_map(|v| v.strip_prefix("appstruct_csrf="))
+        .unwrap()
+        .to_owned();
+    member_session.cookies = cookies.join("; ");
+
+    // Owner of multi-member team cannot delete account before transferring ownership:
+    let blocked_delete = request(
+        &router,
+        &owner_session,
+        "POST",
+        "/api/auth/settings/delete",
+        json!({ "password": PASSWORD }),
+    )
+    .await;
+    assert_eq!(blocked_delete.status(), StatusCode::CONFLICT);
+
+    // Transfer team ownership to member_id, then owner can delete account cleanly:
+    let transfer_res = request(
+        &router,
+        &owner_session,
+        "POST",
+        "/api/product/team/transfer",
+        json!({ "member_id": member_id }),
+    )
+    .await;
+    assert_eq!(transfer_res.status(), StatusCode::NO_CONTENT);
+
+    let owner_delete = request(
+        &router,
+        &owner_session,
+        "POST",
+        "/api/auth/settings/delete",
+        json!({ "password": PASSWORD }),
+    )
+    .await;
+    assert_eq!(owner_delete.status(), StatusCode::NO_CONTENT);
+    let owner_exists = database
+        .fetch_optional(Sql::bind(
+            "SELECT 1 FROM \"_appstruct_auth_accounts\" WHERE user_id = $1",
+            [owner_id.into()],
+        ))
+        .await
+        .unwrap();
+    assert!(owner_exists.is_none());
+
+    // Now member_id is the sole member/owner of the team and can delete their account too:
+    let member_delete = request(
+        &router,
+        &member_session,
+        "POST",
+        "/api/auth/settings/delete",
+        json!({ "password": new_pw }),
+    )
+    .await;
+    assert_eq!(member_delete.status(), StatusCode::NO_CONTENT);
+
     root.execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
         .await
         .unwrap();

@@ -28,6 +28,8 @@ pub use snapshot::{from_json, to_json};
 pub struct DatabaseSchema {
     pub schema_version: u32,
     pub provider: DatabaseProvider,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_unmanaged_tables: bool,
     pub tables: Vec<TableSchema>,
     pub unique_constraints: Vec<UniqueConstraintSchema>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -166,6 +168,25 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         .iter()
         .map(|relation| foreign_key(&entities_by_id, relation))
         .collect::<Vec<_>>();
+    append_module_schemas(ir, &mut tables, &mut unique_constraints, &mut foreign_keys);
+    Ok(DatabaseSchema {
+        schema_version: SCHEMA_VERSION,
+        provider: ir.database.provider,
+        allow_unmanaged_tables: ir.database.allow_unmanaged_tables,
+        tables,
+        unique_constraints,
+        indexes,
+        seeds,
+        foreign_keys,
+    })
+}
+
+fn append_module_schemas(
+    ir: &AppIr,
+    tables: &mut Vec<TableSchema>,
+    unique_constraints: &mut Vec<UniqueConstraintSchema>,
+    foreign_keys: &mut Vec<ForeignKeySchema>,
+) {
     if ir.auth.enabled {
         tables.extend(auth::tables());
         tables.extend(product::tables());
@@ -214,15 +235,6 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         tables.extend(billing::tables());
         foreign_keys.extend(billing::foreign_keys());
     }
-    Ok(DatabaseSchema {
-        schema_version: SCHEMA_VERSION,
-        provider: ir.database.provider,
-        tables,
-        unique_constraints,
-        indexes,
-        seeds,
-        foreign_keys,
-    })
 }
 
 fn entity_indexes(ir: &AppIr) -> Vec<IndexSchema> {

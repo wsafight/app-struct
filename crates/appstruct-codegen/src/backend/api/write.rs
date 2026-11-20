@@ -46,6 +46,8 @@ pub(super) fn handlers(
     let create_activity = super::activity::write_event(*activity_resource, primary, "created");
     let update_activity = super::activity::write_event(*activity_resource, primary, "updated");
     let delete_activity = super::activity::write_event(*activity_resource, primary, "deleted");
+    let (file_create, file_update, file_delete) =
+        super::file_field_lifecycle(entity, primary, &quote! { &context })?;
     let create = create_handler(
         module,
         hooks,
@@ -53,6 +55,7 @@ pub(super) fn handlers(
         create_values,
         active_default,
         &create_allowed,
+        &file_create,
         &create_audit,
         &create_activity,
         &create_event,
@@ -62,6 +65,7 @@ pub(super) fn handlers(
         updates,
         &read_scope,
         &update_allowed,
+        &file_update,
         &update_audit,
         &update_activity,
         &update_event,
@@ -73,6 +77,7 @@ pub(super) fn handlers(
         parse_id,
         &read_scope,
         &delete_allowed,
+        &file_delete,
         &delete_audit,
         &delete_activity,
         *soft_delete,
@@ -122,6 +127,7 @@ fn create_handler(
     create_values: &[TokenStream],
     active_default: Option<&TokenStream>,
     create_allowed: &TokenStream,
+    file_create: &TokenStream,
     audit: &TokenStream,
     activity: &TokenStream,
     event: &Literal,
@@ -156,6 +162,7 @@ fn create_handler(
                 validate_relations(&state, &context, &active).await?;
                 validate_candidate(&active)?;
                 let model = active.insert(&transaction).await?;
+                #file_create
                 state.extensions.#hooks().after_create(&context, &model).await?;
                 #audit
                 #activity
@@ -169,11 +176,13 @@ fn create_handler(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_handler(
     context: &HandlerContext<'_>,
     updates: &[TokenStream],
     read_scope: &TokenStream,
     update_allowed: &TokenStream,
+    file_update: &TokenStream,
     audit: &TokenStream,
     activity: &TokenStream,
     event: &Literal,
@@ -235,6 +244,7 @@ fn update_handler(
                 validate_relations(&state, &context, &active).await?;
                 validate_candidate(&active)?;
                 let after = active.update(&transaction).await?;
+                #file_update
                 state.extensions.#hooks().after_update(&context, &before, &after).await?;
                 #audit
                 #activity
@@ -256,6 +266,7 @@ fn delete_handler(
     parse_id: &TokenStream,
     read_scope: &TokenStream,
     delete_allowed: &TokenStream,
+    file_delete: &TokenStream,
     audit: &TokenStream,
     activity: &TokenStream,
     soft_delete: bool,
@@ -274,6 +285,7 @@ fn delete_handler(
         quote! {
             let deleted = model.clone();
             model.delete(&transaction).await?;
+            #file_delete
             deleted
         }
     };

@@ -32,6 +32,8 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
   const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [params] = useSearchParams();
+  const oauthMfa = mode === "login" && params.get("oauth_mfa") === "1";
   const destination = returnTo(location);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -55,7 +57,8 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
     setSubmitting(true);
     setError("");
     try {
-      if (mode === "login")
+      if (oauthMfa) await auth.completeOAuthMfa(code.trim());
+      else if (mode === "login")
         await auth.login(email, password, code || undefined);
       else await auth.register(email, password);
       await navigate(destination, { replace: true });
@@ -68,6 +71,42 @@ function CredentialsPage({ mode }: { mode: "login" | "register" }) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (oauthMfa) {
+    return (
+      <AuthFrame title={t("Two-factor authentication")}>
+        <form className="auth-form" onSubmit={(event) => void submit(event)}>
+          <p>
+            {t("Enter an authenticator or recovery code to finish signing in.")}
+          </p>
+          {error && (
+            <div className="alert" role="alert">
+              {error}
+            </div>
+          )}
+          <label>
+            {t("Authenticator or recovery code")}
+            <input
+              autoComplete="one-time-code"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              required
+            />
+          </label>
+          <button
+            className="primary-button"
+            disabled={submitting || !code.trim()}
+          >
+            <KeyRound size={17} />
+            {submitting ? t("Working...") : t("Verify and sign in")}
+          </button>
+          <div className="auth-links">
+            <Link to="/login">{t("Back to sign in")}</Link>
+          </div>
+        </form>
+      </AuthFrame>
+    );
   }
 
   const registering = mode === "register";

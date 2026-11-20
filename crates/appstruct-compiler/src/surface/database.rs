@@ -1,5 +1,5 @@
 use super::Located;
-use super::value::{ensure_known_keys, expect_mapping, expect_string, required};
+use super::value::{ensure_known_keys, expect_mapping, expect_string, optional_bool, required};
 use crate::yaml::{MappingEntry, Node};
 use appstruct_ir::Diagnostic;
 use std::collections::BTreeMap;
@@ -8,6 +8,7 @@ pub(super) struct DecodedDatabase {
     pub provider: Located<String>,
     pub mode: Located<String>,
     pub migration: Located<String>,
+    pub allow_unmanaged_tables: bool,
 }
 
 pub(super) fn decode(
@@ -16,9 +17,14 @@ pub(super) fn decode(
 ) -> Result<DecodedDatabase, Diagnostic> {
     let node = required(mapping, "database", &root.span)?;
     let database = expect_mapping(&node.value, "`database`")?;
-    ensure_known_keys(database, &["provider", "dev"], "`database`")?;
+    ensure_known_keys(
+        database,
+        &["provider", "dev", "allow_unmanaged_tables"],
+        "`database`",
+    )?;
     let provider_node = required(database, "provider", &node.value.span)?;
     let provider = expect_string(&provider_node.value, "`database.provider`")?;
+    let allow_unmanaged_tables = optional_bool(database, "allow_unmanaged_tables")?;
     let (mode, migration) = if let Some(dev_node) = database.get("dev") {
         let dev = expect_mapping(&dev_node.value, "`database.dev`")?;
         ensure_known_keys(dev, &["mode", "migration"], "`database.dev`")?;
@@ -62,5 +68,6 @@ pub(super) fn decode(
         provider,
         mode,
         migration,
+        allow_unmanaged_tables,
     })
 }

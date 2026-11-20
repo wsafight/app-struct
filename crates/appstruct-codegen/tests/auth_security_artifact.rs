@@ -25,6 +25,13 @@ fn generated_auth_security_guards_are_emitted() {
     assert!(oauth.contains("a.email_verified_at"));
     assert!(oauth.contains("FOR UPDATE OF a"));
     assert!(oauth.contains("The local account email must be verified before OAuth login"));
+    assert!(oauth.contains("/api/auth/oauth/mfa"));
+    assert!(oauth.contains("/login?oauth_mfa=1"));
+
+    let settings = artifact_text(&artifacts, "backend/src/auth/settings.rs");
+    assert!(settings.contains("APPSTRUCT_AUTH_MFA_PREVIOUS_KEYS"));
+    assert!(settings.contains("/api/auth/settings/export"));
+    assert!(settings.contains("/api/auth/settings/delete"));
     let compact = oauth.split_whitespace().collect::<String>();
     assert!(compact.contains("row.try_get(\"user_id\")?"));
     let account_lock = oauth

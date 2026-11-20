@@ -34,3 +34,19 @@ fn production_backend_template_persists_compilation_cache() {
     assert!(dockerfile.contains("cp /build/target/release/appstruct-generated-server"));
     assert!(dockerfile.contains("COPY --from=backend-build /build/appstruct"));
 }
+
+#[test]
+fn templates_emit_agent_guide_and_track_it_in_delivery_files() {
+    let guide = include_str!("../../templates/common/AGENTS.md");
+    assert!(guide.contains("appstruct check --deny-warnings"));
+    assert!(guide.contains("generated/"));
+    for template in ["minimal", "dashboard", "saas"] {
+        let delivery = super::delivery_files(template).expect("supported template");
+        assert!(
+            delivery
+                .iter()
+                .any(|(path, content)| *path == "AGENTS.md" && *content == guide),
+            "{template} missing AGENTS.md in delivery_files"
+        );
+    }
+}

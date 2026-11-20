@@ -10,11 +10,13 @@ pub const MAX_BULK_ITEMS: usize = 100;
 pub const MAX_CSV_IMPORT_ROWS: usize = 10_000;
 pub const MAX_CSV_EXPORT_ROWS: u64 = 10_000;
 pub const CSV_EXPORT_PAGE_SIZE: u64 = 500;
+pub const DEFAULT_BOUNDED_LIST_COUNT: u64 = 10_000;
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ListQuery {
     pub page: Option<u64>,
     pub page_size: Option<u64>,
+    pub count: Option<String>,
     pub cursor: Option<String>,
     pub limit: Option<u64>,
     pub direction: Option<String>,
@@ -34,6 +36,8 @@ pub enum ListMeta {
         page: u64,
         page_size: u64,
         total: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        total_exact: Option<bool>,
     },
     Cursor {
         limit: u64,

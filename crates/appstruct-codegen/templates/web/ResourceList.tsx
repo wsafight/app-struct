@@ -102,7 +102,7 @@ export function ResourceList({
     },
     onChangeSuccess: () => setRowSelection({}),
   });
-  const { records, total, nextCursor, previousCursor } = controller;
+  const { records, total, totalExact, nextCursor, previousCursor } = controller;
 
   useEffect(() => {
     setSearch(new URLSearchParams(listCacheKey).get("q") ?? "");
@@ -250,7 +250,9 @@ export function ResourceList({
               ? t("{0} records on this page", {
                   0: formatNumber(records.length),
                 })
-              : t("{0} records", { 0: formatNumber(total) })}
+              : totalExact
+                ? t("{0} records", { 0: formatNumber(total) })
+                : t("{0}+ records", { 0: formatNumber(total) })}
           </p>
         </div>
         <div className="toolbar">
@@ -409,7 +411,9 @@ export function ResourceList({
         <span>
           {cursorMode
             ? t("Page {0}", { "0": page })
-            : t("Page {0} of {1}", { "0": page, "1": pages })}
+            : totalExact
+              ? t("Page {0} of {1}", { "0": page, "1": pages })
+              : t("Page {0} of {1}+", { "0": page, "1": pages })}
         </span>
         <div>
           <button
@@ -426,7 +430,13 @@ export function ResourceList({
           </button>
           <button
             className="icon-button"
-            disabled={cursorMode ? !nextCursor : page >= pages}
+            disabled={
+              cursorMode
+                ? !nextCursor
+                : totalExact
+                  ? page >= pages
+                  : page >= 10000 || (page >= pages && records.length < pageSize)
+            }
             onClick={() =>
               cursorMode && nextCursor
                 ? moveCursor(nextCursor, "next", page + 1)

@@ -61,6 +61,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
         entity_id,
         audit_enabled,
         activity_resource,
+        file_create,
         ..
     } = context;
     let fields = entity
@@ -152,6 +153,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                     validate_relations(&state, &context, &active).await?;
                     validate_candidate(&active)?;
                     let model = active.insert(&savepoint).await?;
+                    #file_create
                     state.extensions.#hooks().after_create(&context, &model).await?;
                     #audit
                     #activity

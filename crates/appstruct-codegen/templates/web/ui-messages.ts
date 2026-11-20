@@ -961,4 +961,23 @@ export const chinese: Readonly<Record<string, string>> = {
   "{0} value": "{0}值",
   "{0} bytes": "{0} 字节",
   "{0} by {1}": "{0}（按{1}分组）",
+  "Enter an authenticator or recovery code to finish signing in.":
+    "请输入认证器验证码或恢复码以完成登录。",
+  "Verify and sign in": "验证并登录",
+  "Set a password for direct sign-in, or manage your account with your active session.":
+    "可设置密码以直接登录，或使用当前登录会话管理账户。",
+  "Set password": "设置密码",
+  "Set password and revoke sessions": "设置密码并撤销其他会话",
+  "Personal data and account deletion": "个人数据与注销账户",
+  "Export a JSON archive of your profile, sessions, API tokens, notifications and organization memberships, or permanently delete your account.":
+    "导出包含个人资料、会话、API 令牌、通知和组织成员身份的 JSON 归档，或永久注销您的账户。",
+  "Personal data exported.": "个人数据已导出。",
+  "Export personal data": "导出个人数据",
+  "Delete account": "注销账户",
+  "Delete your account permanently?": "确定永久注销账户？",
+  "This permanently deletes your profile, sessions, API tokens and sole-member workspaces. Shared team ownership must be transferred first.":
+    "此操作将永久删除您的个人资料、登录会话、API 令牌及单人工作空间。多人团队需先转让所有权。",
+  "Delete account permanently": "永久注销账户",
+  "{0}+ records": "超过 {0} 条记录",
+  "Page {0} of {1}+": "第 {0} 页，共 {1}+ 页",
 };

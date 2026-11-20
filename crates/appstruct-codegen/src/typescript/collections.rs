@@ -27,7 +27,9 @@ pub(super) fn client(entity: &EntityIr, path: &str) -> String {
         .join(" | ");
     let model = &entity.rust_name;
     format!(
-        r#"  collection: (id: string, name: {names}, options: RequestOptions = {{}}) =>
+        r#"  createWithCollection: (name: {names}, parent: Create{model}Input, creates: {{ key: string; input: Record<string, unknown> }}[]) =>
+    request<CollectionResponse<{model}>>(`{path}_aggregates/${{encodeURIComponent(name)}}`, {{ method: "POST", body: JSON.stringify({{ parent, creates }}) }}),
+  collection: (id: string, name: {names}, options: RequestOptions = {{}}) =>
     request<CollectionResponse<{model}>>(`{path}${{encodeURIComponent(id)}}/_aggregates/${{encodeURIComponent(name)}}`, options),
   saveCollection: (id: string, name: {names}, revision: number, input: CollectionBatch) =>
     request<CollectionResponse<{model}>>(`{path}${{encodeURIComponent(id)}}/_aggregates/${{encodeURIComponent(name)}}`, {{ method: "POST", headers: {{ "If-Match": `"rev-${{revision}}"` }}, body: JSON.stringify(input) }}),

@@ -88,6 +88,7 @@ fn schema_with_index(
     DatabaseSchema {
         schema_version: crate::SCHEMA_VERSION,
         provider: DatabaseProvider::Postgres,
+        allow_unmanaged_tables: false,
         tables: Vec::new(),
         unique_constraints: Vec::new(),
         indexes: vec![IndexSchema {
@@ -355,6 +356,7 @@ fn empty_schema() -> DatabaseSchema {
     DatabaseSchema {
         schema_version: crate::SCHEMA_VERSION,
         provider: DatabaseProvider::Postgres,
+        allow_unmanaged_tables: false,
         tables: Vec::new(),
         unique_constraints: Vec::new(),
         indexes: Vec::new(),

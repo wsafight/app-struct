@@ -202,6 +202,10 @@ fn template_files(template: ProjectTemplate) -> &'static [TemplateFile] {
 
 const MINIMAL_FILES: &[TemplateFile] = &[
     TemplateFile {
+        path: "AGENTS.md",
+        content: include_str!("../templates/common/AGENTS.md"),
+    },
+    TemplateFile {
         path: "app/web/setup.ts",
         content: include_str!("../templates/common/web-setup.ts"),
     },
@@ -264,6 +268,10 @@ const MINIMAL_FILES: &[TemplateFile] = &[
 ];
 
 const DASHBOARD_FILES: &[TemplateFile] = &[
+    TemplateFile {
+        path: "AGENTS.md",
+        content: include_str!("../templates/common/AGENTS.md"),
+    },
     TemplateFile {
         path: "app/web/setup.ts",
         content: include_str!("../templates/common/web-setup.ts"),
@@ -335,6 +343,10 @@ const DASHBOARD_FILES: &[TemplateFile] = &[
 ];
 
 const SAAS_FILES: &[TemplateFile] = &[
+    TemplateFile {
+        path: "AGENTS.md",
+        content: include_str!("../templates/common/AGENTS.md"),
+    },
     TemplateFile {
         path: "app/web/setup.ts",
         content: include_str!("../templates/common/web-setup.ts"),
@@ -419,7 +431,8 @@ pub(crate) fn delivery_files(template: &str) -> Option<Vec<(&'static str, &'stat
             .filter(|file| {
                 matches!(
                     file.path,
-                    "Dockerfile"
+                    "AGENTS.md"
+                        | "Dockerfile"
                         | ".dockerignore"
                         | "compose.production.yaml"
                         | "rust-toolchain.toml"

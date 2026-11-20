@@ -72,6 +72,7 @@ pub(crate) struct SurfaceRoot {
     pub database_provider: Located<String>,
     pub database_mode: Located<String>,
     pub database_migration: Located<String>,
+    pub database_allow_unmanaged_tables: bool,
     pub preset: Option<SurfacePreset>,
     pub expanded_modules: Option<MappingEntry>,
     pub auth: SurfaceAuth,
@@ -205,6 +206,9 @@ pub(crate) enum SurfaceFieldSemantic {
     Money {
         currency_field: Located<String>,
         fraction_digits: Located<u64>,
+    },
+    File {
+        span: SourceSpan,
     },
 }
 

@@ -46,11 +46,55 @@ pub(super) fn add_paths(paths: &mut Map<String, Value>, ir: &AppIr, parent: &Ent
         }
         let mut writes = parameters.clone();
         writes.push(if_match_parameter());
+        let mut create_parameters = Vec::new();
+        if parent.tenant_scoped {
+            create_parameters.push(tenant::parameter());
+        }
+        let create_body = json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["parent"],
+            "properties": {
+                "parent": schema_ref(&format!("Create{}Input", parent.rust_name)),
+                "creates": {
+                    "type": "array",
+                    "maxItems": aggregate.max_items,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["key", "input"],
+                        "properties": {
+                            "key": { "type": "string", "minLength": 1, "maxLength": 128 },
+                            "input": input(false)
+                        }
+                    }
+                }
+            }
+        });
+        paths.insert(format!("/api/{}/_aggregates/{}", parent.table_name, aggregate.name), json!({
+            "post": {
+                "operationId": format!("create{}WithCollection_{}", parent.rust_name, aggregate.name),
+                "tags": [&parent.rust_name],
+                "parameters": create_parameters,
+                "security": auth::security(&parent.access.create),
+                "requestBody": { "required": true, "content": { "application/json": { "schema": create_body } } },
+                "responses": {
+                    "201": versioned_response("Parent and initial collection committed atomically", &response),
+                    "403": error_response(),
+                    "409": error_response(),
+                    "422": error_response()
+                }
+            }
+        }));
         paths.insert(format!("/api/{}/{{id}}/_aggregates/{}", parent.table_name, aggregate.name), json!({
             "get": { "operationId": format!("read{}Collection_{}", parent.rust_name, aggregate.name), "tags": [&parent.rust_name], "parameters": parameters, "security": auth::security(&parent.access.read), "responses": { "200": versioned_response("Authorized collection", &response), "403": error_response(), "404": error_response(), "422": error_response() } },
             "post": { "operationId": format!("save{}Collection_{}", parent.rust_name, aggregate.name), "tags": [&parent.rust_name], "parameters": writes, "security": auth::security(&parent.access.update), "requestBody": { "required": true, "content": { "application/json": { "schema": batch } } }, "responses": { "200": versioned_response("Collection committed", &response), "403": error_response(), "404": error_response(), "409": error_response(), "412": error_response(), "422": error_response(), "428": error_response() } }
         }));
     }
+    prune_aggregate_child_mutations(paths, ir, parent);
+}
+
+fn prune_aggregate_child_mutations(paths: &mut Map<String, Value>, ir: &AppIr, parent: &EntityIr) {
     if ir
         .entities
         .iter()

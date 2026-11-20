@@ -21,6 +21,7 @@ interface AuthContextValue {
   loading: boolean;
   user: AuthUser | null;
   login(email: string, password: string, code?: string): Promise<void>;
+  completeOAuthMfa(code: string): Promise<void>;
   register(email: string, password: string): Promise<void>;
   logout(): Promise<void>;
 }
@@ -70,6 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       async login(email, password, code) {
         const nextUser = await authApi.login(email, password, code);
+        await queryClient.cancelQueries();
+        clearPrivateQueries(queryClient);
+        queryClient.setQueryData(appQueryKeys.session, nextUser);
+      },
+      async completeOAuthMfa(code) {
+        const nextUser = await authApi.completeOAuthMfa(code);
         await queryClient.cancelQueries();
         clearPrivateQueries(queryClient);
         queryClient.setQueryData(appQueryKeys.session, nextUser);

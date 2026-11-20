@@ -29,6 +29,8 @@ pub(super) fn support(
     let delete_allowed = access::row_allowed(entity, &entity.access.delete)?;
     let creates = super::super::create_values(entity)?;
     let updates = super::super::update_values(entity)?;
+    let (file_create, file_update, file_delete) =
+        super::super::file_field_lifecycle(entity, &primary, &quote! { context })?;
     let input = super::input::support(entity, aggregate);
     let create_event = events(ir, entity, &primary, "create", &quote! { model }, None);
     let update_event = events(
@@ -83,6 +85,7 @@ pub(super) fn support(
             validate_relations(state, context, candidate).await?;
             validate_candidate(&active)?;
             let model = active.insert(context).await?;
+            #file_create
             state.extensions.#hooks().after_create(context, &model).await?;
             #create_event
             Ok(model)
@@ -106,6 +109,7 @@ pub(super) fn support(
             validate_relations(state, context, candidate).await?;
             validate_candidate(&active)?;
             let after = active.update(context).await?;
+            #file_update
             state.extensions.#hooks().after_update(context, &before, &after).await?;
             #update_event
             Ok(after)
@@ -115,7 +119,9 @@ pub(super) fn support(
             if !(#delete_allowed) { return Err(access_denied(context)); }
             if !state.extensions.#policy().can_delete(context, &model).await? { return Err(ApiError::Forbidden); }
             state.extensions.#hooks().before_delete(context, &model).await?;
-            model.clone().delete(context).await?;
+            let deleted = model.clone();
+            deleted.clone().delete(context).await?;
+            #file_delete
             state.extensions.#hooks().after_delete(context, &model).await?;
             #delete_event
             Ok(model)

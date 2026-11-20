@@ -243,6 +243,16 @@ export const authApi = {{
   requestEmailVerification: () => request<void>("/api/auth/email/request", {{ method: "POST" }}),
   verifyEmail: (token: string) => request<void>("/api/auth/email/verify", {{ method: "POST", body: JSON.stringify({{ token }}) }}),
   startOAuth: (provider: string) => {{ window.location.assign(`/api/auth/oauth/${{provider}}/start`); }},
+  completeOAuthMfa: async (code: string) => {{
+    const user = (await request<AuthResponse>("/api/auth/oauth/mfa", {{ method: "POST", body: JSON.stringify({{ code }}) }})).user;
+    broadcastSessionChange();
+    return user;
+  }},
+  clearLocalSession: () => {{
+    resourceEtags.clear();
+    selectTenant();
+    broadcastSessionChange();
+  }},
   listLinkedAccounts: (options: RequestOptions = {{}}) => request<LinkedAccount[]>("/api/auth/accounts", options),
   startOAuthLink: (provider: string) => {{ window.location.assign(`/api/auth/oauth/${{provider}}/link/start`); }},
   unlinkOAuthAccount: (provider: string) => request<void>(`/api/auth/accounts/${{encodeURIComponent(provider)}}`, {{ method: "DELETE" }}),

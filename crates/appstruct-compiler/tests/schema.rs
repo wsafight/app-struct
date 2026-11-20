@@ -11,6 +11,7 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
         "app": { "name": "project-hub" },
         "database": {
             "provider": "postgres",
+            "allow_unmanaged_tables": true,
             "dev": { "mode": "external", "migration": "unmanaged" }
         },
         "preset": { "name": "appstruct/saas", "version": 1 },
@@ -46,7 +47,12 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
         assert!(validator.is_valid(&candidate), "{policy}");
     }
 
-    let domain = json!({
+    let domain = sample_domain_contract();
+    assert!(validator.is_valid(&domain));
+}
+
+fn sample_domain_contract() -> Value {
+    json!({
         "domain": "project",
         "entities": {
             "Project": {
@@ -69,7 +75,11 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
                             "fraction_digits": 2
                         }
                     },
-                    "currency": { "type": "enum", "values": ["CNY", "USD"] }
+                    "currency": { "type": "enum", "values": ["CNY", "USD"] },
+                    "attachment": {
+                        "type": "uuid",
+                        "ui": { "semantic": "file" }
+                    }
                 },
                 "seeds": {
                     "demo": { "id": "00000000-0000-0000-0000-000000000001", "email": "demo@example.com" }
@@ -102,8 +112,7 @@ fn app_spec_schema_accepts_root_and_domain_contracts() {
                 "component": "ProjectDashboard"
             }
         }
-    });
-    assert!(validator.is_valid(&domain));
+    })
 }
 
 #[test]
@@ -152,6 +161,21 @@ fn app_spec_schema_rejects_unknown_keys_and_invalid_access() {
         }
     });
     assert!(!validator.is_valid(&invalid_semantic));
+
+    let invalid_file_semantic = json!({
+        "domain": "project",
+        "entities": {
+            "Project": {
+                "fields": {
+                    "attachment": {
+                        "type": "uuid",
+                        "ui": { "semantic": "file", "currency_field": "currency" }
+                    }
+                }
+            }
+        }
+    });
+    assert!(!validator.is_valid(&invalid_file_semantic));
 
     let invalid_security_headers = json!({
         "version": 1,

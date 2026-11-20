@@ -15,6 +15,65 @@ use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
+pub(super) fn file_field_lifecycle(
+    entity: &EntityIr,
+    primary: &syn::Ident,
+    ctx_expr: &TokenStream,
+) -> Result<(TokenStream, TokenStream, TokenStream), CodegenError> {
+    let entity_id = &entity.id.0;
+    let mut on_create = Vec::new();
+    let mut on_update = Vec::new();
+    let mut on_delete = Vec::new();
+    for field in entity
+        .fields
+        .iter()
+        .filter(|field| matches!(field.ui_semantic, Some(appstruct_ir::FieldSemanticIr::File)))
+    {
+        let ident = parse_ident(&field.rust_name)?;
+        let api_name = &field.api_name;
+        if field.nullable {
+            on_create.push(quote! {
+                if let Some(file_id) = model.#ident {
+                    crate::file_library::retain_field_file(#ctx_expr, file_id, #api_name, #entity_id, &model.#primary.to_string()).await?;
+                }
+            });
+            on_update.push(quote! {
+                if before.#ident != after.#ident {
+                    if let Some(old_id) = before.#ident {
+                        crate::file_library::release_field_file(#ctx_expr, old_id, #entity_id, &after.#primary.to_string()).await?;
+                    }
+                    if let Some(new_id) = after.#ident {
+                        crate::file_library::retain_field_file(#ctx_expr, new_id, #api_name, #entity_id, &after.#primary.to_string()).await?;
+                    }
+                }
+            });
+            on_delete.push(quote! {
+                if let Some(file_id) = deleted.#ident {
+                    crate::file_library::release_field_file(#ctx_expr, file_id, #entity_id, &deleted.#primary.to_string()).await?;
+                }
+            });
+        } else {
+            on_create.push(quote! {
+                crate::file_library::retain_field_file(#ctx_expr, model.#ident, #api_name, #entity_id, &model.#primary.to_string()).await?;
+            });
+            on_update.push(quote! {
+                if before.#ident != after.#ident {
+                    crate::file_library::release_field_file(#ctx_expr, before.#ident, #entity_id, &after.#primary.to_string()).await?;
+                    crate::file_library::retain_field_file(#ctx_expr, after.#ident, #api_name, #entity_id, &after.#primary.to_string()).await?;
+                }
+            });
+            on_delete.push(quote! {
+                crate::file_library::release_field_file(#ctx_expr, deleted.#ident, #entity_id, &deleted.#primary.to_string()).await?;
+            });
+        }
+    }
+    Ok((
+        quote! { #(#on_create)* },
+        quote! { #(#on_update)* },
+        quote! { #(#on_delete)* },
+    ))
+}
+
 #[allow(clippy::too_many_lines)]
 pub(super) fn source(ir: &AppIr, entity: &EntityIr) -> Result<String, CodegenError> {
     let module = parse_ident(&module_name(entity))?;

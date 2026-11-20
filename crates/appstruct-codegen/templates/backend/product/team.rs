@@ -69,6 +69,7 @@ async fn transfer(State(state): State<AppState>, headers: HeaderMap, Json(input)
     let updated = transaction.execute(Sql::bind("UPDATE \"_appstruct_tenant_memberships\" SET role = 'owner' WHERE organization_id = $1 AND user_id = $2", [tenant.into(), input.member_id.into()])).await?;
     if updated.rows_affected() == 0 { return Err(ApiError::NotFound); }
     transaction.execute(Sql::bind("UPDATE \"_appstruct_tenant_memberships\" SET role = 'member' WHERE organization_id = $1 AND user_id = $2", [tenant.into(), actor.id.into()])).await?;
+    transaction.execute(Sql::bind("UPDATE \"_appstruct_tenant_organizations\" SET created_by = $2 WHERE id = $1", [tenant.into(), input.member_id.into()])).await?;
     notify(&transaction, input.member_id, Some(tenant), &format!("owner:{}", uuid::Uuid::now_v7()), "You now own this team", "Review your team and billing settings.", "/team").await?;
     transaction.commit().await?;
     Ok(StatusCode::NO_CONTENT)

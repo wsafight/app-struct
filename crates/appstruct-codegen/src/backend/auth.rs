@@ -85,6 +85,8 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
     let billing = ir.billing.enabled;
     let tenant = ir.tenant.enabled;
     let audit = ir.audit.enabled;
+    let report = ir.report.enabled;
+    let activity = ir.activity.enabled;
     let resources = ir.entities.iter().map(|entity| entity.id.0.as_str());
     let default_role = ir
         .auth
@@ -106,6 +108,10 @@ fn config_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub const BILLING_ENABLED: bool = #billing;
         pub const TENANT_ENABLED: bool = #tenant;
         pub const AUDIT_ENABLED: bool = #audit;
+        #[allow(dead_code)]
+        pub const REPORT_ENABLED: bool = #report;
+        #[allow(dead_code)]
+        pub const ACTIVITY_ENABLED: bool = #activity;
         pub const SAVED_VIEW_RESOURCES: &[&str] = &[#(#resources),*];
         pub const DEFAULT_ROLE: &str = #default_role;
         pub const USER_TABLE: &str = #user_table;

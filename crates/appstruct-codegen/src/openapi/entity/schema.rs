@@ -147,6 +147,7 @@ fn list_response_schema(entity: &EntityIr) -> Value {
                             "page": { "type": "integer", "minimum": 1 },
                             "page_size": { "type": "integer", "minimum": 1, "maximum": 100 },
                             "total": { "type": "integer", "minimum": 0 },
+                            "total_exact": { "type": "boolean" },
                         }
                     },
                     {

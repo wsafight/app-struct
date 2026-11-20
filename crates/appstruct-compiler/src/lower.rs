@@ -113,6 +113,20 @@ pub(crate) fn build_ir(
             )
         }));
     }
+    if (!file.enabled || !auth.enabled)
+        && entities.iter().any(|entity| {
+            entity
+                .fields
+                .iter()
+                .any(|field| matches!(field.ui_semantic, Some(appstruct_ir::FieldSemanticIr::File)))
+        })
+    {
+        diagnostics.push(Diagnostic::error(
+            "AS2020",
+            "the file UI semantic requires both `modules.auth` and `modules.file` to be enabled",
+            root.app_name.span.clone(),
+        ));
+    }
     let activity = lower_activity(
         &root.activity,
         &auth,
@@ -247,6 +261,7 @@ fn lower_database(root: &SurfaceRoot) -> DatabaseIr {
             "unmanaged" => DatabaseMigrationPolicy::Unmanaged,
             _ => DatabaseMigrationPolicy::Prompt,
         },
+        allow_unmanaged_tables: root.database_allow_unmanaged_tables,
     }
 }
 

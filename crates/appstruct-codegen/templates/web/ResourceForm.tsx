@@ -5,14 +5,24 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
+  Download,
+  Plus,
   RefreshCw,
   Save,
+  Trash2,
+  Upload,
 } from "lucide-react";
-import { useMemo, type ComponentType } from "react";
+import { useMemo, useState, type ComponentType } from "react";
 import { AsyncState } from "../components/AsyncState";
+import {
+  collectionBatch,
+  collectionRow,
+  type CollectionRow,
+} from "../collection-draft";
 import { useResourceFormController } from "../controller";
 import { inputType, type FormValue } from "../field-values";
 import { ConfirmDialog } from "../components/Dialog";
+import { fileFieldApi } from "../generated/client";
 import type {
   AppStructRegistry,
   FieldComponentProps,
@@ -25,7 +35,15 @@ import type {
   ResourceDefinition,
   ResourceRecord,
 } from "../resource";
-import { errorMessage, isSemanticCompanion, useCanAccess } from "../resource";
+import {
+  canAccessRule,
+  errorMessage,
+  fieldErrors,
+  isSemanticCompanion,
+  triggerDownload,
+  useCanAccess,
+  useResourceActor,
+} from "../resource";
 import { useRelationOptions } from "../relation-options";
 
 export function ResourceForm({
@@ -131,11 +149,72 @@ function ResourceFormEditor({
   refetchRecord(): Promise<ResourceRecord | undefined>;
 }) {
   const navigate = useNavigate();
+  const actor = useResourceActor();
   const editing = id !== undefined;
+  const createCollection = !editing ? resource.collections?.[0] : undefined;
+  const childResource = createCollection
+    ? resources.find((item) => item.id === createCollection.child)
+    : undefined;
+  const childFields = useMemo(
+    () =>
+      childResource && createCollection
+        ? childResource.fields.filter(
+            (field) =>
+              !field.readOnly &&
+              !field.primaryKey &&
+              field.name !== createCollection.relation &&
+              canAccessRule(field.readAccess ?? { mode: "public" }, actor) &&
+              canAccessRule(field.writeAccess ?? { mode: "public" }, actor),
+          )
+        : [],
+    [actor, childResource, createCollection],
+  );
+  const [initialRows, setInitialRows] = useState<CollectionRow[]>([]);
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
+  const collectionDraft = useMemo(
+    () =>
+      childResource
+        ? collectionBatch(initialRows, [], childResource, childFields)
+        : null,
+    [childFields, childResource, initialRows],
+  );
   const controller = useResourceFormController(resource, {
     id,
     initialRecord,
     refetchRecord,
+    createRecord:
+      createCollection &&
+      resource.api.createWithCollection &&
+      initialRows.length > 0
+        ? async (input) => {
+            if (
+              collectionDraft &&
+              Object.keys(collectionDraft.errors).length > 0
+            ) {
+              setRowErrors(collectionDraft.errors);
+              throw new Error(t("One or more fields are invalid"));
+            }
+            setRowErrors({});
+            try {
+              const result = await resource.api.createWithCollection!(
+                createCollection.name,
+                input,
+                collectionDraft?.batch.creates ?? [],
+              );
+              return result.parent;
+            } catch (reason) {
+              setRowErrors(
+                Object.fromEntries(
+                  Object.entries(fieldErrors(reason)).map(([key, val]) => [
+                    key.replace(/^creates\./, ""),
+                    val,
+                  ]),
+                ),
+              );
+              throw reason;
+            }
+          }
+        : undefined,
     onSaved: async () => {
       await navigate(
         id
@@ -296,7 +375,9 @@ function ResourceFormEditor({
           selector={(state) => [state.isDirty, state.isSubmitting] as const}
         >
           {([dirty, submitting]) => (
-            <UnsavedChangesGuard enabled={dirty && !submitting} />
+            <UnsavedChangesGuard
+              enabled={(dirty || initialRows.length > 0) && !submitting}
+            />
           )}
         </form.Subscribe>
         <fieldset
@@ -305,10 +386,11 @@ function ResourceFormEditor({
           style={{ border: 0, padding: 0, margin: 0 }}
         >
           {renderedFields.map((field) => {
-            const companion = field.semantic
+            const moneySemantic =
+              field.semantic?.kind === "money" ? field.semantic : undefined;
+            const companion = moneySemantic
               ? fields.find(
-                  (candidate) =>
-                    candidate.name === field.semantic?.currencyField,
+                  (candidate) => candidate.name === moneySemantic.currencyField,
                 )
               : undefined;
             return (
@@ -370,6 +452,123 @@ function ResourceFormEditor({
             );
           })}
         </fieldset>
+        {createCollection &&
+          childResource &&
+          resource.api.createWithCollection &&
+          canAccessRule(childResource.access.create, actor) && (
+            <section
+              className="aggregate-section"
+              aria-label={childResource.label}
+            >
+              <div className="section-heading">
+                <h2>{childResource.label}</h2>
+                {initialRows.length < createCollection.maxItems && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      setInitialRows((current) => [
+                        ...current,
+                        collectionRow(childFields, childResource),
+                      ])
+                    }
+                  >
+                    <Plus size={16} /> {t("Add line")}
+                  </button>
+                )}
+              </div>
+              {initialRows.map((row, index) => (
+                <fieldset className="aggregate-row" key={row.key}>
+                  <legend>
+                    {t("Line")}
+                    {index + 1}
+                  </legend>
+                  <div className="aggregate-row-fields">
+                    {childFields
+                      .filter((field) => !isSemanticCompanion(field, childFields))
+                      .map((field) => {
+                        const companion =
+                          field.semantic?.kind === "money"
+                            ? childFields.find(
+                                (candidate) =>
+                                  candidate.name ===
+                                  field.semantic!.currencyField,
+                              )
+                            : undefined;
+                        return (
+                          <FieldControl
+                            key={field.name}
+                            idPrefix={`${createCollection.name}-${row.key}-`}
+                            field={field}
+                            resources={resources}
+                            registry={registry}
+                            value={row.values[field.name]}
+                            error={rowErrors[`${row.key}.${field.name}`]}
+                            companion={
+                              companion
+                                ? {
+                                    field: companion,
+                                    value: row.values[companion.name],
+                                    error:
+                                      rowErrors[`${row.key}.${companion.name}`],
+                                    onBlur: () => undefined,
+                                    onChange: (next) =>
+                                      setInitialRows((current) =>
+                                        current.map((item) =>
+                                          item.key === row.key
+                                            ? {
+                                                ...item,
+                                                values: {
+                                                  ...item.values,
+                                                  [companion.name]: next,
+                                                },
+                                              }
+                                            : item,
+                                        ),
+                                      ),
+                                  }
+                                : undefined
+                            }
+                            onBlur={() => undefined}
+                            onChange={(next) => {
+                              setInitialRows((current) =>
+                                current.map((item) =>
+                                  item.key === row.key
+                                    ? {
+                                        ...item,
+                                        values: {
+                                          ...item.values,
+                                          [field.name]: next,
+                                        },
+                                      }
+                                    : item,
+                                ),
+                              );
+                              setRowErrors((current) => {
+                                const copy = { ...current };
+                                delete copy[`${row.key}.${field.name}`];
+                                return copy;
+                              });
+                            }}
+                          />
+                        );
+                      })}
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() =>
+                      setInitialRows((current) =>
+                        current.filter((item) => item.key !== row.key),
+                      )
+                    }
+                  >
+                    <Trash2 size={15} /> {t("Delete")}
+                  </button>
+                </fieldset>
+              ))}
+            </section>
+          )}
         <div className="form-actions">
           <Link className="secondary-button" to={`/${resource.slug}`}>
             {uiText("cancel")}
@@ -407,6 +606,106 @@ export function UnsavedChangesGuard({ enabled }: { enabled: boolean }) {
   );
 }
 
+function FileFieldControl({
+  id,
+  field,
+  value,
+  error,
+  onBlur,
+  onChange,
+}: {
+  id: string;
+  field: FieldDefinition;
+  value: FormValue;
+  error?: string;
+  onBlur(): void;
+  onChange(value: FormValue): void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [uploadError, setUploadError] = useState("");
+  const currentId = String(value ?? "").trim();
+  const displayError = uploadError || error;
+  return (
+    <div className="field file-field">
+      <label htmlFor={id}>
+        {field.label}
+        {field.required && <span aria-hidden> *</span>}
+      </label>
+      <div className="row-actions">
+        <input
+          id={id}
+          type="file"
+          disabled={uploading || !fileFieldApi.enabled}
+          accept={
+            fileFieldApi.allowedContentTypes.length > 0
+              ? fileFieldApi.allowedContentTypes.join(",")
+              : undefined
+          }
+          onBlur={onBlur}
+          aria-invalid={Boolean(displayError)}
+          aria-describedby={displayError ? `${id}-error` : undefined}
+          onChange={(event) => {
+            const selected = event.target.files?.[0];
+            event.target.value = "";
+            if (!selected) return;
+            setUploading(true);
+            setProgress(0);
+            setUploadError("");
+            void fileFieldApi
+              .upload(selected, setProgress)
+              .then((uploaded) => {
+                onChange(uploaded.id);
+              })
+              .catch((reason: unknown) => {
+                setUploadError(errorMessage(reason));
+              })
+              .finally(() => {
+                setUploading(false);
+              });
+          }}
+        />
+        {uploading && (
+          <span role="status">
+            <Upload size={14} /> {progress}%
+          </span>
+        )}
+        {currentId && (
+          <>
+            <code>{currentId}</code>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() =>
+                void fileFieldApi
+                  .download(currentId)
+                  .then((blob) => triggerDownload(blob, `${field.name}-${currentId}`))
+                  .catch((reason: unknown) => setUploadError(errorMessage(reason)))
+              }
+            >
+              <Download size={14} /> {t("Download")}
+            </button>
+            {!field.required && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => onChange("")}
+              >
+                {t("Clear")}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      {displayError && (
+        <small id={`${id}-error`} className="field-error">
+          {displayError}
+        </small>
+      )}
+    </div>
+  );
+}
+
 export function FieldControl({
   idPrefix = "",
   field,
@@ -435,6 +734,18 @@ export function FieldControl({
   onChange(value: FormValue): void;
 }) {
   const id = `${idPrefix}field-${field.name}`;
+  if (field.semantic?.kind === "file") {
+    return (
+      <FileFieldControl
+        id={id}
+        field={field}
+        value={value}
+        error={error}
+        onBlur={onBlur}
+        onChange={onChange}
+      />
+    );
+  }
   if (field.semantic?.kind === "money") {
     if (!companion) {
       return (

@@ -28,9 +28,14 @@ fn operations_demo_generation_is_deterministic_and_combined() {
     assert!(runtime.contains("activity::router()"));
     let order = artifact_text(&first, "backend/src/api/order.rs");
     assert!(order.contains("workflow.{transition}"));
+    assert!(order.contains("create_with_aggregate_lines"));
+    assert!(order.contains("/_aggregates/lines"));
     assert!(order.contains("record_system_event"));
     assert!(order.contains("let access_condition = Condition::all()"));
     assert!(order.contains("Column::TenantId.eq(context.require_tenant()?)"));
+    let openapi: serde_json::Value =
+        serde_json::from_str(artifact_text(&first, "openapi/openapi.json")).unwrap();
+    assert!(openapi["paths"]["/api/orders/_aggregates/lines"]["post"].is_object());
     let sql = artifact_text(&first, "database/0001_initial.sql");
     assert!(sql.contains("_appstruct_jobs"));
     assert!(sql.contains("_appstruct_files"));
@@ -45,6 +50,7 @@ fn operations_demo_generation_is_deterministic_and_combined() {
     let client = artifact_text(&first, "web/src/generated/client.ts");
     assert_eq!(client.matches("export const productApi = {").count(), 1);
     assert!(client.contains("export const productResourceApi = {"));
+    assert!(client.contains("createWithCollection: (name: \"lines\""));
     let resources = artifact_text(&first, "web/src/generated/resources.ts");
     assert!(resources.contains("import { productResourceApi } from \"./client\";"));
     assert!(resources.contains("api: productResourceApi as unknown as ResourceApi"));

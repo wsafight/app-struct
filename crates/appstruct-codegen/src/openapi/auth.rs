@@ -119,6 +119,31 @@ fn add_account_paths(paths: &mut Map<String, Value>, schemas: &mut Map<String, V
             "responses": { "204": { "description": "OAuth account unlinked" }, "401": error_response(), "404": error_response(), "409": error_response() }
         }
     }));
+    paths.insert("/api/auth/oauth/mfa".to_owned(), json!({
+        "post": {
+            "operationId": "completeOAuthMfa",
+            "tags": ["Auth"],
+            "requestBody": {
+                "required": true,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "required": ["code"],
+                            "additionalProperties": false,
+                            "properties": { "code": { "type": "string", "writeOnly": true } }
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": response("Authenticated session after OAuth MFA verification", &schema_ref("AuthResponse")),
+                "400": error_response(),
+                "401": error_response(),
+                "429": error_response()
+            }
+        }
+    }));
 }
 
 fn add_token_paths(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {

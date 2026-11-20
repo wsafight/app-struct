@@ -68,6 +68,11 @@
             "provider": {
               "const": "postgres"
             },
+            "allow_unmanaged_tables": {
+              "type": "boolean",
+              "default": false,
+              "description": "Allow unimported PostgreSQL tables to coexist in the same schema during baseline, status, and apply."
+            },
             "dev": {
               "type": "object",
               "properties": {
@@ -1137,7 +1142,10 @@
               "$ref": "#/$defs/typeName"
             },
             "semantic": {
-              "const": "money"
+              "enum": [
+                "money",
+                "file"
+              ]
             },
             "currency_field": {
               "$ref": "#/$defs/fieldName"
@@ -1176,6 +1184,11 @@
               }
             },
             {
+              "properties": {
+                "semantic": {
+                  "const": "money"
+                }
+              },
               "required": [
                 "semantic",
                 "currency_field"
@@ -1183,6 +1196,35 @@
               "not": {
                 "required": [
                   "component"
+                ]
+              }
+            },
+            {
+              "properties": {
+                "semantic": {
+                  "const": "file"
+                }
+              },
+              "required": [
+                "semantic"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "component"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "currency_field"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "fraction_digits"
+                    ]
+                  }
                 ]
               }
             }

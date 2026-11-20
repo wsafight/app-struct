@@ -32,6 +32,7 @@ fn renders_identity_enum_json_and_set_null_foreign_keys() {
     let schema = DatabaseSchema {
         schema_version: crate::SCHEMA_VERSION,
         provider: appstruct_ir::DatabaseProvider::Postgres,
+        allow_unmanaged_tables: false,
         tables: vec![TableSchema {
             id: "items".to_owned(),
             name: "items".to_owned(),

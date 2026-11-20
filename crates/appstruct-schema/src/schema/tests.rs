@@ -5,6 +5,7 @@ fn empty() -> DatabaseSchema {
     DatabaseSchema {
         schema_version: SCHEMA_VERSION,
         provider: DatabaseProvider::Postgres,
+        allow_unmanaged_tables: false,
         tables: Vec::new(),
         unique_constraints: Vec::new(),
         indexes: Vec::new(),

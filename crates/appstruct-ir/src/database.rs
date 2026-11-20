@@ -6,6 +6,8 @@ pub struct DatabaseIr {
     pub provider: DatabaseProvider,
     pub dev_mode: DatabaseDevMode,
     pub dev_migration: DatabaseMigrationPolicy,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_unmanaged_tables: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

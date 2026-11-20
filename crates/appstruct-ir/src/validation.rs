@@ -134,7 +134,7 @@ fn validate_entities(
                 validate_field_access_rule(rule, &format!("{field_path}.write_access"), errors);
             }
         }
-        validate_field_semantics(entity, &path, errors);
+        validate_field_semantics(ir, entity, &path, errors);
         for (name, rule) in entity_access(entity) {
             validate_access_rule(rule, entity, &format!("{path}.access.{name}"), errors);
         }

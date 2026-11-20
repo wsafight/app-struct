@@ -1,7 +1,8 @@
 import { t } from "../ui";
-import { ArrowLeft, Edit3 } from "lucide-react";
+import { ArrowLeft, Download, Edit3 } from "lucide-react";
 import { AsyncState } from "../components/AsyncState";
 import { useResourceDetailController } from "../controller";
+import { fileFieldApi } from "../generated/client";
 import { Link, useParams } from "../navigation";
 import { RelationValue, recordLabel, useRelationRecords } from "../relations";
 import type { ResourceDefinition } from "../resource";
@@ -11,6 +12,7 @@ import {
   canAccessRule,
   errorMessage,
   isSemanticCompanion,
+  triggerDownload,
   useResourceActor,
 } from "../resource";
 import { formatFieldValue } from "./ResourceList";
@@ -100,6 +102,25 @@ export function ResourceDetail({
                         resources={resources}
                         records={relations}
                       />
+                    ) : field.semantic?.kind === "file" &&
+                      record[field.name] ? (
+                      <span className="row-actions">
+                        <code>{String(record[field.name])}</code>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => {
+                            const fileId = String(record[field.name]);
+                            void fileFieldApi
+                              .download(fileId)
+                              .then((blob) =>
+                                triggerDownload(blob, `${field.name}-${fileId}`),
+                              );
+                          }}
+                        >
+                          <Download size={14} /> {t("Download")}
+                        </button>
+                      </span>
                     ) : (
                       formatFieldValue(record, field)
                     )}

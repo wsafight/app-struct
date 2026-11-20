@@ -36,6 +36,7 @@ fn notes_schema() -> DatabaseSchema {
     DatabaseSchema {
         schema_version: appstruct_migrate::SCHEMA_VERSION,
         provider: DatabaseProvider::Postgres,
+        allow_unmanaged_tables: false,
         tables: vec![TableSchema {
             id: "notes".to_owned(),
             name: "notes".to_owned(),
@@ -490,4 +491,53 @@ fn gin_indexes_round_trip_and_detect_method_and_operator_class_drift() {
         status_project(project.path(), &url).unwrap().drift,
         DriftStatus::Clean
     );
+}
+
+#[test]
+fn allow_unmanaged_tables_permits_partial_baseline_while_detecting_managed_drift() {
+    let Some(url) = database_url() else {
+        return;
+    };
+    let _guard = lock_database();
+    reset_public(&url);
+
+    let mut schema = notes_schema();
+    let initial = initial_migration(&schema);
+    let mut client = connect_database(&url).unwrap();
+    client.batch_execute(&initial).unwrap();
+    client
+        .batch_execute(
+            "CREATE TABLE legacy_events (id BIGINT PRIMARY KEY, code TEXT NOT NULL UNIQUE); CREATE INDEX idx_legacy_code ON legacy_events (code);",
+        )
+        .unwrap();
+
+    // Strict mode blocks baseline when unimported legacy tables exist:
+    let strict_project = write_project(&schema);
+    let strict_preview =
+        appstruct_migrate::inspect_baseline(strict_project.path(), &url, &schema).unwrap();
+    assert!(matches!(
+        strict_preview.drift,
+        DriftStatus::Detected(ref issues) if issues.iter().any(|issue| issue.contains("unexpected table `legacy_events`"))
+    ));
+
+    // Enabling allow_unmanaged_tables allows baseline and status while keeping managed checks strict:
+    schema.allow_unmanaged_tables = true;
+    let partial_project = write_project(&schema);
+    let baseline =
+        appstruct_migrate::baseline_project(partial_project.path(), &url, &schema).unwrap();
+    assert!(baseline.registered);
+    assert_eq!(baseline.drift, DriftStatus::Clean);
+    assert_eq!(
+        status_project(partial_project.path(), &url).unwrap().drift,
+        DriftStatus::Clean
+    );
+
+    // Drift on a managed table is still caught:
+    client
+        .batch_execute("ALTER TABLE notes ADD COLUMN unexpected_col TEXT")
+        .unwrap();
+    assert!(matches!(
+        status_project(partial_project.path(), &url).unwrap().drift,
+        DriftStatus::Detected(ref issues) if issues.iter().any(|issue| issue.contains("unexpected column `notes.unexpected_col`"))
+    ));
 }

@@ -334,6 +334,57 @@ async fn owned_key(
     Ok(row.try_get("object_key")?)
 }
 
+#[allow(dead_code)]
+pub async fn retain_field_file(
+    context: &RequestContext<'_>,
+    file_id: uuid::Uuid,
+    field: &str,
+    entity: &str,
+    record_id: &str,
+) -> Result<(), ApiError> {
+    let pattern = format!("{}%", prefix(context)?);
+    let row = context
+        .fetch_optional(Sql::bind(
+            "SELECT object_key FROM \"_appstruct_files\" WHERE id = $1 AND object_key LIKE $2 AND tenant_id IS NOT DISTINCT FROM $3 AND NOT deleting",
+            [file_id.into(), pattern.into(), context.tenant().into()],
+        ))
+        .await?
+        .ok_or_else(|| {
+            ApiError::Validation(vec![crate::FieldViolation {
+                field: field.to_owned(),
+                message: "File does not exist in the current workspace".to_owned(),
+            }])
+        })?;
+    let key: String = row.try_get("object_key")?;
+    context
+        .retain_file(&key, entity, record_id)
+        .await
+        .map_err(file_error)
+}
+
+#[allow(dead_code)]
+pub async fn release_field_file(
+    context: &RequestContext<'_>,
+    file_id: uuid::Uuid,
+    entity: &str,
+    record_id: &str,
+) -> Result<(), ApiError> {
+    let row = context
+        .fetch_optional(Sql::bind(
+            "SELECT object_key FROM \"_appstruct_files\" WHERE id = $1 AND tenant_id IS NOT DISTINCT FROM $2",
+            [file_id.into(), context.tenant().into()],
+        ))
+        .await?;
+    if let Some(row) = row {
+        let key: String = row.try_get("object_key")?;
+        context
+            .release_file(&key, entity, record_id)
+            .await
+            .map_err(file_error)?;
+    }
+    Ok(())
+}
+
 async fn download_file(
     State(state): State<AppState>,
     headers: HeaderMap,

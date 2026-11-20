@@ -27,15 +27,22 @@ pub(super) fn detect(
     let actual_tables = tables(client)?;
     let actual_columns = columns(client)?;
     let key_constraints = constraints::key_constraints(client)?;
-    let actual_unique_constraints = constraints::unique_constraints(client)?;
-    let actual_indexes = constraints::indexes(client)?;
-    let actual_foreign_keys = constraints::foreign_keys(client)?;
+    let mut actual_unique_constraints = constraints::unique_constraints(client)?;
+    let mut actual_indexes = constraints::indexes(client)?;
+    let mut actual_foreign_keys = constraints::foreign_keys(client)?;
     let checks = check_constraints(client)?;
     let expected_tables = expected
         .tables
         .iter()
         .map(|table| table.name.as_str())
         .collect::<BTreeSet<_>>();
+    if expected.allow_unmanaged_tables {
+        actual_unique_constraints
+            .retain(|constraint| expected_tables.contains(constraint.table.as_str()));
+        actual_indexes.retain(|index| expected_tables.contains(index.table.as_str()));
+        actual_foreign_keys
+            .retain(|foreign_key| expected_tables.contains(foreign_key.source_table.as_str()));
+    }
     let mut issues = Vec::new();
 
     for table in &expected.tables {
@@ -51,9 +58,11 @@ pub(super) fn detect(
             &mut issues,
         );
     }
-    for table in actual_tables {
-        if table != HISTORY_TABLE && !expected_tables.contains(table.as_str()) {
-            issues.push(format!("unexpected table `{table}`"));
+    if !expected.allow_unmanaged_tables {
+        for table in actual_tables {
+            if table != HISTORY_TABLE && !expected_tables.contains(table.as_str()) {
+                issues.push(format!("unexpected table `{table}`"));
+            }
         }
     }
     compare_unique_constraints(expected, &actual_unique_constraints, &mut issues);

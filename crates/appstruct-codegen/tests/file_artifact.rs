@@ -29,6 +29,13 @@ fn assert_provider(
 ) {
     let mut ir = ir.clone();
     ir.file.provider = provider;
+    let project = ir
+        .entities
+        .iter_mut()
+        .find(|entity| entity.rust_name == "Project")
+        .unwrap();
+    let entity_id = project.id.clone();
+    project.fields.push(attachment_field(entity_id));
     let artifacts = plan(&ir).unwrap();
     let name = match provider {
         FileProviderIr::Local => "local",
@@ -89,6 +96,13 @@ fn assert_provider(
     assert!(library.contains("publish_prepared(&transaction"));
     assert!(library.contains("Body::from_stream(bytes)"));
     assert!(library.contains("Upload size differs from the declared size"));
+    assert!(library.contains("pub async fn retain_field_file("));
+    assert!(library.contains("pub async fn release_field_file("));
+    let project_api = artifact_text(&artifacts, "backend/src/api/project.rs");
+    assert!(project_api.contains("crate::file_library::retain_field_file("));
+    assert!(project_api.contains("crate::file_library::release_field_file("));
+    let resources = artifact_text(&artifacts, "web/src/generated/resources.ts");
+    assert!(resources.contains("kind: \"file\""));
     assert_eq!(file.contains("signed_url("), provider == FileProviderIr::S3);
 
     let manifest = root.join("generated/backend/Cargo.toml");
@@ -99,6 +113,32 @@ fn assert_provider(
         "{name}: {}",
         String::from_utf8_lossy(&checked.stderr)
     );
+}
+
+fn attachment_field(entity_id: appstruct_ir::EntityId) -> appstruct_ir::FieldIr {
+    appstruct_ir::FieldIr {
+        id: appstruct_ir::FieldId("Project::attachment".to_owned()),
+        entity: entity_id,
+        rust_name: "attachment".to_owned(),
+        api_name: "attachment".to_owned(),
+        column_name: "attachment".to_owned(),
+        ty: appstruct_ir::FieldTypeIr::Uuid,
+        nullable: true,
+        primary_key: false,
+        unique: false,
+        generated: None,
+        default: None,
+        validation: appstruct_ir::ValidationIr::default(),
+        capabilities: appstruct_ir::FieldCapabilities {
+            filterable: false,
+            sortable: false,
+            searchable: false,
+        },
+        read_access: None,
+        write_access: None,
+        ui_component: None,
+        ui_semantic: Some(appstruct_ir::FieldSemanticIr::File),
+    }
 }
 
 fn artifact_text<'artifacts>(artifacts: &'artifacts [Artifact], path: &str) -> &'artifacts str {

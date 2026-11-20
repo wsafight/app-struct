@@ -50,6 +50,8 @@ fn relation_filter_applies_target_access_and_tenant_scope() {
 pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     let client = artifact_text(artifacts, "web/src/generated/client.ts");
     assert!(client.contains("ListResponse"));
+    assert!(client.contains("count?: \"exact\" | \"bounded\""));
+    assert!(client.contains("total_exact?: boolean"));
     assert!(client.contains("CursorListResponse"));
     assert!(client.contains("ListResponse<Partial<Project>>"));
     assert!(client.contains("CursorListResponse<Partial<Project>>"));
@@ -73,6 +75,9 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     assert!(project_api.contains("LikeExpr::new(pattern.clone())"));
     assert!(project_api.contains("list_page_is_valid"));
     assert!(project_api.contains("MAX_LIST_PAGE"));
+    assert!(project_api.contains("bounded_count"));
+    assert!(project_api.contains("DEFAULT_BOUNDED_LIST_COUNT"));
+    assert!(project_api.contains("APPSTRUCT_LIST_COUNT_LIMIT"));
     let resource_runtime = artifact_text(artifacts, "backend/core/src/resource.rs");
     assert!(resource_runtime.contains("URL_SAFE_NO_PAD"));
     assert!(project_api.contains("decode::<project::Model>"));
@@ -98,7 +103,10 @@ pub(super) fn assert_query_contract(artifacts: &[Artifact]) {
     assert!(task_api.contains("limit` must be between 1 and 500"));
     assert!(task_api.contains("order` must be `asc` or `desc"));
     assert!(task_api.contains("aggregate metric `{metric}` is not allowed"));
+    assert_query_openapi(artifacts);
+}
 
+fn assert_query_openapi(artifacts: &[Artifact]) {
     let openapi: Value =
         serde_json::from_str(artifact_text(artifacts, "openapi/openapi.json")).unwrap();
     let meta = &openapi["components"]["schemas"]["ProjectListResponse"]["properties"]["meta"];

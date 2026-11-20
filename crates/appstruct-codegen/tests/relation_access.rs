@@ -34,7 +34,7 @@ fn relation_write_generators_share_target_read_validation() {
     assert_eq!(compact.matches("asyncfnvalidate_relations(").count(), 1);
     assert_eq!(
         compact
-            .matches("validate_relations(state,context,&candidate).await?;")
+            .matches("validate_relations(state,context,candidate).await?;")
             .count(),
         2
     );

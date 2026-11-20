@@ -37,6 +37,22 @@ pub(crate) fn validate_field_options(
             ));
         }
     }
+    if let Some(crate::surface::SurfaceFieldSemantic::File { span }) = &field.ui_semantic {
+        if !matches!(field_type, FieldTypeIr::Uuid) {
+            diagnostics.push(Diagnostic::error(
+                "AS2020",
+                "the file UI semantic is valid only for uuid fields",
+                span.clone(),
+            ));
+        }
+        if field.generated.is_some() || field.flags.primary_key() {
+            diagnostics.push(Diagnostic::error(
+                "AS2020",
+                "the file UI semantic cannot be used on primary-key or generated fields",
+                span.clone(),
+            ));
+        }
+    }
     if let Some(component) = &field.ui_component
         && !is_rust_type_name(&component.value)
     {

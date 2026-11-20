@@ -49,6 +49,7 @@ fn client_source(ir: &AppIr) -> String {
     if ir.file.enabled && ir.auth.enabled {
         sections.push(file_library::source(ir));
     }
+    sections.push(file_field_runtime_source(ir));
     if ir.tenant.enabled {
         sections.push(tenant_source());
     }
@@ -139,6 +140,39 @@ fn runtime_source() -> String {
         bulk::runtime_source(),
         list_runtime_source()
     )
+}
+
+fn file_field_runtime_source(ir: &AppIr) -> String {
+    let enabled = ir.file.enabled && ir.auth.enabled;
+    let max_bytes = ir.file.max_bytes;
+    let allowed = serde_json::to_string(&ir.file.allowed_content_types).unwrap();
+    if enabled {
+        format!(
+            r"export const fileFieldApi = {{
+  enabled: true,
+  maxBytes: {max_bytes},
+  allowedContentTypes: {allowed} as readonly string[],
+  upload: (file: File, onProgress?: (percentage: number) => void, signal?: AbortSignal) => fileApi.upload(file, onProgress, signal),
+  download: (id: string) => fileApi.download(id),
+}} as const;
+"
+        )
+    } else {
+        format!(
+            r#"export const fileFieldApi = {{
+  enabled: false,
+  maxBytes: {max_bytes},
+  allowedContentTypes: {allowed} as readonly string[],
+  upload: async (_file: File, _onProgress?: (percentage: number) => void, _signal?: AbortSignal): Promise<{{ id: string; original_name: string }}> => {{
+    throw new Error("File module is disabled");
+  }},
+  download: async (_id: string): Promise<Blob> => {{
+    throw new Error("File module is disabled");
+  }},
+}} as const;
+"#
+        )
+    }
 }
 fn request_runtime_source() -> String {
     format!(
@@ -271,6 +305,7 @@ function cookieValue(name: string): string | undefined {
 "#
 }
 
+#[allow(clippy::too_many_lines)]
 fn list_runtime_source() -> &'static str {
     r#"export type FilterOperator = "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "in" | "not_in" | "is_null" | "not_null" | "contains" | "starts_with" | "ends_with" | "json_contains" | "json_contained_by" | "json_key";
 export type FilterExpression = { all: FilterExpression[] } | { any: FilterExpression[] } | { field: string; op: FilterOperator; values?: string[] };
@@ -285,6 +320,7 @@ export interface FilterQuery {
 export interface ListQuery extends FilterQuery {
   page?: number;
   page_size?: number;
+  count?: "exact" | "bounded";
   sort?: string;
   fields?: string[];
 }
@@ -308,7 +344,7 @@ export interface AggregateQuery extends FilterQuery {
 
 export interface ListResponse<T> {
   data: T[];
-  meta: { page: number; page_size: number; total: number };
+  meta: { page: number; page_size: number; total: number; total_exact?: boolean };
 }
 
 export interface CursorListResponse<T> {
@@ -338,6 +374,7 @@ function listPath(path: string, query: ListQuery | CursorListQuery): string {
   const params = new URLSearchParams();
   if ("page" in query && query.page) params.set("page", String(query.page));
   if ("page_size" in query && query.page_size) params.set("page_size", String(query.page_size));
+  if ("count" in query && query.count) params.set("count", query.count);
   if ("sort" in query && query.sort) params.set("sort", query.sort);
   if ("cursor" in query && query.cursor) params.set("cursor", query.cursor);
   if ("limit" in query && query.limit) params.set("limit", String(query.limit));

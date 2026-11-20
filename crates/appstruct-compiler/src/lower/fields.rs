@@ -254,6 +254,7 @@ fn build_field(
                     currency_field: FieldId(format!("{entity_id}.{}", currency_field.value)),
                     fraction_digits: u8::try_from(fraction_digits.value).unwrap_or(u8::MAX),
                 },
+                crate::surface::SurfaceFieldSemantic::File { .. } => FieldSemanticIr::File,
             }),
         },
         relation,

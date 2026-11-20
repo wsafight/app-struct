@@ -1,6 +1,6 @@
 use super::super::super::{access, module_name, parse_ident};
 use crate::CodegenError;
-use appstruct_ir::{AggregateIr, AppIr, EntityIr};
+use appstruct_ir::{AggregateIr, AppIr, EntityIr, GeneratedValueIr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
@@ -11,6 +11,7 @@ pub(super) fn support(
     aggregate: &AggregateIr,
 ) -> Result<(TokenStream, TokenStream), CodegenError> {
     let module = parse_ident(&module_name(parent))?;
+    let hooks = format_ident!("{}_hooks", module_name(parent));
     let policy = format_ident!("{}_policy", module_name(parent));
     let child = ir
         .entities
@@ -20,27 +21,120 @@ pub(super) fn support(
     let child_module = parse_ident(&module_name(child))?;
     let child_primary = parse_ident(&super::super::primary_key(child)?.rust_name)?;
     let primary = parse_ident(&super::super::primary_key(parent)?.rust_name)?;
+    let create_fn = format_ident!("create_with_aggregate_{}", aggregate.name);
+    let create_input_ty = format_ident!("CreateWithAggregateInput_{}", aggregate.name);
     let read = format_ident!("read_aggregate_{}", aggregate.name);
     let write = format_ident!("write_aggregate_{}", aggregate.name);
+    let create_path = format!("/_aggregates/{}", aggregate.name);
     let path = format!("/{{id}}/_aggregates/{}", aggregate.name);
     let limit = u64::from(aggregate.max_items);
     let scope = access::member_scope(parent, &module, &parent.access.read)?;
+    let create_allowed = access::create_allowed(parent, &parent.access.create)?;
     let allowed = access::update_allowed(parent, &parent.access.update)?;
+    let create_values = super::super::create_values(parent)?;
+    let active_default = parent
+        .fields
+        .iter()
+        .any(|field| matches!(field.generated, Some(GeneratedValueIr::AutoIncrement)))
+        .then(|| quote! { ..Default::default() });
+    let (parent_file_create, _, _) =
+        super::super::file_field_lifecycle(parent, &primary, &quote! { &context })?;
     let guard = parent.workflow_field().map(|field| {
         let field = parse_ident(&field.rust_name).expect("validated field");
         let states = &aggregate.states;
         quote! { if ![#(#states),*].contains(&before.#field.as_str()) { return Err(ApiError::InvalidWorkflowState); } }
     });
+    let create_guard = parent.workflow_field().map(|field| {
+        let field = parse_ident(&field.rust_name).expect("validated field");
+        let states = &aggregate.states;
+        quote! {
+            if !creates.is_empty() && ![#(#states),*].contains(&active.#field.as_str()) {
+                return Err(ApiError::InvalidWorkflowState);
+            }
+        }
+    });
+    let create_event = format!("{}.created", module_name(parent));
     let event = format!("{}.aggregate.{}", module_name(parent), aggregate.name);
     let entity_id = &parent.id.0;
-    let audit = parent.audit_enabled.then(|| quote! {
-        crate::audit::record(&transaction, &context, #entity_id, after.#primary.to_string(), #event, Some(&before), Some(&after)).await?;
+    let create_audit = parent.audit_enabled.then(|| {
+        quote! {
+            crate::audit::record(&transaction, &context, #entity_id, model.#primary.to_string(), "create", None, Some(&model)).await?;
+        }
+    });
+    let create_activity = ir.activity.resource_for_entity(&parent.id).map(|resource| {
+        let resource = &resource.resource;
+        quote! { crate::activity::record_system_event(&transaction, &context, #resource, model.#primary.to_string(), "created").await?; }
+    });
+    let audit = parent.audit_enabled.then(|| {
+        quote! {
+            crate::audit::record(&transaction, &context, #entity_id, after.#primary.to_string(), #event, Some(&before), Some(&after)).await?;
+        }
     });
     let activity = ir.activity.resource_for_entity(&parent.id).map(|resource| {
         let resource = &resource.resource;
         quote! { crate::activity::record_system_event(&transaction, &context, #resource, after.#primary.to_string(), #event).await?; }
     });
     let tokens = quote! {
+        #[allow(non_camel_case_types)]
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct #create_input_ty {
+            parent: CreateInput,
+            #[serde(default)]
+            creates: Vec<super::#child_module::aggregate_rows::CreateRow>,
+        }
+        async fn #create_fn(
+            State(state): State<AppState>,
+            headers: HeaderMap,
+            Json(body): Json<#create_input_ty>,
+        ) -> Result<(StatusCode, [(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
+            use super::#child_module::aggregate_rows as rows;
+            let request = state.mutation_context(&headers).await?;
+            rows::validate_creates(&body.creates, #limit as usize)?;
+            let mut input = body.parent;
+            let creates = body.creates;
+            authorize_create_fields(&request, &input)?;
+            state.extensions.#hooks().before_validate_create(&request, &mut input).await?;
+            validate_create(&input)?;
+            let transaction = state.database.begin().await?;
+            let mut events = Vec::new();
+            let (model, response) = {
+                let context = RequestContext::transaction_with_file(
+                    &transaction, &state.mail, &state.file, &state.realtime, request.shared_actor(), request.tenant(),
+                );
+                state.extensions.#hooks().before_create(&context, &mut input).await?;
+                authorize_create_fields(&context, &input)?;
+                validate_create(&input)?;
+                if !(#create_allowed) { return Err(access_denied(&context)); }
+                if !state.extensions.#policy().can_create(&context, &input).await? { return Err(ApiError::Forbidden); }
+                let active = #module::Model { #(#create_values,)* #active_default };
+                #create_guard
+                validate_relations(&state, &context, &active).await?;
+                validate_candidate(&active)?;
+                let model = active.insert(&transaction).await?;
+                #parent_file_create
+                state.extensions.#hooks().after_create(&context, &model).await?;
+                #create_audit
+                #create_activity
+                let mut created = BTreeMap::new();
+                for row in creates {
+                    let path = format!("creates.{}", row.key);
+                    let child = rows::create(&state, &context, model.#primary, row.input).await.map_err(|error| rows::row_error(error, &path))?;
+                    created.insert(row.key, child.#child_primary.to_string());
+                    events.push((crate::HookOperation::Create, child));
+                }
+                let collection = rows::collection(&state, &context, model.#primary, #limit).await?;
+                let response = serde_json::json!({ "parent": redact_model(&context, model.clone())?, "rows": collection, "created": created });
+                (model, response)
+            };
+            transaction.commit().await?;
+            publish_realtime_event(&state, &request, #create_event, &model);
+            run_after_commit(&state, crate::HookOperation::Create, &model, request.shared_actor(), request.tenant()).await;
+            for (operation, child) in events {
+                rows::committed(&state, &request, operation, &child).await;
+            }
+            Ok((StatusCode::CREATED, etag_header(&model), Json(response)))
+        }
         async fn #read(State(state): State<AppState>, Path(id): Path<uuid::Uuid>, headers: HeaderMap) -> Result<([(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
             let request = state.context(&headers).await?;
             let transaction = state.database.begin().await?;
@@ -107,5 +201,11 @@ pub(super) fn support(
             Ok((etag_header(&after), Json(response)))
         }
     };
-    Ok((quote! { .route(#path, get(#read).post(#write)) }, tokens))
+    Ok((
+        quote! {
+            .route(#create_path, axum::routing::post(#create_fn))
+            .route(#path, get(#read).post(#write))
+        },
+        tokens,
+    ))
 }

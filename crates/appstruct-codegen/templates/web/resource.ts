@@ -123,6 +123,11 @@ export function useVisibleResources(
 }
 
 export interface ResourceApi {
+  createWithCollection?(
+    name: string,
+    parent: ResourceInput,
+    creates: { key: string; input: ResourceInput }[],
+  ): Promise<CollectionResponse>;
   collection?(
     id: string,
     name: string,
@@ -198,11 +203,15 @@ export type FieldKind =
   | "enum"
   | "relation";
 
-export type FieldSemantic = {
-  kind: "money";
-  currencyField: string;
-  fractionDigits: number;
-};
+export type FieldSemantic =
+  | {
+      kind: "money";
+      currencyField: string;
+      fractionDigits: number;
+    }
+  | {
+      kind: "file";
+    };
 
 export interface FieldDefinition {
   name: string;

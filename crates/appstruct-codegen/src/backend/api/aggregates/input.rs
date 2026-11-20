@@ -58,6 +58,18 @@ pub(super) fn support(entity: &EntityIr, aggregate: &AggregateIr) -> TokenStream
                 Ok(())
             }
         }
+        pub fn validate_creates(creates: &[CreateRow], limit: usize) -> Result<(), ApiError> {
+            if creates.len() > limit {
+                return Err(invalid("Invalid aggregate operation count"));
+            }
+            let mut keys = std::collections::BTreeSet::new();
+            for row in creates {
+                if row.key.is_empty() || row.key.len() > 128 || !keys.insert(&row.key) {
+                    return Err(invalid("Create keys must be unique and contain 1 to 128 bytes"));
+                }
+            }
+            Ok(())
+        }
         fn decode<T: serde::de::DeserializeOwned>(mut value: serde_json::Value, parent: uuid::Uuid, create: bool) -> Result<T, ApiError> {
             let object = value.as_object_mut().ok_or_else(|| invalid("Row input must be an object"))?;
             let allowed: &[&str] = if create { &[#(#create_fields),*] } else { &[#(#update_fields),*] };

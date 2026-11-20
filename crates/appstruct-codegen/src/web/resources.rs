@@ -359,16 +359,21 @@ fn field_source<'entity>(
     if let Some(component) = &field.ui_component {
         properties.push(format!("uiComponent: {component:?}"));
     }
-    if let Some(FieldSemanticIr::Money {
-        currency_field,
-        fraction_digits,
-    }) = &field.ui_semantic
-    {
-        let currency = entity_field(currency_field);
-        properties.push(format!(
-            "semantic: {{ kind: \"money\", currencyField: {:?}, fractionDigits: {fraction_digits} }}",
-            currency.rust_name,
-        ));
+    match &field.ui_semantic {
+        Some(FieldSemanticIr::Money {
+            currency_field,
+            fraction_digits,
+        }) => {
+            let currency = entity_field(currency_field);
+            properties.push(format!(
+                "semantic: {{ kind: \"money\", currencyField: {:?}, fractionDigits: {fraction_digits} }}",
+                currency.rust_name,
+            ));
+        }
+        Some(FieldSemanticIr::File) => {
+            properties.push("semantic: { kind: \"file\" }".to_owned());
+        }
+        None => {}
     }
     if let Some(access) = &field.read_access {
         properties.push(format!(

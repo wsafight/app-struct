@@ -9,7 +9,7 @@ pub(super) fn add(ir: &AppIr, paths: &mut Map<String, Value>, schemas: &mut Map<
 }
 
 fn account(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {
-    schemas.insert("ProductProfile".to_owned(), json!({ "type": "object", "required": ["display_name", "locale", "timezone", "notifications", "mfa_enabled"], "properties": { "display_name": { "type": "string", "maxLength": 120 }, "locale": { "enum": ["en-US", "zh-CN"] }, "timezone": { "enum": ["UTC", "Asia/Shanghai"] }, "notifications": { "type": "boolean" }, "mfa_enabled": { "type": "boolean" } } }));
+    schemas.insert("ProductProfile".to_owned(), json!({ "type": "object", "required": ["display_name", "locale", "timezone", "notifications", "mfa_enabled", "has_password"], "properties": { "display_name": { "type": "string", "maxLength": 120 }, "locale": { "enum": ["en-US", "zh-CN"] }, "timezone": { "enum": ["UTC", "Asia/Shanghai"] }, "notifications": { "type": "boolean" }, "mfa_enabled": { "type": "boolean" }, "has_password": { "type": "boolean" } } }));
     schemas.insert("ProductNotification".to_owned(), json!({ "type": "object", "required": ["id", "title", "body", "target", "read_at", "created_at", "tenant_id"], "properties": { "id": uuid(), "tenant_id": { "type": ["string", "null"], "format": "uuid" }, "title": { "type": "string" }, "body": { "type": "string" }, "target": { "type": "string", "pattern": "^/[^/]" }, "read_at": { "type": ["string", "null"], "format": "date-time" }, "created_at": { "type": "string", "format": "date-time" } } }));
     operation(
         paths,
@@ -25,6 +25,10 @@ fn account(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {
         .as_object_mut()
         .unwrap()
         .remove("mfa_enabled");
+    profile["properties"]
+        .as_object_mut()
+        .unwrap()
+        .remove("has_password");
     profile["required"] = json!(["display_name", "locale", "timezone", "notifications"]);
     profile["additionalProperties"] = json!(false);
     operation(
@@ -36,7 +40,7 @@ fn account(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {
         None,
         false,
     );
-    let proof = json!({ "type": "object", "required": ["password"], "additionalProperties": false, "properties": { "password": { "type": "string", "writeOnly": true }, "code": { "type": "string", "writeOnly": true } } });
+    let proof = json!({ "type": "object", "required": [], "additionalProperties": false, "properties": { "password": { "type": "string", "writeOnly": true }, "code": { "type": "string", "writeOnly": true } } });
     for (path, name, extra) in [
         (
             "password",
@@ -53,6 +57,7 @@ fn account(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {
         ),
         ("sessions/revoke", "revokeOwnSessions", None),
         ("mfa/disable", "disableAccountMfa", None),
+        ("delete", "deleteOwnAccount", None),
     ] {
         let mut input = proof.clone();
         if let Some((field, schema)) = extra {
@@ -69,6 +74,33 @@ fn account(paths: &mut Map<String, Value>, schemas: &mut Map<String, Value>) {
             false,
         );
     }
+    account_data_and_mfa(paths, proof);
+}
+
+fn account_data_and_mfa(paths: &mut Map<String, Value>, proof: Value) {
+    operation(
+        paths,
+        "/api/auth/settings/export",
+        "post",
+        "exportPersonalData",
+        Some(proof.clone()),
+        Some(json!({
+            "type": "object",
+            "required": ["exported_at", "account", "profile", "oauth_accounts", "sessions", "api_tokens", "saved_views", "notifications", "organizations"],
+            "properties": {
+                "exported_at": { "type": "string", "format": "date-time" },
+                "account": { "type": "object" },
+                "profile": { "type": "object" },
+                "oauth_accounts": { "type": "array", "items": { "type": "object" } },
+                "sessions": { "type": "array", "items": { "type": "object" } },
+                "api_tokens": { "type": "array", "items": { "type": "object" } },
+                "saved_views": { "type": "array", "items": { "type": "object" } },
+                "notifications": { "type": "array", "items": { "type": "object" } },
+                "organizations": { "type": "array", "items": { "type": "object" } }
+            }
+        })),
+        false,
+    );
     operation(
         paths,
         "/api/auth/settings/mfa/setup",

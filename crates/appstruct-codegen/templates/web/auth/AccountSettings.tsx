@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
-import { productApi, type ProductProfile } from "../generated/client";
+import { authApi, productApi, type ProductProfile } from "../generated/client";
 import { errorMessage, triggerDownload } from "../resource";
 import { ActionFeedback, LoadingState, t, useActionFeedback } from "../ui";
 import { appQueryKeys } from "../query";
@@ -27,8 +27,14 @@ export function AccountSettings() {
   );
   const [recovery, setRecovery] = useState<string[]>([]);
   const [savedRecovery, setSavedRecovery] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const blocker = useUnsavedChanges(recovery.length > 0 && !savedRecovery);
-  const proof = { password, code: code || undefined };
+  const hasPassword = query.data?.has_password ?? true;
+  const proofReady = !hasPassword || Boolean(password);
+  const proof = {
+    password: hasPassword ? password : "",
+    code: code || undefined,
+  };
   const emailToken = new URLSearchParams(window.location.search).get(
     "email_token",
   );
@@ -133,22 +139,28 @@ export function AccountSettings() {
           <h2>{t("Account security")}</h2>
           <p>
             {t(
-              "Security changes require your current password and an authenticator or recovery code when MFA is enabled.",
+              hasPassword
+                ? "Security changes require your current password and an authenticator or recovery code when MFA is enabled."
+                : "Set a password for direct sign-in, or manage your account with your active session.",
             )}
           </p>
-          <label>
-            {t("Current password")}
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              disabled={pending}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </label>
+          {hasPassword && (
+            <label>
+              {t("Current password")}
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                disabled={pending}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+          )}
           {!setup && codeField}
           <details className="settings-section">
-            <summary>{t("Change password")}</summary>
+            <summary>
+              {t(hasPassword ? "Change password" : "Set password")}
+            </summary>
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -171,8 +183,12 @@ export function AccountSettings() {
                   onChange={(event) => setNewPassword(event.target.value)}
                 />
               </label>
-              <button disabled={pending || !password}>
-                {t("Change password and revoke sessions")}
+              <button disabled={pending || !proofReady}>
+                {t(
+                  hasPassword
+                    ? "Change password and revoke sessions"
+                    : "Set password and revoke sessions",
+                )}
               </button>
             </form>
           </details>
@@ -197,7 +213,7 @@ export function AccountSettings() {
                   onChange={(event) => setEmail(event.target.value)}
                 />
               </label>
-              <button disabled={pending || !password}>
+              <button disabled={pending || !proofReady}>
                 {t("Request email change")}
               </button>
             </form>
@@ -211,7 +227,7 @@ export function AccountSettings() {
             </p>
             <button
               type="button"
-              disabled={pending || !password}
+              disabled={pending || !proofReady}
               onClick={() =>
                 void action(async () => {
                   await productApi.revokeSessions(proof);
@@ -222,13 +238,52 @@ export function AccountSettings() {
               {t("Revoke all sessions and API tokens")}
             </button>
           </details>
+          <details className="settings-section danger-zone">
+            <summary>{t("Personal data and account deletion")}</summary>
+            <p>
+              {t(
+                "Export a JSON archive of your profile, sessions, API tokens, notifications and organization memberships, or permanently delete your account.",
+              )}
+            </p>
+            <div className="row-actions">
+              <button
+                type="button"
+                disabled={pending || !proofReady}
+                onClick={() =>
+                  void action(async () => {
+                    const archive = await productApi.exportData(proof);
+                    triggerDownload(
+                      new Blob([`${JSON.stringify(archive, null, 2)}\n`], {
+                        type: "application/json;charset=utf-8",
+                      }),
+                      "account-data.json",
+                    );
+                    setNotice(t("Personal data exported."));
+                  }, false)
+                }
+              >
+                {t("Export personal data")}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  pending ||
+                  !proofReady ||
+                  (query.data.mfa_enabled && !code.trim())
+                }
+                onClick={() => setConfirmDelete(true)}
+              >
+                {t("Delete account")}
+              </button>
+            </div>
+          </details>
           <section className="mfa-section" aria-labelledby="mfa-title">
             <h3 id="mfa-title">{t("Two-factor authentication")}</h3>
             <p>{query.data.mfa_enabled ? t("Enabled") : t("Not enabled")}</p>
             {!query.data.mfa_enabled && !setup && (
               <button
                 type="button"
-                disabled={pending || !password}
+                disabled={pending || !proofReady}
                 onClick={() =>
                   void action(async () =>
                     setSetup(await productApi.setupMfa(proof)),
@@ -309,7 +364,7 @@ export function AccountSettings() {
             {query.data.mfa_enabled && recovery.length === 0 && (
               <button
                 type="button"
-                disabled={pending || !password || !code}
+                disabled={pending || !proofReady || !code}
                 onClick={() =>
                   void action(async () => {
                     await productApi.disableMfa(proof);
@@ -391,6 +446,24 @@ export function AccountSettings() {
         </section>
       )}
       <ConfirmDialog
+        open={confirmDelete}
+        title={t("Delete your account permanently?")}
+        description={t(
+          "This permanently deletes your profile, sessions, API tokens and sole-member workspaces. Shared team ownership must be transferred first.",
+        )}
+        confirmLabel={t("Delete account permanently")}
+        danger
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          void action(async () => {
+            await productApi.deleteAccount(proof);
+            authApi.clearLocalSession();
+            window.location.assign("/login");
+          }, false);
+        }}
+      />
+      <ConfirmDialog
         open={blocker.blocked}
         title={t("Leave without saving recovery codes?")}
         description={t(
@@ -412,7 +485,9 @@ function ProfileForm({
 }: {
   profile: ProductProfile;
   pending: boolean;
-  save: (input: Omit<ProductProfile, "mfa_enabled">) => Promise<unknown>;
+  save: (
+    input: Omit<ProductProfile, "mfa_enabled" | "has_password">,
+  ) => Promise<unknown>;
 }) {
   const [name, setName] = useState(profile.display_name);
   const [locale, setLocale] = useState(profile.locale);

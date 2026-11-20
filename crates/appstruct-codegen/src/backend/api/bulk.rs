@@ -41,6 +41,9 @@ pub(super) struct BulkContext<'context> {
     pub trash_scope: &'context TokenStream,
     pub restore_scope: &'context TokenStream,
     pub activity_resource: Option<&'context str>,
+    pub file_create: &'context TokenStream,
+    pub file_update: &'context TokenStream,
+    pub file_delete: &'context TokenStream,
 }
 
 pub(super) fn source(
@@ -70,6 +73,8 @@ pub(super) fn source(
         .ok_or_else(|| CodegenError::new("entity must define a primary key"))?;
     let primary_column = super::super::query::helpers::column_ident(primary_field)?;
     let bulk_parse_id = bulk_parse_id_expression(primary_field);
+    let (file_create, file_update, file_delete) =
+        super::file_field_lifecycle(entity, primary, &quote! { &context })?;
     let context = BulkContext {
         module,
         primary,
@@ -90,6 +95,9 @@ pub(super) fn source(
         trash_scope: &trash_scope,
         restore_scope: &restore_scope,
         activity_resource: *activity_resource,
+        file_create: &file_create,
+        file_update: &file_update,
+        file_delete: &file_delete,
     };
     let update = mutations::update(&context);
     let delete = mutations::delete(&context);
@@ -130,7 +138,7 @@ fn trash_handler(context: &BulkContext<'_>) -> TokenStream {
             if !state.extensions.#policy().can_list(&context).await? {
                 return Err(access_denied(&context));
             }
-            if query.cursor.is_some() || query.limit.is_some() || query.sort.is_some() || query.q.is_some() || !query.filters.is_empty() {
+            if query.cursor.is_some() || query.limit.is_some() || query.count.is_some() || query.sort.is_some() || query.q.is_some() || !query.filters.is_empty() {
                 return Err(ApiError::InvalidQuery(
                     "trash only supports `page` and `page_size` pagination".to_owned()
                 ));
@@ -151,7 +159,7 @@ fn trash_handler(context: &BulkContext<'_>) -> TokenStream {
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Json(ListResponse {
                 data,
-                meta: ListMeta::Page { page, page_size, total },
+                meta: ListMeta::Page { page, page_size, total, total_exact: None },
             }))
         }
     }

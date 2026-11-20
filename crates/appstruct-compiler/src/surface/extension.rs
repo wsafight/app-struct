@@ -131,6 +131,21 @@ pub(super) fn decode_field_ui(node: &Node) -> Result<SurfaceFieldUi, Diagnostic>
                 }),
             })
         }
+        (None, Some(semantic)) if semantic.value == "file" => {
+            if mapping.contains_key("currency_field") || mapping.contains_key("fraction_digits") {
+                return Err(Diagnostic::error(
+                    "AS1007",
+                    "`currency_field` and `fraction_digits` are valid only for the `money` semantic",
+                    semantic.span,
+                ));
+            }
+            Ok(SurfaceFieldUi {
+                component: None,
+                semantic: Some(SurfaceFieldSemantic::File {
+                    span: semantic.span,
+                }),
+            })
+        }
         (None, Some(semantic)) => Err(Diagnostic::error(
             "AS1007",
             format!("unsupported field UI semantic `{}`", semantic.value),

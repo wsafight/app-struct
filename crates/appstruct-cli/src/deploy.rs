@@ -1,4 +1,4 @@
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -14,10 +14,30 @@ const REQUIRED_FILES: &[&str] = &["appstruct.lock", "generated/.appstruct-manife
 const OPTIONAL_FILES: &[&str] = &[".appstruct/schema.snapshot.json"];
 const ARTIFACT_TREES: &[&str] = &["generated/web/dist", "migrations"];
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub(crate) enum DeployPlatform {
+    Fly,
+    Railway,
+}
+
 #[derive(Debug, Subcommand)]
 pub(crate) enum DeployCommand {
     /// Verify that release artifacts still match the immutable build manifest.
     Verify,
+    /// Generate or verify secret-free deployment configuration for a target platform.
+    Config {
+        #[arg(long, value_enum)]
+        platform: DeployPlatform,
+        /// Relative output path inside the project (defaults to deploy/fly.toml or deploy/railway.json).
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Verify that the existing file matches the rendered configuration without writing.
+        #[arg(long)]
+        check: bool,
+        /// Replace an existing configuration file.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -62,6 +82,237 @@ pub(crate) fn run(project: &Path, command: &DeployCommand) -> ExitCode {
                 crate::report::ExitClass::Validation,
             ),
         },
+        DeployCommand::Config {
+            platform,
+            output,
+            check,
+            force,
+        } => run_config(project, *platform, output.as_deref(), *check, *force),
+    }
+}
+
+fn run_config(
+    project: &Path,
+    platform: DeployPlatform,
+    output: Option<&Path>,
+    check: bool,
+    force: bool,
+) -> ExitCode {
+    if check && force {
+        return crate::report::fail(
+            "AS6502",
+            crate::report::ErrorCategory::Build,
+            "`--check` cannot be combined with `--force`",
+            crate::report::ExitClass::Usage,
+        );
+    }
+    let ir = match appstruct_compiler::compile_project(project) {
+        Ok(ir) => ir,
+        Err(diagnostics) => {
+            return crate::report::fail_diagnostics(
+                crate::report::ErrorCategory::Validation,
+                diagnostics,
+            );
+        }
+    };
+    let default_path = match platform {
+        DeployPlatform::Fly => Path::new("deploy/fly.toml"),
+        DeployPlatform::Railway => Path::new("deploy/railway.json"),
+    };
+    let relative = output.unwrap_or(default_path);
+    let portable = match portable_path(relative) {
+        Ok(value) => value,
+        Err(error) => {
+            return crate::report::fail(
+                "AS6502",
+                crate::report::ErrorCategory::Build,
+                format!("invalid deployment config path: {error}"),
+                crate::report::ExitClass::Validation,
+            );
+        }
+    };
+    if let Err(error) = ensure_no_symlink_components(project, Path::new(&portable)) {
+        return crate::report::fail(
+            "AS6502",
+            crate::report::ErrorCategory::Build,
+            format!("invalid deployment config path: {error}"),
+            crate::report::ExitClass::Validation,
+        );
+    }
+    let rendered = render_platform_config(platform, &ir);
+    let destination = project.join(&portable);
+    let platform_name = match platform {
+        DeployPlatform::Fly => "fly",
+        DeployPlatform::Railway => "railway",
+    };
+    if check {
+        return check_config_file(&destination, &rendered, platform_name, &portable);
+    }
+    if destination.exists() && !force {
+        return crate::report::fail(
+            "AS6502",
+            crate::report::ErrorCategory::Build,
+            format!("`{portable}` already exists; pass `--force` to overwrite it"),
+            crate::report::ExitClass::Validation,
+        );
+    }
+    if let Some(parent) = destination.parent()
+        && let Err(error) = fs::create_dir_all(parent)
+    {
+        return crate::report::fail(
+            "AS6502",
+            crate::report::ErrorCategory::Build,
+            format!("cannot create directory for `{portable}`: {error}"),
+            crate::report::ExitClass::Environment,
+        );
+    }
+    if let Err(error) = fs::write(&destination, rendered) {
+        return crate::report::fail(
+            "AS6502",
+            crate::report::ErrorCategory::Build,
+            format!("cannot write `{portable}`: {error}"),
+            crate::report::ExitClass::Environment,
+        );
+    }
+    if crate::report::is_json() {
+        crate::report::success(&serde_json::json!({
+            "command": "deploy config",
+            "platform": platform_name,
+            "path": portable,
+            "checked": false,
+        }));
+    } else {
+        println!("Wrote {platform_name} deployment config to {portable}");
+    }
+    ExitCode::SUCCESS
+}
+
+fn check_config_file(
+    destination: &Path,
+    rendered: &str,
+    platform_name: &str,
+    portable: &str,
+) -> ExitCode {
+    match fs::read_to_string(destination) {
+        Ok(existing) if existing == rendered => {
+            if crate::report::is_json() {
+                crate::report::success(&serde_json::json!({
+                    "command": "deploy config",
+                    "platform": platform_name,
+                    "path": portable,
+                    "checked": true,
+                    "matches": true,
+                }));
+            } else {
+                println!("Deployment config is current: {portable}");
+            }
+            ExitCode::SUCCESS
+        }
+        Ok(_) => crate::report::fail(
+            "AS6502",
+            crate::report::ErrorCategory::Build,
+            format!("deployment config `{portable}` differs from the expected template"),
+            crate::report::ExitClass::Validation,
+        ),
+        Err(error) => crate::report::fail(
+            "AS6502",
+            crate::report::ErrorCategory::Build,
+            format!("cannot read `{portable}`: {error}"),
+            crate::report::ExitClass::Validation,
+        ),
+    }
+}
+
+fn ensure_no_symlink_components(project: &Path, relative: &Path) -> io::Result<()> {
+    let mut current = project.to_path_buf();
+    for component in relative.components() {
+        current.push(component);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(invalid(format!(
+                    "`{}` must not traverse or target a symlink",
+                    relative.display()
+                )));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+fn render_platform_config(platform: DeployPlatform, ir: &appstruct_ir::AppIr) -> String {
+    let mut required_secrets = vec!["DATABASE_URL"];
+    if ir.auth.enabled {
+        required_secrets.extend(["APPSTRUCT_FRONTEND_URL", "APPSTRUCT_ALLOWED_ORIGIN"]);
+    }
+    if ir.billing.enabled {
+        match ir.billing.provider.as_deref() {
+            Some("polar") => {
+                required_secrets.extend([
+                    "APPSTRUCT_POLAR_ACCESS_TOKEN",
+                    "APPSTRUCT_POLAR_WEBHOOK_SECRET",
+                ]);
+            }
+            _ => {
+                required_secrets.extend([
+                    "APPSTRUCT_STRIPE_SECRET_KEY",
+                    "APPSTRUCT_STRIPE_WEBHOOK_SECRET",
+                ]);
+            }
+        }
+    }
+    match platform {
+        DeployPlatform::Fly => format!(
+            concat!(
+                "# Generated by `appstruct deploy config --platform fly`.\n",
+                "# Run `appstruct build` before `fly deploy --config deploy/fly.toml`.\n",
+                "# Inject secrets via `fly secrets set {}` — never commit credentials here.\n\n",
+                "app = {:?}\n\n",
+                "[build]\n",
+                "  dockerfile = \"../Dockerfile\"\n\n",
+                "[deploy]\n",
+                "  release_command = \"/usr/local/bin/appstruct --project /app migrate apply\"\n\n",
+                "[env]\n",
+                "  APPSTRUCT_BIND = \"0.0.0.0:3000\"\n",
+                "  APPSTRUCT_ENV = \"production\"\n\n",
+                "[http_service]\n",
+                "  internal_port = 3000\n",
+                "  force_https = true\n",
+                "  auto_stop_machines = \"off\"\n",
+                "  auto_start_machines = true\n",
+                "  min_machines_running = 1\n\n",
+                "  [[http_service.checks]]\n",
+                "    interval = \"15s\"\n",
+                "    timeout = \"5s\"\n",
+                "    grace_period = \"10s\"\n",
+                "    method = \"GET\"\n",
+                "    path = \"/health/ready\"\n"
+            ),
+            required_secrets.join(" "),
+            ir.app.name,
+        ),
+        DeployPlatform::Railway => {
+            let value = serde_json::json!({
+                "$schema": "https://railway.com/railway.schema.json",
+                "build": {
+                    "builder": "DOCKERFILE",
+                    "dockerfilePath": "Dockerfile"
+                },
+                "deploy": {
+                    "preDeployCommand": ["/usr/local/bin/appstruct", "--project", "/app", "migrate", "apply"],
+                    "healthcheckPath": "/health/ready",
+                    "healthcheckTimeout": 30,
+                    "restartPolicyType": "ON_FAILURE",
+                    "restartPolicyMaxRetries": 5
+                }
+            });
+            let mut text =
+                serde_json::to_string_pretty(&value).expect("serializable railway config");
+            text.push('\n');
+            text
+        }
     }
 }
 
@@ -362,5 +613,85 @@ mod tests {
                 .to_string()
                 .contains("missing required artifact `appstruct.lock`")
         );
+    }
+
+    #[test]
+    fn deploy_config_renders_fly_and_railway_without_secrets_and_supports_check() {
+        let fixture =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("spec")).unwrap();
+        fs::copy(
+            fixture.join("appstruct.yaml"),
+            temp.path().join("appstruct.yaml"),
+        )
+        .unwrap();
+        fs::copy(
+            fixture.join("spec/project.yaml"),
+            temp.path().join("spec/project.yaml"),
+        )
+        .unwrap();
+        fs::copy(
+            fixture.join("spec/identity.yaml"),
+            temp.path().join("spec/identity.yaml"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            run(
+                temp.path(),
+                &DeployCommand::Config {
+                    platform: DeployPlatform::Fly,
+                    output: None,
+                    check: false,
+                    force: false,
+                },
+            ),
+            ExitCode::SUCCESS
+        );
+        let fly = fs::read_to_string(temp.path().join("deploy/fly.toml")).unwrap();
+        assert!(fly.contains(
+            "release_command = \"/usr/local/bin/appstruct --project /app migrate apply\""
+        ));
+        assert!(fly.contains("path = \"/health/ready\""));
+        assert_eq!(
+            run(
+                temp.path(),
+                &DeployCommand::Config {
+                    platform: DeployPlatform::Fly,
+                    output: None,
+                    check: true,
+                    force: false,
+                },
+            ),
+            ExitCode::SUCCESS
+        );
+        assert_ne!(
+            run(
+                temp.path(),
+                &DeployCommand::Config {
+                    platform: DeployPlatform::Fly,
+                    output: None,
+                    check: false,
+                    force: false,
+                },
+            ),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            run(
+                temp.path(),
+                &DeployCommand::Config {
+                    platform: DeployPlatform::Railway,
+                    output: None,
+                    check: false,
+                    force: false,
+                },
+            ),
+            ExitCode::SUCCESS
+        );
+        let railway = fs::read_to_string(temp.path().join("deploy/railway.json")).unwrap();
+        assert!(railway.contains("\"healthcheckPath\": \"/health/ready\""));
+        assert!(railway.contains("\"migrate\""));
     }
 }

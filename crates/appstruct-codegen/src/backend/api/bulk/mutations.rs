@@ -14,6 +14,7 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
         restore_scope,
         audit_enabled,
         activity_resource,
+        file_update,
         ..
     } = context;
     let audit = audit_event(*audit_enabled, entity_id, primary, "restore");
@@ -68,6 +69,7 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
                     }
                     validate_candidate(&active)?;
                     let after = active.update(&savepoint).await?;
+                    #file_update
                     state.extensions.#hooks().after_update(&context, &before, &after).await?;
                     #audit
                     #activity
@@ -95,6 +97,7 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
     let BulkContext {
         module,
@@ -108,6 +111,7 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
         audit_enabled,
         entity_id,
         activity_resource,
+        file_update,
         ..
     } = context;
     let audit = audit_event(*audit_enabled, entity_id, primary, "update");
@@ -166,6 +170,7 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
                     validate_relations(&state, &context, &active).await?;
                     validate_candidate(&active)?;
                     let after = active.update(&savepoint).await?;
+                    #file_update
                     state.extensions.#hooks().after_update(&context, &before, &after).await?;
                     #audit
                     #activity
@@ -193,6 +198,7 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn delete(context: &BulkContext<'_>) -> TokenStream {
     let BulkContext {
         module,
@@ -206,6 +212,7 @@ pub(super) fn delete(context: &BulkContext<'_>) -> TokenStream {
         entity_id,
         soft_delete,
         activity_resource,
+        file_delete,
         ..
     } = context;
     let audit = audit_event(*audit_enabled, entity_id, primary, "delete");
@@ -224,6 +231,7 @@ pub(super) fn delete(context: &BulkContext<'_>) -> TokenStream {
         quote! {
             let deleted = model.clone();
             model.delete(&savepoint).await?;
+            #file_delete
             deleted
         }
     };

@@ -26,6 +26,7 @@ export interface ResourceFormControllerOptions {
   id?: string;
   initialRecord?: ResourceRecord;
   refetchRecord?(): Promise<ResourceRecord | undefined>;
+  createRecord?(input: ResourceInput): Promise<ResourceRecord>;
   onSaved?(record: ResourceRecord): Promise<void> | void;
 }
 
@@ -86,7 +87,9 @@ export function useResourceFormController(
         ? resource.api.update(options.id, input, {
             revision: baseline?.revision as number | undefined,
           })
-        : resource.api.create(input);
+        : options.createRecord
+          ? options.createRecord(input)
+          : resource.api.create(input);
     },
     onSuccess: async (record) => {
       setBaseline(record);

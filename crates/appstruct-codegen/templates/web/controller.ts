@@ -22,6 +22,7 @@ export interface ResourceListControllerOptions {
 const EMPTY_LIST = {
   data: [] as ResourceRecord[],
   total: 0,
+  totalExact: true,
   nextCursor: null as string | null,
   previousCursor: null as string | null,
 };
@@ -50,6 +51,7 @@ export function useResourceListController(
         return {
           data: response?.data ?? [],
           total: response?.meta.total ?? 0,
+          totalExact: response?.meta.total_exact ?? true,
           nextCursor: null,
           previousCursor: null,
         };
@@ -62,6 +64,7 @@ export function useResourceListController(
         return {
           data: response.data,
           total: 0,
+          totalExact: true,
           nextCursor: response.meta.next_cursor,
           previousCursor: response.meta.previous_cursor,
         };
@@ -72,6 +75,7 @@ export function useResourceListController(
       return {
         data: response.data,
         total: response.meta.total,
+        totalExact: response.meta.total_exact ?? true,
         nextCursor: null,
         previousCursor: null,
       };
@@ -103,6 +107,7 @@ export function useResourceListController(
     canList,
     records: result.data,
     total: result.total,
+    totalExact: result.totalExact,
     nextCursor: result.nextCursor,
     previousCursor: result.previousCursor,
     pending: listQuery.isPending,

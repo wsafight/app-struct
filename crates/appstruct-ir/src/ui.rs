@@ -8,4 +8,5 @@ pub enum FieldSemanticIr {
         currency_field: FieldId,
         fraction_digits: u8,
     },
+    File,
 }

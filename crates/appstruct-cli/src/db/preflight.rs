@@ -9,6 +9,7 @@ use std::path::Path;
 pub(super) struct Preflight {
     status: &'static str,
     include: IncludeProposal,
+    allow_unmanaged_tables: bool,
     omitted_tables: Vec<String>,
     missing_revision: Vec<String>,
     diagnostics: Vec<Diagnostic>,
@@ -53,6 +54,7 @@ pub(super) fn build(
             value: output.to_string_lossy().into_owned(),
             requires_confirmation: true,
         },
+        allow_unmanaged_tables: false,
         omitted_tables,
         missing_revision,
         diagnostics: Vec::new(),
@@ -67,6 +69,7 @@ pub(super) fn build(
                 return result;
             }
         };
+    result.allow_unmanaged_tables = report.ir.database.allow_unmanaged_tables;
     result.diagnostics = report.diagnostics;
     let expected = match appstruct_migrate::extract(&report.ir) {
         Ok(expected) => expected,
@@ -88,7 +91,7 @@ pub(super) fn build(
         Err(error) => result.structure_issues.push(error.to_string()),
     }
     if result.structure_issues.is_empty()
-        && result.omitted_tables.is_empty()
+        && (result.allow_unmanaged_tables || result.omitted_tables.is_empty())
         && result.missing_revision.is_empty()
     {
         result.status = "structure_matches";
@@ -106,7 +109,13 @@ pub(super) fn print(report: &Preflight) {
         report.include.value
     );
     for table in &report.omitted_tables {
-        println!("  Not imported: `{table}`; strict baseline does not ignore extra tables");
+        if report.allow_unmanaged_tables {
+            println!("  Not imported (allowed as unmanaged): `{table}`");
+        } else {
+            println!(
+                "  Not imported: `{table}`; strict baseline does not ignore extra tables (set `database.allow_unmanaged_tables: true` to adopt partially)"
+            );
+        }
     }
     for table in &report.missing_revision {
         println!(

@@ -82,8 +82,8 @@ pub(super) fn list_support(
             let order = crate::database::resource_order::<#module::Model>(query.sort.as_deref(), |name| field_read_allowed(&context, name))?;
             let cursor_mode = query.cursor.is_some() || query.limit.is_some() || query.direction.is_some();
             if cursor_mode {
-                if query.page.is_some() || query.page_size.is_some() {
-                    return Err(ApiError::InvalidQuery("cursor pagination cannot be combined with `page` or `page_size`".to_owned()));
+                if query.page.is_some() || query.page_size.is_some() || query.count.is_some() {
+                    return Err(ApiError::InvalidQuery("cursor pagination cannot be combined with `page`, `page_size`, or `count`".to_owned()));
                 }
                 if order.iter().any(|item| #module::Model::META.field(item.field).is_none_or(|field| !field.value_type.supports_cursor())) {
                     return Err(ApiError::InvalidQuery("sort contains a field that cannot be used in cursor pagination".to_owned()));
@@ -128,11 +128,38 @@ pub(super) fn list_support(
             if !list_page_is_valid(page, page_size) {
                 return Err(ApiError::InvalidQuery(format!("`page` must be between 1 and {MAX_LIST_PAGE} and `page_size` must be between 1 and 100")));
             }
-            let total = select.clone().count(&state.database).await?;
+            let count_cap: Option<u64> = match query.count.as_deref() {
+                None => std::env::var("APPSTRUCT_LIST_COUNT_LIMIT")
+                    .ok()
+                    .filter(|raw| !raw.trim().is_empty())
+                    .map(|raw| {
+                        raw.trim()
+                            .parse::<u64>()
+                            .ok()
+                            .filter(|value| (1..=1_000_000).contains(value))
+                            .ok_or_else(|| ApiError::InvalidQuery("invalid APPSTRUCT_LIST_COUNT_LIMIT".to_owned()))
+                    })
+                    .transpose()?,
+                Some("exact") => None,
+                Some("bounded") => Some(appstruct_runtime::DEFAULT_BOUNDED_LIST_COUNT),
+                Some(_) => return Err(ApiError::InvalidQuery("`count` must be `exact` or `bounded`".to_owned())),
+            };
+            let (total, total_exact) = if let Some(cap) = count_cap {
+                let probe = select.clone().bounded_count(&state.database, cap).await?;
+                if probe > cap {
+                    (cap, Some(false))
+                } else if query.count.as_deref() == Some("bounded") {
+                    (probe, Some(true))
+                } else {
+                    (probe, None)
+                }
+            } else {
+                (select.clone().count(&state.database).await?, None)
+            };
             let page_select = select.order_by(&order, &#module::Model::META, false).limit(page_size).offset((page - 1) * page_size);
             let data = #module::projected(page_select, &fields, &order)?.all(&state.database).await?
                 .into_iter().map(|row| row.json(&fields)).collect::<Result<Vec<_>, _>>()?;
-            Ok(Json(ListResponse { data, meta: ListMeta::Page { page, page_size, total } }))
+            Ok(Json(ListResponse { data, meta: ListMeta::Page { page, page_size, total, total_exact } }))
         }
     })
 }

@@ -3,7 +3,7 @@ use appstruct_ir::DatabaseMigrationPolicy;
 use appstruct_migrate::{
     DriftStatus, MigrationPlan, MigrationStatus, diff, extract, status_project,
 };
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -108,15 +108,27 @@ fn development_plan(project: &Path) -> Result<MigrationPlan, String> {
 }
 
 fn confirm() -> io::Result<bool> {
-    if !io::stdin().is_terminal() {
+    let stdin = io::stdin();
+    let interactive = stdin.is_terminal();
+    let mut input = stdin.lock();
+    let mut output = io::stdout();
+    confirm_with(interactive, &mut input, &mut output)
+}
+
+fn confirm_with(
+    interactive: bool,
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+) -> io::Result<bool> {
+    if !interactive {
         return Err(io::Error::other(
             "database migration policy `prompt` requires an interactive terminal; run `appstruct migrate dev --accept` or configure `auto`, `never`, or `unmanaged`",
         ));
     }
-    print!("Apply database migrations? [y/N] ");
-    io::stdout().flush()?;
+    write!(output, "Apply database migrations? [y/N] ")?;
+    output.flush()?;
     let mut answer = String::new();
-    if io::stdin().read_line(&mut answer)? == 0 {
+    if input.read_line(&mut answer)? == 0 {
         return Ok(false);
     }
     Ok(matches!(
@@ -193,8 +205,19 @@ mod tests {
     }
 
     #[test]
-    fn confirm_requires_an_interactive_terminal() {
-        let error = confirm().unwrap_err();
+    fn confirm_requires_an_interactive_terminal_and_parses_answers() {
+        let mut empty = io::Cursor::new(Vec::<u8>::new());
+        let mut output = Vec::new();
+        let error = confirm_with(false, &mut empty, &mut output).unwrap_err();
         assert!(error.to_string().contains("interactive terminal"));
+
+        let mut yes = io::Cursor::new(b"yes\n".to_vec());
+        assert!(confirm_with(true, &mut yes, &mut output).unwrap());
+
+        let mut no = io::Cursor::new(b"n\n".to_vec());
+        assert!(!confirm_with(true, &mut no, &mut output).unwrap());
+
+        let mut eof = io::Cursor::new(Vec::<u8>::new());
+        assert!(!confirm_with(true, &mut eof, &mut output).unwrap());
     }
 }

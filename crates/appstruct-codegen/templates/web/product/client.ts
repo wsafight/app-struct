@@ -4,6 +4,18 @@ export interface ProductProfile {
   timezone: string;
   notifications: boolean;
   mfa_enabled: boolean;
+  has_password?: boolean;
+}
+export interface AccountExport {
+  exported_at: string;
+  account: Record<string, unknown>;
+  profile: Record<string, unknown>;
+  oauth_accounts: Record<string, unknown>[];
+  sessions: Record<string, unknown>[];
+  api_tokens: Record<string, unknown>[];
+  saved_views: Record<string, unknown>[];
+  notifications: Record<string, unknown>[];
+  organizations: Record<string, unknown>[];
 }
 export interface ProductNotification {
   id: string;
@@ -68,7 +80,7 @@ export interface ProductInsights {
   definitions: Record<string, string>;
 }
 export interface SecurityProof {
-  password: string;
+  password?: string;
   code?: string;
 }
 
@@ -90,7 +102,9 @@ export const productFeatures = {
 export const productApi = {
   profile: (options: RequestOptions = {}) =>
     request<ProductProfile>("/api/auth/settings", options),
-  updateProfile: (input: Omit<ProductProfile, "mfa_enabled">) =>
+  updateProfile: (
+    input: Omit<ProductProfile, "mfa_enabled" | "has_password">,
+  ) =>
     request<void>("/api/auth/settings", {
       method: "PATCH",
       body: JSON.stringify(input),
@@ -127,6 +141,16 @@ export const productApi = {
     ),
   disableMfa: (proof: SecurityProof) =>
     request<void>("/api/auth/settings/mfa/disable", {
+      method: "POST",
+      body: JSON.stringify(proof),
+    }),
+  exportData: (proof: SecurityProof) =>
+    request<AccountExport>("/api/auth/settings/export", {
+      method: "POST",
+      body: JSON.stringify(proof),
+    }),
+  deleteAccount: (proof: SecurityProof) =>
+    request<void>("/api/auth/settings/delete", {
       method: "POST",
       body: JSON.stringify(proof),
     }),

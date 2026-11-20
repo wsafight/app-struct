@@ -222,6 +222,10 @@ pub(super) fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
             "page_size",
             &json!({ "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }),
         ),
+        query_parameter(
+            "count",
+            &json!({ "type": "string", "enum": ["exact", "bounded"], "description": "Offset-pagination count strategy. `bounded` caps total counting at 10,000 rows and reports `total_exact`." }),
+        ),
         query_parameter("cursor", &json!({ "type": "string", "maxLength": 16384 })),
         query_parameter(
             "direction",
@@ -247,25 +251,7 @@ pub(super) fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
         .iter()
         .filter(|field| field.capabilities.filterable)
     {
-        parameters.push(query_parameter(
-            &format!("filter[{}]", field.rust_name),
-            &schema::field_schema(field, false),
-        ));
-        if matches!(
-            field.ty,
-            FieldTypeIr::Integer
-                | FieldTypeIr::Bigint
-                | FieldTypeIr::Decimal
-                | FieldTypeIr::Date
-                | FieldTypeIr::Datetime
-        ) {
-            for operator in ["gte", "lte"] {
-                parameters.push(query_parameter(
-                    &format!("filter[{}][{operator}]", field.rust_name),
-                    &schema::field_schema(field, false),
-                ));
-            }
-        }
+        push_filter_parameters(&mut parameters, &field.rust_name, field);
     }
     for relation_field in entity.fields.iter().filter(|field| {
         field.capabilities.filterable && matches!(field.ty, FieldTypeIr::Relation { .. })
@@ -283,34 +269,30 @@ pub(super) fn list_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
             .iter()
             .filter(|field| field.capabilities.filterable)
         {
-            parameters.push(query_parameter(
-                &format!(
-                    "filter[{}.{}]",
-                    relation_field.api_name, target_field.rust_name
-                ),
-                &schema::field_schema(target_field, false),
-            ));
-            if matches!(
-                target_field.ty,
-                FieldTypeIr::Integer
-                    | FieldTypeIr::Bigint
-                    | FieldTypeIr::Decimal
-                    | FieldTypeIr::Date
-                    | FieldTypeIr::Datetime
-            ) {
-                for operator in ["gte", "lte"] {
-                    parameters.push(query_parameter(
-                        &format!(
-                            "filter[{}.{}][{operator}]",
-                            relation_field.api_name, target_field.rust_name
-                        ),
-                        &schema::field_schema(target_field, false),
-                    ));
-                }
-            }
+            let name = format!("{}.{}", relation_field.api_name, target_field.rust_name);
+            push_filter_parameters(&mut parameters, &name, target_field);
         }
     }
     parameters
+}
+fn push_filter_parameters(parameters: &mut Vec<Value>, name: &str, field: &appstruct_ir::FieldIr) {
+    let field_schema = schema::field_schema(field, false);
+    parameters.push(query_parameter(&format!("filter[{name}]"), &field_schema));
+    if matches!(
+        field.ty,
+        FieldTypeIr::Integer
+            | FieldTypeIr::Bigint
+            | FieldTypeIr::Decimal
+            | FieldTypeIr::Date
+            | FieldTypeIr::Datetime
+    ) {
+        for operator in ["gte", "lte"] {
+            parameters.push(query_parameter(
+                &format!("filter[{name}][{operator}]"),
+                &field_schema,
+            ));
+        }
+    }
 }
 fn aggregate_parameters(ir: &AppIr, entity: &EntityIr) -> Vec<Value> {
     let mut parameters = vec![
