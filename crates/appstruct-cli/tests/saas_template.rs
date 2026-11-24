@@ -57,6 +57,7 @@ fn assert_starter_files_preserved(actual: &Path, expected: &Path, relative: &Pat
             Some(
                 "appstruct.yaml"
                     | "README.md"
+                    | ".env"
                     | ".env.example"
                     | ".gitignore"
                     | "app/backend/Cargo.toml"

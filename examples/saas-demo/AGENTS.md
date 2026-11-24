@@ -13,9 +13,11 @@ This repository is an **AppStruct** application. Follow these ownership boundari
 - **Generated or CLI-managed (NEVER edit by hand)**:
   - `generated/` — regenerated atomically by `appstruct generate` (`backend/`, `web/`, `openapi/openapi.json`, `ir/app.ir.json`).
   - `.appstruct/` — snapshots, build manifests, and caches.
-  - `appstruct.lock` and `appstruct.modules.lock` — managed by AppStruct CLI commands.
+  - `appstruct.lock` — managed by AppStruct CLI commands.
 
 ## 2. Standard Development & Verification Loop
+
+If your coding agent supports MCP, connect the built-in stdio server (`appstruct mcp`) to call `appstruct_schema`, `appstruct_check`, `appstruct_access_preview`, `appstruct_generate`, `appstruct_migrate_plan`, and `appstruct_db_pull_preview` directly.
 
 Always inspect the machine-readable schema and validate before running or committing:
 

@@ -57,13 +57,8 @@ enum Command {
     },
     /// Show the Auth and Billing provider support matrix.
     Capabilities,
-    /// Create a new `AppStruct` project from an official template.
-    New {
-        name: String,
-        #[arg(long, value_enum, default_value_t = project_new::ProjectTemplate::Dashboard)]
-        template: project_new::ProjectTemplate,
-    },
-    /// Interactively create a new `AppStruct` project.
+    /// Create a new `AppStruct` project interactively or with flags.
+    #[command(alias = "new")]
     Init(project_new::InitArgs),
     /// Build validated backend and web production artifacts.
     Build,
@@ -152,13 +147,6 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> ExitCode {
     report::set_output_format(cli.format);
-    if let Command::New { name, template } = &cli.command {
-        let parent = match project_start(cli.project.as_ref()) {
-            Ok(path) => path,
-            Err(exit) => return exit,
-        };
-        return project_new::run(&parent, name, *template);
-    }
     if let Command::Init(args) = &cli.command {
         let parent = match project_start(cli.project.as_ref()) {
             Ok(path) => path,
@@ -193,11 +181,7 @@ fn run(cli: Cli) -> ExitCode {
     };
 
     match cli.command {
-        Command::New { .. }
-        | Command::Init(_)
-        | Command::Schema
-        | Command::Capabilities
-        | Command::Mcp => {
+        Command::Init(_) | Command::Schema | Command::Capabilities | Command::Mcp => {
             unreachable!()
         }
         Command::Auth { command } => auth_admin::run(&project, &command),

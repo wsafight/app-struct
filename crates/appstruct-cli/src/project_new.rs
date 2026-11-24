@@ -29,10 +29,6 @@ struct TemplateFile {
     content: &'static str,
 }
 
-pub(crate) fn run(parent: &Path, name: &str, template: ProjectTemplate) -> ExitCode {
-    run_with_command(parent, name, template, "new", None)
-}
-
 fn run_with_command(
     parent: &Path,
     name: &str,

@@ -41,7 +41,7 @@ fn new_emits_a_success_envelope_without_a_project() {
         .output()
         .unwrap();
 
-    assert_success(&output, "new");
+    assert_success(&output, "init");
     assert_eq!(parse(&output)["result"]["template"], "minimal");
     assert!(parent.path().join("json-app/appstruct.yaml").is_file());
 }
