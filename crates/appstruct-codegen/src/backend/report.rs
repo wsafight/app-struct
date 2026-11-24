@@ -3,7 +3,6 @@ use crate::{Artifact, ArtifactKind, CodegenError};
 use appstruct_ir::AppIr;
 use quote::quote;
 
-mod assets;
 mod contract;
 mod crypto;
 mod lifecycle;
@@ -22,8 +21,7 @@ pub(super) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
         source,
         ArtifactKind::RustSource,
     )];
-    if ir.report.enabled && ir.report.renderer == appstruct_ir::ReportRendererIr::Chromium {
-        artifacts.extend(assets::files());
+    if ir.report.enabled && ir.report.renderer == appstruct_ir::ReportRendererIr::Http {
         artifacts.push(Artifact::text(
             "backend/src/report/adapter.rs",
             include_str!("../../templates/backend/report_adapter.rs"),

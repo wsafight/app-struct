@@ -641,7 +641,7 @@
         "renderer": {
           "enum": [
             "capture",
-            "chromium"
+            "http"
           ],
           "default": "capture"
         },

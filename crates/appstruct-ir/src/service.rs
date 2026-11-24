@@ -225,7 +225,7 @@ pub struct ReportIr {
 pub enum ReportRendererIr {
     #[default]
     Capture,
-    Chromium,
+    Http,
 }
 
 impl ReportRendererIr {
@@ -233,7 +233,7 @@ impl ReportRendererIr {
     pub const fn version(self) -> &'static str {
         match self {
             Self::Capture => "capture-v1",
-            Self::Chromium => "chromium-v1",
+            Self::Http => "http-v1",
         }
     }
     #[allow(clippy::trivially_copy_pass_by_ref)]

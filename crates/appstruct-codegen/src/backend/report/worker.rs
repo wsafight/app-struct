@@ -3,13 +3,13 @@ use quote::quote;
 
 #[allow(clippy::too_many_lines)]
 pub(super) fn source(renderer: appstruct_ir::ReportRendererIr, usage: bool) -> TokenStream {
-    let adapter = (renderer == appstruct_ir::ReportRendererIr::Chromium)
-        .then(|| quote! { #[cfg_attr(not(unix), allow(dead_code, unused_imports))] mod adapter; });
+    let adapter =
+        (renderer == appstruct_ir::ReportRendererIr::Http).then(|| quote! { mod adapter; });
     let render = match renderer {
         appstruct_ir::ReportRendererIr::Capture => {
             quote! { render_capture_pdf(work.id, &work.body, &input, &work.locale, &work.timezone, &work.paper, &work.orientation) }
         }
-        appstruct_ir::ReportRendererIr::Chromium => quote! { adapter::render(&work, &input).await },
+        appstruct_ir::ReportRendererIr::Http => quote! { adapter::render(&work, &input).await },
     };
     let lifecycle = super::lifecycle::source(usage);
     quote! {

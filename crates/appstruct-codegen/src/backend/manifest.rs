@@ -80,15 +80,13 @@ pub(super) fn cargo(ir: &AppIr) -> String {
         if !ir.auth.enabled {
             manifest.push_str("ring = \"=0.17.14\"\n");
         }
-        if ir.report.renderer == appstruct_ir::ReportRendererIr::Chromium {
-            manifest.push_str("lopdf = { version = \"=0.45.0\", default-features = false }\n");
-        }
     }
-    let needs_webhook_http = ir.webhooks.enabled
+    let needs_extra_http = (ir.webhooks.enabled
+        || (ir.report.enabled && ir.report.renderer == appstruct_ir::ReportRendererIr::Http))
         && !(ir.auth.oauth_enabled
             || ir.billing.enabled
             || (ir.mail.enabled && ir.mail.provider == MailProviderIr::Resend));
-    if needs_webhook_http {
+    if needs_extra_http {
         manifest.push_str("reqwest = { version = \"=0.13.5\", default-features = false, features = [\"rustls\"] }\n");
     }
     manifest

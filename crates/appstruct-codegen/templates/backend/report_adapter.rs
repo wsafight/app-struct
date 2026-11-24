@@ -5,7 +5,6 @@ use std::time::Duration;
 
 const MAX_HTML: usize = 2 * 1024 * 1024;
 const MAX_PDF: usize = 50 * 1024 * 1024;
-const MAX_RESPONSE: usize = MAX_PDF * 4 / 3 + 8192;
 
 fn sha256_hex(bytes: &[u8]) -> String {
     appstruct_runtime::sha256_hex(bytes)
@@ -32,12 +31,7 @@ struct RenderRequest<'a> {
 
 #[derive(Deserialize)]
 struct RenderResponse {
-    protocol: u32,
-    request_id: uuid::Uuid,
-    run_id: uuid::Uuid,
-    renderer: String,
-    artifact_digest: String,
-    html_sha256: String,
+    #[serde(default)]
     code: String,
     #[serde(default)]
     pdf: String,
@@ -45,8 +39,6 @@ struct RenderResponse {
     sha256: String,
     #[serde(default)]
     byte_length: usize,
-    #[serde(default)]
-    pages: u32,
 }
 
 pub(super) async fn render(
@@ -63,8 +55,11 @@ pub(super) async fn render(
     template
         .render_captured_to(
             minijinja::context! {
-                input => minijinja::value::Serde(input), locale => &work.locale, timezone => &work.timezone,
-                paper => &work.paper, orientation => &work.orientation,
+                input => minijinja::value::Serde(input),
+                locale => &work.locale,
+                timezone => &work.timezone,
+                paper => &work.paper,
+                orientation => &work.orientation,
             },
             &mut output,
         )
@@ -75,7 +70,7 @@ pub(super) async fn render(
         request_id: uuid::Uuid::now_v7(),
         run_id: work.id,
         tenant_id: work.tenant_id,
-        renderer: "chromium-v1",
+        renderer: "http-v1",
         template: &work.template,
         template_version: work.template_version,
         artifact_digest: &work.artifact_digest,
@@ -92,86 +87,89 @@ pub(super) async fn render(
         .map_err(|_| "REPORT_RENDER_TIMEOUT".to_owned())?
 }
 
-#[cfg(unix)]
 async fn exchange(request: &RenderRequest<'_>) -> Result<Vec<u8>, String> {
-    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-    let path =
-        std::env::var_os("APPSTRUCT_REPORT_RENDERER_SOCKET").ok_or("REPORT_ADAPTER_UNAVAILABLE")?;
-    let mut socket = tokio::net::UnixStream::connect(path)
-        .await
-        .map_err(|_| "REPORT_ADAPTER_UNAVAILABLE")?;
+    let url = std::env::var("APPSTRUCT_REPORT_RENDERER_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or("REPORT_ADAPTER_UNAVAILABLE")?;
     let body = serde_json::to_vec(request).map_err(|_| "REPORT_INVALID_TEMPLATE_ARTIFACT")?;
-    socket
-        .write_u32(body.len() as u32)
-        .await
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
         .map_err(|_| "REPORT_ADAPTER_UNAVAILABLE")?;
-    socket
-        .write_all(&body)
-        .await
-        .map_err(|_| "REPORT_ADAPTER_UNAVAILABLE")?;
-    let size = socket
-        .read_u32()
-        .await
-        .map_err(|_| "REPORT_ADAPTER_UNAVAILABLE")? as usize;
-    if size == 0 || size > MAX_RESPONSE {
-        return Err("REPORT_RESOURCE_LIMIT".into());
-    }
-    let mut bytes = vec![0; size];
-    socket
-        .read_exact(&mut bytes)
-        .await
-        .map_err(|_| "REPORT_ADAPTER_UNAVAILABLE")?;
-    let response: RenderResponse =
-        serde_json::from_slice(&bytes).map_err(|_| "REPORT_INVALID_OUTPUT")?;
-    validate_response(request, response)
-}
-
-#[cfg(not(unix))]
-async fn exchange(_request: &RenderRequest<'_>) -> Result<Vec<u8>, String> {
-    Err("REPORT_ADAPTER_UNAVAILABLE".into())
-}
-
-fn validate_response(
-    request: &RenderRequest<'_>,
-    response: RenderResponse,
-) -> Result<Vec<u8>, String> {
-    if response.protocol != 1
-        || response.request_id != request.request_id
-        || response.run_id != request.run_id
-        || response.renderer != request.renderer
-        || response.artifact_digest != request.artifact_digest
-        || response.html_sha256 != request.html_sha256
+    let mut builder = client
+        .post(&url)
+        .header("content-type", "application/json")
+        .header("x-appstruct-request-id", request.request_id.to_string());
+    if let Ok(secret) = std::env::var("APPSTRUCT_REPORT_RENDERER_SECRET")
+        && !secret.is_empty()
     {
-        return Err("REPORT_INVALID_OUTPUT".into());
+        let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes());
+        let tag = ring::hmac::sign(&key, &body);
+        let mut hex = String::with_capacity(tag.as_ref().len() * 2);
+        for byte in tag.as_ref() {
+            use std::fmt::Write as _;
+            let _ = write!(&mut hex, "{byte:02x}");
+        }
+        builder = builder.header("x-appstruct-signature", format!("sha256={hex}"));
     }
-    if response.code != "OK" {
+    let response = builder
+        .body(body)
+        .send()
+        .await
+        .map_err(|_| "REPORT_ADAPTER_UNAVAILABLE")?;
+    if !response.status().is_success() {
+        return Err("REPORT_ADAPTER_UNAVAILABLE".into());
+    }
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|_| "REPORT_ADAPTER_UNAVAILABLE")?;
+    if content_type.starts_with("application/pdf") {
+        return validate_pdf(bytes.to_vec());
+    }
+    let payload: RenderResponse =
+        serde_json::from_slice(&bytes).map_err(|_| "REPORT_INVALID_OUTPUT")?;
+    validate_json_response(payload)
+}
+
+fn validate_json_response(response: RenderResponse) -> Result<Vec<u8>, String> {
+    if !response.code.is_empty() && response.code != "OK" {
         return Err(match response.code.as_str() {
             "REPORT_BLOCKED_RESOURCE"
             | "REPORT_RENDER_TIMEOUT"
             | "REPORT_RESOURCE_LIMIT"
-            | "REPORT_BROWSER_CRASH"
             | "REPORT_ADAPTER_UNAVAILABLE"
             | "REPORT_INVALID_TEMPLATE_ARTIFACT" => response.code,
             _ => "REPORT_INVALID_OUTPUT".into(),
         });
     }
-    if !(1..=100).contains(&response.pages)
-        || response.byte_length > MAX_PDF
-        || response.pdf.len() > MAX_RESPONSE - 8192
-    {
+    if response.byte_length > MAX_PDF {
         return Err("REPORT_RESOURCE_LIMIT".into());
     }
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(response.pdf)
         .map_err(|_| "REPORT_INVALID_OUTPUT")?;
-    if bytes.len() != response.byte_length
-        || !bytes.starts_with(b"%PDF-")
-        || sha256_hex(&bytes) != response.sha256
-    {
+    if response.byte_length > 0 && bytes.len() != response.byte_length {
         return Err("REPORT_INVALID_OUTPUT".into());
     }
-    let document = lopdf::Document::load_mem(&bytes).map_err(|_| "REPORT_INVALID_OUTPUT")?;
-    if document.get_pages().len() != response.pages as usize {
+    if !response.sha256.is_empty() && sha256_hex(&bytes) != response.sha256 {
+        return Err("REPORT_INVALID_OUTPUT".into());
+    }
+    validate_pdf(bytes)
+}
+
+fn validate_pdf(bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+    if bytes.is_empty() || bytes.len() > MAX_PDF {
+        return Err("REPORT_RESOURCE_LIMIT".into());
+    }
+    if !bytes.starts_with(b"%PDF-") {
         return Err("REPORT_INVALID_OUTPUT".into());
     }
     Ok(bytes)

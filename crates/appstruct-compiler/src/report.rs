@@ -56,11 +56,11 @@ pub(crate) fn lower_report(
     });
     let renderer = match report.renderer.as_ref().map(|value| value.value.as_str()) {
         None | Some("capture") => appstruct_ir::ReportRendererIr::Capture,
-        Some("chromium") => appstruct_ir::ReportRendererIr::Chromium,
+        Some("http") => appstruct_ir::ReportRendererIr::Http,
         Some(_) => {
             diagnostics.push(Diagnostic::error(
                 "AS3097",
-                "report renderer must be capture or chromium",
+                "report renderer must be capture or http",
                 report.renderer.as_ref().unwrap().span.clone(),
             ));
             appstruct_ir::ReportRendererIr::Capture
@@ -174,10 +174,10 @@ pub(crate) fn lower_report(
         diagnostics,
     ))
     .unwrap_or(DEFAULT_RETENTION_DAYS);
-    if renderer == appstruct_ir::ReportRendererIr::Chromium && max_input_bytes > 1024 * 1024 {
+    if renderer == appstruct_ir::ReportRendererIr::Http && max_input_bytes > 1024 * 1024 {
         diagnostics.push(Diagnostic::error(
             "AS3097",
-            "chromium report snapshots are limited to 1 MiB",
+            "http report snapshots are limited to 1 MiB",
             span.clone(),
         ));
     }

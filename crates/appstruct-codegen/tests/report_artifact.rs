@@ -130,22 +130,20 @@ fn generated_report_backend_is_rustfmt_clean_and_compiles() {
 }
 
 #[test]
-fn chromium_adapter_is_packaged_and_generated_backend_compiles() {
+fn http_report_adapter_is_packaged_and_generated_backend_compiles() {
     let fixture =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m7-report-project");
     let mut ir = compile_project(&fixture).unwrap();
-    ir.report.renderer = appstruct_ir::ReportRendererIr::Chromium;
+    ir.report.renderer = appstruct_ir::ReportRendererIr::Http;
     let artifacts = plan(&ir).unwrap();
     assert!(
-        artifact_text(&artifacts, "report-renderer/compose.yaml").contains("network_mode: none")
+        !artifacts
+            .iter()
+            .any(|artifact| artifact.relative_path.starts_with("report-renderer/"))
     );
-    assert!(
-        artifact_text(&artifacts, "backend/src/report/adapter.rs").contains("validate_response")
-    );
-    let renderer = artifact_text(&artifacts, "report-renderer/render.mjs");
-    assert!(renderer.contains("createRenderer"));
-    assert!(renderer.contains("APPSTRUCT_RENDERER_RECYCLE_AFTER"));
-    assert!(renderer.contains("browser.newContext"));
+    let adapter = artifact_text(&artifacts, "backend/src/report/adapter.rs");
+    assert!(adapter.contains("APPSTRUCT_REPORT_RENDERER_URL"));
+    assert!(adapter.contains("x-appstruct-signature"));
     let temporary = tempfile::tempdir().unwrap();
     for artifact in artifacts {
         let destination = temporary
