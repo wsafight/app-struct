@@ -1441,6 +1441,35 @@
       },
       "additionalProperties": false
     },
+    "httpOperation": {
+      "type": "object",
+      "required": [
+        "url_env"
+      ],
+      "properties": {
+        "url_env": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "secret_env": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 120000,
+          "default": 10000
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "default": 0
+        }
+      },
+      "additionalProperties": false
+    },
     "operationBase": {
       "type": "object",
       "required": [
@@ -1456,6 +1485,9 @@
         },
         "access": {
           "$ref": "#/$defs/accessRule"
+        },
+        "http": {
+          "$ref": "#/$defs/httpOperation"
         }
       },
       "additionalProperties": false

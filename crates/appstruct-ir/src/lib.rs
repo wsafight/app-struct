@@ -14,7 +14,8 @@ pub use auth::AuthIr;
 pub use billing::{BillingIr, BillingPlanIr};
 pub use database::{DatabaseDevMode, DatabaseIr, DatabaseMigrationPolicy, DatabaseProvider};
 pub use extension::{
-    CommandIr, OperationTypeIr, PageIr, PageScopeIr, QueryIr, ValueFieldIr, ValueObjectIr,
+    CommandIr, HttpOperationIr, OperationTypeIr, PageIr, PageScopeIr, QueryIr, ValueFieldIr,
+    ValueObjectIr,
 };
 pub use json::{IrJsonError, from_json};
 pub use seed::SeedIr;

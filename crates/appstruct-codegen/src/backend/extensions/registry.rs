@@ -45,7 +45,8 @@ pub(super) fn source(ir: &AppIr) -> TokenStream {
         setter: job_setter,
         access: job_handler_access,
     } = job_registry(ir);
-    let required = !ir.commands.is_empty() || !ir.queries.is_empty();
+    let required = ir.commands.iter().any(|command| command.http.is_none())
+        || ir.queries.iter().any(|query| query.http.is_none());
     let (initial_state, initial_value, default_handler) = initial_handlers(required);
     let register = required.then(|| {
         quote! {

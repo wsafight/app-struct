@@ -25,7 +25,9 @@ mod value;
 mod webhooks;
 mod workflow;
 
-pub(crate) use extension::{SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject};
+pub(crate) use extension::{
+    SurfaceHttpOperation, SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject,
+};
 pub(crate) use model::{
     FieldFlags, Located, SurfaceAccess, SurfaceAccessRule, SurfaceChart, SurfaceDomain,
     SurfaceEntity, SurfaceField, SurfaceFieldAccess, SurfaceFieldSemantic, SurfaceFieldUi,

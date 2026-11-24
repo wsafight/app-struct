@@ -129,7 +129,7 @@ fn policy_contract(entity: &EntityIr) -> Result<TokenStream, CodegenError> {
 fn handler_traits(ir: &AppIr) -> Result<TokenStream, CodegenError> {
     let mut traits = Vec::new();
     let mut names = Vec::new();
-    for command in &ir.commands {
+    for command in ir.commands.iter().filter(|command| command.http.is_none()) {
         let name = format_ident!("{}Handler", command.rust_name);
         let input = operation_type(ir, &command.input)?;
         let output = operation_type(ir, &command.output)?;
@@ -141,7 +141,7 @@ fn handler_traits(ir: &AppIr) -> Result<TokenStream, CodegenError> {
         });
         names.push(name);
     }
-    for query in &ir.queries {
+    for query in ir.queries.iter().filter(|query| query.http.is_none()) {
         let name = format_ident!("{}Handler", query.rust_name);
         let output = operation_type(ir, &query.output)?;
         let method = if let Some(input) = &query.input {

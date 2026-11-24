@@ -81,7 +81,13 @@ pub(super) fn cargo(ir: &AppIr) -> String {
             manifest.push_str("ring = \"=0.17.14\"\n");
         }
     }
+    let has_http_operations = ir.commands.iter().any(|command| command.http.is_some())
+        || ir.queries.iter().any(|query| query.http.is_some());
+    if has_http_operations && !ir.auth.enabled && !ir.report.enabled {
+        manifest.push_str("ring = \"=0.17.14\"\n");
+    }
     let needs_extra_http = (ir.webhooks.enabled
+        || has_http_operations
         || (ir.report.enabled && ir.report.renderer == appstruct_ir::ReportRendererIr::Http))
         && !(ir.auth.oauth_enabled
             || ir.billing.enabled

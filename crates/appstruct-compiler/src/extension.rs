@@ -1,11 +1,11 @@
 mod value;
 
 use crate::access::build_operation_access;
-use crate::surface::{SurfaceOperation, SurfacePage, SurfaceValueObject};
+use crate::surface::{SurfaceHttpOperation, SurfaceOperation, SurfacePage, SurfaceValueObject};
 use appstruct_core::is_rust_type_name;
 use appstruct_ir::{
-    AuthIr, BillingIr, CommandIr, Diagnostic, EntityId, OperationTypeIr, PageIr, PageScopeIr,
-    QueryIr, SourceSpan, ValueObjectIr,
+    AuthIr, BillingIr, CommandIr, Diagnostic, EntityId, HttpOperationIr, OperationTypeIr, PageIr,
+    PageScopeIr, QueryIr, SourceSpan, ValueObjectIr,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -91,12 +91,17 @@ fn lower_command(
 ) -> Option<CommandIr> {
     let input = resolve_type(operation.input.as_ref()?, entities, values, diagnostics)?;
     let output = resolve_type(&operation.output, entities, values, diagnostics)?;
+    let http = operation
+        .http
+        .as_ref()
+        .map(|http| lower_http_operation(http, diagnostics));
     Some(CommandIr {
         id: format!("app::command::{}", operation.name.value),
         rust_name: operation.name.value,
         input,
         output,
         access: build_operation_access(&operation.access, auth, billing, diagnostics)?,
+        http,
     })
 }
 
@@ -113,13 +118,82 @@ fn lower_query(
         .as_ref()
         .and_then(|input| resolve_type(input, entities, values, diagnostics));
     let output = resolve_type(&operation.output, entities, values, diagnostics)?;
+    let http = operation
+        .http
+        .as_ref()
+        .map(|http| lower_http_operation(http, diagnostics));
     Some(QueryIr {
         id: format!("app::query::{}", operation.name.value),
         rust_name: operation.name.value,
         input,
         output,
         access: build_operation_access(&operation.access, auth, billing, diagnostics)?,
+        http,
     })
+}
+
+fn lower_http_operation(
+    http: &SurfaceHttpOperation,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> HttpOperationIr {
+    if !is_env_var_name(&http.url_env.value) {
+        diagnostics.push(Diagnostic::error(
+            "AS3013",
+            format!(
+                "invalid environment variable name `{}` for `http.url_env`",
+                http.url_env.value
+            ),
+            http.url_env.span.clone(),
+        ));
+    }
+    if let Some(secret_env) = &http.secret_env
+        && !is_env_var_name(&secret_env.value)
+    {
+        diagnostics.push(Diagnostic::error(
+            "AS3013",
+            format!(
+                "invalid environment variable name `{}` for `http.secret_env`",
+                secret_env.value
+            ),
+            secret_env.span.clone(),
+        ));
+    }
+    let timeout_ms = match &http.timeout_ms {
+        None => 10_000,
+        Some(value) if (100..=120_000).contains(&value.value) => value.value,
+        Some(value) => {
+            diagnostics.push(Diagnostic::error(
+                "AS3013",
+                "operation `http.timeout_ms` must be between 100 and 120000",
+                value.span.clone(),
+            ));
+            10_000
+        }
+    };
+    let retries = match &http.retries {
+        None => 0,
+        Some(value) if value.value <= 3 => u8::try_from(value.value).unwrap_or(0),
+        Some(value) => {
+            diagnostics.push(Diagnostic::error(
+                "AS3013",
+                "operation `http.retries` must be between 0 and 3",
+                value.span.clone(),
+            ));
+            0
+        }
+    };
+    HttpOperationIr {
+        url_env: http.url_env.value.clone(),
+        secret_env: http.secret_env.as_ref().map(|value| value.value.clone()),
+        timeout_ms,
+        retries,
+    }
+}
+
+fn is_env_var_name(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    bytes.next().is_some_and(|first| first.is_ascii_uppercase())
+        && bytes.all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
 fn resolve_type(

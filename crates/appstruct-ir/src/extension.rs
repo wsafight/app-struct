@@ -23,12 +23,23 @@ pub enum OperationTypeIr {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HttpOperationIr {
+    pub url_env: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_env: Option<String>,
+    pub timeout_ms: u64,
+    pub retries: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandIr {
     pub id: String,
     pub rust_name: String,
     pub input: OperationTypeIr,
     pub output: OperationTypeIr,
     pub access: AccessRuleIr,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http: Option<HttpOperationIr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +49,8 @@ pub struct QueryIr {
     pub input: Option<OperationTypeIr>,
     pub output: OperationTypeIr,
     pub access: AccessRuleIr,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http: Option<HttpOperationIr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

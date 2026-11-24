@@ -25,11 +25,20 @@ pub(crate) struct SurfaceValueField {
 }
 
 #[derive(Clone, Debug)]
+pub(crate) struct SurfaceHttpOperation {
+    pub url_env: Located<String>,
+    pub secret_env: Option<Located<String>>,
+    pub timeout_ms: Option<Located<u64>>,
+    pub retries: Option<Located<u64>>,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct SurfaceOperation {
     pub name: Located<String>,
     pub input: Option<Located<String>>,
     pub output: Located<String>,
     pub access: Located<SurfaceAccessRule>,
+    pub http: Option<SurfaceHttpOperation>,
     pub span: SourceSpan,
 }
 
@@ -208,7 +217,7 @@ fn decode_operation(
     let mapping = expect_mapping(&entry.value, "operation definition")?;
     ensure_known_keys(
         mapping,
-        &["input", "output", "access"],
+        &["input", "output", "access", "http"],
         "operation definition",
     )?;
     let output = required(mapping, "output", &entry.value.span)?;
@@ -221,12 +230,33 @@ fn decode_operation(
             entry.value.span.clone(),
         ));
     }
+    let http = mapping
+        .get("http")
+        .map(|entry| decode_http_operation(&entry.value))
+        .transpose()?;
     Ok(SurfaceOperation {
         name: located_name(name, entry),
         input,
         output: expect_string(&output.value, "operation `output`")?,
         access: decode_rule(&access.value)?,
+        http,
         span: entry.value.span.clone(),
+    })
+}
+
+fn decode_http_operation(node: &Node) -> Result<SurfaceHttpOperation, Diagnostic> {
+    let mapping = expect_mapping(node, "operation `http`")?;
+    ensure_known_keys(
+        mapping,
+        &["url_env", "secret_env", "timeout_ms", "retries"],
+        "operation `http`",
+    )?;
+    let url_env = required(mapping, "url_env", &node.span)?;
+    Ok(SurfaceHttpOperation {
+        url_env: expect_string(&url_env.value, "operation `http.url_env`")?,
+        secret_env: optional_string(mapping, "secret_env", "operation `http.secret_env`")?,
+        timeout_ms: optional_u64(mapping, "timeout_ms")?,
+        retries: optional_u64(mapping, "retries")?,
     })
 }
 
