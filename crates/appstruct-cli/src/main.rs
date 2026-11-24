@@ -5,6 +5,7 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod access_matrix_html;
 mod access_preview;
 mod auth_admin;
 mod build;

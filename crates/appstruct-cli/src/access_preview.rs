@@ -28,6 +28,15 @@ pub(crate) enum AccessCommand {
         #[arg(long, requires = "entity")]
         record: Option<PathBuf>,
     },
+    /// Generate a full role-by-entity/field permission matrix (HTML or JSON).
+    Matrix {
+        /// Optional entity filter (name or full IR ID).
+        #[arg(long)]
+        entity: Option<String>,
+        /// Write the self-contained HTML audit report to this file path (defaults to stdout).
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -115,14 +124,165 @@ pub(crate) fn preview_value(
 }
 
 pub(crate) fn run(project: &Path, command: &AccessCommand) -> ExitCode {
-    let AccessCommand::Preview {
-        entity,
-        authenticated,
-        role,
-        actor_id,
-        tenant_id,
-        record,
-    } = command;
+    match command {
+        AccessCommand::Preview {
+            entity,
+            authenticated,
+            role,
+            actor_id,
+            tenant_id,
+            record,
+        } => run_preview(
+            project,
+            entity.as_deref(),
+            *authenticated,
+            role,
+            *actor_id,
+            *tenant_id,
+            record.as_deref(),
+        ),
+        AccessCommand::Matrix { entity, output } => {
+            run_matrix(project, entity.as_deref(), output.as_deref())
+        }
+    }
+}
+
+fn run_matrix(project: &Path, entity: Option<&str>, output: Option<&Path>) -> ExitCode {
+    let ir = match appstruct_compiler::compile_project(project) {
+        Ok(ir) => ir,
+        Err(diagnostics) => {
+            return crate::report::fail_diagnostics(
+                crate::report::ErrorCategory::Validation,
+                diagnostics,
+            );
+        }
+    };
+    let entities = ir
+        .entities
+        .iter()
+        .filter(|item| entity.is_none_or(|name| item.id.0 == name || item.rust_name == name))
+        .collect::<Vec<_>>();
+    if entities.is_empty() || (entity.is_some() && entities.len() != 1) {
+        return invalid("select one existing entity by its name or full IR ID");
+    }
+    let tenant_id = ir.tenant.enabled.then(uuid::Uuid::nil);
+    let mut profiles: Vec<(String, bool, Vec<String>)> = vec![
+        ("anonymous".to_owned(), false, Vec::new()),
+        ("authenticated".to_owned(), true, Vec::new()),
+    ];
+    for role in &ir.auth.roles {
+        profiles.push((format!("role:{role}"), true, vec![role.clone()]));
+    }
+    let mut row_meta = Vec::new();
+    let mut actors = Vec::new();
+    for (profile_index, (label, authenticated, roles)) in profiles.iter().enumerate() {
+        let sample = Sample {
+            authenticated: *authenticated,
+            roles,
+            actor_id: None,
+            tenant_id,
+            record: None,
+        };
+        let evaluated = entities
+            .iter()
+            .flat_map(|item| matrix(&ir, item, &sample))
+            .collect::<Vec<_>>();
+        if profile_index == 0 {
+            row_meta = evaluated
+                .iter()
+                .map(|row| crate::access_matrix_html::MatrixRowMeta {
+                    entity: row.entity.clone(),
+                    operation: row.operation.clone(),
+                    field: row.field.clone(),
+                })
+                .collect();
+        }
+        let decisions = evaluated
+            .iter()
+            .map(|row| decision_badge(row.declarative.decision))
+            .collect();
+        actors.push(crate::access_matrix_html::MatrixActor {
+            label: label.clone(),
+            decisions,
+        });
+    }
+    let html = crate::access_matrix_html::render_html(&ir.app.name, &row_meta, &actors);
+    if let Some(path) = output {
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+            && let Err(error) = fs::create_dir_all(parent)
+        {
+            return invalid(&format!("cannot create output directory: {error}"));
+        }
+        if let Err(error) = fs::write(path, &html) {
+            return invalid(&format!("cannot write HTML matrix report: {error}"));
+        }
+        if crate::report::is_json() {
+            crate::report::success(&serde_json::json!({
+                "command": "access",
+                "action": "matrix",
+                "output": path,
+                "entity_count": entities.len(),
+                "role_count": ir.auth.roles.len(),
+                "row_count": row_meta.len(),
+            }));
+        } else {
+            println!("Wrote access permission matrix to {}", path.display());
+        }
+    } else if crate::report::is_json() {
+        crate::report::success(&serde_json::json!({
+            "command": "access",
+            "action": "matrix",
+            "scope": "declarations_only",
+            "actors": actors.iter().map(|a| &a.label).collect::<Vec<_>>(),
+            "row_count": row_meta.len(),
+            "html": html,
+        }));
+    } else {
+        print!("{html}");
+    }
+    ExitCode::SUCCESS
+}
+
+const fn decision_badge(decision: Decision) -> crate::access_matrix_html::MatrixDecision {
+    match decision {
+        Decision::Allowed => crate::access_matrix_html::MatrixDecision {
+            code: "allowed",
+            label: "Allowed",
+            css_class: "allowed",
+        },
+        Decision::Denied => crate::access_matrix_html::MatrixDecision {
+            code: "denied",
+            label: "Denied",
+            css_class: "denied",
+        },
+        Decision::RequiresRecord => crate::access_matrix_html::MatrixDecision {
+            code: "requires_record",
+            label: "Owner / Record",
+            css_class: "conditional",
+        },
+        Decision::RequiresTenant => crate::access_matrix_html::MatrixDecision {
+            code: "requires_tenant",
+            label: "Tenant",
+            css_class: "conditional",
+        },
+        Decision::RequiresEntitlement => crate::access_matrix_html::MatrixDecision {
+            code: "requires_entitlement",
+            label: "Entitlement",
+            css_class: "conditional",
+        },
+    }
+}
+
+fn run_preview(
+    project: &Path,
+    entity: Option<&str>,
+    authenticated: bool,
+    role: &[String],
+    actor_id: Option<uuid::Uuid>,
+    tenant_id: Option<uuid::Uuid>,
+    record: Option<&Path>,
+) -> ExitCode {
     let ir = match appstruct_compiler::compile_project(project) {
         Ok(ir) => ir,
         Err(diagnostics) => {
@@ -135,27 +295,23 @@ pub(crate) fn run(project: &Path, command: &AccessCommand) -> ExitCode {
     if role.iter().any(|role| !ir.auth.roles.contains(role)) {
         return invalid("sample roles must be declared in modules.rbac.roles");
     }
-    let record = match read_record(record.as_deref()) {
+    let record = match read_record(record) {
         Ok(record) => record,
         Err(message) => return invalid(&message),
     };
     let entities = ir
         .entities
         .iter()
-        .filter(|item| {
-            entity
-                .as_ref()
-                .is_none_or(|name| item.id.0 == *name || item.rust_name == *name)
-        })
+        .filter(|item| entity.is_none_or(|name| item.id.0 == name || item.rust_name == name))
         .collect::<Vec<_>>();
     if entities.is_empty() || (entity.is_some() && entities.len() != 1) {
         return invalid("select one existing entity by its name or full IR ID");
     }
     let sample = Sample {
-        authenticated: *authenticated || !role.is_empty() || actor_id.is_some(),
+        authenticated: authenticated || !role.is_empty() || actor_id.is_some(),
         roles: role,
-        actor_id: *actor_id,
-        tenant_id: *tenant_id,
+        actor_id,
+        tenant_id,
         record: record.as_ref(),
     };
     let rows = entities

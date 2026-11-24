@@ -91,3 +91,29 @@ fn unknown_roles_and_invalid_record_shapes_fail_without_database_access() {
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
 }
+
+#[test]
+fn access_matrix_writes_self_contained_html_audit_report() {
+    let temp = tempfile::tempdir().unwrap();
+    let html_path = temp.path().join("reports/access-matrix.html");
+    let output = Command::new(env!("CARGO_BIN_EXE_appstruct"))
+        .arg("--project")
+        .arg(fixture())
+        .args(["access", "matrix", "--output"])
+        .arg(&html_path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let html = fs::read_to_string(&html_path).unwrap();
+    assert!(html.contains("<!DOCTYPE html>"));
+    assert!(html.contains("Declarative Access Permission Matrix"));
+    assert!(html.contains("role:admin"));
+    assert!(html.contains("role:member"));
+    assert!(html.contains("Project"));
+    assert!(html.contains("Allowed"));
+    assert!(html.contains("Denied"));
+}
