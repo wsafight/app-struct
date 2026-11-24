@@ -64,6 +64,56 @@ struct AccessRow {
     runtime_policy: &'static str,
 }
 
+pub(crate) fn preview_value(
+    project: &Path,
+    entity: Option<&str>,
+    authenticated: bool,
+    roles: &[String],
+    actor_id: Option<uuid::Uuid>,
+    tenant_id: Option<uuid::Uuid>,
+    record: Option<&Value>,
+) -> Result<Value, Value> {
+    let ir = appstruct_compiler::compile_project(project)
+        .map_err(|diagnostics| serde_json::json!({ "error": "validation_failed", "diagnostics": diagnostics }))?;
+    if roles.iter().any(|role| !ir.auth.roles.contains(role)) {
+        return Err(serde_json::json!({
+            "error": "invalid_role",
+            "message": "sample roles must be declared in modules.rbac.roles",
+            "declared_roles": ir.auth.roles,
+        }));
+    }
+    let entities = ir
+        .entities
+        .iter()
+        .filter(|item| entity.is_none_or(|name| item.id.0 == name || item.rust_name == name))
+        .collect::<Vec<_>>();
+    if entities.is_empty() || (entity.is_some() && entities.len() != 1) {
+        return Err(serde_json::json!({
+            "error": "invalid_entity",
+            "message": "select one existing entity by its name or full IR ID",
+            "available_entities": ir.entities.iter().map(|e| &e.id.0).collect::<Vec<_>>(),
+        }));
+    }
+    let sample = Sample {
+        authenticated: authenticated || !roles.is_empty() || actor_id.is_some(),
+        roles,
+        actor_id,
+        tenant_id,
+        record,
+    };
+    let rows = entities
+        .into_iter()
+        .flat_map(|item| matrix(&ir, item, &sample))
+        .collect::<Vec<_>>();
+    Ok(serde_json::json!({
+        "command": "access",
+        "action": "preview",
+        "scope": "declarations_only",
+        "sample_values_included": false,
+        "rows": rows,
+    }))
+}
+
 pub(crate) fn run(project: &Path, command: &AccessCommand) -> ExitCode {
     let AccessCommand::Preview {
         entity,

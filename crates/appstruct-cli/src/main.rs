@@ -17,6 +17,7 @@ mod doctor;
 mod environment;
 mod fingerprint;
 mod generation;
+mod mcp;
 mod migration;
 mod module_registry;
 mod preset;
@@ -109,6 +110,8 @@ enum Command {
         #[arg(long)]
         timings: bool,
     },
+    /// Run the Model Context Protocol (MCP) stdio server for AI coding agents.
+    Mcp,
     /// Plan or accept database schema migrations.
     Migrate {
         #[command(subcommand)]
@@ -175,6 +178,9 @@ fn run(cli: Cli) -> ExitCode {
         }
         return schema::run();
     }
+    if matches!(&cli.command, Command::Mcp) {
+        return mcp::run(cli.project.as_deref());
+    }
     let start = match project_start(cli.project.as_ref()) {
         Ok(path) => path,
         Err(exit) => return exit,
@@ -193,7 +199,11 @@ fn run(cli: Cli) -> ExitCode {
     };
 
     match cli.command {
-        Command::New { .. } | Command::Init(_) | Command::Schema | Command::Capabilities => {
+        Command::New { .. }
+        | Command::Init(_)
+        | Command::Schema
+        | Command::Capabilities
+        | Command::Mcp => {
             unreachable!()
         }
         Command::Auth { command } => auth_admin::run(&project, &command),

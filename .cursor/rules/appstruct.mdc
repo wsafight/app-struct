@@ -1,0 +1,54 @@
+---
+description: AppStruct deterministic full-stack compiler rules for YAML App Specs, migrations, access policies, and MCP tools
+globs:
+  - "appstruct.yaml"
+  - "spec/**/*.yaml"
+  - "app/**/*"
+  - "migrations/**/*.sql"
+alwaysApply: false
+---
+
+# AppStruct AI Coding Agent Rules
+
+You are working in an **AppStruct** repository. AppStruct compiles declarative YAML App Specs into a deterministic, fail-closed Rust (Axum/SQLx) + PostgreSQL + React/TypeScript full-stack application.
+
+## 1. Use the Built-in MCP Server (Preferred)
+
+If `appstruct` is configured as an MCP server (`appstruct mcp`), prefer its structured tools over guessing syntax:
+- `appstruct_schema` — inspect the exact Draft 2020-12 App Spec JSON Schema (supports `section`: `app`, `domain`, `entity`, `field`, `access`, `modules`, `workflow`).
+- `appstruct_check` — compile and validate the Spec + IR + user symbols; fix every diagnostic before generating.
+- `appstruct_access_preview` — verify effective RBAC, field-level, owner, and tenant access decisions.
+- `appstruct_generate` — regenerate `generated/` atomically (or `check: true` to verify freshness).
+- `appstruct_migrate_plan` — inspect pending PostgreSQL DDL changes and migration lint warnings.
+- `appstruct_db_pull_preview` — preview an App Spec draft from a live PostgreSQL schema without writing files.
+
+## 2. File Ownership Boundaries
+
+- **Edit freely (User-owned)**:
+  - `appstruct.yaml` and `spec/*.yaml` — root config, modules, entities, fields, relations, workflows, indexes, and access policies.
+  - `app/backend/` — custom Rust policies, lifecycle hooks, `AfterCommitHook`, job handlers, and custom Axum routes via `AppExtensions::builder()`.
+  - `app/web/` — locale, theme, field display labels, custom field components (`registerFieldComponent`), and custom routes (`registerPage`).
+  - `migrations/*.sql` — reviewed forward-only PostgreSQL migrations.
+- **NEVER edit by hand (Generated / CLI-managed)**:
+  - `generated/` — overwritten atomically by `appstruct generate`.
+  - `.appstruct/`, `appstruct.lock`, `appstruct.modules.lock`.
+
+## 3. Mandatory Verification Loop
+
+After any Spec change, run and pass all checks:
+
+```bash
+appstruct check --deny-warnings
+appstruct access preview --entity <Domain::Entity> --role member
+appstruct generate
+appstruct migrate plan
+appstruct migrate lint --deny-warnings
+```
+
+## 4. Security & Runtime Invariants
+
+1. **Fail-closed access**: Every entity must explicitly declare `list`, `read`, `create`, `update`, and `delete` rules (`public`, `authenticated`, `roles`, or `owner`). Never bypass tenant isolation in custom policies.
+2. **Optimistic concurrency**: `PATCH`, `DELETE`, and workflow transitions require `If-Match: "rev-<n>"`.
+3. **Transaction safety**: Execute DB queries inside `before_*` / `after_*` hooks via `RequestContext`'s transaction. Put irreversible external side effects (HTTP calls, emails, object deletion) in `AfterCommitHook` or Jobs/Outbox.
+4. **No secrets in Spec**: Keep credentials, API keys, webhook secrets, and `DATABASE_URL` in `.env` (gitignored) and document placeholders in `.env.example`.
+5. **Existing databases**: Use `appstruct db pull --schema public --output spec/imported.yaml` and `appstruct migrate baseline --accept` rather than applying initial `CREATE TABLE` DDL to a populated database.

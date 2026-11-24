@@ -2,331 +2,190 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-AppStruct 是一个由配置驱动的 Rust 全栈应用生成器。它把多文件 YAML App Spec 编译为类型化
-中间表示（IR）、PostgreSQL 迁移、Axum/SQLx + sift-query 后端、OpenAPI、TypeScript 客户端以及
-React/Rsbuild Web 应用。
+**面向 AI Coding Agent 的确定性全栈编译器 —— 同时让存量 PostgreSQL 3 分钟生成安全合规管理后台。**
 
-当前仓库处于技术预览阶段。使用当前实现需要从源码构建 CLI。
-M0-M6 已完成，包含生产构建、协调式开发服务器、Tenant/Audit/Mail/Jobs/File 模块、锁定的
-`appstruct/saas@1` 预设、事务化项目更新，以及可运行的 SaaS 模板和示例。SaaS 预设提供
-Admin 运维概览和受保护的 Jobs 重试/重放操作。生成应用可以按配置启用 Stripe Billing v1，预设 v1 默认关闭。
+> **你（或你的 AI Agent）只需编写声明式 YAML，无需精通 Rust 即可交付高性能全栈应用。**
 
-## 环境要求
+AppStruct 将多文件声明式 YAML App Spec 确定性编译为类型化中间表示（IR）、向前兼容的 PostgreSQL 迁移、默认拒绝（Fail-Closed）的 Rust（Axum/SQLx）后端、OpenAPI 契约、TypeScript 客户端以及 React 19 / Rsbuild 前端应用。
 
-使用 Dev Container 首次运行时，主机需要 Docker、VS Code 和 Dev Containers 扩展。
-下列工具由容器提供；仅在本地安装路径中需要自行安装。
+---
 
-| 依赖 | 版本 | 用途 |
-| --- | --- | --- |
-| Rust | 1.99.0，带 rustfmt 和 Clippy | CLI 和生成的后端 |
-| PostgreSQL | 推荐 17 | 迁移和生成的 API |
-| Node.js | 推荐 24 | 生成的 Web 应用 |
-| pnpm | 11.25.0 | 按锁文件安装 Web 依赖 |
-| Docker Compose | 当前版本，可选 | 仅用于 `database.dev.mode: managed` |
+## 为什么选择 AppStruct？
 
-仓库根目录和生成项目都会固定 Rust 版本。Web 模板也会提交 pnpm 锁文件，确保不同机器上的
-安装和构建可复现。
+### 1. 终结 AI 写全栈代码时的“权限漏校验、租户越权与迁移事故”
+当 AI Coding Agent 直接手写全栈 CRUD、SQL 迁移和鉴权中间件时，极易遗漏租户隔离、泄露敏感字段或生成锁表 DDL。
 
-## 安装 CLI
+AppStruct 将 AI 全栈开发变成**可静态验证的确定性编译闭环**：
 
-在仓库根目录执行：
-
-```bash
-rustup toolchain install 1.99.0 --component clippy,rustfmt
-cargo build --release --locked -p appstruct-cli
-./target/release/appstruct --version
+```text
+AI 编写声明式 YAML Spec
+  → 内置 MCP Server (`appstruct mcp`) + Draft 2020-12 JSON Schema
+  → `appstruct check --deny-warnings` + `appstruct access preview` 精确报错与权限预演
+  → 确定性编译生成安全 Rust + PostgreSQL + React/TS 应用
 ```
 
-可以直接使用 `target/release/appstruct`，也可以复制到已有的 `PATH` 目录：
+### 2. 存量 PostgreSQL 3 分钟生成安全管理后台
+已有现成的 PostgreSQL 数据库？用 `appstruct db pull` 只读拉取表结构生成默认拒绝的 App Spec 草稿，审核权限规则后即可交付单二进制 Rust + React 管理后台 —— **无按席位收租、无供应商锁定、完整源码可控**。
 
 ```bash
+appstruct db pull --schema public --output spec/imported.yaml
+appstruct access preview --role admin
+appstruct migrate baseline --accept
+appstruct dev
+```
+
+---
+
+## 一条命令体验完整 Demo（主机零依赖）
+
+无需在本地安装 Rust、Node.js、pnpm 或 PostgreSQL，只需 Docker：
+
+```bash
+docker compose -f docker-compose.demo.yaml up --build
+```
+
+启动后访问 **http://localhost:8080**，即可体验完整的多租户 SaaS 示例（认证、组织租户隔离、RBAC、审计日志、项目/任务管理、Jobs/Outbox 与运维控制台）。
+
+---
+
+## 接入 AI Coding Agent（内置 MCP + Skill + Rules）
+
+AppStruct 内置**零外部依赖的 stdio MCP Server**（`appstruct mcp`），并自带开箱即用的 Agent 规则与技能包：
+
+- **Claude Code**：
+  ```bash
+  claude mcp add appstruct -- appstruct mcp
+  ```
+- **Cursor / Windsurf / Antigravity / Codex**：
+  - MCP 启动命令：`appstruct mcp`（可选 `--project /path/to/app`）
+  - 仓库内置规则与技能：[`.cursor/rules/appstruct.mdc`](.cursor/rules/appstruct.mdc)、[`.claude/skills/appstruct/SKILL.md`](.claude/skills/appstruct/SKILL.md)，以及每个生成项目自带的 `AGENTS.md`。
+
+**暴露的 MCP 工具：**
+- `appstruct_schema` — 获取 Draft 2020-12 App Spec JSON Schema（支持按 `section` 过滤）
+- `appstruct_check` — 校验 Spec、IR 与用户扩展符号，返回结构化诊断信息
+- `appstruct_access_preview` — 预演指定角色/主体下的 CRUD、字段级、Owner 与租户权限矩阵
+- `appstruct_generate` — 原子化重新生成代码（支持 `check: true` 漂移检测）
+- `appstruct_migrate_plan` — 对比 schema 快照、预览迁移 SQL 并执行迁移 Lint
+- `appstruct_db_pull_preview` — 只读内省实时 PostgreSQL 表结构并预览生成的 Spec 草稿
+
+---
+
+## 本地环境要求与安装
+
+| 依赖 | 版本要求 | 用途 |
+| --- | --- | --- |
+| Rust | `>= 1.89`（Edition 2024，含 `rustfmt` 与 `clippy`） | CLI 与生成后端 |
+| PostgreSQL | 推荐 `16` / `17` | 数据库迁移与运行时 API |
+| Node.js | `>= 20.0.0` | 生成 Web 应用 |
+| pnpm | `>= 9.0.0` | Web 依赖安装 |
+| Docker Compose | 可选 | 仅用于 `database.dev.mode: managed` 或一键 Demo |
+
+从源码构建 CLI：
+
+```bash
+cargo build --release --locked -p appstruct-cli
 install -d "$HOME/.local/bin"
 install -m 0755 target/release/appstruct "$HOME/.local/bin/appstruct"
 appstruct --version
 ```
 
-从源码构建时请保留 `--locked`，这样 Cargo 会使用仓库中提交的 `Cargo.lock`。当前源码布局
-不把 `cargo install --path crates/appstruct-cli` 作为可复现安装方式。
+> 希望零配置本地开发？可用 VS Code 打开本仓库并安装 **Dev Containers** 扩展，选择 **Reopen in Container**。详情见[安装指南](docs/installation.zh-CN.md)。
+
+---
 
 ## 快速开始
 
-推荐先使用仓库自带的 Dev Container。在安装了 Dev Containers 扩展的 VS Code 中打开仓库，
-选择 **Reopen in Container**。容器会构建 CLI 并启动 PostgreSQL；初始化完成后运行：
+### 创建新应用（`minimal` / `dashboard` / `saas`）
 
 ```bash
-appstruct init notes --template minimal
-cd notes
-appstruct migrate dev --accept
+# 多租户 SaaS 预设（含 Auth、Tenant、Audit、Mail、Jobs、File）+ 托管 PostgreSQL
+appstruct init my-saas --template saas
+cd my-saas
 appstruct doctor
 appstruct dev
 ```
 
-转发的 Web 端口 5173 就绪后，`appstruct dev` 会自动打开生成应用；API 使用转发的端口
-3000。主机需要 Docker、VS Code 和 Dev Containers 扩展，但不需要预装 Rust、Node.js 或 PostgreSQL。
-详情见[安装指南](docs/installation.zh-CN.md)。
-
-在终端运行 `appstruct init`，依次输入项目名并选择模板。脚本可使用
-`appstruct init <name> --template minimal|dashboard|saas`，也可沿用下面的 `appstruct new`
-示例。`init` 还支持 `--database-mode external|managed`、`--api-port` 和 `--web-port`；
-端口会保存在项目中被忽略的 `.env`。认证和租户能力目前随模板确定。创建成功后 CLI 会提示下一步命令。
-
-### 使用已有 PostgreSQL
-
-已有表结构接入、权限审阅和首次运行流程见[已有数据库指南](docs/existing-database.zh-CN.md)。
-
-`minimal` 模板连接外部数据库：
+或接入**已有 PostgreSQL 数据库**：
 
 ```bash
-appstruct new notes --template minimal
-cd notes
-cp .env.example .env
-```
-
-编辑 `.env` 中的 `DATABASE_URL`，然后执行：
-
-```bash
-export DATABASE_URL=postgresql://user:password@127.0.0.1:5432/notes
-appstruct migrate dev --accept
-appstruct doctor
+appstruct init my-admin --template minimal --database-mode external
+cd my-admin
+cp .env.example .env # 配置 DATABASE_URL
+appstruct db pull --schema public --output spec/imported.yaml --access role --role admin
+# 将 spec/imported.yaml 加入 appstruct.yaml 的 includes 后执行：
+appstruct check --deny-warnings
+appstruct migrate baseline --accept
 appstruct dev
 ```
 
-外部数据库默认使用 `database.dev.migration: unmanaged`，因此首次启动前需要显式运行迁移。
-`appstruct dev` 随后会生成并构建后端、安装锁定的 Web 依赖、启动 API 和 Rsbuild，并在 Web
-应用就绪后打开浏览器。默认地址为 `http://127.0.0.1:3000` 和 `http://127.0.0.1:5173`，
-也可以通过 `--api-port` 与 `--web-port` 修改，或用 `--no-open` 禁止打开浏览器。
+默认本地访问地址：
+- Web 界面：`http://127.0.0.1:5173`
+- API 与 OpenAPI：`http://127.0.0.1:3000`（`/openapi.json`）
 
-### 使用托管 PostgreSQL
-
-`dashboard` 模板包含 `compose.yaml`，默认由 AppStruct 管理 PostgreSQL：
-
-```bash
-appstruct new project-hub --template dashboard
-cd project-hub
-appstruct doctor
-appstruct dev
-```
-
-托管模式只启动 Compose 中的 `postgres` 服务。当前开发会话启动的服务会在 Ctrl-C 时停止，
-命名卷会保留；原本已运行的服务不会被停止。托管模式默认使用
-`database.dev.migration: prompt`：只有检测到待处理迁移时才询问。迁移确认后才会创建或应用
-迁移。
-
-### 使用 SaaS 预设
-
-```bash
-appstruct new saas-demo --template saas
-cd saas-demo
-appstruct preset show
-appstruct doctor
-appstruct dev
-```
-
-该模板锁定 `appstruct/saas@1`，包含 Auth、Tenant、Audit、Mail、Jobs、File 等模块。注册后可
-创建组织并使用 Project、Task 资源；它们默认启用租户隔离和审计。开发环境使用 capture 邮件
-和本地文件目录 `.appstruct/files`，Jobs/Outbox 使用 PostgreSQL。
-
-首次注册的用户是 `member` 角色。需要管理员权限时，请从可信主机执行一次：
+在可信主机初始化首个管理员账号：
 
 ```bash
 appstruct auth bootstrap-admin --email admin@example.com
 ```
 
-`appstruct.lock` 必须提交，其中包含预设摘要和精确的模块版本。使用
-`appstruct preset show --expanded` 查看应用覆盖后的最终配置。
+---
 
-## 从现有 schema 导入
+## 核心架构与工程保障
 
-从已有 PostgreSQL schema 生成仅供审阅的 App Spec 草稿：
+- **默认拒绝（Fail-Closed）权限模型**：每个实体必须显式声明 `list`、`read`、`create`、`update`、`delete` 规则（`public`、`authenticated`、`roles`、`owner`），支持字段级读写隔离与租户隔离，已通过 2,112 项 PostgreSQL 权限真值表验证。
+- **清晰的代码所有权边界**：
+  - **用户完全掌控**：`appstruct.yaml`、`spec/*.yaml`、`app/backend/`（自定义 Rust Policy、Hook、`AfterCommitHook`、路由）、`app/web/`（自定义 React 组件与页面）、`migrations/*.sql`。
+  - **编译器原子管理**：`generated/`（SHA-256 校验，原子替换，禁止手改）。
+- **安全的在线迁移**：提供 `migrate plan`、`migrate lint --deny-warnings`、`migrate dev --accept`、`migrate baseline --accept`，生产环境显式执行 `migrate apply`。
+- **现代全栈技术基线**：
+  - **后端**：Rust、Axum、SQLx、`sift-query`、乐观并发控制（`If-Match: "rev-<n>"`）、偏移与游标分页、关系过滤、聚合与分组查询、实体工作流、签名 Webhook、Jobs/Outbox、定时任务。
+  - **前端**：React 19、TypeScript、Rsbuild/Rspack、Rstest、TanStack Query / Router / Table / Form。
 
-```bash
-appstruct db pull --schema public --output spec/imported.yaml
-```
+---
 
-该命令读取 `DATABASE_URL`，不会修改数据库或根配置中的 `includes`，也拒绝覆盖已有输出。先
-处理不支持形态的警告并补上实体访问规则，再把草稿纳入 `appstruct.yaml`。可以使用
-`--access public|authenticated`、`--access role --role <name>` 或
-`--access owner --owner <relation>` 写入统一且经过审阅的规则；默认仍为拒绝访问。CI 中可用
-`--check`；`--diff` 只打印线上变更，不写文件。
-
-## 开发迁移策略
-
-在项目的 `appstruct.yaml` 中显式声明开发数据库归属和迁移行为：
-
-```yaml
-database:
-  provider: postgres
-  dev:
-    mode: managed
-    migration: prompt # auto | prompt | never | unmanaged
-```
-
-四种策略的含义如下：
-
-- `auto`：创建并应用安全的在线迁移。
-- `prompt`：仅在存在待处理工作时询问，然后按确认结果继续。
-- `never`：只读检查兼容性；发现数据库过期时阻止启动。
-- `unmanaged`：启动前跳过 AppStruct 的迁移和 schema 检查，完全由操作者管理。
-
-`mode: managed` 负责启动本地 Compose 数据库，`mode: external` 不会启动或停止 PostgreSQL。
-生产后端启动永远不会自动执行迁移；发布流程中请单独运行 `migrate status` 和明确的
-`migrate apply`。
-
-## 生成能力
-
-Web 运行时采用固定且现代的 React 19 + TypeScript + Rsbuild/Rspack + Rstest 基线，并集成：
-
-- TanStack Query：服务端数据获取和缓存。
-- TanStack Router：类型安全路由和认证/租户路由保护。
-- TanStack Table：资源列表、排序、筛选和分页。
-- TanStack Form：表单状态与共享的 `valueError` 校验。
-
-生成的资源 API 支持偏移分页、主键游标分页、筛选、排序、关系过滤、聚合和分组查询；所有
-查询都会继续应用 actor、资源和租户权限。字段可以独立声明读写规则，未授权字段不会出现在
-响应中，未授权提交字段会被后端拒绝。
-
-其他可用能力包括：
-
-- PostgreSQL `db pull`：只读生成现有表结构的 Spec 草稿。
-- 复合/部分索引和可审查的 seed 数据。
-- Auth、Tenant、Audit、Mail、Jobs、File 模块。
-- 批量操作、CSV 导入导出、保存的列表视图、软删除/恢复、组织邀请、邮箱验证、OAuth/OIDC
-  和个人 API Token。
-- 生成 Axum/SQLx + sift-query 后端、OpenAPI 文档和 TypeScript 客户端。
-
-## 常用命令
+## 常用 CLI 命令
 
 ```text
-appstruct init [<name>] [--template minimal|dashboard|saas] [--database-mode external|managed] [--api-port <port>] [--web-port <port>]
-appstruct new <name> --template minimal|dashboard|saas
-appstruct schema
-appstruct capabilities [--format text|json]
-appstruct check [--deny-warnings] [--format text|json]
-appstruct generate [--check] [--timings]
-appstruct migrate plan|dev|lint|apply|status
-appstruct dev [--api-port <port>] [--web-port <port>] [--no-open]
-appstruct build
-appstruct doctor [--format text|json]
-appstruct status [--format text|json]
-appstruct project status|events|diagnose
-appstruct db pull [--schema <name>] [--output <path>] [--review | --check | --diff] [--access <policy>]
-appstruct auth bootstrap-admin --email <address>
-appstruct preset show [--expanded]
-appstruct update
+appstruct init [<name>] [--template minimal|dashboard|saas] [--database-mode external|managed]
+appstruct mcp                                         # 启动内置 stdio MCP Server
+appstruct schema                                      # 输出 Draft 2020-12 App Spec JSON Schema
+appstruct check [--deny-warnings] [--format json]     # 校验 Spec、IR 与用户扩展符号
+appstruct access preview [--entity <id>] [--role <r>] # 预演 CRUD、字段与租户权限矩阵
+appstruct generate [--check] [--timings]              # 重新生成后端、前端、OpenAPI 与 IR
+appstruct migrate plan|lint|dev|baseline|apply|status # 向前兼容 PostgreSQL 迁移管理
+appstruct db pull [--schema public] [--review|--diff] # 只读内省已有 PostgreSQL 生成 Spec
+appstruct dev [--api-port 3000] [--web-port 5173]     # 启动协调式本地开发服务器
+appstruct build                                       # 生产构建并输出发布清单
+appstruct deploy verify                               # 校验不可变发布清单
+appstruct doctor [--format json]                      # 本地环境与数据库诊断
+appstruct auth bootstrap-admin --email <address>      # 初始化首个管理员
+appstruct preset show [--expanded]                    # 查看锁定预设配置
 ```
 
-`migrate plan` 只读；`migrate dev --accept` 只创建并可应用非破坏性在线迁移。生产发布应先
-运行 `migrate status`，再运行明确的 `migrate apply`。`migrate lint` 会报告破坏性、锁表和
-不安全非空变更，可在 CI 中配合 `--deny-warnings` 使用。
+---
 
-## 文档索引
+## 文档导航
 
-下列指南均提供英文原文和简体中文译文（`*.zh-CN.md`）。从安装与快速开始读起，再按要用的
-能力打开对应契约。`site/` 中的静态站点会同时渲染两种语言；在仓库根目录运行
-`pnpm run site:dev`。
+所有指南均提供英文与简体中文版本（`*.zh-CN.md`），可在根目录运行 `pnpm run site:dev` 本地预览文档站。
 
-### 开始使用
+- **入门上手**：[安装指南](docs/installation.zh-CN.md) · [已有数据库指南](docs/existing-database.zh-CN.md) · [升级指南](docs/upgrading.zh-CN.md)
+- **数据建模与查询**：[资源查询](docs/data-querying.zh-CN.md) · [Schema 索引](docs/schema-indexes.zh-CN.md) · [Seed 数据](docs/seeding.zh-CN.md) · [软删除与历史](docs/soft-delete.zh-CN.md) · [保存视图](docs/saved-views.zh-CN.md)
+- **业务逻辑与 UI**：[实体工作流](docs/workflows.zh-CN.md) · [批量操作](docs/bulk-operations.zh-CN.md) · [无头控制器](docs/headless-controller.zh-CN.md) · [报表](docs/reports.zh-CN.md) · [记录动态](docs/activity.zh-CN.md)
+- **平台模块**：[OAuth 与 OIDC](docs/oauth-oidc.zh-CN.md) · [组织邀请](docs/organization-invitations.zh-CN.md) · [个人 API Token](docs/personal-api-tokens.zh-CN.md) · [签名 Webhook](docs/webhooks.zh-CN.md) · [定时任务](docs/schedules.zh-CN.md) · [实时事件](docs/realtime.zh-CN.md) · [计费模块](docs/billing.zh-CN.md)
+- **部署与运维**：[部署指南](docs/deployment.zh-CN.md) · [迁移 Lint](docs/migration-lint.zh-CN.md) · [运维控制台](docs/admin-console.zh-CN.md) · [可观测性](docs/observability.zh-CN.md) · [CI 质量门禁](docs/continuous-integration.zh-CN.md)
+- **架构与路线图**：[产品路线图](docs/next-product-roadmap.zh-CN.md) · [产品基线](PRODUCT.md) · [技术设计](TECHNICAL_DESIGN.md)
 
-- [安装](docs/installation.zh-CN.md)
-- [升级](docs/upgrading.zh-CN.md)
-
-### 构建与交付
-
-- [部署](docs/deployment.zh-CN.md)
-- [发布 AppStruct](docs/releasing.zh-CN.md)
-- [仓库质量门禁](docs/continuous-integration.zh-CN.md)
-- [安全响应头](docs/security-headers.zh-CN.md)
-- [迁移检查](docs/migration-lint.zh-CN.md)
-- [模块注册表](docs/module-registry.zh-CN.md)
-- [交付优化](docs/optimization-progress.zh-CN.md)
-
-### 数据建模
-
-- [资源查询](docs/data-querying.zh-CN.md)
-- [标量值](docs/scalar-values.zh-CN.md)
-- [Schema 索引](docs/schema-indexes.zh-CN.md)
-- [Seed 数据](docs/seeding.zh-CN.md)
-- [聚合明细行](docs/aggregate-line-items-rfc.zh-CN.md)
-- [关系展示](docs/relation-display.zh-CN.md)
-- [软删除与历史](docs/soft-delete.zh-CN.md)
-- [保存视图](docs/saved-views.zh-CN.md)
-
-### 应用设计
-
-- [无头控制器](docs/headless-controller.zh-CN.md)
-- [业务 UI 语义](docs/business-ui-semantics.zh-CN.md)
-- [批量操作](docs/bulk-operations.zh-CN.md)
-- [实体工作流](docs/workflows.zh-CN.md)
-- [报表](docs/reports.zh-CN.md)
-- [记录动态](docs/activity.zh-CN.md)
-
-### 平台模块
-
-- [邮箱验证](docs/email-verification.zh-CN.md)
-- [组织邀请](docs/organization-invitations.zh-CN.md)
-- [OAuth 与 OIDC](docs/oauth-oidc.zh-CN.md)
-- [生成应用收费](docs/billing.zh-CN.md)
-- [SaaS 产品闭环](docs/saas-product-journey.zh-CN.md)
-- [个人 API Token](docs/personal-api-tokens.zh-CN.md)
-- [实时事件与在线状态](docs/realtime.zh-CN.md)
-- [定时任务](docs/schedules.zh-CN.md)
-- [签名 Webhook](docs/webhooks.zh-CN.md)
-
-### 生产运维
-
-- [运维控制台](docs/admin-console.zh-CN.md)
-- [指标与数据库负载](docs/observability.zh-CN.md)
-- [Chromium 报表渲染器](docs/report-renderer.zh-CN.md)
-- [报表渲染适配器 RFC](docs/report-renderer-adapter-rfc.zh-CN.md)
-- [运维示例结论](docs/operations-demo-findings.zh-CN.md)
-
-### 项目记录
-
-- [产品路线图](docs/next-product-roadmap.zh-CN.md)
-- [产品基线](PRODUCT.md)
-- [技术设计](TECHNICAL_DESIGN.md)
-
-`references/` 是仅供本地研究使用的外部资料目录，已通过 `.gitignore` 排除，不属于产品提交。
+---
 
 ## 质量检查
-
-使用仓库固定工具链运行；依赖公告检查需要 `cargo-deny` 0.20.2 或更高版本：
 
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo deny check advisories
 scripts/run-template-build.sh
 ```
 
-需要 PostgreSQL 的浏览器测试使用独立测试数据库，并通过对应的 `scripts/run-*-e2e.sh` 脚本
-执行。GitHub Actions 在 Pull Request 中检查 Rust、三套生成 Web 模板、文档与关键 PostgreSQL 回归；
-主分支、每周、手动和标签发布再执行完整模块、Docker 部署、渲染器隔离、打包及性能基准门禁。
-矩阵和诊断方式见[仓库质量门禁](docs/continuous-integration.zh-CN.md)。
-`scripts/run-template-build.sh` 会检查生成 Web 的生产依赖、格式、测试、类型和构建。
-
-生成后端编译测试会自动回收临时包，同时保留共享依赖产物。M6 E2E 脚本退出时会删除各自的
-专用 target；仅在调试并需要保留产物时设置 `APPSTRUCT_KEEP_TEST_TARGETS=1`。若执行在清理前被
-强制中断，可用 `scripts/clean-test-artifacts.sh` 删除生成后端、覆盖率和打包的可丢弃 target；
-传入 `--all` 时才会通过 `cargo clean` 清理整个 workspace 构建缓存。
-
-提交前检查工作区：
-
-```bash
-git status --short --branch
-git diff --check
-```
-
-不要提交真实 `.env`、密码、API 密钥、私钥/证书、`node_modules/`、`target/`、`references/`、
-Playwright 报告或 `test-results/`。`.env.example` 中的占位配置可以提交。
-
-## 当前边界
-
-AppStruct 仍是技术预览。当前发布流程需要维护者手动配置 GitHub 远端，并在生产发布中单独
-审核和应用迁移。托管部署适配器和可视化编辑器属于后续路线图，不应被视为当前预设 v1
-的稳定承诺。收费能力仅在生成应用显式启用后提供。
-
 ## 许可证
 
-Workspace 中的 crate 使用 MIT OR Apache-2.0 双许可证。详见 `LICENSE-MIT` 与 `LICENSE-APACHE`。
+Workspace 中的 crate 使用 **MIT OR Apache-2.0** 双许可证。详见 [LICENSE-MIT](LICENSE-MIT) 与 [LICENSE-APACHE](LICENSE-APACHE)。

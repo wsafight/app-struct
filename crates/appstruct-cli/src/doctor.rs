@@ -4,7 +4,8 @@ use serde::Serialize;
 use std::path::Path;
 use std::process::{Command, ExitCode};
 
-const REQUIRED_PNPM: &str = "11.25.0";
+const MIN_RUST_VERSION: (u64, u64, u64) = (1, 89, 0);
+const MIN_PNPM_VERSION: (u64, u64, u64) = (9, 0, 0);
 
 #[derive(Debug, Serialize)]
 struct DoctorReport {
@@ -43,11 +44,11 @@ pub(crate) fn run(project: &Path, json: bool) -> ExitCode {
         }
     };
     let mut checks = vec![
-        tool("rustc", &["--version"], Some("1.99.")),
-        tool("cargo", &["--version"], Some("1.99.")),
+        tool("rustc", &["--version"], Some(MIN_RUST_VERSION)),
+        tool("cargo", &["--version"], Some(MIN_RUST_VERSION)),
         tool("rustfmt", &["--version"], None),
         tool("cargo", &["clippy", "--version"], None),
-        tool("pnpm", &["--version"], Some(REQUIRED_PNPM)),
+        tool("pnpm", &["--version"], Some(MIN_PNPM_VERSION)),
     ];
     checks.extend(match ir.database.dev_mode {
         DatabaseDevMode::Managed => managed_checks(project),
@@ -132,7 +133,7 @@ fn migration_check(pending: usize) -> DoctorCheck {
     }
 }
 
-fn tool(program: &str, arguments: &[&str], required: Option<&str>) -> DoctorCheck {
+fn tool(program: &str, arguments: &[&str], minimum: Option<(u64, u64, u64)>) -> DoctorCheck {
     let name = if program == "cargo" && arguments.first() == Some(&"clippy") {
         "clippy"
     } else {
@@ -141,16 +142,18 @@ fn tool(program: &str, arguments: &[&str], required: Option<&str>) -> DoctorChec
     match Command::new(program).args(arguments).output() {
         Ok(output) if output.status.success() => {
             let version = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-            let ok = required.is_none_or(|value| version.contains(value));
+            let ok =
+                minimum.is_none_or(|min| parse_semver(&version).is_some_and(|found| found >= min));
             DoctorCheck {
                 name: name.to_owned(),
                 ok,
                 detail: if ok {
                     version
                 } else {
-                    format!("found `{version}`, required `{}`", required.unwrap())
+                    let (major, minor, patch) = minimum.unwrap_or((0, 0, 0));
+                    format!("found `{version}`, required `>={major}.{minor}.{patch}`")
                 },
-                help: (!ok).then(|| format!("install the required {name} version")),
+                help: (!ok).then(|| format!("install a compatible {name} version")),
             }
         }
         Ok(output) => DoctorCheck {
@@ -166,6 +169,21 @@ fn tool(program: &str, arguments: &[&str], required: Option<&str>) -> DoctorChec
             help: Some(format!("install {name} and ensure it is on PATH")),
         },
     }
+}
+
+fn parse_semver(output: &str) -> Option<(u64, u64, u64)> {
+    output.split_whitespace().find_map(|token| {
+        let trimmed = token.trim_start_matches('v');
+        let core = trimmed.split(['-', '+']).next()?;
+        let mut parts = core.split('.');
+        let major = parts.next()?.parse::<u64>().ok()?;
+        let minor = parts.next()?.parse::<u64>().ok()?;
+        let patch = parts
+            .next()
+            .and_then(|part| part.parse::<u64>().ok())
+            .unwrap_or(0);
+        Some((major, minor, patch))
+    })
 }
 
 fn file_check(path: impl AsRef<Path>, name: &str) -> DoctorCheck {
@@ -187,9 +205,9 @@ fn next_step(checks: &[DoctorCheck]) -> &'static str {
         None => "Run appstruct dev to start the application.",
         Some(check) => match check.name.as_str() {
             "rustc" | "cargo" | "rustfmt" | "clippy" => {
-                "Run rustup toolchain install 1.99.0 --component clippy,rustfmt, then appstruct doctor."
+                "Run rustup toolchain install stable --component clippy,rustfmt (Rust >= 1.89), then appstruct doctor."
             }
-            "pnpm" => "Install pnpm 11.25.0, then run appstruct doctor.",
+            "pnpm" => "Install pnpm >= 9.0.0, then run appstruct doctor.",
             "compose.yaml" => {
                 "Restore compose.yaml from the selected template, then run appstruct doctor."
             }
@@ -239,8 +257,12 @@ mod tests {
 
     #[test]
     fn tool_check_covers_success_and_missing_binaries() {
-        let rustc = tool("rustc", &["--version"], Some("1.99."));
+        let rustc = tool("rustc", &["--version"], Some(MIN_RUST_VERSION));
         assert_eq!(rustc.name, "rustc");
+        assert!(rustc.ok);
+        assert_eq!(parse_semver("rustc 1.99.0 (b940084d7)"), Some((1, 99, 0)));
+        assert_eq!(parse_semver("11.25.0"), Some((11, 25, 0)));
+        assert_eq!(parse_semver("v20.11.1-rc.1"), Some((20, 11, 1)));
         let clippy = tool("cargo", &["clippy", "--version"], None);
         assert_eq!(clippy.name, "clippy");
         let missing = tool("appstruct-missing-binary-for-tests", &["--version"], None);

@@ -17,6 +17,8 @@ This repository is an **AppStruct** application. Follow these ownership boundari
 
 ## 2. Standard Development & Verification Loop
 
+If your coding agent supports MCP, connect the built-in stdio server (`appstruct mcp`) to call `appstruct_schema`, `appstruct_check`, `appstruct_access_preview`, `appstruct_generate`, `appstruct_migrate_plan`, and `appstruct_db_pull_preview` directly.
+
 Always inspect the machine-readable schema and validate before running or committing:
 
 ```bash

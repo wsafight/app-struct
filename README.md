@@ -2,337 +2,190 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-AppStruct is a configuration-driven Rust full-stack application generator. It compiles a
-multi-file YAML App Spec into a typed IR, PostgreSQL migrations, an Axum/SQLx + sift-query backend,
-OpenAPI, a TypeScript client, and a React/Rsbuild application.
+**The Deterministic Full-Stack Compiler for AI Coding Agents — and Instant Secure Admin for PostgreSQL.**
 
-The repository is currently a technical preview. Build the CLI from this source checkout to use
-the current implementation. M0-M6 are complete, including production
-builds, the coordinated development server, Tenant/Audit/Mail/Jobs/File modules, the locked
-`appstruct/saas@1` preset, transactional project updates, and runnable templates. The SaaS preset
-includes an Admin operations overview and guarded Jobs retry/replay controls. Generated
-applications can opt into Stripe Billing v1; it remains disabled in preset version 1.
+> **You write YAML (or let your AI agent write it). You don't need to know Rust to ship.**
 
-## Requirements
+AppStruct compiles a declarative, multi-file YAML App Spec into a typed Intermediate Representation (IR), forward-only PostgreSQL migrations, a fail-closed Rust (Axum/SQLx) backend, OpenAPI, a TypeScript client, and a React 19 / Rsbuild web application.
 
-The Dev Container first run requires Docker and VS Code with Dev Containers on the host. The
-versions below are supplied inside the container; install them locally only when using the
-non-container path.
+---
+
+## Why AppStruct?
+
+### 1. Stop AI Coding Agents from Shipping Broken Auth & Migrations
+When AI agents hand-write full-stack CRUD, migrations, and access checks, they routinely miss tenant filters, leak restricted fields, or generate destructive DDL.
+
+AppStruct turns AI full-stack development into a **closed, verifiable compiler loop**:
+
+```text
+AI writes declarative YAML Spec
+  → Built-in MCP Server (`appstruct mcp`) + Draft 2020-12 JSON Schema
+  → `appstruct check --deny-warnings` + `appstruct access preview`
+  → Deterministic Rust + PostgreSQL + React/TS compilation
+```
+
+### 2. Turn Any Existing PostgreSQL Database into a Secure Admin in 3 Minutes
+Already have a PostgreSQL database? Point `appstruct db pull` at it to generate a fail-closed App Spec draft, inspect access policies, and ship a single-binary Rust + React admin console — **no per-seat SaaS tax, no vendor lock-in, full source ownership**.
+
+```bash
+appstruct db pull --schema public --output spec/imported.yaml
+appstruct access preview --role admin
+appstruct migrate baseline --accept
+appstruct dev
+```
+
+---
+
+## Try the Live Demo in One Command (Zero Host Prerequisites)
+
+No local Rust, Node.js, pnpm, or PostgreSQL required — just Docker:
+
+```bash
+docker compose -f docker-compose.demo.yaml up --build
+```
+
+Open **http://localhost:8080** to explore the full multi-tenant SaaS demo (Auth, Organizations, RBAC, Audit log, Projects/Tasks, Jobs/Outbox, and Admin operations console).
+
+---
+
+## Use with AI Coding Agents (MCP + Skills + Rules)
+
+AppStruct ships a **built-in zero-dependency MCP stdio server** (`appstruct mcp`) plus ready-to-use agent rules:
+
+- **Claude Code**:
+  ```bash
+  claude mcp add appstruct -- appstruct mcp
+  ```
+- **Cursor / Windsurf / Antigravity / Codex**:
+  - MCP server command: `appstruct mcp` (optional `--project /path/to/app`)
+  - Included rules & skills: [`.cursor/rules/appstruct.mdc`](.cursor/rules/appstruct.mdc), [`.claude/skills/appstruct/SKILL.md`](.claude/skills/appstruct/SKILL.md), and generated `AGENTS.md` in every project.
+
+**Exposed MCP tools:**
+- `appstruct_schema` — Draft 2020-12 App Spec JSON Schema (filterable by section)
+- `appstruct_check` — Spec + IR + user symbol validation with structured diagnostics
+- `appstruct_access_preview` — Declarative CRUD, field, owner, and tenant access matrix
+- `appstruct_generate` — Atomic regeneration (or `--check` drift verification)
+- `appstruct_migrate_plan` — Schema diff, SQL preview, and migration lint
+- `appstruct_db_pull_preview` — Read-only PostgreSQL schema introspection preview
+
+---
+
+## Local Requirements & Installation
 
 | Dependency | Version | Used for |
 | --- | --- | --- |
-| Rust | 1.99.0 with rustfmt and Clippy | CLI and generated backend |
-| PostgreSQL | 17 recommended | migrations and generated API |
-| Node.js | 24 recommended | generated Web application |
-| pnpm | 11.25.0 | locked Web dependency installation |
-| Docker Compose | Current release, optional | `database.dev.mode: managed` only |
+| Rust | `>= 1.89` (Edition 2024, with `rustfmt` & `clippy`) | CLI and generated backend |
+| PostgreSQL | `16` / `17` recommended | Migrations and generated API |
+| Node.js | `>= 20.0.0` | Generated Web application |
+| pnpm | `>= 9.0.0` | Web dependency installation |
+| Docker Compose | Optional | `database.dev.mode: managed` or one-command demo |
 
-The workspace and every generated project pin the Rust toolchain. Generated Web apps also commit a
-pnpm lockfile so installs and builds stay reproducible. Release installers are documented in
-[Installation](docs/installation.md).
-
-## Install the CLI
-
-From the repository root:
+Build the CLI from source:
 
 ```bash
-rustup toolchain install 1.99.0 --component clippy,rustfmt
 cargo build --release --locked -p appstruct-cli
-./target/release/appstruct --version
-```
-
-Use `target/release/appstruct` directly, or copy it onto an existing `PATH` directory:
-
-```bash
 install -d "$HOME/.local/bin"
 install -m 0755 target/release/appstruct "$HOME/.local/bin/appstruct"
 appstruct --version
 ```
 
-Keep `--locked` so Cargo uses the committed workspace `Cargo.lock`.
-`cargo install --path crates/appstruct-cli` is not the reproducible install path in this layout.
+> Prefer a zero-install dev environment? Open this repository in VS Code with the **Dev Containers** extension and select **Reopen in Container**. See [Installation](docs/installation.md).
 
-## Quick start
+---
 
-The recommended first run uses the included Dev Container. Open this repository in VS Code with
-the Dev Containers extension, then choose **Reopen in Container**. The container builds the CLI and
-starts PostgreSQL; after setup finishes, run:
+## Quick Start
+
+### Create a New App (`minimal`, `dashboard`, or `saas`)
 
 ```bash
-appstruct init notes --template minimal
-cd notes
-appstruct migrate dev --accept
+# Multi-tenant SaaS preset (Auth, Tenant, Audit, Mail, Jobs, File) with managed Postgres
+appstruct init my-saas --template saas
+cd my-saas
 appstruct doctor
 appstruct dev
 ```
 
-`appstruct dev` opens the generated Web application after forwarded port 5173 is ready. The API
-uses forwarded port 3000. This path
-requires Docker and VS Code with Dev Containers on the host, but no host Rust, Node.js, or
-PostgreSQL installation. See [Installation](docs/installation.md) for details.
-
-For a local installation, pick one template. `minimal` uses a database you already run;
-`dashboard` and `saas` can start managed PostgreSQL through Docker Compose.
-
-Run `appstruct init` in a terminal to choose a project name and template. For scripts, pass both
-inputs with `appstruct init <name> --template minimal|dashboard|saas`, or use `appstruct new` as
-shown below. `init` also accepts `--database-mode external|managed`, `--api-port`, and
-`--web-port`; the ports are saved in the project's ignored `.env`. Authentication and tenant
-capabilities currently follow the selected template. Project creation prints the next commands.
-
-### Existing PostgreSQL
-
-See the [existing database guide](docs/existing-database.md) for catalog import, access review and the first run.
+Or connect to an **existing PostgreSQL database**:
 
 ```bash
-appstruct new notes --template minimal
-cd notes
-cp .env.example .env
-```
-
-Edit `DATABASE_URL` in `.env`, then:
-
-```bash
-export DATABASE_URL=postgresql://user:password@127.0.0.1:5432/notes
-appstruct migrate dev --accept
-appstruct doctor
+appstruct init my-admin --template minimal --database-mode external
+cd my-admin
+cp .env.example .env # set DATABASE_URL
+appstruct db pull --schema public --output spec/imported.yaml --access role --role admin
+# Add spec/imported.yaml to appstruct.yaml `includes`, then:
+appstruct check --deny-warnings
+appstruct migrate baseline --accept
 appstruct dev
 ```
 
-External databases default to `database.dev.migration: unmanaged`, so run migrations before the
-first start. `appstruct dev` then generates and builds the backend, installs locked Web dependencies,
-starts the API and Rsbuild, and opens the Web application when it is ready. The default URLs are
-`http://127.0.0.1:3000` and `http://127.0.0.1:5173`; override them with `--api-port` and
-`--web-port`, or pass `--no-open` to keep the browser closed.
+Default local URLs:
+- Web UI: `http://127.0.0.1:5173`
+- API & OpenAPI: `http://127.0.0.1:3000` (`/openapi.json`)
 
-### Managed PostgreSQL
-
-The `dashboard` template includes `compose.yaml` and lets AppStruct manage PostgreSQL:
-
-```bash
-appstruct new project-hub --template dashboard
-cd project-hub
-appstruct doctor
-appstruct dev
-```
-
-Managed mode starts only the Compose `postgres` service. Services started in this session stop on
-Ctrl-C; named volumes are kept. Already-running services are left running. Managed mode defaults
-to `database.dev.migration: prompt` and asks only when work is pending.
-
-### SaaS preset
-
-```bash
-appstruct new saas-demo --template saas
-cd saas-demo
-appstruct preset show
-appstruct doctor
-appstruct dev
-```
-
-The template locks `appstruct/saas@1` with Auth, Tenant, Audit, Mail, Jobs, and File. After
-registration, create an organization and use the tenant-isolated, audited Project and Task
-resources. Development uses capture mail, local files under `.appstruct/files`, and PostgreSQL
-for Jobs/Outbox.
-
-The first registered user is a `member`. Provision an admin once from a trusted host:
+Bootstrap the first admin user from a trusted host:
 
 ```bash
 appstruct auth bootstrap-admin --email admin@example.com
 ```
 
-Commit `appstruct.lock`; it stores the preset digest and exact module versions. Inspect overrides
-with `appstruct preset show --expanded`.
+---
 
-## Import an existing schema
+## Core Architecture & Guarantees
 
-Create a review-only App Spec draft from a live PostgreSQL schema:
+- **Fail-Closed Authorization**: Every entity explicitly declares `list`, `read`, `create`, `update`, and `delete` rules (`public`, `authenticated`, `roles`, `owner`), plus field-level read/write rules and tenant isolation. Verified against a 2,112-case PostgreSQL permission truth table.
+- **Clear Ownership Boundaries**:
+  - **You own**: `appstruct.yaml`, `spec/*.yaml`, `app/backend/` (custom Rust policies, hooks, `AfterCommitHook`, routes), `app/web/` (custom React components & pages), `migrations/*.sql`.
+  - **Compiler owns**: `generated/` (atomic, SHA-256 verified, never hand-edited).
+- **Safe Online Migrations**: `migrate plan`, `migrate lint --deny-warnings`, `migrate dev --accept`, `migrate baseline --accept`, and explicit `migrate apply` in production releases.
+- **Modern Generated Stack**:
+  - **Backend**: Rust, Axum, SQLx, `sift-query`, optimistic concurrency (`If-Match: "rev-<n>"`), offset & cursor pagination, relation filters, aggregates, group-by, workflows, signed webhooks, jobs/outbox, schedules.
+  - **Frontend**: React 19, TypeScript, Rsbuild/Rspack, Rstest, TanStack Query / Router / Table / Form.
 
-```bash
-appstruct db pull --schema public --output spec/imported.yaml
-```
+---
 
-The command reads `DATABASE_URL`, never changes the database or root `includes`, and refuses to
-overwrite the output. Review unsupported-shape warnings and add entity access rules before
-including the draft in `appstruct.yaml`. Use `--access public|authenticated`,
-`--access role --role <name>`, or `--access owner --owner <relation>` to write a uniform reviewed
-policy; the default remains fail-closed. Use `--check` in CI, or `--diff` to print live changes
-without writing the file.
-
-## Development migrations
-
-Declare database ownership and migration behavior in `appstruct.yaml`:
-
-```yaml
-database:
-  provider: postgres
-  dev:
-    mode: managed
-    migration: prompt # auto | prompt | never | unmanaged
-```
-
-- `auto` creates and applies safe online migrations.
-- `prompt` asks only when work is pending.
-- `never` runs read-only compatibility checks and blocks stale schemas.
-- `unmanaged` skips AppStruct migration checks; the operator owns the database.
-
-`mode: managed` starts local Compose PostgreSQL. `mode: external` never starts or stops it.
-Production backend startup never runs migrations; use `migrate status` and an explicit
-`migrate apply` in the release.
-
-## Generated capabilities
-
-The Web runtime is pinned to React 19, TypeScript, Rsbuild/Rspack, and Rstest, with TanStack Query, Router, Table,
-and Form with shared `valueError` validation. Resource APIs support offset and cursor pagination, filters, sorts, relation
-filters, aggregates, and group-by queries, all under actor, resource, and tenant policy.
-
-Other contracts live in dedicated guides:
-
-- [Resource queries](docs/data-querying.md), [schema indexes](docs/schema-indexes.md), and
-  [seed data](docs/seeding.md)
-- Auth, Tenant, Audit, Mail, Jobs, and File modules
-- Bulk operations, saved views, soft delete, invitations, email verification, OAuth/OIDC, and
-  personal API tokens
-- Generated Axum/SQLx + sift-query backend, OpenAPI, and TypeScript client
-
-## Commands
+## CLI Command Reference
 
 ```text
-appstruct init [<name>] [--template minimal|dashboard|saas] [--database-mode external|managed] [--api-port <port>] [--web-port <port>]
-appstruct new <name> --template minimal|dashboard|saas
-appstruct schema
-appstruct capabilities [--format text|json]
-appstruct check [--deny-warnings] [--format text|json]
-appstruct generate [--check] [--timings]
-appstruct migrate plan|dev|lint|apply|status
-appstruct dev [--api-port <port>] [--web-port <port>] [--no-open]
-appstruct build
-appstruct doctor [--format text|json]
-appstruct status [--format text|json]
-appstruct project status|events|diagnose
-appstruct db pull [--schema <name>] [--output <path>] [--review | --check | --diff] [--access <policy>]
-appstruct auth bootstrap-admin --email <address>
-appstruct preset show [--expanded]
-appstruct update
+appstruct init [<name>] [--template minimal|dashboard|saas] [--database-mode external|managed]
+appstruct mcp                                         # Built-in stdio MCP server for AI agents
+appstruct schema                                      # Emit Draft 2020-12 App Spec JSON Schema
+appstruct check [--deny-warnings] [--format json]     # Validate Spec, IR, and user symbols
+appstruct access preview [--entity <id>] [--role <r>] # Preview effective CRUD/field/tenant rules
+appstruct generate [--check] [--timings]              # Regenerate backend, web, OpenAPI, IR
+appstruct migrate plan|lint|dev|baseline|apply|status # Forward-only PostgreSQL migrations
+appstruct db pull [--schema public] [--review|--diff] # Introspect live PostgreSQL into Spec
+appstruct dev [--api-port 3000] [--web-port 5173]     # Coordinated local dev server
+appstruct build                                       # Production build + release manifest
+appstruct deploy verify                               # Verify immutable release manifest
+appstruct doctor [--format json]                      # Environment & database diagnostics
+appstruct auth bootstrap-admin --email <address>      # Provision initial admin
+appstruct preset show [--expanded]                    # Inspect locked preset configuration
 ```
 
-`migrate plan` is read-only. `migrate dev --accept` creates and may apply only non-destructive
-online migrations. Production uses `migrate status` then explicit `migrate apply`. `migrate lint`
-reports destructive, locking, and unsafe non-null changes; use `--deny-warnings` in CI.
-`appstruct generate --timings` prints compiler, planner, formatter, cache-hit, and output costs.
+---
 
 ## Documentation
 
-Each guide has an English source and a Simplified Chinese translation (`*.zh-CN.md`). The static
-site in `site/` renders both languages; from the workspace root run `pnpm run site:dev`.
+Every guide is maintained in English and Simplified Chinese (`*.zh-CN.md`). Preview the docs site locally with `pnpm run site:dev`.
 
-### Start here
+- **Getting Started**: [Installation](docs/installation.md) · [Existing PostgreSQL Guide](docs/existing-database.md) · [Upgrading](docs/upgrading.md)
+- **Data & Queries**: [Resource Queries](docs/data-querying.md) · [Schema Indexes](docs/schema-indexes.md) · [Seeding](docs/seeding.md) · [Soft Delete](docs/soft-delete.md) · [Saved Views](docs/saved-views.md)
+- **Business Logic & UI**: [Workflows](docs/workflows.md) · [Bulk Operations](docs/bulk-operations.md) · [Headless Controllers](docs/headless-controller.md) · [Reports](docs/reports.md) · [Activity](docs/activity.md)
+- **Platform Modules**: [Auth & OAuth/OIDC](docs/oauth-oidc.md) · [Invitations](docs/organization-invitations.md) · [Personal API Tokens](docs/personal-api-tokens.md) · [Webhooks](docs/webhooks.md) · [Schedules](docs/schedules.md) · [Realtime](docs/realtime.md) · [Billing](docs/billing.md)
+- **Deployment & Ops**: [Deployment](docs/deployment.md) · [Migration Lint](docs/migration-lint.md) · [Admin Console](docs/admin-console.md) · [Observability](docs/observability.md) · [CI Quality Gates](docs/continuous-integration.md)
+- **Architecture & Roadmap**: [Next Product Roadmap](docs/next-product-roadmap.md) · [Product Requirements](PRODUCT.en.md) · [Technical Design](TECHNICAL_DESIGN.en.md)
 
-- [Installation](docs/installation.md)
-- [Upgrading](docs/upgrading.md)
+---
 
-### Build and delivery
-
-- [Deployment](docs/deployment.md)
-- [Releasing](docs/releasing.md)
-- [Repository quality gates](docs/continuous-integration.md)
-- [Security headers](docs/security-headers.md)
-- [Migration lint](docs/migration-lint.md)
-- [Module registry](docs/module-registry.md)
-- [Delivery optimization](docs/optimization-progress.md)
-
-### Data modeling
-
-- [Generated resource queries](docs/data-querying.md)
-- [Lossless scalar values and datetime controls](docs/scalar-values.md)
-- [Schema indexes](docs/schema-indexes.md)
-- [Seed data](docs/seeding.md)
-- [Aggregate line items](docs/aggregate-line-items-rfc.md)
-- [Relation display](docs/relation-display.md)
-- [Soft delete and history](docs/soft-delete.md)
-- [Saved views](docs/saved-views.md)
-
-### Application design
-
-- [Headless Web controllers](docs/headless-controller.md)
-- [Business UI semantics](docs/business-ui-semantics.md)
-- [Bulk operations](docs/bulk-operations.md)
-- [Entity workflows](docs/workflows.md)
-- [Reports](docs/reports.md)
-- [Record activity](docs/activity.md)
-
-### Platform modules
-
-- [Email verification](docs/email-verification.md)
-- [Organization invitations](docs/organization-invitations.md)
-- [OAuth and OIDC](docs/oauth-oidc.md)
-- [Generated application billing](docs/billing.md)
-- [SaaS product journey](docs/saas-product-journey.md)
-- [Personal API tokens](docs/personal-api-tokens.md)
-- [Realtime events, presence, and edit leases](docs/realtime.md)
-- [Interval schedules](docs/schedules.md)
-- [Signed webhooks](docs/webhooks.md)
-
-### Operations
-
-- [Operations Admin console](docs/admin-console.md)
-- [Metrics and database workloads](docs/observability.md)
-- [Chromium report renderer](docs/report-renderer.md)
-- [Production report renderer adapter RFC](docs/report-renderer-adapter-rfc.md)
-- [Operations Demo findings](docs/operations-demo-findings.md)
-
-### Project records
-
-- [Next product roadmap](docs/next-product-roadmap.md)
-- [Product requirements](PRODUCT.en.md)
-- [Technical design](TECHNICAL_DESIGN.en.md)
-
-The `references/` directory contains local research material and is excluded from version control.
-
-## Quality checks
-
-Run repository gates with the pinned toolchain. Advisory checks need `cargo-deny` 0.20.2 or newer:
+## Quality Gates
 
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo deny check advisories
 scripts/run-template-build.sh
 ```
 
-PostgreSQL browser tests use dedicated databases and the matching `scripts/run-*-e2e.sh` scripts.
-GitHub Actions checks Rust, all three generated Web templates, documentation and key PostgreSQL
-regressions on pull requests. Main, weekly, manual and tagged-release runs add the full module,
-Docker deployment, renderer isolation, packaging and benchmark gates. See the
-[quality gate matrix and diagnostics guide](docs/continuous-integration.md).
-`scripts/run-template-build.sh` checks generated Web production dependencies, formatting, tests,
-types, and the Rsbuild bundle.
-
-Generated-backend compile tests reclaim their temporary packages while retaining shared dependency
-artifacts. M6 E2E scripts remove their suite-specific target on exit; set
-`APPSTRUCT_KEEP_TEST_TARGETS=1` only when retaining one for debugging. If a run is interrupted before
-cleanup, `scripts/clean-test-artifacts.sh` removes disposable generated-backend, coverage, and package
-targets. Pass `--all` to run `cargo clean` on the whole workspace.
-
-Before committing:
-
-```bash
-git status --short --branch
-git diff --check
-```
-
-Do not commit real `.env` files, passwords, API keys, private keys or certificates,
-`node_modules/`, `target/`, `references/`, Playwright reports, or `test-results/`. Placeholder
-values in `.env.example` may be committed.
-
-## Current boundaries
-
-AppStruct is a technical preview. Cutting a GitHub release still requires maintainer remote setup,
-and production migrations are reviewed and applied as a separate release step. Billing, hosted
-deployment adapters, and a visual editor are roadmap items, not stable preset v1 promises. Billing
-is available only when explicitly enabled in a generated application.
-
 ## License
 
-Workspace crates are licensed under MIT OR Apache-2.0. See `LICENSE-MIT` and `LICENSE-APACHE`.
+Dual-licensed under **MIT OR Apache-2.0**. See [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
