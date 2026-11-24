@@ -15,6 +15,7 @@ use appstruct_ir::{AppIr, EntityIr, FieldIr, FieldTypeIr, GeneratedValueIr};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn file_field_lifecycle(
     entity: &EntityIr,
     primary: &syn::Ident,
@@ -24,14 +25,63 @@ pub(super) fn file_field_lifecycle(
     let mut on_create = Vec::new();
     let mut on_update = Vec::new();
     let mut on_delete = Vec::new();
-    for field in entity
-        .fields
-        .iter()
-        .filter(|field| matches!(field.ui_semantic, Some(appstruct_ir::FieldSemanticIr::File)))
-    {
+    for field in entity.fields.iter().filter(|field| {
+        matches!(
+            field.ui_semantic,
+            Some(appstruct_ir::FieldSemanticIr::File | appstruct_ir::FieldSemanticIr::Files)
+        )
+    }) {
         let ident = parse_ident(&field.rust_name)?;
         let api_name = &field.api_name;
         let owner_entity = format!("field:{entity_id}:{api_name}");
+        if matches!(
+            field.ui_semantic,
+            Some(appstruct_ir::FieldSemanticIr::Files)
+        ) {
+            let extract_create = if field.nullable {
+                quote! { model.#ident.as_ref().and_then(|v| v.as_array()).into_iter().flatten().filter_map(|v| v.as_str()).filter_map(|s| uuid::Uuid::parse_str(s).ok()) }
+            } else {
+                quote! { model.#ident.as_array().into_iter().flatten().filter_map(|v| v.as_str()).filter_map(|s| uuid::Uuid::parse_str(s).ok()) }
+            };
+            let extract_before = if field.nullable {
+                quote! { before.#ident.as_ref().and_then(|v| v.as_array()).into_iter().flatten().filter_map(|v| v.as_str()).filter_map(|s| uuid::Uuid::parse_str(s).ok()) }
+            } else {
+                quote! { before.#ident.as_array().into_iter().flatten().filter_map(|v| v.as_str()).filter_map(|s| uuid::Uuid::parse_str(s).ok()) }
+            };
+            let extract_after = if field.nullable {
+                quote! { after.#ident.as_ref().and_then(|v| v.as_array()).into_iter().flatten().filter_map(|v| v.as_str()).filter_map(|s| uuid::Uuid::parse_str(s).ok()) }
+            } else {
+                quote! { after.#ident.as_array().into_iter().flatten().filter_map(|v| v.as_str()).filter_map(|s| uuid::Uuid::parse_str(s).ok()) }
+            };
+            let extract_delete = if field.nullable {
+                quote! { deleted.#ident.as_ref().and_then(|v| v.as_array()).into_iter().flatten().filter_map(|v| v.as_str()).filter_map(|s| uuid::Uuid::parse_str(s).ok()) }
+            } else {
+                quote! { deleted.#ident.as_array().into_iter().flatten().filter_map(|v| v.as_str()).filter_map(|s| uuid::Uuid::parse_str(s).ok()) }
+            };
+            on_create.push(quote! {
+                for file_id in #extract_create {
+                    crate::file_library::retain_field_file(#ctx_expr, file_id, #api_name, #owner_entity, &model.#primary.to_string()).await?;
+                }
+            });
+            on_update.push(quote! {
+                if before.#ident != after.#ident {
+                    let prev_ids: std::collections::BTreeSet<uuid::Uuid> = (#extract_before).collect();
+                    let next_ids: std::collections::BTreeSet<uuid::Uuid> = (#extract_after).collect();
+                    for old_id in prev_ids.difference(&next_ids) {
+                        crate::file_library::release_field_file(#ctx_expr, *old_id, #owner_entity, &after.#primary.to_string()).await?;
+                    }
+                    for new_id in next_ids.difference(&prev_ids) {
+                        crate::file_library::retain_field_file(#ctx_expr, *new_id, #api_name, #owner_entity, &after.#primary.to_string()).await?;
+                    }
+                }
+            });
+            on_delete.push(quote! {
+                for file_id in #extract_delete {
+                    crate::file_library::release_field_file(#ctx_expr, file_id, #owner_entity, &deleted.#primary.to_string()).await?;
+                }
+            });
+            continue;
+        }
         if field.nullable {
             on_create.push(quote! {
                 if let Some(file_id) = model.#ident {

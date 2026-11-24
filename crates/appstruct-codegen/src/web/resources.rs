@@ -373,6 +373,9 @@ fn field_source<'entity>(
         Some(FieldSemanticIr::File) => {
             properties.push("semantic: { kind: \"file\" }".to_owned());
         }
+        Some(FieldSemanticIr::Files) => {
+            properties.push("semantic: { kind: \"files\" }".to_owned());
+        }
         None => {}
     }
     if let Some(access) = &field.read_access {

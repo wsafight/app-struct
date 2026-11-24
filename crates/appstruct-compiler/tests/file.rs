@@ -90,6 +90,48 @@ fn lowers_file_ui_semantic_and_requires_enabled_file_module() {
     assert_diagnostic(temporary.path(), "AS2020");
 }
 
+#[test]
+fn lowers_declarative_file_and_files_field_types() {
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("spec/project.yaml"),
+        "      created_at:\n        type: datetime\n        generated: now",
+        "      cover:\n        type: file\n      attachments:\n        type: files\n      created_at:\n        type: datetime\n        generated: now",
+    );
+    let ir = compile_project(temporary.path()).unwrap();
+    let project = ir
+        .entities
+        .iter()
+        .find(|entity| entity.rust_name == "Project")
+        .unwrap();
+
+    let cover = project
+        .fields
+        .iter()
+        .find(|field| field.api_name == "cover")
+        .unwrap();
+    assert_eq!(cover.ty, appstruct_ir::FieldTypeIr::Uuid);
+    assert_eq!(cover.ui_semantic, Some(appstruct_ir::FieldSemanticIr::File));
+
+    let attachments = project
+        .fields
+        .iter()
+        .find(|field| field.api_name == "attachments")
+        .unwrap();
+    assert_eq!(attachments.ty, appstruct_ir::FieldTypeIr::Json);
+    assert_eq!(
+        attachments.ui_semantic,
+        Some(appstruct_ir::FieldSemanticIr::Files)
+    );
+
+    replace(
+        &temporary.path().join("appstruct.yaml"),
+        "  file:\n    enabled: true",
+        "  file:\n    enabled: false",
+    );
+    assert_diagnostic(temporary.path(), "AS2020");
+}
+
 fn copied_fixture() -> tempfile::TempDir {
     let temporary = tempfile::tempdir().unwrap();
     fs::create_dir(temporary.path().join("spec")).unwrap();

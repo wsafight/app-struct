@@ -1057,6 +1057,8 @@
             "date",
             "datetime",
             "json",
+            "file",
+            "files",
             "enum",
             "relation"
           ]

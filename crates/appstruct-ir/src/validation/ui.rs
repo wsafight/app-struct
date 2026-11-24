@@ -17,6 +17,9 @@ pub(super) fn validate_field_semantics(
             Some(FieldSemanticIr::File) => {
                 validate_file_semantic(ir, field, &field_path, errors);
             }
+            Some(FieldSemanticIr::Files) => {
+                validate_files_semantic(ir, field, &field_path, errors);
+            }
             Some(FieldSemanticIr::Money {
                 currency_field,
                 fraction_digits,
@@ -150,6 +153,35 @@ fn validate_file_semantic(
             errors,
             field_path,
             "file semantic requires enabled auth and file modules",
+        );
+    }
+}
+
+fn validate_files_semantic(
+    ir: &AppIr,
+    field: &FieldIr,
+    field_path: &str,
+    errors: &mut Vec<IrValidationError>,
+) {
+    if field.ui_component.is_some() {
+        push(
+            errors,
+            field_path,
+            "cannot be combined with a custom UI component",
+        );
+    }
+    if !matches!(field.ty, FieldTypeIr::Json) || field.generated.is_some() || field.primary_key {
+        push(
+            errors,
+            field_path,
+            "files requires a non-generated, non-primary-key json field",
+        );
+    }
+    if !ir.file.enabled || !ir.auth.enabled {
+        push(
+            errors,
+            field_path,
+            "files semantic requires enabled auth and file modules",
         );
     }
 }

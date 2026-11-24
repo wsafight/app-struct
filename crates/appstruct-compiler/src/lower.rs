@@ -115,10 +115,14 @@ pub(crate) fn build_ir(
     }
     if (!file.enabled || !auth.enabled)
         && entities.iter().any(|entity| {
-            entity
-                .fields
-                .iter()
-                .any(|field| matches!(field.ui_semantic, Some(appstruct_ir::FieldSemanticIr::File)))
+            entity.fields.iter().any(|field| {
+                matches!(
+                    field.ui_semantic,
+                    Some(
+                        appstruct_ir::FieldSemanticIr::File | appstruct_ir::FieldSemanticIr::Files
+                    )
+                )
+            })
         })
     {
         diagnostics.push(Diagnostic::error(

@@ -9,4 +9,5 @@ pub enum FieldSemanticIr {
         fraction_digits: u8,
     },
     File,
+    Files,
 }

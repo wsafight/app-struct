@@ -246,16 +246,24 @@ fn build_field(
                 .ui_component
                 .as_ref()
                 .map(|component| component.value.clone()),
-            ui_semantic: field.ui_semantic.as_ref().map(|semantic| match semantic {
-                crate::surface::SurfaceFieldSemantic::Money {
-                    currency_field,
-                    fraction_digits,
-                } => FieldSemanticIr::Money {
-                    currency_field: FieldId(format!("{entity_id}.{}", currency_field.value)),
-                    fraction_digits: u8::try_from(fraction_digits.value).unwrap_or(u8::MAX),
-                },
-                crate::surface::SurfaceFieldSemantic::File { .. } => FieldSemanticIr::File,
-            }),
+            ui_semantic: field
+                .ui_semantic
+                .as_ref()
+                .map(|semantic| match semantic {
+                    crate::surface::SurfaceFieldSemantic::Money {
+                        currency_field,
+                        fraction_digits,
+                    } => FieldSemanticIr::Money {
+                        currency_field: FieldId(format!("{entity_id}.{}", currency_field.value)),
+                        fraction_digits: u8::try_from(fraction_digits.value).unwrap_or(u8::MAX),
+                    },
+                    crate::surface::SurfaceFieldSemantic::File { .. } => FieldSemanticIr::File,
+                })
+                .or(match field.type_name.value.as_str() {
+                    "file" => Some(FieldSemanticIr::File),
+                    "files" => Some(FieldSemanticIr::Files),
+                    _ => None,
+                }),
         },
         relation,
     ))

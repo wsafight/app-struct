@@ -98,7 +98,7 @@ pub(crate) fn build_field_type(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<FieldTypeIr> {
     let scalar = match field.type_name.value.as_str() {
-        "uuid" => Some(FieldTypeIr::Uuid),
+        "uuid" | "file" => Some(FieldTypeIr::Uuid),
         "string" => Some(FieldTypeIr::String),
         "text" => Some(FieldTypeIr::Text),
         "integer" => Some(FieldTypeIr::Integer),
@@ -107,7 +107,7 @@ pub(crate) fn build_field_type(
         "boolean" => Some(FieldTypeIr::Boolean),
         "date" => Some(FieldTypeIr::Date),
         "datetime" => Some(FieldTypeIr::Datetime),
-        "json" => Some(FieldTypeIr::Json),
+        "json" | "files" => Some(FieldTypeIr::Json),
         "enum" | "relation" => None,
         other => {
             diagnostics.push(
@@ -116,7 +116,7 @@ pub(crate) fn build_field_type(
                     format!("unsupported field type `{other}`"),
                     field.type_name.span.clone(),
                 )
-                .with_help("use uuid, string, text, integer, bigint, decimal, boolean, date, datetime, json, enum, or relation"),
+                .with_help("use uuid, string, text, integer, bigint, decimal, boolean, date, datetime, json, file, files, enum, or relation"),
             );
             return None;
         }
