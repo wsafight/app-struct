@@ -30,7 +30,7 @@ runs:
           ~/.cargo/registry/index
           ~/.cargo/registry/cache
           ~/.cargo/git/db
-        key: cargo-dependencies-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
+        key: cargo-dependencies-${{ runner.os }}-${{ hashFiles('Cargo.toml', '**/Cargo.lock') }}
         restore-keys: |
           cargo-dependencies-${{ runner.os }}-
     - uses: actions/cache@v4
@@ -40,4 +40,4 @@ runs:
           target/debug/.fingerprint
           target/debug/build
           target/debug/deps
-        key: cargo-build-${{ github.job }}-${{ inputs.cache-key }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}
+        key: cargo-build-${{ github.job }}-${{ inputs.cache-key }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}

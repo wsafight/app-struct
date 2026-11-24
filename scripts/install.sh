@@ -3,7 +3,7 @@ set -euo pipefail
 
 version="" target="" archive_dir="" bin_dir="${HOME}/.local/bin"
 usage() {
-  echo 'Usage: bash install.sh --version VERSION [--bin-dir DIRECTORY] [--archive-dir DIRECTORY] [--target TARGET]'
+  echo 'Usage: bash install.sh [--version VERSION|latest] [--bin-dir DIRECTORY] [--archive-dir DIRECTORY] [--target TARGET]'
 }
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -18,6 +18,15 @@ while [[ $# -gt 0 ]]; do
     *) usage >&2; exit 2 ;;
   esac
 done
+if [[ -z "$version" || "$version" == "latest" ]]; then
+  if [[ -n "$archive_dir" ]]; then
+    echo 'A pinned --version is required when using --archive-dir' >&2
+    exit 2
+  fi
+  version="$(curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
+    https://api.github.com/repos/wsafight/app-struct/releases/latest \
+    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\([^"]*\)".*/\1/p' | head -n 1)"
+fi
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || { echo 'A pinned release version is required' >&2; exit 2; }
 if [[ -z "$target" ]]; then
   case "$(uname -s):$(uname -m)" in

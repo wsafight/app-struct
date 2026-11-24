@@ -63,7 +63,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: cargo-dependencies-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
+          key: cargo-dependencies-${{ runner.os }}-${{ hashFiles('Cargo.toml', '**/Cargo.lock') }}
           restore-keys: |
             cargo-dependencies-${{ runner.os }}-
       - name: Cache release build artifacts
@@ -73,7 +73,7 @@ jobs:
             target/${{ matrix.target }}/release/.fingerprint
             target/${{ matrix.target }}/release/build
             target/${{ matrix.target }}/release/deps
-          key: cargo-release-${{ matrix.target }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}
+          key: cargo-release-${{ matrix.target }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}
       - if: runner.os != 'Windows'
         shell: bash
         run: |
