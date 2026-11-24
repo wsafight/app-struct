@@ -282,3 +282,58 @@ fn deploy_config_renders_auth_and_billing_provider_secret_hints() {
     assert!(polar.contains("APPSTRUCT_POLAR_ACCESS_TOKEN"));
     assert!(!polar.contains("APPSTRUCT_STRIPE_SECRET_KEY"));
 }
+
+#[test]
+fn deploy_config_renders_coolify_and_caddy_https_templates() {
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/m0-project");
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join("spec")).unwrap();
+    for rel in ["appstruct.yaml", "spec/project.yaml", "spec/identity.yaml"] {
+        fs::copy(fixture.join(rel), temp.path().join(rel)).unwrap();
+    }
+
+    assert_eq!(
+        run(
+            temp.path(),
+            &DeployCommand::Config {
+                platform: DeployPlatform::Coolify,
+                output: None,
+                check: false,
+                force: false,
+            },
+        ),
+        ExitCode::SUCCESS
+    );
+    let coolify = fs::read_to_string(temp.path().join("deploy/coolify.yaml")).unwrap();
+    assert!(coolify.contains("SERVICE_FQDN_APP_3000"));
+    assert!(coolify.contains("/health/ready"));
+
+    assert_eq!(
+        run(
+            temp.path(),
+            &DeployCommand::Config {
+                platform: DeployPlatform::Caddy,
+                output: None,
+                check: false,
+                force: false,
+            },
+        ),
+        ExitCode::SUCCESS
+    );
+    let caddy = fs::read_to_string(temp.path().join("deploy/compose.https.yaml")).unwrap();
+    assert!(caddy.contains("caddy:2-alpine"));
+    assert!(caddy.contains("reverse-proxy"));
+    assert!(caddy.contains("443:443"));
+    assert_eq!(
+        run(
+            temp.path(),
+            &DeployCommand::Config {
+                platform: DeployPlatform::Caddy,
+                output: None,
+                check: true,
+                force: false,
+            },
+        ),
+        ExitCode::SUCCESS
+    );
+}
