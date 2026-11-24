@@ -12,7 +12,21 @@ pub fn initial_migration(schema: &DatabaseSchema) -> String {
     statements.extend(schema.indexes.iter().map(add_index));
     statements.extend(schema.seeds.iter().map(add_seed));
     statements.extend(schema.foreign_keys.iter().map(add_foreign_key));
+    statements.extend(schema.rls_tables.iter().map(|table| rls_policy(table)));
     format!("{}\n", statements.join("\n"))
+}
+
+#[must_use]
+pub fn rls_policy(table: &str) -> String {
+    let quoted = quote_ident(table);
+    let policy_name = quote_ident(&format!("rls_tenant_{table}"));
+    format!(
+        "ALTER TABLE {quoted} ENABLE ROW LEVEL SECURITY;\n\
+ALTER TABLE {quoted} FORCE ROW LEVEL SECURITY;\n\
+CREATE POLICY {policy_name} ON {quoted}\n\
+    USING (\"tenant_id\" = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid)\n\
+    WITH CHECK (\"tenant_id\" = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid);\n"
+    )
 }
 
 #[must_use]

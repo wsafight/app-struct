@@ -570,6 +570,7 @@ fn tool_migrate_plan(arguments: &Value, default_project: Option<&Path>) -> (Valu
             indexes: Vec::new(),
             seeds: Vec::new(),
             foreign_keys: Vec::new(),
+            rls_tables: Vec::new(),
         }
     };
 

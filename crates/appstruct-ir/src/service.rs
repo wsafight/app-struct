@@ -12,6 +12,8 @@ pub struct PresetIr {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TenantIr {
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rls: bool,
 }
 
 /// Application server settings normalized by the compiler.

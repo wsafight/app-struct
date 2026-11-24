@@ -87,6 +87,7 @@ fn notes_schema() -> DatabaseSchema {
         }],
         seeds: Vec::new(),
         foreign_keys: Vec::new(),
+        rls_tables: Vec::new(),
     }
 }
 

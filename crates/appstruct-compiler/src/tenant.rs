@@ -18,7 +18,7 @@ pub(crate) fn lower_tenant(
         diagnostics.push(Diagnostic::error(
             "AS3034",
             "enabled tenant module requires `modules.auth.enabled: true`",
-            span,
+            span.clone(),
         ));
     }
     if !root.tenant.enabled {
@@ -30,9 +30,17 @@ pub(crate) fn lower_tenant(
             ));
         }
     }
+    if root.tenant.rls && !root.tenant.enabled {
+        diagnostics.push(Diagnostic::error(
+            "AS3038",
+            "`modules.tenant.rls: true` requires `modules.tenant.enabled: true`",
+            span,
+        ));
+    }
     validate_relation_directions(entities, diagnostics);
     TenantIr {
         enabled: root.tenant.enabled,
+        rls: root.tenant.rls,
     }
 }
 

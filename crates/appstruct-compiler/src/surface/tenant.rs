@@ -12,7 +12,11 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceTenant, Diag
         return Ok(SurfaceTenant::default());
     };
     let tenant = expect_mapping(&entry.value, "`modules.tenant`")?;
-    ensure_known_keys(tenant, &["enabled", "sortable_indexes"], "`modules.tenant`")?;
+    ensure_known_keys(
+        tenant,
+        &["enabled", "sortable_indexes", "rls"],
+        "`modules.tenant`",
+    )?;
     let enabled = tenant
         .get("enabled")
         .map(|value| expect_bool(&value.value, "`modules.tenant.enabled`"))
@@ -23,9 +27,15 @@ pub(super) fn decode(entry: Option<&MappingEntry>) -> Result<SurfaceTenant, Diag
         .map(|value| expect_bool(&value.value, "`modules.tenant.sortable_indexes`"))
         .transpose()?
         .unwrap_or(false);
+    let rls = tenant
+        .get("rls")
+        .map(|value| expect_bool(&value.value, "`modules.tenant.rls`"))
+        .transpose()?
+        .unwrap_or(false);
     Ok(SurfaceTenant {
         enabled,
         sortable_indexes,
+        rls,
         span: Some(entry.value.span.clone()),
     })
 }

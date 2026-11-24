@@ -47,6 +47,7 @@ pub(crate) struct SurfaceTenant {
     pub enabled: bool,
     /// Generate `(tenant_id, <sortable field>, <primary key>)` indexes for tenant-scoped entities.
     pub sortable_indexes: bool,
+    pub rls: bool,
     pub span: Option<SourceSpan>,
 }
 

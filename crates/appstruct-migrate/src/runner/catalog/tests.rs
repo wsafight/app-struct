@@ -102,6 +102,7 @@ fn schema_with_index(
         }],
         seeds: Vec::new(),
         foreign_keys: Vec::new(),
+        rls_tables: Vec::new(),
     }
 }
 
@@ -175,6 +176,7 @@ fn compare_foreign_keys_covers_on_delete_variants() {
             foreign_key("notes", "org_id", "orgs", "id", OnDeleteIr::Cascade),
             foreign_key("notes", "parent_id", "notes", "id", OnDeleteIr::SetNull),
         ],
+        rls_tables: Vec::new(),
         ..empty_schema()
     };
     let actual = BTreeSet::from([
@@ -362,6 +364,7 @@ fn empty_schema() -> DatabaseSchema {
         indexes: Vec::new(),
         seeds: Vec::new(),
         foreign_keys: Vec::new(),
+        rls_tables: Vec::new(),
     }
 }
 

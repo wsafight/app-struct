@@ -335,6 +335,7 @@ fn empty_schema() -> DatabaseSchema {
         indexes: Vec::new(),
         seeds: Vec::new(),
         foreign_keys: Vec::new(),
+        rls_tables: Vec::new(),
     }
 }
 

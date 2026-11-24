@@ -37,6 +37,8 @@ pub struct DatabaseSchema {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub seeds: Vec<SeedSchema>,
     pub foreign_keys: Vec<ForeignKeySchema>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rls_tables: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,6 +171,15 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         .map(|relation| foreign_key(&entities_by_id, relation))
         .collect::<Vec<_>>();
     append_module_schemas(ir, &mut tables, &mut unique_constraints, &mut foreign_keys);
+    let rls_tables = if ir.tenant.enabled && ir.tenant.rls {
+        ir.entities
+            .iter()
+            .filter(|entity| entity.tenant_scoped)
+            .map(|entity| entity.table_name.clone())
+            .collect()
+    } else {
+        Vec::new()
+    };
     Ok(DatabaseSchema {
         schema_version: SCHEMA_VERSION,
         provider: ir.database.provider,
@@ -178,6 +189,7 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         indexes,
         seeds,
         foreign_keys,
+        rls_tables,
     })
 }
 

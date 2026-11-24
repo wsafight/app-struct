@@ -355,6 +355,11 @@
           "type": "boolean",
           "default": false,
           "description": "Generate (tenant_id, sortable field, primary key) indexes for every tenant-scoped entity. An entity can override it with tenant_index."
+        },
+        "rls": {
+          "type": "boolean",
+          "default": false,
+          "description": "Generate PostgreSQL Row-Level Security (RLS) policies on every tenant-scoped table using current_setting('app.current_tenant_id', true)."
         }
       },
       "additionalProperties": false
