@@ -16,11 +16,10 @@ CLI. Database verification stays explicit: `appstruct update` never connects to 
 4. Review the resulting `appstruct.lock`, `generated/`, API, and UI diffs.
 5. Run the database checks below against an isolated PostgreSQL copy before production.
 
-`appstruct update` acquires both update and generation locks, copies user-owned project inputs to
-a staging workspace, writes the canonical candidate lock, compiles the complete App Spec,
-regenerates all owned artifacts, runs release Clippy/build for Rust, builds the Web application,
-and runs generated-backend release tests. It rechecks source hashes before committing. Only the
-lock and owned generated tree are replaced, using a recoverable joint journal transaction.
+`appstruct update` verifies that the Git worktree is clean (so you can always roll back with Git),
+stages a temporary copy of user-owned project inputs with the canonical updated `appstruct.lock`,
+compiles the complete App Spec, regenerates all owned artifacts, validates ownership hashes, and
+atomically replaces `appstruct.lock` and `generated/`.
 
 Database verification remains explicit because update never connects to or changes a database:
 

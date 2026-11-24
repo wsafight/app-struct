@@ -41,7 +41,10 @@ APPSTRUCT_LOG_FORMAT=json appstruct dev
 
 `app/backend`、`app/web`、Spec 和迁移由应用拥有，生成与更新保留它们；`generated/` 由框架管理，直接编辑会触发所有权检查。生成 trait 改动时，应用通过编译错误更新扩展签名，再验收行为。
 
-远程模块包提供已签名的静态 Artifact 和元数据，不能仅靠安装就注册任意第三方 Rust 运行时。应用自有 Rust 在 composition root 编译并通过 `AppExtensions` 注册；官方运行时模块由编译器内置生成和启动。三者有不同的依赖、迁移和卸载责任，详见[模块注册表](module-registry.zh-CN.md)。现阶段不提供动态库或 WASM 执行插件契约。
+自定义业务逻辑支持两种扩展方式：
+
+1. **声明式 HTTP Command & Query（无需写 Rust）**：直接在 App Spec 的 `commands` 或 `queries` 上声明 `http: { url_env, secret_env, timeout_ms, retries }`，AppStruct 会先完成 RBAC 与租户校验，再以 `x-appstruct-signature`（HMAC-SHA256）签名和指数退避重试调用外部 Node.js / Python / Go 服务。
+2. **应用自有 Rust 扩展**：在 composition root 中编译并通过 `AppExtensions` 注册；官方运行时模块由编译器内置生成和启动。现阶段不提供远程模块注册表、动态库或 WASM 执行插件契约。
 
 继续阅读：[Workflow](workflows.zh-CN.md)、[无头控制器](headless-controller.zh-CN.md)、[指标与日志](observability.zh-CN.md)、[升级](upgrading.zh-CN.md)。
 

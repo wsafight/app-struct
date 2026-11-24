@@ -1,76 +1,28 @@
-# Chromium Report Renderer
+# External HTTP Report Renderer
 
-The Chromium adapter is implemented as a preview. Local PDF and PostgreSQL lifecycle checks pass.
-Linux container acceptance must pass before production rollout. `scripts/run-renderer-isolation.sh`
-passed once on 2026-11-05 inside a Colima Linux VM (Ubuntu 24.04, aarch64, cgroup v2, Docker 29.5.2)
-on a macOS host: the renderer unit tests (5 of 5), non-root user, read-only filesystem, blocked
-network, 128-task and 512 MiB cgroup limits, the PID limit, and the out-of-memory kill. That is a
-single local arm64 run. The x86_64 run on the CI candidate commit is still required. Capture remains
-the default.
+AppStruct keeps headless browser dependencies out of the core framework. Production PDF generation is delegated to an external HTTP renderer service (such as [Gotenberg](https://gotenberg.dev) or a standalone `appstruct-pdf-renderer` container) using the `renderer: http` plugin contract.
+
+`capture` remains the default renderer for local development and tests.
 
 ```yaml
 modules:
   report:
-    renderer: chromium
+    renderer: http
+    http_url_env: REPORT_RENDERER_URL
+    http_secret_env: REPORT_RENDERER_SECRET
+    http_timeout_ms: 30000
 ```
 
-Regenerate the project. The generated `report-renderer` directory contains pinned Node dependencies,
-the renderer, a Dockerfile, a Playwright seccomp profile adapted for Chromium's user-namespace chroot and a Compose override. With a
-prepared production backend and environment, the deployment composition is:
+## Runtime Configuration
 
-```sh
-docker compose -f compose.production.yaml -f generated/report-renderer/compose.yaml config
-docker compose -f compose.production.yaml -f generated/report-renderer/compose.yaml up --build -d
-```
+| Environment Variable | Required | Description |
+| --- | --- | --- |
+| `REPORT_RENDERER_URL` (or custom `http_url_env`) | Yes | Base URL of the external PDF rendering service (`POST /render`). |
+| `REPORT_RENDERER_SECRET` (or custom `http_secret_env`) | Optional | Shared secret used to sign requests with `x-appstruct-signature: sha256=<hex>` (HMAC-SHA256). |
 
-The backend connects through `APPSTRUCT_REPORT_RENDERER_SOCKET`. A private Unix socket with mode
-0660 is shared by UID/GID 10001. The renderer has no backend environment file, database credentials
-or File provider access. Its container has no network, a read-only root, dropped capabilities,
-no-new-privileges, Chromium sandboxing, 512 MiB memory without swap, 128 Linux tasks, one CPU and
-128 MiB temporary storage. One browser request runs at a time; busy requests receive a retryable
-adapter-unavailable error. Chromium is prewarmed and reused with a fresh isolated BrowserContext
-for every report, then recycled after 100 reports by default. Set
-`APPSTRUCT_RENDERER_RECYCLE_AFTER` to a value from 1 through 1000 to trade startup cost for tighter
-process recycling. Browser crashes and render timeouts force immediate recycling. Scale sustained
-throughput with additional backend/renderer pairs.
+## Request & Response Contract
 
-Templates are shipped in the App Spec and matched against the generated artifact/version before
-rendering. MiniJinja HTML escaping and a fuel limit apply. Inputs cannot supply HTML templates.
-The request contains resolved HTML and immutable run/template bindings, not credentials or the
-snapshot encryption key. CSS and HTML parsers reject external URLs, imports and active content.
-The browser additionally enforces a restrictive CSP, disabled page scripts and request interception.
-All network URLs are rejected before resolution, including redirects and DNS-rebinding targets.
-
-The image packages Noto Latin and CJK fonts. Templates may embed PNG/JPEG/WebP images and WOFF/WOFF2/
-OTF/TTF fonts as data URLs. SVG, remote resources, custom CSS properties and unsupported raw CSS are
-outside the first version. The HTML digest also binds embedded asset bytes.
-
-Limits are 1 MiB snapshot, 2 MiB resolved HTML including inline assets, 100 pages, standard A3/A4/
-Letter/Legal dimensions and 30 seconds of rendering. PDF output is bounded by the lower of 50 MiB
-and the application's File limit. The worker verifies protocol identity, digest, length and page
-count with a PDF parser. Existing Capture templates should be upgraded to HTML and given a new
-template version when switching renderer.
-
-Job leases renew during execution. Cancelling a queued or rendering report closes the adapter
-connection and prevents publication. Lease loss drops renderer work without overwriting the new
-worker's state. Publication locks the run and job, checks ownership, and commits File metadata and
-the report result in one transaction. Cancellation racing publication either wins before that lock
-or returns a conflict after publication succeeds. Unreferenced objects from a crash are reclaimed
-on retry or report retention cleanup.
-
-Blocked resources, invalid artifacts/output, exhausted budgets and invalid snapshots fail without
-retry. Adapter unavailability, crashes and timeouts can retry within the configured Jobs budget.
-Error responses contain stable codes; report HTML and snapshots are never logged by the adapter.
-Drain queued runs before removing or replacing their compiled template versions during an upgrade.
-
-Verification:
-
-```sh
-pnpm --dir crates/appstruct-codegen/templates/report-renderer test
-bash scripts/run-chromium-report-e2e.sh
-bash scripts/run-renderer-isolation.sh
-```
-
-The database script requires a dedicated `APPSTRUCT_E2E_DATABASE_URL`; it resets that test database.
-The isolation script builds and tests the same image and seccomp settings used in deployment,
-including network denial, filesystem permissions, memory exhaustion and PID exhaustion.
+- **Request**: `POST <http_url>` with `Content-Type: application/json`, containing `{ run_id, template, version, html, paper_size, orientation }` and an optional `x-appstruct-signature` header.
+- **Response**: `200 OK` with `application/pdf` bytes, bounded by `50 MiB` (or the configured `modules.file.max_bytes`, whichever is smaller).
+- **Security**: Templates are compiled with MiniJinja HTML escaping. Credentials, database URLs, and snapshot encryption keys are never sent to the renderer.
+- **Retries**: Transient network errors, timeouts, and `5xx` responses retry within the configured `modules.jobs` budget; `4xx` responses fail closed without retry.

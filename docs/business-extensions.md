@@ -21,7 +21,10 @@ Verify actor, tenant, record, ETag and persisted rows in an isolated reproductio
 
 User-owned `app/backend`, `app/web`, Spec and migrations survive generation/update. Generated ownership checks reject edits in `generated/`. Compile and review extension changes when generated traits change.
 
-Signed remote module packages supply static artifacts and metadata, not arbitrary executable Rust registration. Application Rust is compiled into the composition root and registered through `AppExtensions`. Official runtime modules are generated and started by the framework. These have separate dependency, migration and uninstall responsibilities; see [module registry](module-registry.md). There is no dynamic library or WASM runtime plugin contract.
+Custom business logic can be added in two ways:
+
+1. **Declarative HTTP Commands & Queries (no Rust required)**: Declare `http: { url_env, secret_env, timeout_ms, retries }` directly on any `command` or `query` in your App Spec. AppStruct generates signed (`x-appstruct-signature` HMAC-SHA256), retryable HTTP calls with full RBAC/tenant enforcement before dispatch, so Node.js, Python, or Go services can handle custom business actions.
+2. **Application Rust Extensions**: Application Rust is compiled into the composition root and registered through `AppExtensions`. Official runtime modules are generated and started by the framework. There is no dynamic library, remote module registry, or WASM runtime plugin contract.
 
 See [Workflow](workflows.md), [headless controllers](headless-controller.md), [observability](observability.md) and [upgrading](upgrading.md).
 
