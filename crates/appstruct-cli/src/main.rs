@@ -19,7 +19,6 @@ mod fingerprint;
 mod generation;
 mod mcp;
 mod migration;
-mod module_registry;
 mod preset;
 mod project_diagnostics;
 mod project_new;
@@ -116,11 +115,6 @@ enum Command {
     Migrate {
         #[command(subcommand)]
         command: migration::MigrateCommand,
-    },
-    /// Install, update, verify, remove, and inspect signed remote modules.
-    Module {
-        #[command(subcommand)]
-        command: module_registry::ModuleCommand,
     },
     /// Inspect the locked official preset and its expanded module defaults.
     Preset {
@@ -222,7 +216,6 @@ fn run(cli: Cli) -> ExitCode {
             generation::run_with_timings(&project, check, timings)
         }
         Command::Migrate { command } => migration::run(&project, command),
-        Command::Module { command } => module_registry::run(&project, &command),
         Command::Preset { command } => preset::run(&project, &command),
         Command::Template { command } => template::run(&project, &command),
         Command::Update => update::run(&project),
@@ -401,16 +394,6 @@ mod tests {
                 format: report::OutputFormat::Json,
                 command: Command::Preset {
                     command: preset::PresetCommand::Show { expanded: false },
-                },
-            }),
-            ExitCode::SUCCESS
-        );
-        assert_eq!(
-            run(Cli {
-                project: Some(fixture()),
-                format: report::OutputFormat::Text,
-                command: Command::Module {
-                    command: module_registry::ModuleCommand::List,
                 },
             }),
             ExitCode::SUCCESS

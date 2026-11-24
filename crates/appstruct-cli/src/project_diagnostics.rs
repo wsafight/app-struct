@@ -173,7 +173,7 @@ fn diagnostics_path(project: &Path, output: &Path) -> Result<PathBuf, String> {
 
 fn configuration_files(project: &Path) -> Vec<ConfigFile> {
     let mut paths = Vec::new();
-    for relative in ["appstruct.yaml", "appstruct.lock", "appstruct.modules.lock"] {
+    for relative in ["appstruct.yaml", "appstruct.lock"] {
         let path = project.join(relative);
         if path.is_file() {
             paths.push(path);

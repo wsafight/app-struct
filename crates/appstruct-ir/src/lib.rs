@@ -343,7 +343,6 @@ pub struct ResolvedModule {
 pub enum ModuleOrigin {
     Official,
     Local,
-    Remote,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

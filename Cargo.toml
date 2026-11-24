@@ -37,7 +37,6 @@ clap = { version = "4.6.7", features = ["derive"] }
 cron = "0.17.0"
 ctrlc = "3.5.2"
 dotenvy = "0.15.7"
-ed25519-dalek = "3.0.0"
 minijinja = "=3.0.0"
 notify = "8.2.0"
 # oxc_* crates must move in lockstep: they share internal types across crate

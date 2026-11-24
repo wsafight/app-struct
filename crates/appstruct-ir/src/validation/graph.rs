@@ -230,7 +230,7 @@ pub(super) fn validate_modules(ir: &AppIr, errors: &mut Vec<IrValidationError>) 
                     "official modules cannot carry local provenance or artifacts",
                 );
             }
-            ModuleOrigin::Local | ModuleOrigin::Remote
+            ModuleOrigin::Local
                 if module.manifest_path.is_none() || module.content_sha256.is_none() =>
             {
                 push(

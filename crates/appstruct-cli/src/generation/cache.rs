@@ -76,7 +76,7 @@ fn generation_key(project: &Path) -> io::Result<CacheKey> {
 }
 
 fn input_fingerprint(project: &Path) -> io::Result<String> {
-    let mut paths = ["appstruct.yaml", "appstruct.lock", "appstruct.modules.lock"]
+    let mut paths = ["appstruct.yaml", "appstruct.lock"]
         .into_iter()
         .map(|path| project.join(path))
         .filter(|path| path.is_file())

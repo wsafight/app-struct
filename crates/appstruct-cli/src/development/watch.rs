@@ -236,14 +236,7 @@ fn classify_path(project: &Path, path: &Path) -> ProjectChanges {
     }
     if matches!(
         relative.to_str(),
-        Some(
-            "appstruct.yaml"
-                | "appstruct.lock"
-                | "appstruct.modules.lock"
-                | ".env"
-                | ".npmrc"
-                | "pnpm-workspace.yaml"
-        )
+        Some("appstruct.yaml" | "appstruct.lock" | ".env" | ".npmrc" | "pnpm-workspace.yaml")
     ) {
         return ProjectChanges {
             specification: true,
@@ -307,7 +300,6 @@ fn specification_fingerprint(project: &Path) -> io::Result<[u8; 32]> {
         &[
             "appstruct.yaml",
             "appstruct.lock",
-            "appstruct.modules.lock",
             ".env",
             ".npmrc",
             "pnpm-workspace.yaml",

@@ -15,7 +15,6 @@ mod loading;
 mod lower;
 mod mail;
 mod module;
-mod module_registry;
 mod preset;
 mod realtime;
 mod report;
@@ -121,8 +120,6 @@ fn compile_with_domain(
         diagnostics.extend(preset::validate_local_module_lock(&root, &local_modules));
     }
     diagnostics.extend(module_diagnostics);
-    let (remote_modules, remote_diagnostics) = module_registry::load(&root);
-    diagnostics.extend(remote_diagnostics);
     let mut canonical_includes = BTreeMap::<PathBuf, SourceSpan>::new();
     let mut application = surface::SurfaceDomain::default();
 
@@ -168,11 +165,11 @@ fn compile_with_domain(
         return Err(diagnostics);
     }
     let mut warnings = lint::warnings(&application);
-    let mut modules = local_modules;
-    modules.extend(remote_modules);
-    lower::build_ir(surface_root, application, modules, &mut warnings).map(|ir| CompileReport {
-        ir,
-        diagnostics: warnings,
+    lower::build_ir(surface_root, application, local_modules, &mut warnings).map(|ir| {
+        CompileReport {
+            ir,
+            diagnostics: warnings,
+        }
     })
 }
 

@@ -144,19 +144,6 @@ fn load_local_module(
     })
 }
 
-pub(crate) fn load_remote_module(
-    project_root: &Path,
-    manifest_path: &str,
-) -> Result<LoadedModule, Diagnostic> {
-    let declaration = Located {
-        value: manifest_path.to_owned(),
-        span: crate::loading::synthetic_span("appstruct.modules.lock"),
-    };
-    let mut module = load_local_module(project_root, &declaration)?;
-    module.origin = ModuleOrigin::Remote;
-    Ok(module)
-}
-
 fn content_sha256(content: &[u8]) -> String {
     appstruct_core::sha256_tagged(content)
 }
