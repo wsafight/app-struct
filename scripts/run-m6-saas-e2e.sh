@@ -35,6 +35,6 @@ csrf="$(m6_csrf_token "$cookie_jar")"
 m6_create_org "$cookie_jar" "Alpha workspace" "$temporary_root/organization.json"
 
 m6_typecheck_web
-m6_run_playwright playwright.saas.config.ts \
+m6_run_playwright saas \
   "SAAS_E2E_EMAIL=$email" "SAAS_E2E_PASSWORD=$password"
 echo "SaaS template PostgreSQL and browser E2E passed"

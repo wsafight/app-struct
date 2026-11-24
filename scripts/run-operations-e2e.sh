@@ -214,7 +214,7 @@ pnpm --dir "$project/generated/web" run format:check
 pnpm --dir "$project/generated/web" run lint
 pnpm --dir "$project/generated/web" run test
 pnpm --dir "$project/generated/web" run build
-m6_run_playwright playwright.operations.config.ts \
+m6_run_playwright operations \
   "OPERATIONS_E2E_ORDER_ID=$order_id" \
   "OPERATIONS_E2E_PRODUCT_ID=$product_id" \
   "OPERATIONS_E2E_OPERATOR_ID=$operator_id" \

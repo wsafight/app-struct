@@ -66,5 +66,5 @@ psql "$APPSTRUCT_E2E_DATABASE_URL" -v ON_ERROR_STOP=1 \
 m6_assert_status 403 "$other_jar" "$gamma" GET "/api/audit/events" "$temporary_root/role-denied.json"
 
 m6_typecheck_web
-m6_run_playwright playwright.audit.config.ts "PLAYWRIGHT_API_URL=$api"
+m6_run_playwright audit "PLAYWRIGHT_API_URL=$api"
 echo "Audit PostgreSQL and browser E2E passed"

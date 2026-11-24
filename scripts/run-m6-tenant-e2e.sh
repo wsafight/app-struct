@@ -55,5 +55,5 @@ VALUES ('00000000-0000-0000-0000-000000000002', 'Same tenant', '$project_id', '$
 SQL
 
 m6_typecheck_web
-m6_run_playwright playwright.tenant.config.ts "PLAYWRIGHT_API_URL=$api"
+m6_run_playwright tenant "PLAYWRIGHT_API_URL=$api"
 echo "Tenant PostgreSQL isolation E2E passed"

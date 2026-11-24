@@ -168,11 +168,11 @@ m6_typecheck_web() {
 }
 
 m6_run_playwright() {
-  local config="$1"
+  local suite="$1"
   shift
   pnpm install --frozen-lockfile
-  env PLAYWRIGHT_BASE_URL="http://127.0.0.1:$web_port" "$@" \
-    pnpm exec playwright test --config "$config"
+  env PLAYWRIGHT_SUITE="$suite" PLAYWRIGHT_BASE_URL="http://127.0.0.1:$web_port" "$@" \
+    pnpm exec playwright test --config playwright.config.ts
 }
 
 # Assert $APPSTRUCT_E2E_DATABASE_URL names a dedicated test database, then reset
