@@ -8,7 +8,15 @@ mod catalog;
 pub struct IntrospectedSchema {
     pub name: String,
     pub tables: Vec<IntrospectedTable>,
+    pub views: Vec<IntrospectedView>,
     pub foreign_keys: Vec<IntrospectedForeignKey>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IntrospectedView {
+    pub name: String,
+    pub materialized: bool,
+    pub columns: Vec<IntrospectedColumn>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -78,7 +86,9 @@ fn inspect(client: &mut Client, schema: &str) -> Result<IntrospectedSchema, Migr
         )));
     }
     let table_names = catalog::tables(client, schema)?;
+    let view_entries = catalog::views(client, schema)?;
     let mut columns = catalog::columns(client, schema)?;
+    columns.extend(catalog::matview_columns(client, schema)?);
     let enum_values = catalog::enum_values(client)?;
     for (_, column) in &mut columns {
         column.enum_values = enum_values
@@ -129,9 +139,19 @@ fn inspect(client: &mut Client, schema: &str) -> Result<IntrospectedSchema, Migr
             name,
         })
         .collect();
+    let views = view_entries
+        .into_iter()
+        .filter(|(name, _)| !name.starts_with("_appstruct_"))
+        .map(|(name, materialized)| IntrospectedView {
+            columns: columns_by_table.remove(&name).unwrap_or_default(),
+            materialized,
+            name,
+        })
+        .collect();
     Ok(IntrospectedSchema {
         name: schema.to_owned(),
         tables,
+        views,
         foreign_keys: catalog::foreign_keys(client, schema)?
             .into_iter()
             .filter(|key| !key.source_table.starts_with("_appstruct_"))

@@ -15,7 +15,7 @@ pub use diff::{
 };
 pub use introspection::{
     IntrospectedColumn, IntrospectedForeignKey, IntrospectedIndex, IntrospectedSchema,
-    IntrospectedTable, inspect_database_schema,
+    IntrospectedTable, IntrospectedView, inspect_database_schema,
 };
 pub use lint::{LintSeverity, MigrationLint, lint_plan};
 pub use runner::{

@@ -1,6 +1,6 @@
 use appstruct_migrate::{
     IntrospectedColumn, IntrospectedForeignKey, IntrospectedIndex, IntrospectedSchema,
-    IntrospectedTable,
+    IntrospectedTable, IntrospectedView,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
@@ -61,6 +61,11 @@ domain: imported\n\nentities:\n"
             context.render_table(&mut source, table, &entity, access);
         }
     }
+    for view in &schema.views {
+        if let Some(entity) = context.entities.get(view.name.as_str()).cloned() {
+            context.render_view(&mut source, view, &entity, access);
+        }
+    }
     if context.entities.is_empty() {
         source.push_str("  {}\n");
     }
@@ -116,6 +121,32 @@ impl<'schema> RenderContext<'schema> {
             let base = type_name(&singularize(&table.name));
             let entity = unique_name(&base, &mut used);
             entities.insert(table.name.as_str(), entity);
+        }
+        for view in &schema.views {
+            let Some(key) = select_view_key(view) else {
+                let kind = if view.materialized {
+                    "materialized view"
+                } else {
+                    "view"
+                };
+                warnings.push(format!(
+                    "{kind} `{}` was omitted because no scalar identifier column (uuid, integer, or bigint) was found; expose an `id` column to import it as a read-only resource",
+                    view.name
+                ));
+                continue;
+            };
+            let base = type_name(&singularize(&view.name));
+            let entity = unique_name(&base, &mut used);
+            let kind = if view.materialized {
+                "materialized view"
+            } else {
+                "view"
+            };
+            warnings.push(format!(
+                "{kind} `{}` imported as read-only resource `{entity}` using `{}` as identifier; write operations remain omitted",
+                view.name, key.name
+            ));
+            entities.insert(view.name.as_str(), entity);
         }
         let relations = usable_relations(schema, &entities, &mut warnings);
         Self {
@@ -187,6 +218,67 @@ impl<'schema> RenderContext<'schema> {
             ),
             AccessMode::Role(role) => render_access_rule(output, "role", role),
             AccessMode::Owner(owner) => render_access_rule(output, "owner", owner),
+        }
+        output.push('\n');
+    }
+
+    fn render_view(
+        &mut self,
+        output: &mut String,
+        view: &IntrospectedView,
+        entity: &str,
+        access: &AccessMode,
+    ) {
+        let Some(key) = select_view_key(view) else {
+            return;
+        };
+        let kind = if view.materialized {
+            "materialized view"
+        } else {
+            "view"
+        };
+        let _ = writeln!(
+            output,
+            "  # Read-only PostgreSQL {kind} (write operations intentionally omitted)."
+        );
+        let synthetic_table = IntrospectedTable {
+            name: view.name.clone(),
+            columns: view.columns.clone(),
+            primary_key: vec![key.name.clone()],
+            unique_constraints: Vec::new(),
+            indexes: Vec::new(),
+        };
+        let _ = writeln!(output, "  {entity}:");
+        let _ = writeln!(output, "    label: {}", yaml_string(entity));
+        let _ = writeln!(output, "    table: {}", yaml_string(&view.name));
+        output.push_str("    fields:\n");
+        let mut used_fields = BTreeSet::new();
+        for column in &synthetic_table.columns {
+            if column.name == "revision" {
+                continue;
+            }
+            self.render_column(output, &synthetic_table, column, None, &mut used_fields);
+        }
+        match access {
+            AccessMode::None => {}
+            AccessMode::Public => {
+                output.push_str(
+                    "    access:\n      list: { public: true }\n      read: { public: true }\n",
+                );
+            }
+            AccessMode::Authenticated => {
+                output.push_str("    access:\n      list: { authenticated: true }\n      read: { authenticated: true }\n");
+            }
+            AccessMode::Role(role) => {
+                let _ = writeln!(output, "    access:");
+                let _ = writeln!(output, "      list: {{ role: {} }}", yaml_string(role));
+                let _ = writeln!(output, "      read: {{ role: {} }}", yaml_string(role));
+            }
+            AccessMode::Owner(owner) => {
+                let _ = writeln!(output, "    access:");
+                let _ = writeln!(output, "      list: {{ owner: {} }}", yaml_string(owner));
+                let _ = writeln!(output, "      read: {{ owner: {} }}", yaml_string(owner));
+            }
         }
         output.push('\n');
     }
@@ -455,4 +547,15 @@ fn unusable_relation_reason(
         );
     }
     "the database relation does not match the generated entity contract".to_owned()
+}
+
+fn select_view_key(view: &IntrospectedView) -> Option<&IntrospectedColumn> {
+    view.columns
+        .iter()
+        .find(|column| column.name == "id" && spec_type(column).supports_primary_key())
+        .or_else(|| {
+            view.columns.iter().find(|column| {
+                column.name != "revision" && spec_type(column).supports_primary_key()
+            })
+        })
 }

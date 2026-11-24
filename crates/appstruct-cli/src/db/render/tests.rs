@@ -89,6 +89,7 @@ fn normalizes_quoted_identifiers_but_preserves_database_names() {
             unique_constraints: Vec::new(),
             indexes: Vec::new(),
         }],
+        views: Vec::new(),
         foreign_keys: Vec::new(),
     };
 
@@ -130,6 +131,7 @@ fn imports_domain_base_types_and_omits_incompatible_columns() {
                 predicate: None,
             }],
         }],
+        views: Vec::new(),
         foreign_keys: Vec::new(),
     };
 
@@ -183,6 +185,7 @@ fn explains_composite_keys_and_cross_schema_relations() {
                 indexes: Vec::new(),
             },
         ],
+        views: Vec::new(),
         foreign_keys: vec![IntrospectedForeignKey {
             name: "projects_account_fkey".to_owned(),
             source_table: "projects".to_owned(),
@@ -251,6 +254,7 @@ fn fixture() -> IntrospectedSchema {
                 indexes: Vec::new(),
             },
         ],
+        views: Vec::new(),
         foreign_keys: vec![IntrospectedForeignKey {
             name: "tasks_project_id_fkey".to_owned(),
             source_table: "tasks".to_owned(),
@@ -261,6 +265,65 @@ fn fixture() -> IntrospectedSchema {
             on_delete: "cascade".to_owned(),
         }],
     }
+}
+
+#[test]
+fn imports_views_and_materialized_views_as_readonly_resources() {
+    let schema = IntrospectedSchema {
+        name: "public".to_owned(),
+        tables: Vec::new(),
+        views: vec![
+            IntrospectedView {
+                name: "active_accounts".to_owned(),
+                materialized: false,
+                columns: vec![column("id", "uuid", false), column("email", "text", false)],
+            },
+            IntrospectedView {
+                name: "daily_revenue_summary".to_owned(),
+                materialized: true,
+                columns: vec![
+                    column("summary_id", "bigint", false),
+                    column("total_cents", "bigint", false),
+                ],
+            },
+            IntrospectedView {
+                name: "nameless_metrics".to_owned(),
+                materialized: false,
+                columns: vec![column("label", "text", false)],
+            },
+        ],
+        foreign_keys: Vec::new(),
+    };
+
+    let draft = render_with_access(&schema, &AccessMode::Authenticated);
+    assert_eq!(draft.entity_count, 2);
+    assert!(draft.source.contains("Read-only PostgreSQL view"));
+    assert!(
+        draft
+            .source
+            .contains("Read-only PostgreSQL materialized view")
+    );
+    assert!(draft.source.contains("  ActiveAccount:\n"));
+    assert!(draft.source.contains("  DailyRevenueSummary:\n"));
+    assert!(
+        draft
+            .source
+            .contains("      list: { authenticated: true }\n")
+    );
+    assert!(
+        draft
+            .source
+            .contains("      read: { authenticated: true }\n")
+    );
+    assert!(!draft.source.contains("create:"));
+    assert!(!draft.source.contains("update:"));
+    assert!(!draft.source.contains("delete:"));
+    assert!(
+        draft
+            .warnings
+            .iter()
+            .any(|w| w.contains("nameless_metrics") && w.contains("omitted"))
+    );
 }
 
 fn column(name: &str, data_type: &str, nullable: bool) -> IntrospectedColumn {

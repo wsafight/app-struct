@@ -41,6 +41,92 @@ pub(super) fn tables(client: &mut Client, schema: &str) -> Result<Vec<String>, M
         .collect()
 }
 
+pub(super) fn views(
+    client: &mut Client,
+    schema: &str,
+) -> Result<Vec<(String, bool)>, MigrationError> {
+    let mut results = Vec::new();
+    for row in client
+        .query(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'VIEW' ORDER BY table_name",
+            &[&schema],
+        )
+        .map_err(|error| database_error("cannot inspect database views", &error))?
+    {
+        results.push((text(&row, "table_name")?, false));
+    }
+    for row in client
+        .query(
+            "SELECT matviewname FROM pg_matviews WHERE schemaname = $1 ORDER BY matviewname",
+            &[&schema],
+        )
+        .map_err(|error| database_error("cannot inspect materialized views", &error))?
+    {
+        results.push((text(&row, "matviewname")?, true));
+    }
+    Ok(results)
+}
+
+pub(super) fn matview_columns(
+    client: &mut Client,
+    schema: &str,
+) -> Result<Vec<(String, IntrospectedColumn)>, MigrationError> {
+    client
+        .query(
+            r"SELECT c.relname AS table_name, a.attname AS column_name,
+       format_type(a.atttypid, a.atttypmod) AS data_type,
+       tn.nspname AS udt_schema, t.typname AS udt_name,
+       NOT a.attnotnull AS is_nullable
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+JOIN pg_attribute a ON a.attrelid = c.oid
+JOIN pg_type t ON t.oid = a.atttypid
+JOIN pg_namespace tn ON tn.oid = t.typnamespace
+WHERE n.nspname = $1 AND c.relkind = 'm' AND a.attnum > 0 AND NOT a.attisdropped
+ORDER BY c.relname, a.attnum",
+            &[&schema],
+        )
+        .map_err(|error| database_error("cannot inspect materialized view columns", &error))?
+        .into_iter()
+        .map(|row| {
+            let raw_type = text(&row, "data_type")?;
+            let normalized = normalize_format_type(&raw_type);
+            let nullable: bool = row
+                .try_get("is_nullable")
+                .map_err(|error| database_error("invalid matview nullability", &error))?;
+            Ok((
+                text(&row, "table_name")?,
+                IntrospectedColumn {
+                    name: text(&row, "column_name")?,
+                    data_type: normalized,
+                    udt_schema: text(&row, "udt_schema")?,
+                    udt_name: text(&row, "udt_name")?,
+                    domain_schema: None,
+                    domain_name: None,
+                    nullable,
+                    default: None,
+                    identity: false,
+                    generated: false,
+                    max_length: None,
+                    enum_values: Vec::new(),
+                },
+            ))
+        })
+        .collect()
+}
+
+fn normalize_format_type(value: &str) -> String {
+    if value.starts_with("character varying") {
+        "character varying".to_owned()
+    } else if value.starts_with("numeric") {
+        "numeric".to_owned()
+    } else if value.ends_with("[]") {
+        "ARRAY".to_owned()
+    } else {
+        value.to_owned()
+    }
+}
+
 pub(super) fn columns(
     client: &mut Client,
     schema: &str,
