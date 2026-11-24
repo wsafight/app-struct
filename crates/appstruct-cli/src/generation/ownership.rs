@@ -158,37 +158,6 @@ pub(super) fn validate_owned_tree_cached(
     Ok(true)
 }
 
-pub(crate) fn copy_owned_tree(source: &Path, destination: &Path) -> io::Result<()> {
-    validate_owned_tree(source)?;
-    let owned = load_owned(source)?.expect("validated tree has a manifest");
-    fs::create_dir(destination)?;
-    for relative in owned
-        .iter()
-        .map(PathBuf::as_path)
-        .chain(std::iter::once(Path::new(MANIFEST_NAME)))
-    {
-        copy_file(source, destination, relative)?;
-    }
-    for cargo_lock in ["backend/Cargo.lock", "server/Cargo.lock"] {
-        let cargo_lock = Path::new(cargo_lock);
-        if source.join(cargo_lock).is_file() {
-            copy_file(source, destination, cargo_lock)?;
-        }
-    }
-    validate_owned_tree(destination)
-}
-
-fn copy_file(source: &Path, destination: &Path, relative: &Path) -> io::Result<()> {
-    let target = destination.join(relative);
-    fs::create_dir_all(
-        target
-            .parent()
-            .ok_or_else(|| invalid("owned file has no parent"))?,
-    )?;
-    fs::copy(source.join(relative), target)?;
-    Ok(())
-}
-
 fn load_owned(root: &Path) -> io::Result<Option<BTreeSet<PathBuf>>> {
     let Some(manifest) = load_manifest(root)? else {
         return Ok(None);

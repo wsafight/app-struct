@@ -42,23 +42,10 @@ impl crate::transaction::JournalRecord for JournalRecord {
 
 impl GenerationTransaction {
     pub(crate) fn acquire(project: &Path) -> io::Result<Self> {
-        Self::acquire_inner(project, false)
-    }
-
-    pub(crate) fn acquire_for_update(project: &Path) -> io::Result<Self> {
-        Self::acquire_inner(project, true)
-    }
-
-    fn acquire_inner(project: &Path, allow_update_recovery: bool) -> io::Result<Self> {
         let state = project.join(".appstruct");
         fs::create_dir_all(&state)?;
         let lock_path = state.join(LOCK_NAME);
         let lock = TransactionLock::acquire(&lock_path, "generation")?;
-        if !allow_update_recovery && update_state_exists(project) {
-            return Err(invalid(
-                "an unfinished project update exists; run `appstruct update` to recover it",
-            ));
-        }
         let transaction = Self {
             paths: TransactionPaths {
                 root: project.join("generated"),
@@ -238,18 +225,6 @@ impl GenerationTransaction {
         }
         Ok(())
     }
-}
-
-fn update_state_exists(project: &Path) -> bool {
-    [
-        project.join(".appstruct/update.journal"),
-        project.join(".generated.appstruct-update-staging"),
-        project.join(".generated.appstruct-update-backup"),
-        project.join(".appstruct.lock.appstruct-update-staging"),
-        project.join(".appstruct.lock.appstruct-update-backup"),
-    ]
-    .iter()
-    .any(|path| path.exists())
 }
 
 fn write_staging(

@@ -90,22 +90,6 @@ pub(crate) fn run(project: &Path) -> ExitCode {
 
 const MANIFEST_OUTPUT: &str = ".appstruct/release-manifest.json";
 
-pub(crate) fn verify_update(project: &Path) -> io::Result<()> {
-    let environment = ProjectEnvironment::load(project)?;
-    let backend = backend_manifest(project)?;
-    let web = project.join("generated/web");
-    let target = project.join(".appstruct/cache/backend-target");
-    build_steps(project, &backend, &web, &target, &environment)?;
-    run_cargo(
-        &environment,
-        project,
-        &target,
-        &["test", "--release", "--locked", "--manifest-path"],
-        Some(&backend),
-        &["--all-targets"],
-    )
-}
-
 pub(crate) fn backend_manifest(project: &Path) -> io::Result<PathBuf> {
     project_layout(project)?;
     Ok(project.join("generated/server/Cargo.toml"))
