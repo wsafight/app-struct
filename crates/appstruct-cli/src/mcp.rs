@@ -15,7 +15,6 @@ const AGENT_GUIDE: &str = include_str!("../templates/common/AGENTS.md");
 
 #[derive(Debug, Deserialize)]
 struct JsonRpcRequest {
-    #[allow(dead_code)]
     jsonrpc: Option<String>,
     id: Option<Value>,
     method: String,
@@ -92,6 +91,15 @@ fn handle_request(
 ) -> Option<JsonRpcResponse> {
     // JSON-RPC notifications omit `id` and must not receive a response.
     let id = request.id.clone()?;
+    if let Some(version) = request.jsonrpc.as_deref()
+        && version != "2.0"
+    {
+        return Some(error_response(
+            id,
+            -32600,
+            format!("unsupported jsonrpc version: {version}"),
+        ));
+    }
     let response = match request.method.as_str() {
         "initialize" => ok_response(
             id,

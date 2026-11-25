@@ -25,5 +25,16 @@ pub(crate) async fn next_document_number(
         .await?
         .ok_or(ApiError::Internal)?;
     let sequence: i64 = row.try_get("next_value")?;
-    Ok(format!("{prefix}-{period}-{sequence:06}"))
+    let clean_prefix: String = prefix
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(8)
+        .collect::<String>()
+        .to_ascii_uppercase();
+    let label = if clean_prefix.is_empty() {
+        "DOC"
+    } else {
+        clean_prefix.as_str()
+    };
+    Ok(format!("{label}-{period}-{sequence:06}"))
 }

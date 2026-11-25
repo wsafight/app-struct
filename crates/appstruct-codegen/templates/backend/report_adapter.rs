@@ -27,13 +27,25 @@ fn validate_page_settings(paper: &str, orientation: &str) -> Result<(), String> 
     }
 }
 
-fn validate_renderer_url(raw: &str) -> Result<&str, String> {
-    let trimmed = raw.trim();
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        Ok(trimmed)
-    } else {
-        Err("REPORT_ADAPTER_UNAVAILABLE".to_owned())
+fn validate_renderer_url(raw: &str) -> Result<reqwest::Url, String> {
+    let parsed = reqwest::Url::parse(raw.trim()).map_err(|_| "REPORT_ADAPTER_UNAVAILABLE")?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("REPORT_ADAPTER_UNAVAILABLE".to_owned());
     }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("REPORT_ADAPTER_UNAVAILABLE".to_owned());
+    }
+    let Some(host) = parsed.host_str() else {
+        return Err("REPORT_ADAPTER_UNAVAILABLE".to_owned());
+    };
+    let lower = host.to_ascii_lowercase();
+    if matches!(
+        lower.as_str(),
+        "169.254.169.254" | "metadata.google.internal" | "metadata.goog" | "[fd00:ec2::254]"
+    ) {
+        return Err("REPORT_BLOCKED_RESOURCE".to_owned());
+    }
+    Ok(parsed)
 }
 
 #[derive(Serialize)]
@@ -128,6 +140,7 @@ async fn exchange(request: &RenderRequest<'_>) -> Result<Vec<u8>, String> {
     let url = validate_renderer_url(&raw_url)?;
     let body = serde_json::to_vec(request).map_err(|_| "REPORT_INVALID_TEMPLATE_ARTIFACT")?;
     let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::none())
         .build()

@@ -8,6 +8,7 @@ use std::collections::HashMap;
 mod activity;
 mod audit;
 mod auth;
+mod auto_number;
 mod billing;
 mod file;
 mod imports;
@@ -162,10 +163,10 @@ pub fn extract(ir: &AppIr) -> Result<DatabaseSchema, IrValidationErrors> {
         .map(tenant_unique_constraint)
         .collect::<Vec<_>>();
     tables.push(imports::table());
-    if has_auto_number(ir) {
-        tables.push(auto_number_table());
+    if auto_number::enabled(ir) {
+        tables.push(auto_number::table());
     }
-    unique_constraints.extend(auto_number_unique_constraints(ir));
+    unique_constraints.extend(auto_number::unique_constraints(ir));
     let mut indexes = entity_indexes(ir);
     indexes.extend(module_indexes::indexes(ir));
     let seeds = entity_seeds(ir, &entities_by_id);
@@ -394,79 +395,3 @@ fn foreign_key(
 
 #[cfg(test)]
 mod tests;
-
-fn has_auto_number(ir: &AppIr) -> bool {
-    ir.entities.iter().any(|entity| {
-        entity
-            .fields
-            .iter()
-            .any(|field| matches!(field.generated, Some(appstruct_ir::GeneratedValueIr::AutoNumber)))
-    })
-}
-
-fn auto_number_table() -> TableSchema {
-    TableSchema {
-        id: "appstruct::auto_number::sequences".to_owned(),
-        name: "_appstruct_number_sequences".to_owned(),
-        columns: vec![
-            ColumnSchema {
-                id: "appstruct::auto_number::sequences.scope".to_owned(),
-                name: "scope".to_owned(),
-                data_type: DatabaseType::Text,
-                nullable: false,
-                primary_key: true,
-                unique: false,
-                default: None,
-                generated: None,
-            },
-            ColumnSchema {
-                id: "appstruct::auto_number::sequences.next_value".to_owned(),
-                name: "next_value".to_owned(),
-                data_type: DatabaseType::Bigint,
-                nullable: false,
-                primary_key: false,
-                unique: false,
-                default: None,
-                generated: None,
-            },
-            ColumnSchema {
-                id: "appstruct::auto_number::sequences.updated_at".to_owned(),
-                name: "updated_at".to_owned(),
-                data_type: DatabaseType::Datetime,
-                nullable: false,
-                primary_key: false,
-                unique: false,
-                default: None,
-                generated: Some(appstruct_ir::GeneratedValueIr::Now),
-            },
-        ],
-    }
-}
-
-fn auto_number_unique_constraints(ir: &AppIr) -> Vec<UniqueConstraintSchema> {
-    ir.entities
-        .iter()
-        .flat_map(|entity| {
-            entity.fields.iter().filter_map(|field| {
-                if !matches!(field.generated, Some(appstruct_ir::GeneratedValueIr::AutoNumber)) {
-                    return None;
-                }
-                if entity.tenant_scoped {
-                    Some(UniqueConstraintSchema {
-                        id: format!("{}.{}.auto_number", entity.id, field.column_name),
-                        table: entity.table_name.clone(),
-                        columns: vec!["tenant_id".to_owned(), field.column_name.clone()],
-                    })
-                } else if !field.unique {
-                    Some(UniqueConstraintSchema {
-                        id: format!("{}.{}.auto_number", entity.id, field.column_name),
-                        table: entity.table_name.clone(),
-                        columns: vec![field.column_name.clone()],
-                    })
-                } else {
-                    None
-                }
-            })
-        })
-        .collect()
-}

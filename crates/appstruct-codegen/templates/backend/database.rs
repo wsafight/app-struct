@@ -170,7 +170,7 @@ impl Transaction {
                 .shared
                 .pending
                 .lock()
-                .expect("savepoint queue poisoned"),
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
         );
         for sql in pending {
             sqlx::raw_sql(sqlx::AssertSqlSafe(sql.as_str())).execute(&mut **connection).await?;
@@ -226,7 +226,7 @@ impl Drop for Transaction {
             self.shared
                 .pending
                 .lock()
-                .expect("savepoint queue poisoned")
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .push(format!(
                     "ROLLBACK TO SAVEPOINT {name}; RELEASE SAVEPOINT {name}"
                 ));
@@ -302,7 +302,9 @@ impl<M> Select<M> {
     }
     pub fn order_by(mut self, order: &[sift_query::OrderBy], meta: &'static sift_query::EntityMeta, reverse: bool) -> Self {
         for item in order {
-            let field = meta.field(item.field).expect("validated ordering");
+            let Some(field) = meta.field(item.field) else {
+                continue;
+            };
             let descending = (item.direction == sift_query::SortOrder::Desc) ^ reverse;
             let nulls_first = (item.nulls == sift_query::NullOrder::First) ^ reverse;
             self.query.order_by_expr_with_nulls(

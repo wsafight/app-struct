@@ -278,10 +278,10 @@ impl AuthState {
                 header::CONTENT_TYPE,
                 header::IF_MATCH,
                 header::AUTHORIZATION,
-                "x-csrf-token".parse().unwrap(),
-                "x-appstruct-tenant".parse().unwrap(),
-                "idempotency-key".parse().unwrap(),
-                "x-appstruct-visitor".parse().unwrap(),
+                header::HeaderName::from_static("x-csrf-token"),
+                header::HeaderName::from_static("x-appstruct-tenant"),
+                header::HeaderName::from_static("idempotency-key"),
+                header::HeaderName::from_static("x-appstruct-visitor"),
             ])
             .expose_headers([header::ETAG])
     }
