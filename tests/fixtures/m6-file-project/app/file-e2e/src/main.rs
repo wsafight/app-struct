@@ -1,5 +1,5 @@
 use appstruct_generated_backend::database::{Database, DatabaseExecutor};
-use appstruct_generated_backend::{FileError, FileState, MailState, RequestContext};
+use appstruct_generated_backend::{Actor, FileError, FileState, MailState, RequestContext};
 use std::{env, fs, path::PathBuf};
 
 #[tokio::main]
@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .execute_unprepared("DELETE FROM \"_appstruct_files\"")
         .await?;
     let context =
-        RequestContext::connection_with_file(&database, &mail, &file, None, Some(tenant_id));
+        RequestContext::connection_with_file(&database, &mail, &file, None::<Actor>, Some(tenant_id));
 
     let metadata = context
         .put_file(
@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &database,
         &mail,
         &file,
-        None,
+        None::<Actor>,
         Some(uuid::Uuid::now_v7()),
     );
     assert!(matches!(

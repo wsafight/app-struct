@@ -211,6 +211,9 @@ export type FieldSemantic =
     }
   | {
       kind: "file";
+    }
+  | {
+      kind: "files";
     };
 
 export interface FieldDefinition {

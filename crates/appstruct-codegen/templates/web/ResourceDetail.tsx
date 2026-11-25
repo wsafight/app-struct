@@ -48,7 +48,7 @@ export function ResourceDetail({
         return candidate.fields
           .filter(
             (field) =>
-              field.relation?.target === resource.id &&
+              field.relation === resource.id &&
               field.filterable &&
               canAccessRule(field.readAccess ?? { mode: "public" }, actor),
           )
@@ -137,7 +137,10 @@ export function ResourceDetail({
                             void fileFieldApi
                               .download(fileId)
                               .then((blob) =>
-                                triggerDownload(blob, `${field.name}-${fileId}`),
+                                triggerDownload(
+                                  blob,
+                                  `${field.name}-${fileId}`,
+                                ),
                               );
                           }}
                         >

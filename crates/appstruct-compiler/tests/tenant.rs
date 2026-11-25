@@ -82,8 +82,7 @@ fn lowers_auto_number_field() {
         .find(|entity| entity.rust_name == "Project")
         .unwrap();
     assert!(project.fields.iter().any(|field| {
-        field.rust_name == "doc_no"
-            && matches!(field.generated, Some(GeneratedValueIr::AutoNumber))
+        field.rust_name == "doc_no" && matches!(field.generated, Some(GeneratedValueIr::AutoNumber))
     }));
 }
 

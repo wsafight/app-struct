@@ -197,7 +197,8 @@ export function ResourceList({
             visibleFields.some(
               (visible) =>
                 visible.name === field.name ||
-                visible.semantic?.currencyField === field.name,
+                (visible.semantic?.kind === "money" &&
+                  visible.semantic.currencyField === field.name),
             ) && canAccessRule(field.readAccess ?? { mode: "public" }, actor),
         )
         .map((field) => field.name),
@@ -435,7 +436,8 @@ export function ResourceList({
                 ? !nextCursor
                 : totalExact
                   ? page >= pages
-                  : page >= 10000 || (page >= pages && records.length < pageSize)
+                  : page >= 10000 ||
+                    (page >= pages && records.length < pageSize)
             }
             onClick={() =>
               cursorMode && nextCursor

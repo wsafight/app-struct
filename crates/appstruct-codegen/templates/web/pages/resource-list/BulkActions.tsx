@@ -46,24 +46,28 @@ export function useBulkActions({
 }: BulkActionOptions) {
   const writableFields = useMemo(
     () =>
-      resource.fields.filter(
-        (field) =>
+      resource.fields.filter((field) => {
+        const moneySemantic =
+          field.semantic?.kind === "money" ? field.semantic : undefined;
+        return (
           !resource.aggregateOwner &&
           !field.readOnly &&
           !field.primaryKey &&
           !field.uiComponent &&
           canAccessRule(field.writeAccess ?? { mode: "public" }, actor) &&
           (!field.semantic ||
-            resource.fields.some(
-              (companion) =>
-                companion.name === field.semantic?.currencyField &&
-                !companion.readOnly &&
-                canAccessRule(
-                  companion.writeAccess ?? { mode: "public" },
-                  actor,
-                ),
-            )),
-      ),
+            (Boolean(moneySemantic) &&
+              resource.fields.some(
+                (companion) =>
+                  companion.name === moneySemantic!.currencyField &&
+                  !companion.readOnly &&
+                  canAccessRule(
+                    companion.writeAccess ?? { mode: "public" },
+                    actor,
+                  ),
+              )))
+        );
+      }),
     [actor, resource],
   );
   const [bulkField, setBulkField] = useState(writableFields[0]?.name ?? "");
@@ -82,9 +86,11 @@ export function useBulkActions({
     [rowSelection],
   );
   const field = writableFields.find((field) => field.name === bulkField);
-  const companion = field?.semantic
+  const moneySemantic =
+    field?.semantic?.kind === "money" ? field.semantic : undefined;
+  const companion = moneySemantic
     ? resource.fields.find(
-        (candidate) => candidate.name === field.semantic?.currencyField,
+        (candidate) => candidate.name === moneySemantic.currencyField,
       )
     : undefined;
   const validationError = field ? valueError(bulkValue, field) : undefined;

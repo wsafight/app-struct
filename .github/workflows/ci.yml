@@ -4,9 +4,17 @@ on:
   pull_request:
   push:
     branches: [main]
-  schedule:
-    - cron: '23 2 * * 1'
+    paths-ignore:
+      - 'LICENSE*'
+      - 'CHANGELOG*'
+      - '.vscode/**'
+      - '.editorconfig'
   workflow_dispatch:
+    inputs:
+      full:
+        description: Run the full pre-release verification matrix (PostgreSQL, Docker, Windows, packaging, benchmarks)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -16,7 +24,97 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.filter.outputs.full }}
+      rust: ${{ steps.filter.outputs.rust }}
+      cargo_deps: ${{ steps.filter.outputs.cargo_deps }}
+      docs: ${{ steps.filter.outputs.docs }}
+      templates: ${{ steps.filter.outputs.templates }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: filter
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            FULL="${{ inputs.full }}"
+            echo "full=${FULL}" >> "$GITHUB_OUTPUT"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "cargo_deps=true" >> "$GITHUB_OUTPUT"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            echo "templates=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' | grep -q '"full-ci"'; then
+              echo "full=true" >> "$GITHUB_OUTPUT"
+              echo "rust=true" >> "$GITHUB_OUTPUT"
+              echo "cargo_deps=true" >> "$GITHUB_OUTPUT"
+              echo "docs=true" >> "$GITHUB_OUTPUT"
+              echo "templates=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+              BASE="HEAD~1"
+            fi
+          fi
+
+          FILES="$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || echo "ALL")"
+          echo "Changed files:"
+          echo "$FILES"
+
+          has_match() {
+            echo "$FILES" | grep -qE "$1"
+          }
+
+          echo "full=false" >> "$GITHUB_OUTPUT"
+
+          if [ "$FILES" = "ALL" ] || has_match '^(crates/|Cargo\.(toml|lock)|rust-toolchain\.toml|deny\.toml|scripts/|\.github/workflows/(ci|quality)\.yml|\.github/actions/)'; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$FILES" = "ALL" ] || has_match '^(Cargo\.(toml|lock)|crates/.*/Cargo\.toml|deny\.toml)$'; then
+            echo "cargo_deps=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cargo_deps=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$FILES" = "ALL" ] || has_match '^(site/|docs/|README(\.zh-CN)?\.md|PRODUCT(\.en)?\.md|TECHNICAL_DESIGN(\.en)?\.md|package\.json|pnpm-lock\.yaml)'; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$FILES" = "ALL" ] || has_match '^(crates/(appstruct-cli|appstruct-codegen|appstruct-compiler|appstruct-ir|appstruct-migrate|appstruct-runtime)/|scripts/(run|test)-template-build\.sh)'; then
+            echo "templates=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "templates=false" >> "$GITHUB_OUTPUT"
+          fi
+
   quality:
+    needs: changes
+    if: >-
+      needs.changes.outputs.full == 'true' ||
+      needs.changes.outputs.rust == 'true' ||
+      needs.changes.outputs.docs == 'true' ||
+      needs.changes.outputs.templates == 'true'
     uses: ./.github/workflows/quality.yml
     with:
-      full: ${{ github.event_name != 'pull_request' }}
+      full: ${{ needs.changes.outputs.full == 'true' }}
+      run_rust: ${{ needs.changes.outputs.rust == 'true' }}
+      run_cargo_audit: ${{ needs.changes.outputs.cargo_deps == 'true' }}
+      run_docs: ${{ needs.changes.outputs.docs == 'true' }}
+      run_templates: ${{ needs.changes.outputs.templates == 'true' }}

@@ -1,6 +1,6 @@
 use appstruct_generated_backend::database::{Database, DatabaseExecutor, Sql};
 use appstruct_generated_backend::{
-    Job, JobHandler, JobHandlerError, JobWorker, MailJobPayload, MailState, RequestContext,
+    Actor, Job, JobHandler, JobHandlerError, JobWorker, MailJobPayload, MailState, RequestContext,
 };
 use async_trait::async_trait;
 use sqlx::Row as _;
@@ -64,7 +64,7 @@ async fn assert_concurrent_worker_lanes(
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
     clear(database).await?;
-    let context = RequestContext::connection(database, mail, None, Some(tenant_id));
+    let context = RequestContext::connection(database, mail, None::<Actor>, Some(tenant_id));
     let first = context
         .enqueue_job("default", "concurrent", &(), None, None)
         .await?;
@@ -102,7 +102,7 @@ async fn assert_webhook_delivery(
     database
         .execute_unprepared("DELETE FROM \"_appstruct_webhook_deliveries\"")
         .await?;
-    let context = RequestContext::connection(database, mail, None, Some(tenant_id));
+    let context = RequestContext::connection(database, mail, None::<Actor>, Some(tenant_id));
     let delivered = context
         .publish_webhook(
             "project.created",
@@ -159,7 +159,7 @@ async fn seed_admin_jobs(
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
     clear(database).await?;
-    let context = RequestContext::connection(database, mail, None, Some(tenant_id));
+    let context = RequestContext::connection(database, mail, None::<Actor>, Some(tenant_id));
     let succeeded = context
         .enqueue_job(
             "default",
@@ -200,7 +200,7 @@ async fn assert_transactional_enqueue(
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let transaction = database.begin().await?;
-    let context = RequestContext::transaction(&transaction, mail, None, Some(tenant_id));
+    let context = RequestContext::transaction(&transaction, mail, None::<Actor>, Some(tenant_id));
     context
         .enqueue_job(
             "default",
@@ -222,7 +222,7 @@ async fn assert_success_and_deduplication(
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let transaction = database.begin().await?;
-    let context = RequestContext::transaction(&transaction, mail, None, Some(tenant_id));
+    let context = RequestContext::transaction(&transaction, mail, None::<Actor>, Some(tenant_id));
     let first = context
         .enqueue_job(
             "default",
@@ -265,7 +265,7 @@ async fn assert_retry_and_dead_state(
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
     clear(database).await?;
-    let context = RequestContext::connection(database, mail, None, Some(tenant_id));
+    let context = RequestContext::connection(database, mail, None::<Actor>, Some(tenant_id));
     let receipt = context
         .enqueue_job("default", "fail", &(), None, None)
         .await?;
@@ -293,7 +293,7 @@ async fn assert_expired_lease_recovery(
     tenant_id: uuid::Uuid,
 ) -> Result<(), Box<dyn std::error::Error>> {
     clear(database).await?;
-    let context = RequestContext::connection(database, mail, None, Some(tenant_id));
+    let context = RequestContext::connection(database, mail, None::<Actor>, Some(tenant_id));
     let receipt = context
         .enqueue_job("default", "succeed", &(), None, None)
         .await?;
@@ -318,7 +318,7 @@ async fn assert_mail_job(
     database
         .execute_unprepared("DELETE FROM \"_appstruct_mail_deliveries\"")
         .await?;
-    let context = RequestContext::connection(database, mail, None, Some(tenant_id));
+    let context = RequestContext::connection(database, mail, None::<Actor>, Some(tenant_id));
     let payload = MailJobPayload {
         template: "job-complete".to_owned(),
         recipient: "jobs@example.com".to_owned(),

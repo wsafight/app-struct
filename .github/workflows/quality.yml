@@ -7,6 +7,22 @@ on:
         description: Run all PostgreSQL modules, production containers, Windows installer, packaging and benchmarks.
         type: boolean
         default: false
+      run_rust:
+        description: Run Rust format, clippy, unit tests, workflow lint, and script checks.
+        type: boolean
+        default: true
+      run_cargo_audit:
+        description: Run cargo-deny and cargo-machete checks.
+        type: boolean
+        default: false
+      run_docs:
+        description: Run documentation site check, build, and Playwright tests.
+        type: boolean
+        default: false
+      run_templates:
+        description: Run generated template build smoke checks.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,12 +38,14 @@ env:
 jobs:
   cli:
     name: Linux CLI artifact
+    if: inputs.full || inputs.run_templates
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with:
+          node: 'false'
           cache-build: 'true'
       - run: cargo build --locked -p appstruct-cli
       - run: sha256sum target/debug/appstruct > target/debug/appstruct.sha256
@@ -42,6 +60,7 @@ jobs:
 
   rust:
     name: Rust
+    if: inputs.full || inputs.run_rust
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -61,24 +80,28 @@ jobs:
           for script in scripts/*.sh; do bash -n "$script"; done
           bash scripts/test-e2e-cleanup.sh
           bash scripts/test-template-build.sh
-      - name: Install cargo-deny binary
+      - name: Install cargo-deny and cargo-machete
+        if: inputs.full || inputs.run_cargo_audit
         run: |
           curl -fsSL https://github.com/cargo-bins/cargo-binstall/releases/download/v1.17.0/cargo-binstall-x86_64-unknown-linux-musl.tgz -o cargo-binstall.tgz
           tar -xzf cargo-binstall.tgz
           ./cargo-binstall --no-confirm --version 0.20.2 cargo-deny
           ./cargo-binstall --no-confirm cargo-machete
-      - run: cargo deny check
-      - run: cargo machete
+      - if: inputs.full || inputs.run_cargo_audit
+        run: cargo deny check
+      - if: inputs.full || inputs.run_cargo_audit
+        run: cargo machete
 
   templates:
     name: Template (${{ matrix.template }})
+    if: inputs.full || inputs.run_templates
     needs: cli
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        template: [minimal, dashboard, saas]
+        template: ${{ fromJSON(inputs.full && '["minimal", "dashboard", "saas"]' || '["minimal"]') }}
     env:
       APPSTRUCT_TEMPLATE: ${{ matrix.template }}
       APPSTRUCT_TEMPLATE_CLI: ${{ github.workspace }}/target/debug/appstruct
@@ -94,11 +117,14 @@ jobs:
 
   docs:
     name: Documentation
+    if: inputs.full || inputs.run_docs
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
+        with:
+          rust: 'false'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run site:check
       - run: pnpm run site:build
@@ -114,6 +140,7 @@ jobs:
 
   saas-product-browser:
     name: SaaS product browser
+    if: inputs.full
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -137,12 +164,13 @@ jobs:
 
   postgres:
     name: PostgreSQL (${{ matrix.suite }})
+    if: inputs.full
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.full && '["authorization", "product", "m6-query", "operations", "m5-browser", "m6-tenant", "m6-audit", "m6-mail", "m6-jobs", "m6-file", "m6-saas", "m6-bulk"]' || '["authorization", "product", "m6-query", "operations"]') }}
+        suite: ["authorization", "product", "m6-query", "operations", "m5-browser", "m6-tenant", "m6-audit", "m6-mail", "m6-jobs", "m6-file", "m6-saas", "m6-bulk"]
     services:
       postgres:
         image: postgres:17
@@ -237,6 +265,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
+        with:
+          node: 'false'
       - name: Build native CLI and test local archive installation
         run: |
           $ErrorActionPreference = 'Stop'
@@ -267,6 +297,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
         with:
+          node: 'false'
           cache-build: 'true'
       - run: bash scripts/verify-packages.sh
 

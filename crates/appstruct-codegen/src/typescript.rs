@@ -164,9 +164,13 @@ fn file_field_runtime_source(ir: &AppIr) -> String {
   maxBytes: {max_bytes},
   allowedContentTypes: {allowed} as readonly string[],
   upload: async (_file: File, _onProgress?: (percentage: number) => void, _signal?: AbortSignal): Promise<{{ id: string; original_name: string }}> => {{
+    void _file;
+    void _onProgress;
+    void _signal;
     throw new Error("File module is disabled");
   }},
   download: async (_id: string): Promise<Blob> => {{
+    void _id;
     throw new Error("File module is disabled");
   }},
 }} as const;

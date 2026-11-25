@@ -543,21 +543,21 @@ describe("resourceQueryKeys", () => {
     localStorage.removeItem(tenantStorageKey);
     expect(resourceQueryKeys.list("app::Note", "page=1")).toEqual([
       "resource",
-      "global",
+      "global:v1",
       "app::Note",
       "list",
       "page=1",
     ]);
     expect(resourceQueryKeys.detail("app::Note", "abc")).toEqual([
       "resource",
-      "global",
+      "global:v1",
       "app::Note",
       "detail",
       "abc",
     ]);
     expect(resourceQueryKeys.options("app::Note")).toEqual([
       "resource",
-      "global",
+      "global:v1",
       "app::Note",
       "options",
       "",
@@ -570,14 +570,14 @@ describe("resourceQueryKeys", () => {
       const alpha = resourceQueryKeys.detail("app::Note", "abc");
       expect(appQueryKeys.audit(1, 25)).toEqual([
         "audit",
-        "alpha",
+        "alpha:v1",
         { page: 1, pageSize: 25, entity: "", recordId: "" },
       ]);
       localStorage.setItem(tenantStorageKey, "beta");
       expect(resourceQueryKeys.detail("app::Note", "abc")).not.toEqual(alpha);
       expect(appQueryKeys.reports.templates()).toEqual([
         "reports",
-        "beta",
+        "beta:v1",
         "templates",
       ]);
     } finally {

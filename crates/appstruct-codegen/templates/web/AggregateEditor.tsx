@@ -186,14 +186,16 @@ export function AggregateEditor({
                     {fields
                       .filter((field) => !isSemanticCompanion(field, fields))
                       .map((field) => {
-                        const companion =
+                        const moneySemantic =
                           field.semantic?.kind === "money"
-                            ? fields.find(
-                                (candidate) =>
-                                  candidate.name ===
-                                  field.semantic!.currencyField,
-                              )
+                            ? field.semantic
                             : undefined;
+                        const companion = moneySemantic
+                          ? fields.find(
+                              (candidate) =>
+                                candidate.name === moneySemantic.currencyField,
+                            )
+                          : undefined;
                         return (
                           <FieldControl
                             key={field.name}

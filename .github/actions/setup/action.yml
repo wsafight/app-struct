@@ -1,6 +1,12 @@
 name: AppStruct toolchain
 description: Install the repository's Rust, Node.js and pnpm toolchains and restore dependency caches.
 inputs:
+  node:
+    description: Install Node.js and pnpm with dependency caching.
+    default: 'true'
+  rust:
+    description: Verify pinned Rust toolchain and restore Cargo caches.
+    default: 'true'
   cache-build:
     description: Cache Cargo debug dependency artifacts; Cargo still validates current workspace inputs.
     default: 'false'
@@ -11,20 +17,24 @@ runs:
   using: composite
   steps:
     - name: Reserve integration test ports from ephemeral client allocation
-      if: runner.os == 'Linux'
+      if: runner.os == 'Linux' && inputs.rust == 'true'
       shell: bash
       run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=30000-34999,51000-57999
-    - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+    - if: inputs.node == 'true'
+      uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
       with:
         version: 11.25.0
-    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+    - if: inputs.node == 'true'
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: 24
         cache: pnpm
     - name: Install pinned Rust toolchain
+      if: inputs.rust == 'true'
       shell: bash
       run: rustup show active-toolchain
-    - uses: actions/cache@v4
+    - if: inputs.rust == 'true'
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry/index
@@ -33,8 +43,8 @@ runs:
         key: cargo-dependencies-${{ runner.os }}-${{ hashFiles('Cargo.toml', '**/Cargo.lock') }}
         restore-keys: |
           cargo-dependencies-${{ runner.os }}-
-    - uses: actions/cache@v4
-      if: inputs.cache-build == 'true'
+    - if: inputs.rust == 'true' && inputs.cache-build == 'true'
+      uses: actions/cache@v4
       with:
         path: |
           target/debug/.fingerprint

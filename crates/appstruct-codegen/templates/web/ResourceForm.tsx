@@ -485,16 +485,20 @@ function ResourceFormEditor({
                   </legend>
                   <div className="aggregate-row-fields">
                     {childFields
-                      .filter((field) => !isSemanticCompanion(field, childFields))
+                      .filter(
+                        (field) => !isSemanticCompanion(field, childFields),
+                      )
                       .map((field) => {
-                        const companion =
+                        const moneySemantic =
                           field.semantic?.kind === "money"
-                            ? childFields.find(
-                                (candidate) =>
-                                  candidate.name ===
-                                  field.semantic!.currencyField,
-                              )
+                            ? field.semantic
                             : undefined;
+                        const companion = moneySemantic
+                          ? childFields.find(
+                              (candidate) =>
+                                candidate.name === moneySemantic.currencyField,
+                            )
+                          : undefined;
                         return (
                           <FieldControl
                             key={field.name}
@@ -679,8 +683,12 @@ function FileFieldControl({
               onClick={() =>
                 void fileFieldApi
                   .download(currentId)
-                  .then((blob) => triggerDownload(blob, `${field.name}-${currentId}`))
-                  .catch((reason: unknown) => setUploadError(errorMessage(reason)))
+                  .then((blob) =>
+                    triggerDownload(blob, `${field.name}-${currentId}`),
+                  )
+                  .catch((reason: unknown) =>
+                    setUploadError(errorMessage(reason)),
+                  )
               }
             >
               <Download size={14} /> {t("Download")}

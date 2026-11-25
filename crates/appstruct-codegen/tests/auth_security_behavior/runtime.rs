@@ -557,7 +557,17 @@ async fn account_security_enforces_reauth_last_admin_and_former_owner_reassignme
     .await;
     assert_eq!(last_admin_blocked.status(), StatusCode::CONFLICT);
 
-    // Promote co_admin_id to admin, add to org, create an invitation from admin_id, transfer org ownership, then delete admin_id:
+    // Create an invitation from admin_id while under seat limit, then promote co_admin_id, add to org, transfer org ownership, and delete admin_id:
+    let invite_res = request(
+        &router,
+        &admin_session,
+        "POST",
+        "/api/tenant/invitations",
+        json!({ "email": "pending-invitee@example.test", "role": "member" }),
+    )
+    .await;
+    assert_eq!(invite_res.status(), StatusCode::CREATED);
+
     let org_id = Uuid::parse_str(&admin_session.tenant).unwrap();
     database
         .execute(Sql::bind(
@@ -573,15 +583,6 @@ async fn account_security_enforces_reauth_last_admin_and_former_owner_reassignme
         ))
         .await
         .unwrap();
-    let invite_res = request(
-        &router,
-        &admin_session,
-        "POST",
-        "/api/tenant/invitations",
-        json!({ "email": "pending-invitee@example.test", "role": "member" }),
-    )
-    .await;
-    assert_eq!(invite_res.status(), StatusCode::CREATED);
 
     let transfer_res = request(
         &router,
