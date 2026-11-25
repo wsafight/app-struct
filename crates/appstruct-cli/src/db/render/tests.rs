@@ -326,6 +326,59 @@ fn imports_views_and_materialized_views_as_readonly_resources() {
     );
 }
 
+#[test]
+fn bridges_composite_pk_via_unique_surrogate_key_and_guides_existing_user_table() {
+    let schema = IntrospectedSchema {
+        name: "public".to_owned(),
+        tables: vec![
+            IntrospectedTable {
+                name: "tenant_memberships".to_owned(),
+                columns: vec![
+                    column("tenant_id", "uuid", false),
+                    column("user_id", "uuid", false),
+                    column("surrogate_id", "uuid", false),
+                ],
+                primary_key: vec!["tenant_id".to_owned(), "user_id".to_owned()],
+                unique_constraints: vec![vec!["surrogate_id".to_owned()]],
+                indexes: Vec::new(),
+            },
+            IntrospectedTable {
+                name: "users".to_owned(),
+                columns: vec![
+                    column("id", "uuid", false),
+                    column("email", "character varying", false),
+                ],
+                primary_key: vec!["id".to_owned()],
+                unique_constraints: vec![vec!["email".to_owned()]],
+                indexes: Vec::new(),
+            },
+        ],
+        views: Vec::new(),
+        foreign_keys: Vec::new(),
+    };
+
+    let draft = render(&schema);
+    assert_eq!(draft.entity_count, 2);
+    assert!(draft.source.contains("  TenantMembership:\n"));
+    assert!(
+        draft
+            .source
+            .contains("      surrogate_id:\n        type: uuid\n        primary_key: true\n")
+    );
+    assert!(
+        draft
+            .warnings
+            .iter()
+            .any(|w| w.contains("tenant_memberships") && w.contains("surrogate_id"))
+    );
+    assert!(
+        draft
+            .warnings
+            .iter()
+            .any(|w| w.contains("existing user table") && w.contains("modules.auth"))
+    );
+}
+
 fn column(name: &str, data_type: &str, nullable: bool) -> IntrospectedColumn {
     IntrospectedColumn {
         name: name.to_owned(),

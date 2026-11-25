@@ -25,6 +25,7 @@ pub(super) struct Draft {
 
 struct RenderContext<'schema> {
     entities: BTreeMap<&'schema str, String>,
+    surrogate_keys: BTreeMap<&'schema str, &'schema str>,
     relations: BTreeMap<(&'schema str, &'schema str), &'schema IntrospectedForeignKey>,
     warnings: Vec<String>,
 }
@@ -85,9 +86,25 @@ impl<'schema> RenderContext<'schema> {
     fn new(schema: &'schema IntrospectedSchema) -> Self {
         let mut warnings = Vec::new();
         let mut entities = BTreeMap::new();
+        let mut surrogate_keys = BTreeMap::new();
         let mut used = BTreeSet::new();
         for table in &schema.tables {
             if table.primary_key.len() != 1 {
+                if table.primary_key.len() > 1
+                    && let Some(surrogate) = select_surrogate_unique_key(table)
+                {
+                    let base = type_name(&singularize(&table.name));
+                    let entity = unique_name(&base, &mut used);
+                    warnings.push(format!(
+                        "table `{}` has composite primary key [{}] and was bridged via unique surrogate key `{}` as entity `{entity}`; review uniqueness before writing",
+                        table.name,
+                        table.primary_key.join(", "),
+                        surrogate.name
+                    ));
+                    surrogate_keys.insert(table.name.as_str(), surrogate.name.as_str());
+                    entities.insert(table.name.as_str(), entity);
+                    continue;
+                }
                 warnings.push(format!(
                     "table `{}` was omitted because its primary key [{}] has {} columns; AppStruct requires one scalar key, so add a supported surrogate key before importing",
                     table.name,
@@ -151,6 +168,7 @@ impl<'schema> RenderContext<'schema> {
         let relations = usable_relations(schema, &entities, &mut warnings);
         Self {
             entities,
+            surrogate_keys,
             relations,
             warnings,
         }
@@ -163,6 +181,16 @@ impl<'schema> RenderContext<'schema> {
         entity: &str,
         access: &AccessMode,
     ) {
+        if matches!(
+            table.name.to_ascii_lowercase().as_str(),
+            "users" | "user" | "accounts" | "app_users"
+        ) && table.columns.iter().any(|column| column.name == "email")
+        {
+            self.warnings.push(format!(
+                "table `{}` looks like an existing user table; to reuse it with AppStruct auth, bind `modules.auth` to `{entity}` instead of creating a duplicate User entity",
+                table.name
+            ));
+        }
         let _ = writeln!(output, "  {entity}:");
         let _ = writeln!(output, "    label: {}", yaml_string(entity));
         let _ = writeln!(output, "    table: {}", yaml_string(&table.name));
@@ -404,7 +432,8 @@ impl<'schema> RenderContext<'schema> {
             }
             self.render_default(output, table, column, &kind);
         }
-        let primary_key = table.primary_key.as_slice() == std::slice::from_ref(&column.name);
+        let primary_key = table.primary_key.as_slice() == std::slice::from_ref(&column.name)
+            || self.surrogate_keys.get(table.name.as_str()).copied() == Some(column.name.as_str());
         if primary_key {
             output.push_str("        primary_key: true\n");
         }
@@ -547,6 +576,22 @@ fn unusable_relation_reason(
         );
     }
     "the database relation does not match the generated entity contract".to_owned()
+}
+
+fn select_surrogate_unique_key(table: &IntrospectedTable) -> Option<&IntrospectedColumn> {
+    table
+        .unique_constraints
+        .iter()
+        .filter(|columns| columns.len() == 1)
+        .find_map(|columns| {
+            let name = &columns[0];
+            table.columns.iter().find(|column| {
+                &column.name == name
+                    && !column.nullable
+                    && column.name != "revision"
+                    && spec_type(column).supports_primary_key()
+            })
+        })
 }
 
 fn select_view_key(view: &IntrospectedView) -> Option<&IntrospectedColumn> {
