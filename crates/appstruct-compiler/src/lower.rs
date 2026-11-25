@@ -191,6 +191,7 @@ pub(crate) fn build_ir(
         },
         &mut diagnostics,
     );
+    let dashboard = lower_dashboard(root.dashboard.as_ref(), &entities, &mut diagnostics);
     if !diagnostics.is_empty() {
         return Err(diagnostics);
     }
@@ -247,6 +248,7 @@ pub(crate) fn build_ir(
         commands: extensions.commands,
         queries: extensions.queries,
         pages: extensions.pages,
+        dashboard,
         modules,
     })
 }
@@ -278,6 +280,7 @@ fn canonicalize_entities(entities: &mut [EntityIr], relations: &mut [RelationIr]
     relations.sort_by(|left, right| left.id.cmp(&right.id));
 }
 
+#[allow(clippy::too_many_lines)]
 fn lower_entities(
     surface_entities: Vec<SurfaceEntity>,
     known_entities: &BTreeSet<String>,
@@ -354,6 +357,7 @@ fn lower_entities(
         );
         let display_field = lower_display_field(&entity, &fields, diagnostics);
         let charts = build_charts(&entity, &fields, diagnostics);
+        let computed = lower_computed(&entity, &fields, diagnostics);
         seeds.extend(build_seeds(&entity, &entity_id, &fields, diagnostics));
         let workflow = lower_workflow(&entity, &fields, known_values, auth, diagnostics);
         relations.append(&mut entity_relations);
@@ -372,6 +376,7 @@ fn lower_entities(
                 views: EntityViewsIr {
                     aggregates: entity.aggregates,
                     charts,
+                    computed,
                     display_field,
                     soft_delete: entity.soft_delete,
                 },
@@ -416,4 +421,130 @@ fn lower_display_field(
             None
         }
     }
+}
+
+fn lower_computed(
+    entity: &SurfaceEntity,
+    fields: &[appstruct_ir::FieldIr],
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<appstruct_ir::ComputedFieldIr> {
+    let mut out = Vec::new();
+    for (name, template) in &entity.computed {
+        if fields
+            .iter()
+            .any(|field| field.api_name == name.value || field.rust_name == name.value)
+        {
+            diagnostics.push(Diagnostic::error(
+                "AS2054",
+                format!(
+                    "computed field `{}` collides with an existing field on `{}`",
+                    name.value, entity.name.value
+                ),
+                name.span.clone(),
+            ));
+            continue;
+        }
+        let mut source_fields = Vec::new();
+        let mut rest = template.value.as_str();
+        while let Some(start) = rest.find('{') {
+            rest = &rest[start + 1..];
+            let Some(end) = rest.find('}') else {
+                diagnostics.push(Diagnostic::error(
+                    "AS2054",
+                    format!(
+                        "computed field `{}` has an unclosed `{{` placeholder",
+                        name.value
+                    ),
+                    template.span.clone(),
+                ));
+                break;
+            };
+            let placeholder = &rest[..end];
+            rest = &rest[end + 1..];
+            if let Some(field) = fields
+                .iter()
+                .find(|field| field.api_name == placeholder || field.rust_name == placeholder)
+            {
+                if !source_fields.contains(&field.id) {
+                    source_fields.push(field.id.clone());
+                }
+            } else {
+                diagnostics.push(Diagnostic::error(
+                    "AS2054",
+                    format!(
+                        "computed field `{}` references unknown field `{placeholder}` on `{}`",
+                        name.value, entity.name.value
+                    ),
+                    template.span.clone(),
+                ));
+            }
+        }
+        out.push(appstruct_ir::ComputedFieldIr {
+            name: name.value.clone(),
+            template: template.value.clone(),
+            source_fields,
+        });
+    }
+    out
+}
+
+fn lower_dashboard(
+    dashboard: Option<&crate::surface::SurfaceDashboard>,
+    entities: &[EntityIr],
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<appstruct_ir::DashboardIr> {
+    let dashboard = dashboard?;
+    let mut widgets = Vec::with_capacity(dashboard.widgets.len());
+    let mut seen_ids = BTreeSet::new();
+    for widget in &dashboard.widgets {
+        if !seen_ids.insert(widget.id.value.clone()) {
+            diagnostics.push(Diagnostic::error(
+                "AS2055",
+                format!("duplicate dashboard widget id `{}`", widget.id.value),
+                widget.id.span.clone(),
+            ));
+            continue;
+        }
+        let Some(entity) = entities
+            .iter()
+            .find(|entity| entity.rust_name == widget.entity.value)
+        else {
+            diagnostics.push(Diagnostic::error(
+                "AS2055",
+                format!(
+                    "dashboard widget `{}` references unknown entity `{}`",
+                    widget.id.value, widget.entity.value
+                ),
+                widget.entity.span.clone(),
+            ));
+            continue;
+        };
+        if !entity
+            .views
+            .charts
+            .iter()
+            .any(|chart| chart.name == widget.chart.value)
+        {
+            diagnostics.push(Diagnostic::error(
+                "AS2055",
+                format!(
+                    "dashboard widget `{}` references unknown chart `{}` on entity `{}`",
+                    widget.id.value, widget.chart.value, widget.entity.value
+                ),
+                widget.chart.span.clone(),
+            ));
+            continue;
+        }
+        widgets.push(appstruct_ir::DashboardWidgetIr {
+            id: widget.id.value.clone(),
+            title: widget.title.as_ref().map(|t| t.value.clone()),
+            entity: entity.id.clone(),
+            chart: widget.chart.value.clone(),
+            span: widget.span,
+        });
+    }
+    Some(appstruct_ir::DashboardIr {
+        title: dashboard.title.as_ref().map(|t| t.value.clone()),
+        widgets,
+    })
 }

@@ -87,9 +87,27 @@ pub(crate) struct SurfaceRoot {
     pub file: SurfaceFile,
     pub report: SurfaceReport,
     pub activity: SurfaceActivity,
+    pub dashboard: Option<SurfaceDashboard>,
     pub includes: Vec<Located<String>>,
     pub module_manifests: Vec<Located<String>>,
 }
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceDashboard {
+    pub title: Option<Located<String>>,
+    pub widgets: Vec<SurfaceDashboardWidget>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurfaceDashboardWidget {
+    pub id: Located<String>,
+    pub title: Option<Located<String>>,
+    pub entity: Located<String>,
+    pub chart: Located<String>,
+    pub span: u8,
+}
+
+pub(crate) type SurfaceComputedEntry = (Located<String>, Located<String>);
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SurfaceDomain {
@@ -117,6 +135,7 @@ pub(crate) struct SurfaceEntity {
     pub display_field: Option<Located<String>>,
     pub aggregates: Vec<appstruct_ir::AggregateIr>,
     pub charts: Vec<SurfaceChart>,
+    pub computed: Vec<(Located<String>, Located<String>)>,
     pub table: Option<Located<String>>,
     pub fields: Vec<SurfaceField>,
     pub indexes: Vec<SurfaceIndex>,

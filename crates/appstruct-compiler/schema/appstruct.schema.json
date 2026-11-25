@@ -102,6 +102,51 @@
         "server": {
           "$ref": "#/$defs/server"
         },
+        "dashboard": {
+          "type": "object",
+          "required": [
+            "widgets"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "widgets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "entity",
+                  "chart"
+                ],
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/fieldName"
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "entity": {
+                    "$ref": "#/$defs/typeName"
+                  },
+                  "chart": {
+                    "$ref": "#/$defs/fieldName"
+                  },
+                  "span": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 12
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "modules": {
           "$ref": "#/$defs/modules"
         },
@@ -878,6 +923,16 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/chart"
+          }
+        },
+        "computed": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/fieldName"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "workflow": {

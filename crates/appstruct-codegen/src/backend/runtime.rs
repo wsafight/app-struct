@@ -14,7 +14,7 @@ pub(super) fn metrics_artifact() -> Result<crate::Artifact, CodegenError> {
 pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, CodegenError> {
     let contract = contract_source();
     let application = application_source();
-    let routing = router_source(routes);
+    let routing = router_source(ir, routes);
     let security = super::security::source(ir);
     let start_worker = start_worker(ir);
     let start_webhooks = start_webhook_worker(ir);
@@ -230,7 +230,39 @@ fn application_source() -> TokenStream {
     }
 }
 
-fn router_source(routes: &[TokenStream]) -> TokenStream {
+fn router_source(ir: &AppIr, routes: &[TokenStream]) -> TokenStream {
+    let (dashboard_route, dashboard_handler) = if let Some(dashboard) = &ir.dashboard {
+        let widgets = dashboard
+            .widgets
+            .iter()
+            .filter_map(|widget| {
+                let entity = ir.entities.iter().find(|e| e.id == widget.entity)?;
+                Some(serde_json::json!({
+                    "id": widget.id,
+                    "title": widget.title,
+                    "entity": entity.rust_name,
+                    "chart": widget.chart,
+                    "span": widget.span,
+                    "endpoint": format!("/api/{}/charts/{}", entity.table_name, widget.chart),
+                }))
+            })
+            .collect::<Vec<_>>();
+        let payload = serde_json::json!({
+            "title": dashboard.title.as_deref().unwrap_or(&ir.app.name),
+            "widgets": widgets,
+        })
+        .to_string();
+        (
+            quote! { .route("/api/dashboard", get(dashboard_manifest)) },
+            quote! {
+                async fn dashboard_manifest() -> impl IntoResponse {
+                    ([(axum::http::header::CONTENT_TYPE, "application/json")], #payload)
+                }
+            },
+        )
+    } else {
+        (quote! {}, quote! {})
+    };
     quote! {
         pub fn router_with_services(
             database: Database, extensions: AppExtensions, auth: AuthState,
@@ -255,6 +287,7 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
                 .merge(business::router())
                 .merge(product::router())
                 .merge(extensions.routes())
+                #dashboard_route
                 .route("/health/live", get(liveness)).route("/health/ready", get(readiness))
                 .route("/metrics", get(metrics))
                 .route("/openapi.json", get(openapi)).layer(cors)
@@ -268,6 +301,7 @@ fn router_source(routes: &[TokenStream]) -> TokenStream {
                     database, extensions, auth, mail, file, health,
                 })
         }
+        #dashboard_handler
         async fn liveness() -> StatusCode { StatusCode::NO_CONTENT }
         async fn readiness(State(state): State<AppState>) -> StatusCode {
             if state.health.is_ready() && state.database.ping().await.is_ok() {

@@ -32,7 +32,8 @@ pub use validation::aggregates::validate_aggregates;
 pub use validation::charts::validate_charts;
 pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir, validate_form_rules};
 pub use views::{
-    AggregateIr, ChartDimensionIr, ChartIr, ChartKindIr, ChartMeasureIr, EntityViewsIr,
+    AggregateIr, ChartDimensionIr, ChartIr, ChartKindIr, ChartMeasureIr, ComputedFieldIr,
+    DashboardIr, DashboardWidgetIr, EntityViewsIr,
 };
 pub use workflow::{WorkflowIr, WorkflowTransitionIr};
 pub const IR_VERSION: u32 = appstruct_contracts::IR.current;
@@ -69,6 +70,8 @@ pub struct AppIr {
     pub commands: Vec<CommandIr>,
     pub queries: Vec<QueryIr>,
     pub pages: Vec<PageIr>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dashboard: Option<DashboardIr>,
     pub modules: Vec<ResolvedModule>,
 }
 /// Application-level metadata.

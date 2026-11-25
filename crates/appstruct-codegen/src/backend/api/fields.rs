@@ -89,6 +89,42 @@ pub(super) fn support(entity: &EntityIr, module: &syn::Ident) -> Result<TokenStr
     } else {
         quote! {}
     };
+    let computed_ops = entity
+        .views
+        .computed
+        .iter()
+        .map(|computed| {
+            let name = computed.name.as_str();
+            let template = computed.template.as_str();
+            let placeholders = computed
+                .source_fields
+                .iter()
+                .filter_map(|id| entity.fields.iter().find(|f| &f.id == id))
+                .map(|field| {
+                    let api_placeholder = format!("{{{}}}", field.api_name);
+                    let rust_key = field.rust_name.as_str();
+                    quote! {
+                        match object.get(#rust_key) {
+                            Some(serde_json::Value::String(s)) => rendered = rendered.replace(#api_placeholder, s),
+                            Some(serde_json::Value::Null) => rendered = rendered.replace(#api_placeholder, ""),
+                            Some(other) => rendered = rendered.replace(#api_placeholder, &other.to_string()),
+                            None => all_present = false,
+                        }
+                    }
+                })
+                .collect::<Vec<_>>();
+            quote! {
+                if let serde_json::Value::Object(object) = value {
+                    let mut rendered = #template.to_owned();
+                    let mut all_present = true;
+                    #(#placeholders)*
+                    if all_present {
+                        object.insert(#name.to_owned(), serde_json::Value::String(rendered));
+                    }
+                }
+            }
+        })
+        .collect::<Vec<_>>();
     let create_guards = write_guards(entity, false)?;
     let update_guards = write_guards(entity, true)?;
     Ok(quote! {
@@ -103,6 +139,11 @@ pub(super) fn support(entity: &EntityIr, module: &syn::Ident) -> Result<TokenStr
         fn apply_field_masks(context: &RequestContext, value: &mut serde_json::Value) {
             let roles = context.actor().map_or(&[][..], |actor| actor.roles.as_slice());
             apply_field_masks_for_roles(roles, value);
+        }
+
+        #[allow(dead_code, unused_variables, unused_mut)]
+        fn apply_computed_fields(value: &mut serde_json::Value) {
+            #(#computed_ops)*
         }
 
         #[allow(dead_code, unused_variables, unused_mut)]
@@ -129,6 +170,7 @@ pub(super) fn support(entity: &EntityIr, module: &syn::Ident) -> Result<TokenStr
             let mut value = serde_json::to_value(model).map_err(|_| ApiError::Internal)?;
             #(#read_redactions)*
             apply_field_masks(context, &mut value);
+            apply_computed_fields(&mut value);
             Ok(value)
         }
 

@@ -29,10 +29,10 @@ pub(crate) use extension::{
     SurfaceHttpOperation, SurfaceOperation, SurfacePage, SurfaceValueField, SurfaceValueObject,
 };
 pub(crate) use model::{
-    FieldFlags, Located, SurfaceAccess, SurfaceAccessRule, SurfaceChart, SurfaceDomain,
-    SurfaceEntity, SurfaceField, SurfaceFieldAccess, SurfaceFieldSemantic, SurfaceFieldUi,
-    SurfaceFrameOptions, SurfaceHsts, SurfaceReferrerPolicy, SurfaceRoot, SurfaceSecurityHeaders,
-    SurfaceServer, SurfaceWorkflow,
+    FieldFlags, Located, SurfaceAccess, SurfaceAccessRule, SurfaceChart, SurfaceDashboard,
+    SurfaceDashboardWidget, SurfaceDomain, SurfaceEntity, SurfaceField, SurfaceFieldAccess,
+    SurfaceFieldSemantic, SurfaceFieldUi, SurfaceFrameOptions, SurfaceHsts, SurfaceReferrerPolicy,
+    SurfaceRoot, SurfaceSecurityHeaders, SurfaceServer, SurfaceWorkflow,
 };
 pub(crate) use modules::{
     SurfaceActivity, SurfaceAudit, SurfaceAuth, SurfaceBilling, SurfaceBillingPlan, SurfaceFile,
@@ -66,6 +66,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
             "modules",
             "module_manifests",
             "server",
+            "dashboard",
             "includes",
         ],
         "root configuration",
@@ -78,6 +79,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
         context.capture(decode_string_list(mapping, "module_manifests", false, root));
     let preset = context.capture(preset::decode(mapping.get("preset")));
     let server = context.capture(server::decode(mapping.get("server")));
+    let dashboard = context.capture(decode_dashboard(mapping.get("dashboard")));
     let modules = preset.as_ref().and_then(|preset| {
         context.capture(crate::preset::expand_modules(
             preset.as_ref(),
@@ -125,6 +127,7 @@ pub(crate) fn decode_root(root: &Node) -> Result<SurfaceRoot, Vec<Diagnostic>> {
             file: file?,
             report: report?,
             activity: activity?,
+            dashboard: dashboard?,
             includes: includes?,
             module_manifests: module_manifests?,
         })
@@ -218,6 +221,7 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
             "display_field",
             "aggregates",
             "charts",
+            "computed",
             "workflow",
         ],
         "entity definition",
@@ -254,6 +258,11 @@ fn decode_entity(name: &str, entry: &MappingEntry) -> Result<SurfaceEntity, Diag
         charts: mapping
             .get("charts")
             .map(|entry| charts::decode(&entry.value))
+            .transpose()?
+            .unwrap_or_default(),
+        computed: mapping
+            .get("computed")
+            .map(|entry| decode_computed(&entry.value))
             .transpose()?
             .unwrap_or_default(),
         table: optional_string(mapping, "table", "entity `table`")?,
@@ -373,6 +382,59 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             .transpose()?,
         span: entry.value.span.clone(),
     })
+}
+
+fn decode_computed(node: &Node) -> Result<Vec<model::SurfaceComputedEntry>, Diagnostic> {
+    let mapping = expect_mapping(node, "entity `computed`")?;
+    let mut fields = Vec::with_capacity(mapping.len());
+    for (name, entry) in mapping {
+        let template = expect_string(&entry.value, "computed field template")?;
+        fields.push((
+            Located {
+                value: name.clone(),
+                span: entry.key_span.clone(),
+            },
+            template,
+        ));
+    }
+    Ok(fields)
+}
+
+fn decode_dashboard(entry: Option<&MappingEntry>) -> Result<Option<SurfaceDashboard>, Diagnostic> {
+    let Some(entry) = entry else {
+        return Ok(None);
+    };
+    let mapping = expect_mapping(&entry.value, "`dashboard`")?;
+    ensure_known_keys(mapping, &["title", "widgets"], "`dashboard`")?;
+    let title = optional_string(mapping, "title", "dashboard `title`")?;
+    let widgets_node = required(mapping, "widgets", &entry.value.span)?;
+    let items = expect_sequence(&widgets_node.value, "dashboard `widgets`")?;
+    let mut widgets = Vec::with_capacity(items.len());
+    for item in items {
+        let widget = expect_mapping(item, "dashboard widget")?;
+        ensure_known_keys(
+            widget,
+            &["id", "title", "entity", "chart", "span"],
+            "dashboard widget",
+        )?;
+        let id = required(widget, "id", &item.span)
+            .and_then(|e| expect_string(&e.value, "widget `id`"))?;
+        let widget_title = optional_string(widget, "title", "widget `title`")?;
+        let entity = required(widget, "entity", &item.span)
+            .and_then(|e| expect_string(&e.value, "widget `entity`"))?;
+        let chart = required(widget, "chart", &item.span)
+            .and_then(|e| expect_string(&e.value, "widget `chart`"))?;
+        let span = optional_u64(widget, "span")?
+            .map_or(6u8, |v| u8::try_from(v.value).unwrap_or(12).clamp(1, 12));
+        widgets.push(SurfaceDashboardWidget {
+            id,
+            title: widget_title,
+            entity,
+            chart,
+            span,
+        });
+    }
+    Ok(Some(SurfaceDashboard { title, widgets }))
 }
 
 fn decode_field_mask(node: &Node) -> Result<appstruct_ir::FieldMaskIr, Diagnostic> {

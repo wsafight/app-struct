@@ -6,10 +6,36 @@ pub struct EntityViewsIr {
     pub aggregates: Vec<AggregateIr>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub charts: Vec<ChartIr>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub computed: Vec<ComputedFieldIr>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_field: Option<crate::FieldId>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub soft_delete: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComputedFieldIr {
+    pub name: String,
+    pub template: String,
+    pub source_fields: Vec<crate::FieldId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DashboardIr {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub widgets: Vec<DashboardWidgetIr>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DashboardWidgetIr {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub entity: crate::EntityId,
+    pub chart: String,
+    pub span: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
