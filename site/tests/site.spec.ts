@@ -17,6 +17,12 @@ test('homepage presents the compiler and generated runtime', async ({page}) => {
   await expect(appTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('[data-workbench-panel="app"]')).toBeVisible();
   await expect(page.locator('[data-workbench-panel="work"]')).toBeHidden();
+  const impactTab = page.getByRole('tab', {name: 'impact + preview'});
+  await impactTab.click();
+  await expect(page.locator('[data-workbench-panel="impact"]')).toBeVisible();
+  const mcpTab = page.getByRole('tab', {name: 'AI Agent (MCP)'});
+  await mcpTab.click();
+  await expect(page.locator('[data-cli-cmd="mcp"]')).toBeVisible();
 });
 
 test('navigation opens the documentation catalog', async ({page}, info) => {
@@ -72,7 +78,7 @@ test('theme and language controls persist preferences', async ({page}) => {
   await expect(root).not.toHaveAttribute('data-theme', before || '');
   await page.getByRole('button', {name: 'Switch to Chinese'}).click();
   await expect(root).toHaveAttribute('data-lang', 'zh');
-  await expect(page.getByText('将 App Spec 编译为类型安全的 Rust 应用栈。')).toBeVisible();
+  await expect(page.getByText('将 YAML 规格编译为默认拒绝的 Rust + React 全栈应用。')).toBeVisible();
   await page.reload();
   await expect(root).toHaveAttribute('data-lang', 'zh');
 });

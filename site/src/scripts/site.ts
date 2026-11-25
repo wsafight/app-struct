@@ -214,9 +214,36 @@ searchInput?.addEventListener('keydown', event => {
 });
 dialog?.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
 
+document.querySelectorAll<HTMLElement>('[data-cli-strip]').forEach(strip => {
+  const tabs = [...strip.querySelectorAll<HTMLButtonElement>('[data-cli-tab]')];
+  const cmds = [...strip.querySelectorAll<HTMLElement>('[data-cli-cmd]')];
+  const copyBtn = strip.querySelector<HTMLButtonElement>('[data-copy-cli]');
+  tabs.forEach(tab => tab.addEventListener('click', () => {
+    const target = tab.dataset.cliTab;
+    tabs.forEach(item => {
+      const current = item.dataset.cliTab === target;
+      item.classList.toggle('is-current', current);
+      item.setAttribute('aria-selected', String(current));
+    });
+    cmds.forEach(cmd => { cmd.hidden = cmd.dataset.cliCmd !== target; });
+  }));
+  copyBtn?.addEventListener('click', async () => {
+    const active = cmds.find(cmd => !cmd.hidden);
+    const text = active?.textContent?.trim() || '';
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      copyBtn.dataset.copied = 'true';
+      copyBtn.textContent = copy().copied;
+      window.setTimeout(() => { delete copyBtn.dataset.copied; copyBtn.textContent = copy().copy; }, 1600);
+    } catch {}
+  });
+});
+
 document.querySelectorAll<HTMLElement>('[data-workbench]').forEach(workbench => {
   const tabs = [...workbench.querySelectorAll<HTMLButtonElement>('[data-workbench-tab]')];
   const panels = [...workbench.querySelectorAll<HTMLElement>('[data-workbench-panel]')];
+  const copyBtn = workbench.querySelector<HTMLButtonElement>('[data-workbench-copy]');
   tabs.forEach(tab => tab.addEventListener('click', () => {
     const target = tab.dataset.workbenchTab;
     tabs.forEach(item => {
@@ -226,6 +253,17 @@ document.querySelectorAll<HTMLElement>('[data-workbench]').forEach(workbench => 
     });
     panels.forEach(panel => { panel.hidden = panel.dataset.workbenchPanel !== target; });
   }));
+  copyBtn?.addEventListener('click', async () => {
+    const active = panels.find(panel => !panel.hidden);
+    const code = active?.querySelector('code')?.textContent || active?.textContent || '';
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      copyBtn.dataset.copied = 'true';
+      copyBtn.textContent = copy().copied;
+      window.setTimeout(() => { delete copyBtn.dataset.copied; copyBtn.textContent = copy().copy; }, 1600);
+    } catch {}
+  });
 });
 
 document.querySelectorAll<HTMLElement>('.capability-panel').forEach(panel => {

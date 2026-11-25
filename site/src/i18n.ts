@@ -26,10 +26,10 @@ export const githubRepo = 'https://github.com/wsafight/app-struct';
 
 export const pagesMeta = {
   home: {
-    title: {en: 'AppStruct - compile YAML specs into Rust applications', zh: 'AppStruct - 将 YAML 应用规格编译为 Rust 应用'},
+    title: {en: 'AppStruct - deterministic full-stack compiler for Rust and AI agents', zh: 'AppStruct - 面向 Rust 与 AI Agent 的确定性全栈编译器'},
     description: {
-      en: 'AppStruct compiles a validated YAML App Spec into PostgreSQL migrations, an Axum backend, OpenAPI, a TypeScript client, and a React application.',
-      zh: 'AppStruct 将经过校验的 YAML App Spec 编译为 PostgreSQL 迁移、Axum 后端、OpenAPI、TypeScript 客户端与 React 应用。',
+      en: 'Compile multi-file YAML App Specs into fail-closed Rust (Axum/SQLx) backends, PostgreSQL migrations with RLS, OpenAPI, TypeScript clients, and React 19 operations UIs.',
+      zh: '将多文件 YAML App Spec 编译为默认拒绝的 Rust（Axum/SQLx）后端、带 RLS 的 PostgreSQL 迁移、OpenAPI、TypeScript 客户端与 React 19 管理界面。',
     },
   },
   docs: {
