@@ -11,9 +11,10 @@ for (const page of pages) {
   if (page.translation) pageBySource.set(page.translation, page);
 }
 
-function siteHref(slug) {
+function siteHref(slug, lang = 'en') {
   const base = deployment().base.replace(/\/$/, '');
-  return `${base}/${slug}/`;
+  const prefix = lang === 'zh' ? '/zh' : '';
+  return `${base}${prefix}/${slug}/`;
 }
 
 export function resolveLink(url, file) {
@@ -25,8 +26,8 @@ export function resolveLink(url, file) {
   if (page) {
     const from = path.relative(root, file).split(path.sep).join('/');
     const sourcePage = pageBySource.get(from);
-    const query = sourcePage && from === sourcePage.translation ? '?lang=zh' : '';
-    return `${siteHref(page.slug)}${query}${suffix}`;
+    const lang = sourcePage && from === sourcePage.translation ? 'zh' : 'en';
+    return `${siteHref(page.slug, lang)}${suffix}`;
   }
   if (target.startsWith('..') || path.isAbsolute(target)) throw new Error(`Link escapes repository: ${url}`);
   const base = deployment().base.replace(/\/$/, '');

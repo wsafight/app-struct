@@ -1,18 +1,19 @@
 ---
 import Base from '../layouts/Base.astro';
-import BracketLink from '../components/BracketLink.astro';
-import T from '../components/T.astro';
 import {href} from '../catalog';
 import {pagesMeta} from '../i18n';
 import '../styles/home.css';
 ---
-<Base title={pagesMeta.notFound.title.en} titleZh={pagesMeta.notFound.title.zh} description={pagesMeta.notFound.description.en} descriptionZh={pagesMeta.notFound.description.zh}>
+<Base title={pagesMeta.notFound.title.en} description={pagesMeta.notFound.description.en} lang="en">
   <main id="main-content" class="not-found">
-    <div class="section-inner">
+    <div class="section-inner not-found-inner">
       <p class="eyebrow">404 / NOT IN THE GRAPH</p>
-      <h1><T en="Page not found" zh="找不到这个页面" /></h1>
-      <p><T en="The page may have moved, or the URL may be incorrect." zh="页面可能已移动，也可能是网址有误。" /></p>
-      <BracketLink href={href()}><T en="Back to AppStruct" zh="返回 AppStruct" /></BracketLink>
+      <h1>Page not found</h1>
+      <p>The page may have moved, or the URL may be incorrect.</p>
+      <div class="not-found-actions">
+        <a class="btn-primary" href={href('', 'en')}>Back to English Home</a>
+        <a class="btn-secondary" href={href('', 'zh')}>返回中文首页</a>
+      </div>
     </div>
   </main>
 </Base>

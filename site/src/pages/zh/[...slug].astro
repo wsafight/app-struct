@@ -1,0 +1,22 @@
+---
+import {getCollection, type CollectionEntry} from 'astro:content';
+import DocArticlePage from '../../components/DocArticlePage.astro';
+import {pages, type DocPage} from '../../catalog';
+
+export async function getStaticPaths() {
+  const docsZh = await getCollection('docsZh');
+  return pages.map(page => {
+    const entry = docsZh.find(item => item.id === page.slug);
+    if (!entry) throw new Error(`Missing Chinese documentation entry for ${page.translation || page.source}`);
+    return {params: {slug: page.slug}, props: {page, entry}};
+  });
+}
+
+interface Props {
+  page: DocPage;
+  entry: CollectionEntry<'docsZh'>;
+}
+
+const {page, entry} = Astro.props;
+---
+<DocArticlePage lang="zh" page={page} entry={entry} />

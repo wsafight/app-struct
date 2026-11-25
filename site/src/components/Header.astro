@@ -3,61 +3,77 @@ import Search from '@lucide/astro/icons/search';
 import Sun from '@lucide/astro/icons/sun';
 import Moon from '@lucide/astro/icons/moon';
 import BrandMark from './BrandMark.astro';
-import BracketLink from './BracketLink.astro';
-import T from './T.astro';
 import {href} from '../catalog';
-import {githubRepo, ui} from '../i18n';
+import {githubRepo, ui, type Lang} from '../i18n';
 
-interface Props { home?: boolean; }
-const {home = false} = Astro.props;
-const homeHref = href();
-const docsHref = href('docs');
-const startHref = href('start/overview');
+interface Props {
+  home?: boolean;
+  lang: Lang;
+  altHref: string;
+}
+
+const {home = false, lang, altHref} = Astro.props;
+const text = ui[lang];
+const homeHref = href('', lang);
+const docsHref = href('docs', lang);
+const startHref = href('start/overview', lang);
 const nav = [
-  {href: `${homeHref}#compiler`, en: ui.en.compiler, zh: ui.zh.compiler},
-  {href: `${homeHref}#runtime`, en: ui.en.runtime, zh: ui.zh.runtime},
-  {href: `${homeHref}#modules`, en: ui.en.modules, zh: ui.zh.modules},
-  {href: `${homeHref}#delivery`, en: ui.en.delivery, zh: ui.zh.delivery},
-  {href: docsHref, en: ui.en.docs, zh: ui.zh.docs, current: !home},
-  {href: githubRepo, en: ui.en.github, zh: ui.zh.github, external: true},
+  {href: `${homeHref}#compiler`, label: text.compiler},
+  {href: `${homeHref}#runtime`, label: text.runtime},
+  {href: `${homeHref}#modules`, label: text.modules},
+  {href: `${homeHref}#delivery`, label: text.delivery},
+  {href: docsHref, label: text.docs, current: !home},
+  {href: githubRepo, label: text.github, external: true},
 ];
 ---
-<a class="skip-link" href="#main-content"><T en={ui.en.skip} zh={ui.zh.skip} /></a>
+<a class="skip-link" href="#main-content">{text.skip}</a>
 <header class="site-header" id="site-header" data-header-theme={home ? 'dark' : undefined}>
   <div class="site-header-inner">
-    <a class="brand-link" href={homeHref} aria-label={ui.en.home} data-i18n-aria="home">
+    <a class="brand-link" href={homeHref} aria-label={text.home}>
       <BrandMark />
       <span class="brand-name">AppStruct</span>
     </a>
-    <nav class="desktop-nav" aria-label={ui.en.primaryNav} data-i18n-aria="primaryNav">
+    <nav class="desktop-nav" aria-label={text.primaryNav}>
       {nav.map(item => (
-        <a href={item.href} aria-current={item.current ? 'page' : undefined} target={item.external ? '_blank' : undefined} rel={item.external ? 'noopener noreferrer' : undefined}><T en={item.en} zh={item.zh} /></a>
+        <a
+          href={item.href}
+          aria-current={item.current ? 'page' : undefined}
+          target={item.external ? '_blank' : undefined}
+          rel={item.external ? 'noopener noreferrer' : undefined}
+        >{item.label}</a>
       ))}
       <span class="nav-indicator" aria-hidden="true"></span>
     </nav>
     <div class="header-actions">
-      <button class="icon-button" type="button" data-search-open aria-haspopup="dialog" aria-controls="search-dialog" aria-label={ui.en.search} data-i18n-aria="search">
-        <Search size={18} stroke-width={1.75} />
+      <button class="search-trigger" type="button" data-search-open aria-haspopup="dialog" aria-controls="search-dialog" aria-label={text.search}>
+        <Search size={15} stroke-width={1.9} />
+        <span class="search-trigger-label">{text.search}</span>
+        <kbd class="search-kbd">⌘K</kbd>
       </button>
-      <button class="icon-button" type="button" data-theme-toggle aria-label={ui.en.theme} data-i18n-aria="theme">
-        <Sun class="icon-sun" size={18} stroke-width={1.75} />
-        <Moon class="icon-moon" size={18} stroke-width={1.75} />
+      <button class="icon-button" type="button" data-theme-toggle aria-label={text.theme}>
+        <Sun class="icon-sun" size={17} stroke-width={1.75} />
+        <Moon class="icon-moon" size={17} stroke-width={1.75} />
       </button>
-      <button class="icon-button language-toggle" type="button" data-lang-toggle aria-label={ui.en.lang} data-i18n-aria="lang">
-        <span class="i18n-en">中文</span><span class="i18n-zh">EN</span>
-      </button>
-      <BracketLink class="bracket-link-small" href={startHref}><T en={ui.en.quickStart} zh={ui.zh.quickStart} /></BracketLink>
-      <button class="menu-toggle" id="menu-toggle" type="button" aria-expanded="false" aria-controls="mobile-menu" aria-label={ui.en.menuOpen} data-i18n-aria="menuOpen">
+      <a class="icon-button language-toggle" href={altHref} aria-label={text.lang} hreflang={lang === 'zh' ? 'en' : 'zh-CN'}>
+        {text.langLabel}
+      </a>
+      <a class="nav-cta" href={startHref}>{text.quickStart}</a>
+      <button class="menu-toggle" id="menu-toggle" type="button" aria-expanded="false" aria-controls="mobile-menu" aria-label={text.menuOpen}>
         <span></span><span></span><span></span><span></span>
       </button>
     </div>
   </div>
 </header>
 <div class="mobile-menu" id="mobile-menu" aria-hidden="true">
-  <nav aria-label={ui.en.mobileNav} data-i18n-aria="mobileNav">
+  <nav aria-label={text.mobileNav}>
     {nav.map(item => (
-      <a href={item.href} target={item.external ? '_blank' : undefined} rel={item.external ? 'noopener noreferrer' : undefined}><T en={item.en} zh={item.zh} /></a>
+      <a
+        href={item.href}
+        target={item.external ? '_blank' : undefined}
+        rel={item.external ? 'noopener noreferrer' : undefined}
+      >{item.label}</a>
     ))}
-    <a href={startHref}><T en={ui.en.quickStart} zh={ui.zh.quickStart} /></a>
+    <a href={startHref}>{text.quickStart}</a>
+    <a href={altHref} hreflang={lang === 'zh' ? 'en' : 'zh-CN'}>{text.lang} ({text.langLabel})</a>
   </nav>
 </div>

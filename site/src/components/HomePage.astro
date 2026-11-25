@@ -1,0 +1,601 @@
+---
+import ArrowRight from '@lucide/astro/icons/arrow-right';
+import Box from '@lucide/astro/icons/box';
+import CheckCircle2 from '@lucide/astro/icons/circle-check';
+import Cpu from '@lucide/astro/icons/cpu';
+import Database from '@lucide/astro/icons/database';
+import FileCode2 from '@lucide/astro/icons/file-code';
+import Gauge from '@lucide/astro/icons/gauge';
+import GitBranch from '@lucide/astro/icons/git-branch';
+import Layers3 from '@lucide/astro/icons/layers';
+import LockKeyhole from '@lucide/astro/icons/lock-keyhole';
+import Radio from '@lucide/astro/icons/radio';
+import RefreshCw from '@lucide/astro/icons/refresh-cw';
+import ShieldCheck from '@lucide/astro/icons/shield-check';
+import Sparkles from '@lucide/astro/icons/sparkles';
+import TerminalSquare from '@lucide/astro/icons/square-terminal';
+import Webhook from '@lucide/astro/icons/webhook';
+import Base from '../layouts/Base.astro';
+import {href} from '../catalog';
+import {pagesMeta, type Lang} from '../i18n';
+import '../styles/home.css';
+
+interface Props {
+  lang: Lang;
+}
+
+const {lang} = Astro.props;
+const isZh = lang === 'zh';
+const startHref = href('start/overview', lang);
+const docsHref = href('docs', lang);
+const existingDbHref = href('start/existing-database', lang);
+const meta = pagesMeta.home;
+
+const copy = isZh
+  ? {
+      badge: 'v0.2.0 · 确定性全栈编译器 · 内置 MCP Server',
+      heroTitle: '用 YAML 定义系统，',
+      heroAccent: '编译交付 Rust 全栈。',
+      heroDesc:
+        'AppStruct 将多文件 YAML App Spec 编译为默认拒绝（Fail-Closed）的 Axum/SQLx Rust 后端、带 RLS 策略的 PostgreSQL 迁移、OpenAPI、TypeScript 客户端与 React 19 管理界面。',
+      ctaPrimary: '快速开始',
+      ctaSecondary: '接入存量 PostgreSQL',
+      ctaDocs: '浏览文档',
+      cliTabs: [
+        {id: 'demo', label: '一键 Demo', cmd: 'docker compose -f docker-compose.demo.yaml up --build'},
+        {id: 'db', label: '存量数据库', cmd: 'appstruct db pull --review && appstruct access preview --role admin'},
+        {id: 'mcp', label: 'AI Agent (MCP)', cmd: 'appstruct mcp && appstruct check --deny-warnings'},
+      ],
+      copyBtn: '复制',
+      pipeInput: 'YAML Spec / MCP',
+      pipeCore: '类型化 IR 编译器',
+      pipeCoreSub: '静态校验 · 影响分析 · Fail-Closed',
+      pipeOutputs: [
+        {title: 'PostgreSQL + RLS', sub: '安全迁移与租户隔离'},
+        {title: 'Axum + SQLx API', sub: '单二进制 Rust 服务'},
+        {title: 'React 19 + TS SDK', sub: '即用管理台与类型客户端'},
+      ],
+      pillars: [
+        {k: 'DEFAULT DENY', v: '默认拒绝安全模型', d: '每条查询与变更均受静态校验的 RBAC + PostgreSQL RLS 策略保护。'},
+        {k: 'ZERO MAGIC', v: '100% 确定性编译', d: '相同规格始终产出一致的源码与迁移计划，生成目录不可变、手写代码清晰隔离。'},
+        {k: 'MCP NATIVE', v: 'AI Coding Agent 闭环', d: '内置只读与校验型 MCP 工具，让 AI 安全改规格、查影响面、验权限。'},
+        {k: 'SINGLE BINARY', v: 'Rust 生产级性能', d: '输出标准 Cargo 工程与单二进制服务，无重型运行时、无隐式启动迁移。'},
+      ],
+      compilerKicker: '01 / 编译器流水线',
+      compilerTitle: '一次建模，跨全栈确定性生成。',
+      compilerLede: '在写任何业务代码前，把表结构、状态机、权限策略、自动编号与报表契约固化进版本化的 YAML 规格。',
+      capabilities: [
+        {
+          num: '01',
+          title: 'Spec 校验与内置 MCP',
+          desc: '多文件 YAML 规格通过静态规则校验；内置 MCP Server 让 Claude / Cursor / Codex 安全读取模型与执行只读检查。',
+          badge: 'appstruct check --deny-warnings',
+        },
+        {
+          num: '02',
+          title: '类型化 IR 与影响分析',
+          desc: '所有资源、工作流、权限规则先降维到单一类型化 IR，变更前可精准预览对 SQL、API 路由与 UI 视图的跨层影响。',
+          badge: 'appstruct impact',
+        },
+        {
+          num: '03',
+          title: '清晰的所有权边界',
+          desc: '生成产物位于独立的 generated 目录，手写业务扩展与自定义页面位于独立扩展目录，重复编译永不覆盖手写代码。',
+          badge: 'generated/ vs extensions/',
+        },
+        {
+          num: '04',
+          title: '安全在线迁移与存量接管',
+          desc: '支持从已有 PostgreSQL 一键内省生成规格，并对危险 DDL（删表/锁表/丢列）提供静态 Lint 拦截与显式确认。',
+          badge: 'appstruct db pull && migrate lint',
+        },
+      ],
+      workbenchKicker: '02 / 声明式规格工作台',
+      workbenchTitle: '一份可读的 YAML，驱动完整系统。',
+      workbenchLede: '查看业务模型定义、全局安全配置，以及执行影响分析与权限预演时的真实输出。',
+      workbenchStatus: ['PostgreSQL 17', 'Axum + SQLx', 'React 19 + TS', '0 WARNINGS · PASS'],
+      runtimeKicker: '03 / 生成的业务运行时',
+      runtimeTitle: '开箱即用的企业级管理工作台。',
+      runtimeLede: '不止是简陋的 CRUD 表格——直接生成带多租户隔离、单据自动编号、工作流状态机、审计时间线与报表的现代 React 19 应用。',
+      runtimeFeatures: [
+        {t: '多租户 RLS 与细粒度 RBAC', d: '数据库层自动注入租户上下文，列表、详情、批量操作与导出全链路隔离。'},
+        {t: '单据自动编号与状态机工作流', d: '内置并发安全的 `PRJ-0001` 序列号生成、状态流转守卫与动作按钮。'},
+        {t: '可演进的 Headless 扩展层', d: '标准列表与表单自动维护，复杂交互页面可直接复用生成的类型化 Hook 与 SDK。'},
+      ],
+      previewTenant: 'TENANT: ACME · RLS ON',
+      previewNav: ['概览看板', '项目台账', '审批流', '审计日志', '团队成员'],
+      previewTitle: '项目台账',
+      previewSub: '共 4 条记录 · 已启用租户行级安全与自动编号',
+      previewNew: '+ 新建项目',
+      previewCols: ['单据编号 / 项目名称', '负责人', '状态', '预算'],
+      previewRows: [
+        {no: 'PRJ-0018', name: '华东核心库迁移', owner: '林致远', status: '进行中', cls: 'st-active', amount: '¥420,000'},
+        {no: 'PRJ-0017', name: '统一计费对账中心', owner: '陈思琪', status: '待审批', cls: 'st-review', amount: '¥185,000'},
+        {no: 'PRJ-0016', name: 'SSO 企业身份接入', owner: '周明轩', status: '已完成', cls: 'st-done', amount: '¥96,000'},
+        {no: 'PRJ-0015', name: '工单自动分派引擎', owner: '许嘉宁', status: '进行中', cls: 'st-active', amount: '¥260,000'},
+      ],
+      modulesKicker: '04 / 平台内建模块',
+      modulesTitle: '把重复的 SaaS 基础设施变成声明式开关。',
+      modules: [
+        {icon: 'shield', t: 'Auth + RBAC', d: '邮箱密码、OAuth/OIDC、API Token、会话限流与细粒度策略。'},
+        {icon: 'db', t: 'Tenant + RLS', d: '多租户成员邀请、角色切换与 PostgreSQL 原生行级安全策略。'},
+        {icon: 'radio', t: 'Realtime SSE', d: '基于数据变更的实时推送流，自动遵循租户与权限边界。'},
+        {icon: 'refresh', t: 'Jobs + Schedules', d: '持久化异步队列、退避重试、死信排查与定时调度任务。'},
+        {icon: 'webhook', t: 'Webhooks + Outbox', d: '事务型 Outbox 发件箱、签名投递、重试回放与失败审计。'},
+        {icon: 'box', t: 'Files + Mail', d: 'S3/本地对象存储签名上传、校验边界与本地邮件捕获。'},
+        {icon: 'gauge', t: 'Reports + Admin', d: '类型化 KPI 与趋势图表、只读健康探针与运维恢复台。'},
+        {icon: 'lock', t: 'Audit + Activity', d: '事务级快照记录、字段前后 Diff 与单据完整动态时间线。'},
+      ],
+      deliveryKicker: '05 / 从开发到生产',
+      deliveryTitle: '让每一次上线都清晰、可验证、可回滚。',
+      steps: [
+        {
+          num: '01',
+          title: '本地一键联调或 Docker Demo',
+          desc: '单命令协调 PostgreSQL、代码生成、Rust API 与前端热更新；也可用 Docker Compose 零依赖体验完整多租户 Demo。',
+          cmd: 'appstruct dev',
+        },
+        {
+          num: '02',
+          title: '只读审查迁移、权限与影响面',
+          desc: '在触碰任何生产数据之前，静态检查破坏性 DDL、预览各角色字段权限并输出跨层变更影响清单。',
+          cmd: 'appstruct migrate lint --deny-warnings && appstruct impact',
+        },
+        {
+          num: '03',
+          title: '交付不可变单二进制产物',
+          desc: '生产启动永不隐式执行迁移。先校验不可变发布清单，独立执行 migrate apply，最后运行高性能 Rust 单二进制服务。',
+          cmd: 'appstruct build && appstruct deploy verify',
+        },
+      ],
+      finalEyebrow: 'APPSTRUCT · TECHNICAL PREVIEW · v0.2.0',
+      finalTitle: '写清楚 YAML，放心交付 Rust 全栈。',
+      finalDesc: '通过内置 MCP 连接你的 AI Coding Agent，或内省已有 PostgreSQL 数据库，或直接从模板启动全新 SaaS 项目。',
+      finalCta: '打开快速开始指南',
+      finalDocs: '阅读技术设计',
+    }
+  : {
+      badge: 'v0.2.0 · Deterministic Full-Stack Compiler · Built-in MCP Server',
+      heroTitle: 'Model in YAML,',
+      heroAccent: 'ship a fail-closed Rust stack.',
+      heroDesc:
+        'AppStruct compiles multi-file YAML App Specs into a fail-closed Axum/SQLx Rust backend, PostgreSQL migrations with RLS, OpenAPI, a TypeScript client, and a React 19 operations UI.',
+      ctaPrimary: 'Quick start',
+      ctaSecondary: 'Existing PostgreSQL',
+      ctaDocs: 'Browse docs',
+      cliTabs: [
+        {id: 'demo', label: 'Live Demo', cmd: 'docker compose -f docker-compose.demo.yaml up --build'},
+        {id: 'db', label: 'Existing PostgreSQL', cmd: 'appstruct db pull --review && appstruct access preview --role admin'},
+        {id: 'mcp', label: 'AI Agent (MCP)', cmd: 'appstruct mcp && appstruct check --deny-warnings'},
+      ],
+      copyBtn: 'Copy',
+      pipeInput: 'YAML Spec / MCP',
+      pipeCore: 'Typed IR Compiler',
+      pipeCoreSub: 'Static Check · Impact Graph · Fail-Closed',
+      pipeOutputs: [
+        {title: 'PostgreSQL + RLS', sub: 'Safe migrations & tenant isolation'},
+        {title: 'Axum + SQLx API', sub: 'Single-binary Rust backend'},
+        {title: 'React 19 + TS SDK', sub: 'Ready ops UI & typed client'},
+      ],
+      pillars: [
+        {k: 'DEFAULT DENY', v: 'Fail-closed security', d: 'Every query and mutation is guarded by statically verified RBAC and PostgreSQL RLS policies.'},
+        {k: 'ZERO MAGIC', v: '100% deterministic IR', d: 'The same spec always yields the same code and SQL plan, with strict boundaries for hand-written code.'},
+        {k: 'MCP NATIVE', v: 'Built for AI coding agents', d: 'First-class MCP server lets agents inspect schemas, preview permissions, and run impact checks safely.'},
+        {k: 'SINGLE BINARY', v: 'Production Rust runtime', d: 'Generates standard Cargo crates and ships as a single binary with explicit, verifiable release steps.'},
+      ],
+      compilerKicker: '01 / Compiler pipeline',
+      compilerTitle: 'Define the app in YAML. Compile every layer.',
+      compilerLede: 'Lock tables, workflows, access policies, auto-numbers, and report contracts into versioned YAML before writing custom code.',
+      capabilities: [
+        {
+          num: '01',
+          title: 'Spec validation & built-in MCP',
+          desc: 'Multi-file YAML specs are statically validated; the built-in MCP server lets Claude, Cursor, and Codex inspect and verify changes safely.',
+          badge: 'appstruct check --deny-warnings',
+        },
+        {
+          num: '02',
+          title: 'Typed IR & impact analysis',
+          desc: 'Resources, workflows, and policies lower into one typed IR so you can preview SQL, API route, and UI impact before regenerating.',
+          badge: 'appstruct impact',
+        },
+        {
+          num: '03',
+          title: 'Clean ownership boundaries',
+          desc: 'Generated artifacts stay isolated from hand-written extensions and custom pages, so re-compiling never overwrites your code.',
+          badge: 'generated/ vs extensions/',
+        },
+        {
+          num: '04',
+          title: 'Safe migrations & existing DB pull',
+          desc: 'Introspect an existing PostgreSQL database into YAML and lint every migration against destructive or locking DDL.',
+          badge: 'appstruct db pull && migrate lint',
+        },
+      ],
+      workbenchKicker: '02 / Declarative workbench',
+      workbenchTitle: 'One readable spec drives the whole stack.',
+      workbenchLede: 'Inspect a domain resource, application security config, and live cross-layer impact & permission preview output.',
+      workbenchStatus: ['PostgreSQL 17', 'Axum + SQLx', 'React 19 + TS', '0 WARNINGS · PASS'],
+      runtimeKicker: '03 / Generated runtime',
+      runtimeTitle: 'Generated UI for common tasks, ready on day one.',
+      runtimeLede: 'More than bare CRUD tables — get a React 19 operations workspace with tenant RLS, auto-numbered records, workflow actions, audit timelines, and reports.',
+      runtimeFeatures: [
+        {t: 'Multi-tenant RLS & granular RBAC', d: 'Database sessions automatically enforce tenant context across lists, detail views, bulk actions, and exports.'},
+        {t: 'Auto-numbers & workflow state machines', d: 'Concurrency-safe document sequences (`PRJ-0001`), transition guards, and typed action buttons out of the box.'},
+        {t: 'Headless escape hatches', d: 'Keep standard views generated while building bespoke screens on top of the generated TypeScript SDK and hooks.'},
+      ],
+      previewTenant: 'TENANT: ACME · RLS ON',
+      previewNav: ['Overview', 'Projects', 'Approvals', 'Audit log', 'Members'],
+      previewTitle: 'Projects',
+      previewSub: '4 records · Tenant RLS & auto-numbering active',
+      previewNew: '+ New project',
+      previewCols: ['Code / Project', 'Owner', 'Status', 'Budget'],
+      previewRows: [
+        {no: 'PRJ-0018', name: 'Core Postgres Cutover', owner: 'Maya Lin', status: 'Active', cls: 'st-active', amount: '$42,000'},
+        {no: 'PRJ-0017', name: 'Billing Ledger Sync', owner: 'Devon Brooks', status: 'In Review', cls: 'st-review', amount: '$18,500'},
+        {no: 'PRJ-0016', name: 'Enterprise OIDC SSO', owner: 'Kenji Sato', status: 'Shipped', cls: 'st-done', amount: '$9,600'},
+        {no: 'PRJ-0015', name: 'Ticket Routing Engine', owner: 'Nadia Patel', status: 'Active', cls: 'st-active', amount: '$26,000'},
+      ],
+      modulesKicker: '04 / Platform modules',
+      modulesTitle: 'Turn repetitive SaaS plumbing into declarative config.',
+      modules: [
+        {icon: 'shield', t: 'Auth + RBAC', d: 'Password auth, OAuth/OIDC, API tokens, rate limits, and fail-closed role policies.'},
+        {icon: 'db', t: 'Tenant + RLS', d: 'Multi-tenant invitations, membership switching, and PostgreSQL row-level security.'},
+        {icon: 'radio', t: 'Realtime SSE', d: 'Live record update streams that strictly respect tenant and role boundaries.'},
+        {icon: 'refresh', t: 'Jobs + Schedules', d: 'Durable background jobs, retries, dead-letter inspection, and cron schedules.'},
+        {icon: 'webhook', t: 'Webhooks + Outbox', d: 'Transactional outbox delivery, signed payloads, retries, and delivery logs.'},
+        {icon: 'box', t: 'Files + Mail', d: 'Signed S3/local uploads, validation bounds, and local dev mail capture.'},
+        {icon: 'gauge', t: 'Reports + Admin', d: 'Typed KPI & trend charts, readiness probes, and operations recovery console.'},
+        {icon: 'lock', t: 'Audit + Activity', d: 'Transactional snapshots, field-level diffs, and per-record activity timelines.'},
+      ],
+      deliveryKicker: '05 / Development to production',
+      deliveryTitle: 'Make every release step explicit and verifiable.',
+      steps: [
+        {
+          num: '01',
+          title: 'Develop locally or launch Docker Demo',
+          desc: 'One command coordinates PostgreSQL, code generation, the Rust API, and Rsbuild — or run the zero-prereq multi-tenant Docker demo.',
+          cmd: 'appstruct dev',
+        },
+        {
+          num: '02',
+          title: 'Review migrations, access & impact',
+          desc: 'Plan, lint, access preview, and impact analysis stay strictly read-only. Destructive DDL and policy regressions stop before SQL applies.',
+          cmd: 'appstruct migrate lint --deny-warnings && appstruct impact',
+        },
+        {
+          num: '03',
+          title: 'Ship immutable verified binaries',
+          desc: 'Production startup never migrates implicitly. Verify the release manifest, run migrate apply as a release job, and ship one Rust binary.',
+          cmd: 'appstruct build && appstruct deploy verify',
+        },
+      ],
+      finalEyebrow: 'APPSTRUCT · TECHNICAL PREVIEW · v0.2.0',
+      finalTitle: 'Write YAML. Ship Rust with confidence.',
+      finalDesc: 'Connect your AI coding agent via MCP, introspect an existing PostgreSQL database, or scaffold a fresh multi-tenant SaaS project.',
+      finalCta: 'Open quick start',
+      finalDocs: 'Read technical design',
+    };
+---
+<Base title={meta.title[lang]} description={meta.description[lang]} lang={lang} home>
+  <main id="main-content" class="home-main">
+    <section class="hero" id="top">
+      <div class="hero-bg" aria-hidden="true">
+        <div class="hero-grid"></div>
+        <div class="hero-glow"></div>
+      </div>
+      <div class="section-inner hero-inner">
+        <div class="hero-head">
+          <div class="hero-pill">
+            <Sparkles size={13} />
+            <span>{copy.badge}</span>
+          </div>
+          <h1>
+            <span class="sr-only-brand">AppStruct</span>
+            <span class="hero-line-1">{copy.heroTitle}</span>
+            <span class="hero-line-2">{copy.heroAccent}</span>
+          </h1>
+          <p class="hero-desc">{copy.heroDesc}</p>
+          <div class="hero-actions">
+            <a class="btn-primary" href={startHref}>
+              <span>{copy.ctaPrimary}</span>
+              <ArrowRight size={15} />
+            </a>
+            <a class="btn-secondary" href={existingDbHref}>{copy.ctaSecondary}</a>
+            <a class="btn-ghost" href={docsHref}>{copy.ctaDocs}</a>
+          </div>
+        </div>
+
+        <div class="hero-cli" data-cli-strip>
+          <div class="hero-cli-bar">
+            <div class="hero-cli-tabs" role="tablist" aria-label="Quick start commands">
+              {copy.cliTabs.map((tab, idx) => (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={idx === 0 ? 'true' : 'false'}
+                  class:list={{'is-current': idx === 0}}
+                  data-cli-tab={tab.id}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" class="copy-pill" data-copy-cli>{copy.copyBtn}</button>
+          </div>
+          <div class="hero-cli-body">
+            {copy.cliTabs.map((tab, idx) => (
+              <code data-cli-cmd={tab.id} hidden={idx !== 0}>{tab.cmd}</code>
+            ))}
+          </div>
+        </div>
+
+        <div class="pipeline-card" aria-label="Compiler architecture">
+          <div class="pipe-node pipe-input">
+            <div class="pipe-icon"><FileCode2 size={18} /></div>
+            <div>
+              <strong>{copy.pipeInput}</strong>
+              <span>spec/*.yaml · appstruct.yaml</span>
+            </div>
+          </div>
+          <div class="pipe-connector" aria-hidden="true"><span></span></div>
+          <div class="pipe-node pipe-core">
+            <div class="pipe-icon pipe-icon-core"><Cpu size={18} /></div>
+            <div>
+              <strong>{copy.pipeCore}</strong>
+              <span>{copy.pipeCoreSub}</span>
+            </div>
+          </div>
+          <div class="pipe-connector" aria-hidden="true"><span></span></div>
+          <div class="pipe-outputs">
+            <div class="pipe-out-item">
+              <Database size={15} />
+              <div><strong>{copy.pipeOutputs[0].title}</strong><span>{copy.pipeOutputs[0].sub}</span></div>
+            </div>
+            <div class="pipe-out-item">
+              <TerminalSquare size={15} />
+              <div><strong>{copy.pipeOutputs[1].title}</strong><span>{copy.pipeOutputs[1].sub}</span></div>
+            </div>
+            <div class="pipe-out-item">
+              <Layers3 size={15} />
+              <div><strong>{copy.pipeOutputs[2].title}</strong><span>{copy.pipeOutputs[2].sub}</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pillars-grid">
+          {copy.pillars.map(item => (
+            <div class="pillar-card">
+              <span class="pillar-k">{item.k}</span>
+              <strong>{item.v}</strong>
+              <p>{item.d}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="section-band" id="compiler">
+      <div class="section-inner">
+        <div class="section-head">
+          <p class="eyebrow">{copy.compilerKicker}</p>
+          <h2>{copy.compilerTitle}</h2>
+          <p class="section-lede">{copy.compilerLede}</p>
+        </div>
+        <div class="bento-grid">
+          {copy.capabilities.map(cap => (
+            <article class="bento-card">
+              <div class="bento-top">
+                <span class="bento-num">{cap.num}</span>
+                <code class="bento-chip">{cap.badge}</code>
+              </div>
+              <h3>{cap.title}</h3>
+              <p>{cap.desc}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="section-band section-subtle" id="workbench">
+      <div class="section-inner workbench-layout">
+        <div class="workbench-copy">
+          <p class="eyebrow">{copy.workbenchKicker}</p>
+          <h2>{copy.workbenchTitle}</h2>
+          <p class="section-lede">{copy.workbenchLede}</p>
+          <ul class="check-list">
+            <li><CheckCircle2 size={16} /><span>{isZh ? '多文件模块化组织，支持 Git PR 逐行审查' : 'Multi-file specs designed for clean Git PR reviews'}</span></li>
+            <li><CheckCircle2 size={16} /><span>{isZh ? '单据自动编号、状态机与权限规则一处声明' : 'Auto-numbers, workflows, and policies in one source of truth'}</span></li>
+            <li><CheckCircle2 size={16} /><span>{isZh ? '变更前只读执行 impact 与 access preview' : 'Read-only impact analysis and role access previews before apply'}</span></li>
+          </ul>
+        </div>
+        <div class="code-workbench" data-workbench>
+          <div class="workbench-head">
+            <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div class="workbench-tabs" role="tablist" aria-label="Spec and compiler output">
+              <button type="button" role="tab" aria-selected="true" class="is-current" data-workbench-tab="work">spec/work.yaml</button>
+              <button type="button" role="tab" aria-selected="false" data-workbench-tab="app">appstruct.yaml</button>
+              <button type="button" role="tab" aria-selected="false" data-workbench-tab="impact">impact + preview</button>
+            </div>
+            <button type="button" class="copy-pill" data-workbench-copy>{copy.copyBtn}</button>
+          </div>
+          <pre data-workbench-panel="work"><code><span class="c-key">resources</span>:
+  <span class="c-name">projects</span>:
+    <span class="c-key">tenant_scoped</span>: <span class="c-val">true</span>
+    <span class="c-key">fields</span>:
+      - &#123; <span class="c-key">name</span>: <span class="c-str">code</span>, <span class="c-key">type</span>: <span class="c-val">auto_number</span>, <span class="c-key">prefix</span>: <span class="c-str">"PRJ-"</span> &#125;
+      - &#123; <span class="c-key">name</span>: <span class="c-str">title</span>, <span class="c-key">type</span>: <span class="c-val">string</span>, <span class="c-key">required</span>: <span class="c-val">true</span> &#125;
+      - &#123; <span class="c-key">name</span>: <span class="c-str">status</span>, <span class="c-key">type</span>: <span class="c-val">enum</span>, <span class="c-key">values</span>: [draft, active, done] &#125;
+      - &#123; <span class="c-key">name</span>: <span class="c-str">budget_cents</span>, <span class="c-key">type</span>: <span class="c-val">bigint</span> &#125;
+    <span class="c-key">workflow</span>:
+      <span class="c-key">field</span>: <span class="c-str">status</span>
+      <span class="c-key">transitions</span>:
+        - &#123; <span class="c-key">name</span>: <span class="c-str">activate</span>, <span class="c-key">from</span>: [draft], <span class="c-key">to</span>: <span class="c-str">active</span>, <span class="c-key">roles</span>: [manager] &#125;
+    <span class="c-key">access</span>:
+      <span class="c-key">read</span>: [<span class="c-val">member</span>, <span class="c-val">manager</span>]
+      <span class="c-key">write</span>: [<span class="c-val">manager</span>]</code></pre>
+          <pre data-workbench-panel="app" hidden><code><span class="c-key">app</span>:
+  <span class="c-key">name</span>: <span class="c-str">northstar-ops</span>
+  <span class="c-key">mode</span>: <span class="c-val">fail_closed</span>
+<span class="c-key">database</span>:
+  <span class="c-key">engine</span>: <span class="c-val">postgresql</span>
+  <span class="c-key">rls</span>: <span class="c-val">enforced</span>
+<span class="c-key">modules</span>:
+  <span class="c-key">auth</span>: &#123; <span class="c-key">password</span>: <span class="c-val">true</span>, <span class="c-key">oidc</span>: <span class="c-val">true</span> &#125;
+  <span class="c-key">tenants</span>: &#123; <span class="c-key">enabled</span>: <span class="c-val">true</span>, <span class="c-key">invitations</span>: <span class="c-val">true</span> &#125;
+  <span class="c-key">audit</span>: &#123; <span class="c-key">snapshots</span>: <span class="c-val">true</span> &#125;
+  <span class="c-key">realtime</span>: &#123; <span class="c-key">sse</span>: <span class="c-val">true</span> &#125;
+<span class="c-key">include</span>:
+  - <span class="c-str">spec/work.yaml</span>
+  - <span class="c-str">spec/reports.yaml</span></code></pre>
+          <pre data-workbench-panel="impact" hidden><code><span class="c-muted">$ appstruct impact --format summary</span>
+<span class="c-key">SQL MIGRATION</span>   +1 table (projects), +1 sequence (prj_seq), +2 RLS policies
+<span class="c-key">AXUM ROUTES</span>     +6 endpoints (/api/v1/projects, /activate, /export)
+<span class="c-key">REACT 19 UI</span>     +ProjectsListPage, +ProjectDetailDrawer, +ActivateAction
+
+<span class="c-muted">$ appstruct access preview --role member --resource projects</span>
+<span class="c-val">READ</span>   allowed (tenant_id = current_tenant(), fields: *)
+<span class="c-val">WRITE</span>  denied  (requires role: manager)
+<span class="c-key">CHECK</span>  0 errors · 0 warnings · fail-closed verified</code></pre>
+          <div class="build-log">
+            <span><i class="status-dot"></i>{copy.workbenchStatus[0]}</span>
+            <span><i class="status-dot"></i>{copy.workbenchStatus[1]}</span>
+            <span><i class="status-dot"></i>{copy.workbenchStatus[2]}</span>
+            <strong>{copy.workbenchStatus[3]}</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-band" id="runtime">
+      <div class="section-inner runtime-layout">
+        <div class="runtime-copy">
+          <p class="eyebrow">{copy.runtimeKicker}</p>
+          <h2>{copy.runtimeTitle}</h2>
+          <p class="section-lede">{copy.runtimeLede}</p>
+          <ul class="feature-stack">
+            {copy.runtimeFeatures.map(f => (
+              <li>
+                <strong>{f.t}</strong>
+                <span>{f.d}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div class="app-preview" aria-label="Generated operations UI preview">
+          <div class="preview-topbar">
+            <div class="preview-brand">
+              <span class="preview-dot"></span>
+              <strong>Northstar Ops</strong>
+            </div>
+            <span class="preview-tenant-badge">{copy.previewTenant}</span>
+            <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          </div>
+          <div class="preview-body">
+            <aside class="preview-sidebar">
+              {copy.previewNav.map((item, i) => (
+                <span class:list={{'is-active': i === 1}}>{item}</span>
+              ))}
+            </aside>
+            <div class="preview-main">
+              <div class="preview-header">
+                <div>
+                  <strong>{copy.previewTitle}</strong>
+                  <small>{copy.previewSub}</small>
+                </div>
+                <span class="preview-btn">{copy.previewNew}</span>
+              </div>
+              <div class="preview-table">
+                <div class="preview-row preview-row-head">
+                  <span>{copy.previewCols[0]}</span>
+                  <span>{copy.previewCols[1]}</span>
+                  <span>{copy.previewCols[2]}</span>
+                  <span>{copy.previewCols[3]}</span>
+                </div>
+                {copy.previewRows.map(row => (
+                  <div class="preview-row">
+                    <span class="preview-cell-title">
+                      <code>{row.no}</code>
+                      <b>{row.name}</b>
+                    </span>
+                    <span>{row.owner}</span>
+                    <span><em class={`preview-pill ${row.cls}`}>{row.status}</em></span>
+                    <span class="preview-mono">{row.amount}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-band section-subtle" id="modules">
+      <div class="section-inner">
+        <div class="section-head">
+          <p class="eyebrow">{copy.modulesKicker}</p>
+          <h2>{copy.modulesTitle}</h2>
+        </div>
+        <div class="modules-grid">
+          {copy.modules.map(mod => (
+            <article class="module-card">
+              <div class="module-icon">
+                {mod.icon === 'shield' && <ShieldCheck size={19} />}
+                {mod.icon === 'db' && <Database size={19} />}
+                {mod.icon === 'radio' && <Radio size={19} />}
+                {mod.icon === 'refresh' && <RefreshCw size={19} />}
+                {mod.icon === 'webhook' && <Webhook size={19} />}
+                {mod.icon === 'box' && <Box size={19} />}
+                {mod.icon === 'gauge' && <Gauge size={19} />}
+                {mod.icon === 'lock' && <LockKeyhole size={19} />}
+              </div>
+              <h3>{mod.t}</h3>
+              <p>{mod.d}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="section-band" id="delivery">
+      <div class="section-inner">
+        <div class="section-head">
+          <p class="eyebrow">{copy.deliveryKicker}</p>
+          <h2>{copy.deliveryTitle}</h2>
+        </div>
+        <ol class="delivery-grid">
+          {copy.steps.map(step => (
+            <li class="delivery-card">
+              <span class="delivery-num">{step.num}</span>
+              <h3>{step.title}</h3>
+              <p>{step.desc}</p>
+              <code class="delivery-cmd">$ {step.cmd}</code>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+
+    <section class="section-band final-section">
+      <div class="section-inner">
+        <div class="final-card">
+          <p class="eyebrow">{copy.finalEyebrow}</p>
+          <h2>{copy.finalTitle}</h2>
+          <p class="final-desc">{copy.finalDesc}</p>
+          <div class="final-actions">
+            <a class="btn-primary" href={startHref}>
+              <span>{copy.finalCta}</span>
+              <ArrowRight size={15} />
+            </a>
+            <a class="btn-secondary" href={href('project/technical-design', lang)}>
+              <GitBranch size={15} />
+              <span>{copy.finalDocs}</span>
+            </a>
+          </div>
+          <p class="final-stack">Rust 1.89+ · PostgreSQL 17 · React 19 · Node 24</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>

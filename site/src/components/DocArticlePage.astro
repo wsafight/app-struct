@@ -1,0 +1,67 @@
+---
+import {render, type CollectionEntry} from 'astro:content';
+import Base from '../layouts/Base.astro';
+import DocSidebar from './DocSidebar.astro';
+import TableOfContents from './TableOfContents.astro';
+import {groups, href, neighbors, type DocPage} from '../catalog';
+import {ui, type Lang} from '../i18n';
+import '../styles/docs.css';
+
+interface Props {
+  lang: Lang;
+  page: DocPage;
+  entry: CollectionEntry<'docsEn'> | CollectionEntry<'docsZh'>;
+}
+
+const {lang, page, entry} = Astro.props;
+const isZh = lang === 'zh';
+const text = ui[lang];
+const {Content, headings} = await render(entry);
+const group = groups.find(item => item.id === page.group);
+const {previous, next} = neighbors(page.slug);
+const sourceFile = isZh ? (page.translation || page.source) : page.source;
+const sourceHref = `${import.meta.env.BASE_URL}source/${sourceFile}`;
+const hasToc = headings.some(h => h.depth === 2 || h.depth === 3);
+---
+<Base title={`${page.title[lang]} — AppStruct`} description={page.description[lang]} lang={lang}>
+  <main id="main-content" class="docs-shell">
+    <div class="docs-chrome">
+      <DocSidebar current={page.slug} lang={lang} />
+      {hasToc && (
+        <div class="docs-toc-stack">
+          <details class="docs-outline">
+            <summary>{text.toc}</summary>
+            <TableOfContents headings={headings} lang={lang} />
+          </details>
+        </div>
+      )}
+    </div>
+    <article
+      class="docs-main"
+      data-pagefind-body
+      data-pagefind-meta={`title:${page.title[lang]},lang:${lang}`}
+    >
+      <p class="docs-kicker">{group?.number} / {group?.label[lang]}</p>
+      <h1>{page.title[lang]}</h1>
+      <p class="docs-lead">{page.description[lang]}</p>
+      <a class="docs-source" href={sourceHref}>
+        {isZh ? `查看原文 · ${sourceFile}` : `View source · ${sourceFile}`}
+      </a>
+      <div class:list={['prose', {'prose-zh': isZh}]}><Content /></div>
+      <nav class="docs-pager" aria-label={text.pager}>
+        {previous ? (
+          <a href={href(previous.slug, lang)}>
+            <span>{text.previous}</span>
+            <strong>{previous.title[lang]}</strong>
+          </a>
+        ) : <span></span>}
+        {next ? (
+          <a href={href(next.slug, lang)}>
+            <span>{text.next}</span>
+            <strong>{next.title[lang]}</strong>
+          </a>
+        ) : <span></span>}
+      </nav>
+    </article>
+  </main>
+</Base>

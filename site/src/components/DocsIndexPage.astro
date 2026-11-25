@@ -1,0 +1,54 @@
+---
+import {getCollection} from 'astro:content';
+import Base from '../layouts/Base.astro';
+import DocSidebar from './DocSidebar.astro';
+import {groupedPages, href, pages} from '../catalog';
+import {pagesMeta, type Lang} from '../i18n';
+import '../styles/docs.css';
+
+interface Props {
+  lang: Lang;
+}
+
+const {lang} = Astro.props;
+const isZh = lang === 'zh';
+const docsEn = await getCollection('docsEn');
+const docsZh = await getCollection('docsZh');
+for (const page of pages) {
+  if (!docsEn.some(entry => entry.id === page.slug) || !docsZh.some(entry => entry.id === page.slug)) {
+    throw new Error(`Missing documentation entry for ${page.source}`);
+  }
+}
+const meta = pagesMeta.docs;
+---
+<Base title={meta.title[lang]} description={meta.description[lang]} lang={lang}>
+  <main id="main-content" class="docs-shell docs-index-shell" data-pagefind-ignore>
+    <div class="docs-chrome">
+      <DocSidebar lang={lang} />
+    </div>
+    <article class="docs-main">
+      <p class="docs-kicker">AppStruct / {isZh ? '文档中心' : 'Documentation'}</p>
+      <h1>{isZh ? '使用指南与技术参考' : 'Guides and technical reference'}</h1>
+      <p class="docs-lead">
+        {isZh
+          ? '从概览与快速开始起步，按需查阅安装说明、存量数据库接管、数据建模、平台模块、发布流程与运维参考。'
+          : 'Start with the overview, then browse setup instructions, existing database introspection, data modeling, platform modules, releases, and operations.'}
+      </p>
+      <div class="docs-index">
+        {groupedPages.map(group => (
+          <section class="docs-index-group">
+            <h2>{group.number} / {group.label[lang]}</h2>
+            <div class="docs-index-links">
+              {group.pages.map(page => (
+                <a href={href(page.slug, lang)}>
+                  <strong>{page.title[lang]}</strong>
+                  <p>{page.description[lang]}</p>
+                </a>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </article>
+  </main>
+</Base>
