@@ -25,8 +25,7 @@ OpenAPI, generated clients, and any future protocol adapter retain identical aut
 The November 5, 2026 source review of Wasp and Open SaaS proposes an additional operable SaaS
 journey: public marketing and pricing pages, personal accounts, paid feature enforcement, user
 files, and business dashboards. Existing-database onboarding remains an entry point, sharing the
-same core. See the [product capability review (Chinese)](wasp-opensaas-product-review.zh-CN.md)
-for pinned sources and template limitations, and section 6 for the proposed delivery order.
+same core. See section 6 for the delivered capabilities and remaining acceptance boundaries.
 
 ## 2. Product Gaps
 

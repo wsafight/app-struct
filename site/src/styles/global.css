@@ -220,7 +220,7 @@ html[data-theme='light'] .icon-moon { display: none; }
 .search-panel input { width: 100%; min-height: 50px; padding: 0 14px; border: 1px solid var(--line-dark); border-radius: 4px; outline: none; background: var(--carbon); color: inherit; }
 .search-results { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; }
 .search-results a { display: block; padding: 12px; border-radius: 4px; }
-.search-results a:hover, .search-results a:focus-visible { background: #ffffff0d; }
+.search-results a:hover, .search-results a:focus-visible, .search-results a.is-selected { background: #ffffff0d; }
 .search-results strong { font-size: 14px; }
 .search-results small { display: block; margin-top: 4px; color: #f0eee899; line-height: 1.5; }
 .search-empty { padding: 22px 12px 8px; color: #f0eee899; font-size: 14px; }

@@ -12,6 +12,11 @@ test('homepage presents the compiler and generated runtime', async ({page}) => {
   await expect(page.locator('#compiler')).toContainText('Define the app in YAML');
   await expect(page.locator('#runtime')).toContainText('Generated UI for common tasks');
   await expect(page.locator('.app-preview')).toBeVisible();
+  const appTab = page.getByRole('tab', {name: 'appstruct.yaml'});
+  await appTab.click();
+  await expect(appTab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('[data-workbench-panel="app"]')).toBeVisible();
+  await expect(page.locator('[data-workbench-panel="work"]')).toBeHidden();
 });
 
 test('navigation opens the documentation catalog', async ({page}, info) => {
@@ -29,7 +34,7 @@ test('navigation opens the documentation catalog', async ({page}, info) => {
 test('documentation renders source, contents, and adjacent pages', async ({page}, info) => {
   await page.goto(overview);
   await expect(page.getByRole('heading', {level: 1, name: 'Overview and quick start'})).toBeVisible();
-  await expect(page.locator('.prose.i18n-en p').first()).toContainText('AppStruct is a configuration-driven Rust full-stack application generator.');
+  await expect(page.locator('.prose.i18n-en')).toContainText('AppStruct compiles a declarative, multi-file YAML App Spec');
   await expect(page.locator('.prose.i18n-en').getByRole('link', {name: '简体中文'})).toHaveCount(0);
   await expect(page.getByRole('link', {name: /View source/})).toBeVisible();
   if (info.project.name !== 'mobile') {
@@ -76,7 +81,7 @@ test('Chinese documentation renders translated body copy', async ({page}) => {
   await page.goto(`${overview}?lang=zh`);
   await expect(page.locator('html')).toHaveAttribute('data-lang', 'zh');
   await expect(page.getByRole('heading', {level: 1, name: '概览与快速开始'})).toBeVisible();
-  await expect(page.locator('.prose.i18n-zh')).toContainText('AppStruct 是一个由配置驱动的 Rust 全栈应用生成器。');
+  await expect(page.locator('.prose.i18n-zh')).toContainText('AppStruct 将多文件声明式 YAML App Spec 确定性编译为类型化中间表示（IR）');
   await page.goto(`${base}start/installation/?lang=zh`);
   await expect(page.getByRole('heading', {level: 1, name: '安装'})).toBeVisible();
   await expect(page.locator('.prose.i18n-zh')).toContainText('AppStruct 可以从源码检出安装。');

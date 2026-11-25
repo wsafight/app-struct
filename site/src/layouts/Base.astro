@@ -26,9 +26,11 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <meta property="og:site_name" content="AppStruct" />
     <script is:inline>
       (() => {
+        const readStorage = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
+        const writeStorage = (key, value) => { try { localStorage.setItem(key, value); } catch {} };
         const query = new URLSearchParams(location.search).get('lang');
-        const lang = query === 'zh' || query === 'en' ? query : (localStorage.getItem('appstruct-lang') === 'zh' ? 'zh' : 'en');
-        if (query === 'zh' || query === 'en') localStorage.setItem('appstruct-lang', query);
+        const lang = query === 'zh' || query === 'en' ? query : (readStorage('appstruct-lang') === 'zh' ? 'zh' : 'en');
+        if (query === 'zh' || query === 'en') writeStorage('appstruct-lang', query);
         const root = document.documentElement;
         root.dataset.lang = lang;
         root.lang = lang === 'zh' ? 'zh-CN' : 'en';
@@ -37,8 +39,11 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
         if (title) document.title = title;
         const meta = document.querySelector('meta[name="description"]');
         if (meta && description) meta.setAttribute('content', description);
-        const stored = localStorage.getItem('appstruct-theme');
-        root.dataset.theme = stored === 'light' || stored === 'dark' ? stored : (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        const stored = readStorage('appstruct-theme');
+        const theme = stored === 'light' || stored === 'dark' ? stored : (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        root.dataset.theme = theme;
+        const themeMeta = document.querySelector('meta[name="theme-color"]');
+        if (themeMeta) themeMeta.setAttribute('content', theme === 'light' ? '#f0eee8' : '#101311');
       })();
     </script>
   </head>

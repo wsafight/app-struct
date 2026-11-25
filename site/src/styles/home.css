@@ -67,8 +67,11 @@
 .spec-section .eyebrow { color: #f0eee87f; }
 .code-workbench { min-width: 0; border: 1px solid var(--line-dark); background: #0c0f0d; }
 .workbench-tabs { display: flex; min-height: 42px; align-items: flex-end; gap: 4px; border-bottom: 1px solid var(--line-dark); color: #f0eee861; font-family: var(--font-mono); font-size: 10px; }
-.workbench-tabs span { display: flex; align-items: center; min-height: 41px; padding-inline: 15px; }
+.workbench-tabs span,
+.workbench-tabs button { display: flex; align-items: center; min-height: 41px; padding-inline: 15px; transition: color 0.18s var(--ease-out); }
+.workbench-tabs button:hover { color: #f0eee8c4; }
 .workbench-tabs .is-current { border-bottom: 1px solid var(--green); color: var(--paper); }
+.code-workbench pre[hidden] { display: none; }
 .code-workbench pre { min-height: 366px; margin: 0; overflow: auto; padding: 24px; color: #d9ddd8; font-family: var(--font-mono); font-size: 13px; line-height: 1.72; }
 .code-key { color: #82cca0; }
 .code-name { color: #efc780; }

@@ -99,13 +99,17 @@ const docsHref = href('docs');
           <h2><T en="Start with an App Spec.<br>Generate the application layers." zh="从 App Spec 开始。<br>生成应用各层。" /></h2>
           <p class="section-lede"><T en="Define an entity and its access rules, then enable modules as needed. AppStruct uses the spec to generate the database, API, client, and UI." zh="先定义实体和访问规则，再按需启用模块。AppStruct 会依据这份 Spec 生成数据库、API、客户端与界面。" /></p>
         </div>
-        <div class="code-workbench">
-          <div class="workbench-tabs"><span class="is-current">spec/work.yaml</span><span>appstruct.yaml</span></div>
-          <pre><code><span class="code-key">entities</span>:
+        <div class="code-workbench" data-workbench>
+          <div class="workbench-tabs" role="tablist" aria-label="App Spec files">
+            <button type="button" role="tab" aria-selected="true" class="is-current" data-workbench-tab="work">spec/work.yaml</button>
+            <button type="button" role="tab" aria-selected="false" data-workbench-tab="app">appstruct.yaml</button>
+          </div>
+          <pre data-workbench-panel="work"><code><span class="code-key">entities</span>:
   <span class="code-name">Project</span>:
     <span class="code-key">tenant</span>: <span class="code-value">true</span>
     <span class="code-key">audit</span>: <span class="code-value">true</span>
     <span class="code-key">fields</span>:
+      <span class="code-name">doc_no</span>: &#123; <span class="code-key">type</span>: string, <span class="code-key">generated</span>: auto_number &#125;
       <span class="code-name">name</span>: &#123; <span class="code-key">type</span>: string, <span class="code-key">required</span>: <span class="code-value">true</span> &#125;
       <span class="code-name">status</span>:
         <span class="code-key">type</span>: enum
@@ -113,9 +117,20 @@ const docsHref = href('docs');
     <span class="code-key">access</span>:
       <span class="code-key">read</span>: [member, admin]
       <span class="code-key">write</span>: [admin]</code></pre>
+          <pre data-workbench-panel="app" hidden><code><span class="code-key">app</span>:
+  <span class="code-key">name</span>: <span class="code-value">northstar-ops</span>
+<span class="code-key">database</span>:
+  <span class="code-key">provider</span>: <span class="code-value">postgres</span>
+<span class="code-key">modules</span>:
+  <span class="code-key">auth</span>: &#123; <span class="code-key">enabled</span>: <span class="code-value">true</span>, <span class="code-key">user_entity</span>: User &#125;
+  <span class="code-key">tenant</span>: &#123; <span class="code-key">enabled</span>: <span class="code-value">true</span>, <span class="code-key">rls</span>: <span class="code-value">true</span> &#125;
+  <span class="code-key">audit</span>: &#123; <span class="code-key">enabled</span>: <span class="code-value">true</span> &#125;
+  <span class="code-key">report</span>: &#123; <span class="code-key">enabled</span>: <span class="code-value">true</span> &#125;
+<span class="code-key">includes</span>:
+  - <span class="code-value">spec/work.yaml</span></code></pre>
           <div class="build-log">
             <span><i class="status-ok"></i>check</span>
-            <span><i class="status-ok"></i>typed IR v11</span>
+            <span><i class="status-ok"></i>typed IR + impact</span>
             <span><i class="status-ok"></i>7 artifacts</span>
             <strong>518 ms</strong>
           </div>
@@ -166,7 +181,7 @@ const docsHref = href('docs');
         </div>
         <div class="module-grid">
           <article><ShieldCheck size={21} /><strong><T en="Auth + RBAC" zh="认证 + RBAC" /></strong><span><T en="Sessions, CSRF, roles, field access" zh="会话、CSRF、角色、字段权限" /></span></article>
-          <article><Layers3 size={21} /><strong><T en="Tenant" zh="租户" /></strong><span><T en="Memberships, invites, isolation" zh="成员关系、邀请、数据隔离" /></span></article>
+          <article><Layers3 size={21} /><strong><T en="Tenant" zh="租户" /></strong><span><T en="Memberships, lifecycle, isolation" zh="成员关系、生命周期、隔离" /></span></article>
           <article><RefreshCw size={21} /><strong><T en="Jobs" zh="后台任务" /></strong><span><T en="Durable work, retry, replay" zh="持久任务、重试、重放" /></span></article>
           <article><Webhook size={21} /><strong><T en="Webhooks" zh="Webhook" /></strong><span><T en="Signed delivery and outbox" zh="签名投递与 Outbox" /></span></article>
           <article><Radio size={21} /><strong><T en="Realtime" zh="实时能力" /></strong><span><T en="SSE, presence, edit leases" zh="SSE、在线状态、编辑租约" /></span></article>
@@ -200,7 +215,7 @@ const docsHref = href('docs');
         <div class="final-action">
           <p><T en="Build the CLI from the pinned workspace, create a dashboard project, and add app-specific behavior in Rust or TypeScript." zh="从锁定版本的工作区构建 CLI，创建 Dashboard 项目，再用 Rust 或 TypeScript 编写应用自己的业务逻辑。" /></p>
           <BracketLink href={startHref}><T en="Open the quick start" zh="打开快速开始" /> <ArrowRight size={15} /></BracketLink>
-          <span>Rust 1.99 · PostgreSQL 17 · React 19 · Node 24</span>
+          <span>Rust 1.89+ · PostgreSQL 17 · React 19 · Node 24</span>
         </div>
       </div>
     </section>

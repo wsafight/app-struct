@@ -16,8 +16,16 @@ let pagefind: Pagefind | undefined;
 let lastScroll = window.scrollY;
 let searchRevision = 0;
 
+function storageGet(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
+function storageSet(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch {}
+}
+
 function currentLang(): Lang {
-  return langFromStorage(document.documentElement.dataset.lang || localStorage.getItem('appstruct-lang'));
+  return langFromStorage(document.documentElement.dataset.lang || storageGet('appstruct-lang'));
 }
 
 function copy(lang = currentLang()) { return ui[lang]; }
@@ -27,7 +35,7 @@ function applyLang(lang: Lang, persist = true) {
   root.dataset.lang = lang;
   root.lang = lang === 'zh' ? 'zh-CN' : 'en';
   if (persist) {
-    localStorage.setItem('appstruct-lang', lang);
+    storageSet('appstruct-lang', lang);
     const url = new URL(location.href);
     if (lang === 'zh') url.searchParams.set('lang', 'zh');
     else url.searchParams.delete('lang');
@@ -70,7 +78,9 @@ function setMenu(open: boolean) {
 
 function setTheme(theme: 'light' | 'dark') {
   document.documentElement.dataset.theme = theme;
-  localStorage.setItem('appstruct-theme', theme);
+  storageSet('appstruct-theme', theme);
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta) themeMeta.setAttribute('content', theme === 'light' ? '#f0eee8' : '#101311');
 }
 
 function moveIndicator(target?: HTMLElement | null) {
@@ -165,14 +175,58 @@ applyLang(currentLang(), false);
 document.querySelectorAll<HTMLButtonElement>('[data-search-open]').forEach(button => button.addEventListener('click', async () => {
   await loadPagefind(); dialog?.showModal(); searchInput?.focus();
 }));
+let selectedSearchIndex = -1;
+
+function updateSearchSelection(nextIndex: number) {
+  const links = [...(results?.querySelectorAll<HTMLAnchorElement>('a') ?? [])];
+  if (!links.length) { selectedSearchIndex = -1; return; }
+  selectedSearchIndex = (nextIndex + links.length) % links.length;
+  links.forEach((link, index) => {
+    const active = index === selectedSearchIndex;
+    link.classList.toggle('is-selected', active);
+    if (active) link.scrollIntoView({block: 'nearest'});
+  });
+}
+
 document.addEventListener('keydown', event => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    if (dialog?.open) dialog.close();
+    else document.querySelector<HTMLButtonElement>('[data-search-open]')?.click();
+    return;
+  }
   if (event.key === '/' && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) {
     event.preventDefault(); document.querySelector<HTMLButtonElement>('[data-search-open]')?.click();
   }
   if (event.key === 'Escape') setMenu(false);
 });
-searchInput?.addEventListener('input', () => void search(searchInput.value));
+searchInput?.addEventListener('input', () => {
+  selectedSearchIndex = -1;
+  void search(searchInput.value);
+});
+searchInput?.addEventListener('keydown', event => {
+  if (event.key === 'ArrowDown') { event.preventDefault(); updateSearchSelection(selectedSearchIndex + 1); }
+  else if (event.key === 'ArrowUp') { event.preventDefault(); updateSearchSelection(selectedSearchIndex - 1); }
+  else if (event.key === 'Enter' && selectedSearchIndex >= 0) {
+    const active = results?.querySelectorAll<HTMLAnchorElement>('a')[selectedSearchIndex];
+    if (active) { event.preventDefault(); active.click(); }
+  }
+});
 dialog?.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+
+document.querySelectorAll<HTMLElement>('[data-workbench]').forEach(workbench => {
+  const tabs = [...workbench.querySelectorAll<HTMLButtonElement>('[data-workbench-tab]')];
+  const panels = [...workbench.querySelectorAll<HTMLElement>('[data-workbench-panel]')];
+  tabs.forEach(tab => tab.addEventListener('click', () => {
+    const target = tab.dataset.workbenchTab;
+    tabs.forEach(item => {
+      const current = item.dataset.workbenchTab === target;
+      item.classList.toggle('is-current', current);
+      item.setAttribute('aria-selected', String(current));
+    });
+    panels.forEach(panel => { panel.hidden = panel.dataset.workbenchPanel !== target; });
+  }));
+});
 
 document.querySelectorAll<HTMLElement>('.capability-panel').forEach(panel => {
   const activate = () => {
@@ -192,10 +246,12 @@ document.querySelectorAll<HTMLElement>('.prose pre').forEach(block => {
   button.textContent = copy().copy;
   button.addEventListener('click', async () => {
     const code = block.querySelector('code')?.textContent || block.textContent || '';
-    await navigator.clipboard.writeText(code);
-    button.dataset.copied = 'true';
-    button.textContent = copy().copied;
-    window.setTimeout(() => { delete button.dataset.copied; button.textContent = copy().copy; }, 1600);
+    try {
+      await navigator.clipboard.writeText(code);
+      button.dataset.copied = 'true';
+      button.textContent = copy().copied;
+      window.setTimeout(() => { delete button.dataset.copied; button.textContent = copy().copy; }, 1600);
+    } catch {}
   });
   block.append(button);
 });
@@ -251,7 +307,12 @@ let tocObserver: IntersectionObserver | undefined;
 function watchToc() {
   tocObserver?.disconnect();
   const tocLinks = [...document.querySelectorAll<HTMLAnchorElement>(`.docs-toc.i18n-${currentLang()} a`)];
-  const headings = tocLinks.map(link => document.querySelector(decodeURIComponent(link.hash))).filter((node): node is HTMLElement => node instanceof HTMLElement);
+  const headings = tocLinks
+    .map(link => {
+      const id = decodeURIComponent(link.hash).replace(/^#/, '');
+      return id ? document.getElementById(id) : null;
+    })
+    .filter((node): node is HTMLElement => node instanceof HTMLElement);
   if (!tocLinks.length || !headings.length) return;
   tocObserver = new IntersectionObserver(entries => {
     const visible = entries.filter(entry => entry.isIntersecting).at(-1);
