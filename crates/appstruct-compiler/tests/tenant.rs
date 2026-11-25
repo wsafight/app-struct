@@ -67,6 +67,26 @@ fn global_entity_cannot_reference_tenant_entity() {
     assert_diagnostic(temporary.path(), "AS3037");
 }
 
+#[test]
+fn lowers_auto_number_field() {
+    let temporary = copied_fixture();
+    replace(
+        &temporary.path().join("spec/project.yaml"),
+        "      id:\n",
+        "      doc_no:\n        type: string\n        generated: auto_number\n      id:\n",
+    );
+    let ir = compile_project(temporary.path()).unwrap();
+    let project = ir
+        .entities
+        .iter()
+        .find(|entity| entity.rust_name == "Project")
+        .unwrap();
+    assert!(project.fields.iter().any(|field| {
+        field.rust_name == "doc_no"
+            && matches!(field.generated, Some(GeneratedValueIr::AutoNumber))
+    }));
+}
+
 fn copied_fixture() -> tempfile::TempDir {
     let temporary = tempfile::tempdir().unwrap();
     fs::create_dir(temporary.path().join("spec")).unwrap();

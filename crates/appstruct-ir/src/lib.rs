@@ -228,6 +228,7 @@ pub enum GeneratedValueIr {
     UuidV7,
     Now,
     AutoIncrement,
+    AutoNumber,
     Revision,
     Tenant,
 }

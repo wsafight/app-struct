@@ -372,7 +372,8 @@ fn generated_compatible(generated: GeneratedValueIr, ty: &FieldTypeIr) -> bool {
         ) | (
             GeneratedValueIr::AutoIncrement,
             FieldTypeIr::Integer | FieldTypeIr::Bigint
-        ) | (GeneratedValueIr::Revision, FieldTypeIr::Bigint)
+        ) | (GeneratedValueIr::AutoNumber, FieldTypeIr::String)
+            | (GeneratedValueIr::Revision, FieldTypeIr::Bigint)
     )
 }
 fn default_is_valid(value: &str, ty: &FieldTypeIr) -> bool {

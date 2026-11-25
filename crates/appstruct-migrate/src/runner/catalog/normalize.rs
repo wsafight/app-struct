@@ -21,7 +21,10 @@ pub(super) fn expected_default(column: &ColumnSchema) -> Option<String> {
         Some(GeneratedValueIr::Now) => Some("current_timestamp".to_owned()),
         Some(GeneratedValueIr::Revision) => Some("1".to_owned()),
         Some(
-            GeneratedValueIr::UuidV7 | GeneratedValueIr::AutoIncrement | GeneratedValueIr::Tenant,
+            GeneratedValueIr::UuidV7
+            | GeneratedValueIr::AutoIncrement
+            | GeneratedValueIr::AutoNumber
+            | GeneratedValueIr::Tenant,
         ) => None,
         None => column.default.as_deref().map(normalize_literal),
     }

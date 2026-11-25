@@ -34,10 +34,14 @@ export function currentTenant(): string | undefined {
 }
 
 pub(super) fn tenant_source() -> String {
-    r#"export interface TenantOrganization {
+    r#"export type TenantOrganizationStatus = "trial" | "active" | "suspended" | "expired" | "closed";
+
+export interface TenantOrganization {
   id: string;
   name: string;
   role: "owner" | "member";
+  status: TenantOrganizationStatus;
+  closed_at: string | null;
   created_at: string;
 }
 
@@ -56,6 +60,11 @@ export const tenantApi = {
     method: "POST",
     body: JSON.stringify({ name }),
   }),
+  updateOrganizationStatus: (id: string, status: TenantOrganizationStatus) =>
+    request<TenantOrganization>(`/api/tenant/organizations/${encodeURIComponent(id)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
   listInvitations: (options: RequestOptions = {}) => request<{ data: TenantInvitation[] }>("/api/tenant/invitations", options),
   invite: (email: string, role: TenantInvitation["role"] = "member") =>
     request<TenantInvitation>("/api/tenant/invitations", {

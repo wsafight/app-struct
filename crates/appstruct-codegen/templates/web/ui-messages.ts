@@ -980,4 +980,6 @@ export const chinese: Readonly<Record<string, string>> = {
   "Delete account permanently": "永久注销账户",
   "{0}+ records": "超过 {0} 条记录",
   "Page {0} of {1}+": "第 {0} 页，共 {1}+ 页",
+  "Print preview": "打印预览",
+  "Related documents": "关联单据",
 };

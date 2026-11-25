@@ -78,6 +78,26 @@ fn organizations() -> TableSchema {
         vec![
             column("organizations.id", "id", DatabaseType::Uuid, true),
             column("organizations.name", "name", DatabaseType::Text, false),
+            ColumnSchema {
+                id: "appstruct::tenant::organizations.status".to_owned(),
+                name: "status".to_owned(),
+                data_type: DatabaseType::Text,
+                nullable: false,
+                primary_key: false,
+                unique: false,
+                default: Some("active".to_owned()),
+                generated: None,
+            },
+            ColumnSchema {
+                id: "appstruct::tenant::organizations.closed_at".to_owned(),
+                name: "closed_at".to_owned(),
+                data_type: DatabaseType::Datetime,
+                nullable: true,
+                primary_key: false,
+                unique: false,
+                default: None,
+                generated: None,
+            },
             column(
                 "organizations.created_by",
                 "created_by",

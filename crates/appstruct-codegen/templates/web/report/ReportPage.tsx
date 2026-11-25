@@ -1,7 +1,7 @@
 import { formatDateTime } from "../ui";
 import { ActionFeedback, statusLabel, t, useActionFeedback } from "../ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Download, FileText, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, FileText, Printer, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import {
   reportApi,
@@ -95,6 +95,37 @@ export function ReportPage() {
     );
   }
 
+  function openBrowserPrint(
+    template: ReportTemplate,
+    data: Record<string, unknown>,
+  ) {
+    const escapeHtml = (raw: string) =>
+      raw
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    const rows = Object.entries(data)
+      .filter(([, value]) => value !== undefined && value !== "")
+      .map(
+        ([key, value]) =>
+          `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(String(value))}</td></tr>`,
+      )
+      .join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(template.name)} v${template.version}</title><style>body{font-family:system-ui,-apple-system,sans-serif;padding:24px;color:#111}h1{font-size:20px;margin:0 0 8px}p{color:#555;margin:0 0 16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #d1d5db;padding:8px 10px;text-align:left}th{width:32%;background:#f9fafb}@media print{body{padding:0}}</style></head><body><h1>${escapeHtml(template.name)}</h1><p>v${template.version}</p><table><tbody>${rows}</tbody></table></body></html>`;
+    const popup = window.open("", "_blank", "noopener,noreferrer");
+    if (!popup) {
+      window.print();
+      return;
+    }
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  }
+
   return (
     <main className="page report-page">
       <div className="page-heading">
@@ -168,6 +199,20 @@ export function ReportPage() {
             }
           >
             <FileText size={16} /> {t("Generate")}
+          </button>
+          <button
+            type="button"
+            className="secondary-button report-print-button"
+            disabled={
+              !selectedTemplate ||
+              !supportedInput(selectedTemplate) ||
+              !requiredPresent(selectedTemplate, inputValues)
+            }
+            onClick={() =>
+              selectedTemplate && openBrowserPrint(selectedTemplate, inputValues)
+            }
+          >
+            <Printer size={16} /> {t("Print preview")}
           </button>
         </div>
       </section>

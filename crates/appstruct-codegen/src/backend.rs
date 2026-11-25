@@ -91,6 +91,11 @@ pub(crate) fn plan(ir: &AppIr) -> Result<Vec<Artifact>, CodegenError> {
             ArtifactKind::RustSource,
         ),
         Artifact::text(
+            "backend/src/auto_number.rs",
+            rust_template(include_str!("../templates/backend/auto_number.rs"))?,
+            ArtifactKind::RustSource,
+        ),
+        Artifact::text(
             "backend/src/database/query.rs",
             rust_template(include_str!("../templates/backend/database/query.rs"))?,
             ArtifactKind::RustSource,
@@ -217,6 +222,7 @@ fn library_source(ir: &AppIr) -> Result<String, CodegenError> {
         pub mod entities;
         pub mod extensions;
         pub mod audit;
+        mod auto_number;
         mod activity;
         mod auth;
         mod billing;

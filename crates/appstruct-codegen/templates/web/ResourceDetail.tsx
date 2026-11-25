@@ -37,6 +37,29 @@ export function ResourceDetail({
     record ? [record] : [],
     resource.fields,
   );
+  const relatedResources = id
+    ? resources.flatMap((candidate) => {
+        if (
+          candidate.id === resource.id ||
+          !canAccessRule(candidate.access.list, actor)
+        ) {
+          return [];
+        }
+        return candidate.fields
+          .filter(
+            (field) =>
+              field.relation?.target === resource.id &&
+              field.filterable &&
+              canAccessRule(field.readAccess ?? { mode: "public" }, actor),
+          )
+          .map((field) => ({
+            key: `${candidate.id}:${field.name}`,
+            label: candidate.label,
+            fieldLabel: field.label,
+            to: `/${candidate.slug}?${new URLSearchParams({ [`filter[${field.name}]`]: id }).toString()}`,
+          }));
+      })
+    : [];
 
   if (!controller.canRead) {
     return (
@@ -128,6 +151,25 @@ export function ResourceDetail({
                 </div>
               ))}
           </dl>
+          {relatedResources.length > 0 && (
+            <section
+              className="related-documents"
+              aria-label={t("Related documents")}
+            >
+              <h2>{t("Related documents")}</h2>
+              <div className="row-actions">
+                {relatedResources.map((related) => (
+                  <Link
+                    key={related.key}
+                    className="secondary-button"
+                    to={related.to}
+                  >
+                    {related.label} ({related.fieldLabel})
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
           {id &&
             resource.collections?.map((definition) => {
               const child = resources.find(

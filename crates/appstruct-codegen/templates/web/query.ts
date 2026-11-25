@@ -27,16 +27,58 @@ export const queryClient = new QueryClient({
 
 /**
  * Keep tenant-scoped server state in a distinct cache namespace. The Tenant
- * provider still resets active queries during a switch so the UI clears
- * immediately, while this namespace prevents a late response from the old
- * organization from populating the cache read by the new organization.
+ * provider cancels and resets active queries during a switch while bumping
+ * `tenantContextVersion`, so a late response from the previous organization
+ * cannot populate the cache read by the new organization even in privacy modes
+ * where `localStorage` is unavailable.
  */
-export function currentTenantScope(): string {
+let tenantScopeOverride: string | undefined;
+let tenantContextVersion = 1;
+
+export function getTenantContextVersion(): number {
+  return tenantContextVersion;
+}
+
+export function bumpTenantContextVersion(): number {
+  tenantContextVersion += 1;
+  return tenantContextVersion;
+}
+
+export function setTenantScope(tenantId?: string | null): void {
+  tenantScopeOverride = tenantId || undefined;
+}
+
+export function clearTenantDraftStorage(): void {
   try {
-    return window.localStorage.getItem("appstruct_tenant") ?? "global";
+    const storage = window.sessionStorage;
+    if (!storage) return;
+    const keys: string[] = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (
+        key &&
+        (key.startsWith("appstruct_draft:") ||
+          key.startsWith("appstruct:tenant:"))
+      ) {
+        keys.push(key);
+      }
+    }
+    for (const key of keys) storage.removeItem(key);
   } catch {
-    return "global";
+    // sessionStorage can be unavailable in restricted frames or privacy modes.
   }
+}
+
+export function currentTenantScope(): string {
+  let tenantId = tenantScopeOverride;
+  if (!tenantId) {
+    try {
+      tenantId = window.localStorage.getItem("appstruct_tenant") ?? "global";
+    } catch {
+      tenantId = "global";
+    }
+  }
+  return `${tenantId}:v${tenantContextVersion}`;
 }
 
 export const resourceQueryKeys = {

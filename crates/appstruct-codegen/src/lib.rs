@@ -4,6 +4,7 @@ mod artifact;
 mod backend;
 mod database;
 mod formatting;
+mod impact;
 mod module_artifact;
 mod naming;
 mod openapi;
@@ -88,11 +89,10 @@ pub fn plan_with_options(ir: &AppIr, options: PlanOptions<'_>) -> Result<PlanOut
     let started = Instant::now();
     let canonical_ir = to_canonical_json(ir)?;
     let canonical_ir_elapsed = started.elapsed();
-    let mut artifacts = vec![Artifact::text(
-        "ir/app-ir.json",
-        canonical_ir,
-        ArtifactKind::CanonicalIr,
-    )];
+    let mut artifacts = vec![
+        Artifact::text("ir/app-ir.json", canonical_ir, ArtifactKind::CanonicalIr),
+        impact::plan(ir),
+    ];
     let planned = std::thread::scope(|scope| {
         let database = scope.spawn(|| timed(|| database::plan(ir)));
         let backend = scope.spawn(|| timed(|| backend::plan(ir)));

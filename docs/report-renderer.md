@@ -22,7 +22,8 @@ modules:
 
 ## Request & Response Contract
 
-- **Request**: `POST <http_url>` with `Content-Type: application/json`, containing `{ run_id, template, version, html, paper_size, orientation }` and an optional `x-appstruct-signature` header.
-- **Response**: `200 OK` with `application/pdf` bytes, bounded by `50 MiB` (or the configured `modules.file.max_bytes`, whichever is smaller).
-- **Security**: Templates are compiled with MiniJinja HTML escaping. Credentials, database URLs, and snapshot encryption keys are never sent to the renderer.
+- **Request**: `POST <http_url>` with `Content-Type: application/json`, containing `{ run_id, template, template_version, html, html_sha256, paper, orientation, ready_signal: "__REPORT_READY__", wait_for_fonts: true, block_private_network: true }` and an optional `x-appstruct-signature` header. `paper` is restricted to `a3 | a4 | a5 | letter | legal` and `orientation` to `portrait | landscape`.
+- **Readiness**: Browser-based renderers should wait for `document.fonts.ready` and the explicit `window.__REPORT_READY__ === true` signal instead of relying solely on `networkidle`.
+- **Response**: `200 OK` with `application/pdf` bytes (or JSON `{ code, pdf, sha256, byte_length }`), bounded by `50 MiB` (or the configured `modules.file.max_bytes`, whichever is smaller).
+- **Security**: Templates are compiled with MiniJinja HTML escaping. Credentials, database URLs, and snapshot encryption keys are never sent to the renderer. Only `http://`/`https://` renderer URLs are accepted, HTTP redirects are disabled, and renderers should enforce `block_private_network` against loopback/private/metadata/file targets.
 - **Retries**: Transient network errors, timeouts, and `5xx` responses retry within the configured `modules.jobs` budget; `4xx` responses fail closed without retry.

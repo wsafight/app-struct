@@ -22,13 +22,27 @@ import {
   type TenantInvitation,
   type TenantOrganization,
 } from "../generated/client";
-import { appQueryKeys } from "../query";
+import {
+  appQueryKeys,
+  bumpTenantContextVersion,
+  clearTenantDraftStorage,
+  getTenantContextVersion,
+  setTenantScope,
+} from "../query";
 import { errorMessage } from "../resource";
+
+const TENANT_BROADCAST_CHANNEL = "appstruct:tenant";
+
+interface TenantBroadcastMessage {
+  type: "tenant-changed";
+  tenantId: string;
+}
 
 interface TenantContextValue {
   loading: boolean;
   organizations: TenantOrganization[];
   current: TenantOrganization | null;
+  contextVersion: number;
   create(name: string): Promise<void>;
   select(id: string): void;
 }
@@ -36,9 +50,35 @@ interface TenantContextValue {
 const TenantContext = createContext<TenantContextValue | null>(null);
 const EMPTY_ORGANIZATIONS: TenantOrganization[] = [];
 
+function isTenantScopedQuery(query: { queryKey: readonly unknown[] }): boolean {
+  const root = query.queryKey[0];
+  return root !== appQueryKeys.session[0] && root !== "tenant";
+}
+
+function broadcastTenantChange(tenantId: string): void {
+  if (typeof BroadcastChannel === "undefined") return;
+  try {
+    const channel = new BroadcastChannel(TENANT_BROADCAST_CHANNEL);
+    channel.postMessage({
+      type: "tenant-changed",
+      tenantId,
+    } satisfies TenantBroadcastMessage);
+    channel.close();
+  } catch {
+    // BroadcastChannel can be unavailable in restricted contexts.
+  }
+}
+
 export function TenantProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = useState(() => tenantApi.current() ?? "");
+  const [selectedId, setSelectedId] = useState(() => {
+    const initial = tenantApi.current() ?? "";
+    setTenantScope(initial || null);
+    return initial;
+  });
+  const [contextVersion, setContextVersion] = useState(() =>
+    getTenantContextVersion(),
+  );
   const organizationsQuery = useQuery({
     queryKey: appQueryKeys.tenant.organizations,
     queryFn: ({ signal }) => tenantApi.listOrganizations({ signal }),
@@ -49,14 +89,22 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     organizations[0] ??
     null;
 
-  const clearTenantQueries = useCallback(() => {
-    void queryClient.resetQueries({
-      predicate: (query) => {
-        const root = query.queryKey[0];
-        return root !== appQueryKeys.session[0] && root !== "tenant";
-      },
-    });
-  }, [queryClient]);
+  const clearTenantQueries = useCallback(
+    (nextTenantId?: string, broadcast = false) => {
+      if (nextTenantId !== undefined) {
+        setTenantScope(nextTenantId || null);
+      }
+      const nextVersion = bumpTenantContextVersion();
+      setContextVersion(nextVersion);
+      clearTenantDraftStorage();
+      void queryClient.cancelQueries({ predicate: isTenantScopedQuery });
+      void queryClient.resetQueries({ predicate: isTenantScopedQuery });
+      if (broadcast && nextTenantId !== undefined) {
+        broadcastTenantChange(nextTenantId);
+      }
+    },
+    [queryClient],
+  );
 
   const createOrganization = useMutation({
     mutationFn: tenantApi.createOrganization,
@@ -71,7 +119,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
           ),
         }),
       );
-      clearTenantQueries();
+      clearTenantQueries(organization.id, true);
     },
   });
 
@@ -79,22 +127,45 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     if (organizationsQuery.isSuccess) {
       if (current) {
         tenantApi.select(current.id);
+        setTenantScope(current.id);
         if (current.id !== selectedId) setSelectedId(current.id);
       } else {
         tenantApi.clear();
+        setTenantScope(null);
         if (selectedId) setSelectedId("");
       }
     }
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key !== tenantStorageKey) return;
-      setSelectedId(tenantApi.current() ?? "");
-      clearTenantQueries();
+    const syncRemoteTenant = (nextTenantId: string) => {
+      setSelectedId(nextTenantId);
+      clearTenantQueries(nextTenantId, false);
       void queryClient.invalidateQueries({
         queryKey: appQueryKeys.tenant.organizations,
       });
     };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== tenantStorageKey) return;
+      syncRemoteTenant(tenantApi.current() ?? "");
+    };
     window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+    let channel: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== "undefined") {
+      try {
+        channel = new BroadcastChannel(TENANT_BROADCAST_CHANNEL);
+        channel.onmessage = (event: MessageEvent<TenantBroadcastMessage>) => {
+          if (event.data?.type !== "tenant-changed") return;
+          const nextTenantId = event.data.tenantId ?? "";
+          if (nextTenantId) tenantApi.select(nextTenantId);
+          else tenantApi.clear();
+          syncRemoteTenant(nextTenantId);
+        };
+      } catch {
+        channel = null;
+      }
+    }
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      channel?.close();
+    };
   }, [
     clearTenantQueries,
     current,
@@ -108,6 +179,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       loading: organizationsQuery.isPending,
       organizations,
       current,
+      contextVersion,
       async create(name) {
         await createOrganization.mutateAsync(name);
       },
@@ -115,11 +187,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         if (id === current?.id) return;
         tenantApi.select(id);
         setSelectedId(id);
-        clearTenantQueries();
+        clearTenantQueries(id, true);
       },
     }),
     [
       clearTenantQueries,
+      contextVersion,
       createOrganization,
       current,
       organizations,

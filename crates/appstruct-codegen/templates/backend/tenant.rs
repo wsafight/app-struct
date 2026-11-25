@@ -2,13 +2,26 @@ use crate::{Actor, ApiError, AppState, FieldViolation, TenantId};
 use crate::auth::{random_token, token_hash};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use sqlx::Row as _;
 use crate::database::{DatabaseExecutor, Database,  Sql};
 use serde::{Deserialize, Serialize};
 
 const TENANT_HEADER: &str = "x-appstruct-tenant";
+
+pub fn is_active_tenant_status(status: &str) -> bool {
+    matches!(status, "trial" | "active")
+}
+
+pub fn is_valid_status_transition(current: &str, target: &str) -> bool {
+    matches!(
+        (current, target),
+        ("trial", "active" | "closed")
+            | ("active", "suspended" | "expired" | "closed")
+            | ("suspended" | "expired", "active" | "closed")
+    )
+}
 
 pub async fn resolve(
     database: &Database,
@@ -24,13 +37,17 @@ pub async fn resolve(
         .and_then(|value| uuid::Uuid::parse_str(value).ok())
         .ok_or(ApiError::InvalidTenant)?;
     let actor = actor.ok_or(ApiError::Unauthorized)?;
-    let member = database
-        .fetch_optional(Sql::bind("SELECT 1 FROM \"_appstruct_tenant_memberships\" WHERE organization_id = $1 AND user_id = $2",
+    let row = database
+        .fetch_optional(Sql::bind(
+            "SELECT o.status FROM \"_appstruct_tenant_memberships\" m JOIN \"_appstruct_tenant_organizations\" o ON o.id = m.organization_id WHERE m.organization_id = $1 AND m.user_id = $2",
             [tenant.into(), actor.id.into()],
         ))
-        .await?
-        .is_some();
-    if member {
+        .await?;
+    let Some(row) = row else {
+        return Err(ApiError::Forbidden);
+    };
+    let status: String = row.try_get("status")?;
+    if is_active_tenant_status(&status) {
         Ok(Some(tenant))
     } else {
         Err(ApiError::Forbidden)
@@ -40,6 +57,7 @@ pub async fn resolve(
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/tenant/organizations", get(list_organizations).post(create_organization))
+        .route("/api/tenant/organizations/{id}/status", patch(update_organization_status))
         .route("/api/tenant/invitations", get(list_invitations).post(create_invitation))
         .route("/api/tenant/invitations/{id}", delete(revoke_invitation))
         .route("/api/tenant/invitations/{token}/accept", post(accept_invitation))
@@ -50,7 +68,14 @@ struct Organization {
     id: TenantId,
     name: String,
     role: String,
+    status: String,
+    closed_at: Option<chrono::DateTime<chrono::Utc>>,
     created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateOrganizationStatus {
+    status: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -98,7 +123,7 @@ async fn list_organizations(
         .ok_or(ApiError::Unauthorized)?;
     let rows = state
         .database
-        .fetch_all(Sql::bind("SELECT o.id, o.name, m.role, o.created_at FROM \"_appstruct_tenant_organizations\" o JOIN \"_appstruct_tenant_memberships\" m ON m.organization_id = o.id WHERE m.user_id = $1 ORDER BY o.name, o.id",
+        .fetch_all(Sql::bind("SELECT o.id, o.name, m.role, o.status, o.closed_at, o.created_at FROM \"_appstruct_tenant_organizations\" o JOIN \"_appstruct_tenant_memberships\" m ON m.organization_id = o.id WHERE m.user_id = $1 AND o.status <> 'closed' ORDER BY o.name, o.id",
             [actor.id.into()],
         ))
         .await?;
@@ -109,6 +134,8 @@ async fn list_organizations(
                 id: row.try_get("id")?,
                 name: row.try_get("name")?,
                 role: row.try_get("role")?,
+                status: row.try_get("status")?,
+                closed_at: row.try_get("closed_at")?,
                 created_at: row.try_get("created_at")?,
             })
         })
@@ -136,7 +163,7 @@ async fn create_organization(
     let id = uuid::Uuid::now_v7();
     let transaction = state.database.begin().await?;
     transaction
-        .execute(Sql::bind("INSERT INTO \"_appstruct_tenant_organizations\" (id, name, created_by, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)",
+        .execute(Sql::bind("INSERT INTO \"_appstruct_tenant_organizations\" (id, name, status, created_by, created_at) VALUES ($1, $2, 'active', $3, CURRENT_TIMESTAMP)",
             [id.into(), name.to_owned().into(), actor.id.into()],
         ))
         .await?;
@@ -152,9 +179,73 @@ async fn create_organization(
             id,
             name: name.to_owned(),
             role: "owner".to_owned(),
+            status: "active".to_owned(),
+            closed_at: None,
             created_at: chrono::Utc::now(),
         }),
     ))
+}
+
+async fn update_organization_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<UpdateOrganizationStatus>,
+) -> Result<Json<Organization>, ApiError> {
+    let actor = state
+        .auth
+        .actor_for_mutation(&state.database, &headers)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    let organization_id = uuid::Uuid::parse_str(&id).map_err(|_| ApiError::InvalidId)?;
+    let target = input.status.trim().to_ascii_lowercase();
+    if !matches!(target.as_str(), "trial" | "active" | "suspended" | "expired" | "closed") {
+        return Err(ApiError::Validation(vec![FieldViolation {
+            field: "status".to_owned(),
+            message: "Status must be one of trial, active, suspended, expired, or closed".to_owned(),
+        }]));
+    }
+    let transaction = state.database.begin().await?;
+    let row = transaction
+        .fetch_optional(Sql::bind(
+            "SELECT id, name, status, closed_at, created_at FROM \"_appstruct_tenant_organizations\" WHERE id = $1 FOR UPDATE",
+            [organization_id.into()],
+        ))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let is_owner = transaction
+        .fetch_optional(Sql::bind(
+            "SELECT 1 FROM \"_appstruct_tenant_memberships\" WHERE organization_id = $1 AND user_id = $2 AND role = 'owner'",
+            [organization_id.into(), actor.id.into()],
+        ))
+        .await?
+        .is_some();
+    let is_admin = actor.has_role("admin");
+    if !is_owner && !is_admin {
+        return Err(ApiError::Forbidden);
+    }
+    let current_status: String = row.try_get("status")?;
+    if current_status != target && !is_valid_status_transition(&current_status, &target) {
+        return Err(ApiError::Conflict(format!(
+            "Cannot transition organization status from {current_status} to {target}"
+        )));
+    }
+    let updated = transaction
+        .fetch_optional(Sql::bind(
+            "UPDATE \"_appstruct_tenant_organizations\" SET status = $2, closed_at = CASE WHEN $2 = 'closed' THEN COALESCE(closed_at, CURRENT_TIMESTAMP) ELSE closed_at END WHERE id = $1 RETURNING id, name, status, closed_at, created_at",
+            [organization_id.into(), target.into()],
+        ))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    transaction.commit().await?;
+    Ok(Json(Organization {
+        id: updated.try_get("id")?,
+        name: updated.try_get("name")?,
+        role: if is_owner { "owner".to_owned() } else { "member".to_owned() },
+        status: updated.try_get("status")?,
+        closed_at: updated.try_get("closed_at")?,
+        created_at: updated.try_get("created_at")?,
+    }))
 }
 
 async fn list_invitations(
@@ -252,7 +343,11 @@ async fn accept_invitation(
     )).await?.ok_or(ApiError::InvalidInvitationToken)?;
     let invitation_id: uuid::Uuid = row.try_get("id")?;
     let organization_id: uuid::Uuid = row.try_get("organization_id")?;
-    transaction.fetch_optional(Sql::bind("SELECT id FROM \"_appstruct_tenant_organizations\" WHERE id = $1 FOR NO KEY UPDATE", [organization_id.into()])).await?.ok_or(ApiError::InvalidTenant)?;
+    let org_row = transaction.fetch_optional(Sql::bind("SELECT id, name, status, closed_at, created_at FROM \"_appstruct_tenant_organizations\" WHERE id = $1 FOR NO KEY UPDATE", [organization_id.into()])).await?.ok_or(ApiError::InvalidTenant)?;
+    let org_status: String = org_row.try_get("status")?;
+    if !is_active_tenant_status(&org_status) {
+        return Err(ApiError::Forbidden);
+    }
     transaction.fetch_optional(Sql::bind("SELECT id FROM \"_appstruct_tenant_invitations\" WHERE id = $1 AND accepted_at IS NULL AND expires_at > CURRENT_TIMESTAMP FOR UPDATE", [invitation_id.into()])).await?.ok_or(ApiError::InvalidInvitationToken)?;
     let email: String = row.try_get("email")?;
     let role: String = row.try_get("role")?;
@@ -268,12 +363,11 @@ async fn accept_invitation(
     transaction.execute(Sql::bind("UPDATE \"_appstruct_tenant_invitations\" SET accepted_at = CURRENT_TIMESTAMP WHERE id = $1",
         [invitation_id.into()],
     )).await?;
-    let row = transaction.fetch_optional(Sql::bind("SELECT id, name, created_at FROM \"_appstruct_tenant_organizations\" WHERE id = $1",
-        [organization_id.into()],
-    )).await?.ok_or(ApiError::NotFound)?;
     let organization = Organization {
-        id: row.try_get("id")?, name: row.try_get("name")?, role,
-        created_at: row.try_get("created_at")?,
+        id: org_row.try_get("id")?, name: org_row.try_get("name")?, role,
+        status: org_status,
+        closed_at: org_row.try_get("closed_at")?,
+        created_at: org_row.try_get("created_at")?,
     };
     transaction.commit().await?;
     Ok(Json(organization))

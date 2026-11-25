@@ -22,7 +22,8 @@ modules:
 
 ## 契约与边界
 
-- **请求**：`POST <http_url>`，`Content-Type: application/json`，携带 `{ run_id, template, version, html, paper_size, orientation }` 与可选 HMAC 签名头。
-- **响应**：`200 OK` 返回 `application/pdf` 字节流，大小受限于 `50 MiB` 与 `modules.file.max_bytes` 中的较小值。
-- **安全**：模板由 MiniJinja 转义渲染；数据库凭证、密钥和快照加密密钥绝不透传给外部渲染器。
+- **请求**：`POST <http_url>`，`Content-Type: application/json`，携带 `{ run_id, template, template_version, html, html_sha256, paper, orientation, ready_signal: "__REPORT_READY__", wait_for_fonts: true, block_private_network: true }` 与可选 HMAC 签名头。纸型限制为 `a3 | a4 | a5 | letter | legal`，方向限制为 `portrait | landscape`。
+- **就绪协议**：基于浏览器的渲染器应等待 `document.fonts.ready` 与显式 `window.__REPORT_READY__ === true` 信号，而不依赖脆弱的 `networkidle`。
+- **响应**：`200 OK` 返回 `application/pdf` 字节流（或 `{ code, pdf, sha256, byte_length }` JSON），大小受限于 `50 MiB` 与 `modules.file.max_bytes` 中的较小值。
+- **安全**：模板由 MiniJinja 转义渲染；数据库凭证、密钥和快照加密密钥绝不透传给外部渲染器。仅允许 `http://`/`https://` 渲染服务地址，禁用 HTTP 重定向，且渲染服务应按 `block_private_network` 阻断私网、云元数据与 `file://` 访问。
 - **重试**：网络超时与 `5xx` 错误按 `modules.jobs` 预算重试，`4xx` 错误快速失败不重试。

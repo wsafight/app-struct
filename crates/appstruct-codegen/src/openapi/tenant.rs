@@ -41,6 +41,19 @@ pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Valu
             "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 120 } }
         }),
     );
+    schemas.insert(
+        "UpdateTenantOrganizationStatusInput".to_owned(),
+        json!({
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["trial", "active", "suspended", "expired", "closed"]
+                }
+            }
+        }),
+    );
     paths.insert(
         "/api/tenant/organizations".to_owned(),
         json!({
@@ -62,6 +75,27 @@ pub(super) fn add(paths: &mut Map<String, Value>, schemas: &mut Map<String, Valu
                     "201": response("Organization created", &schema_ref("TenantOrganization")),
                     "401": error_response(),
                     "403": error_response(),
+                    "422": error_response()
+                }
+            }
+        }),
+    );
+    paths.insert(
+        "/api/tenant/organizations/{id}/status".to_owned(),
+        json!({
+            "patch": {
+                "operationId": "updateTenantOrganizationStatus",
+                "tags": ["Tenant"],
+                "security": [{ "cookieSession": [] }],
+                "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+                "requestBody": request_body("UpdateTenantOrganizationStatusInput"),
+                "responses": {
+                    "200": response("Organization status updated", &schema_ref("TenantOrganization")),
+                    "400": error_response(),
+                    "401": error_response(),
+                    "403": error_response(),
+                    "404": error_response(),
+                    "409": error_response(),
                     "422": error_response()
                 }
             }
@@ -129,11 +163,13 @@ pub(super) fn parameter() -> Value {
 fn organization_schema() -> Value {
     json!({
         "type": "object",
-        "required": ["id", "name", "role", "created_at"],
+        "required": ["id", "name", "role", "status", "closed_at", "created_at"],
         "properties": {
             "id": { "type": "string", "format": "uuid" },
             "name": { "type": "string" },
             "role": { "type": "string", "enum": ["owner", "member"] },
+            "status": { "type": "string", "enum": ["trial", "active", "suspended", "expired", "closed"] },
+            "closed_at": { "type": ["string", "null"], "format": "date-time" },
             "created_at": { "type": "string", "format": "date-time" }
         }
     })

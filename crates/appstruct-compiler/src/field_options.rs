@@ -246,6 +246,7 @@ pub(crate) fn build_generated(
         "auto_increment" if matches!(field_type, FieldTypeIr::Integer | FieldTypeIr::Bigint) => {
             GeneratedValueIr::AutoIncrement
         }
+        "auto_number" if matches!(field_type, FieldTypeIr::String) => GeneratedValueIr::AutoNumber,
         _ => {
             diagnostics.push(Diagnostic::error(
                 "AS2015",

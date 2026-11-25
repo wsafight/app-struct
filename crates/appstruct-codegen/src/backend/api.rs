@@ -349,6 +349,18 @@ fn create_value(entity: &EntityIr, field: &FieldIr) -> Result<Option<TokenStream
             }
             Some(GeneratedValueIr::Now) => quote! { chrono::Utc::now() },
             Some(GeneratedValueIr::AutoIncrement) => return Ok(None),
+            Some(GeneratedValueIr::AutoNumber) => {
+                let table = &entity.table_name;
+                let column = &field.column_name;
+                let prefix = entity
+                    .table_name
+                    .chars()
+                    .filter(char::is_ascii_alphanumeric)
+                    .take(4)
+                    .collect::<String>()
+                    .to_ascii_uppercase();
+                quote! { crate::auto_number::next_document_number(&context, #table, #column, #prefix).await? }
+            }
             Some(GeneratedValueIr::Revision) => quote! { 1_i64 },
             Some(GeneratedValueIr::Tenant) => quote! { context.require_tenant()? },
             None => field.default.as_ref().map_or_else(

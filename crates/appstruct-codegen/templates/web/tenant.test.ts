@@ -23,6 +23,8 @@ describe("tenant selection", () => {
         id,
         name: id,
         role: "owner",
+        status: "active",
+        closed_at: null,
         created_at: "2026-10-13T00:00:00Z",
       });
       const alpha = organization("alpha");
@@ -65,6 +67,8 @@ describe("tenant selection", () => {
         },
       );
       expect(result.current.records.data).toEqual(["Alpha project"]);
+      const initialVersion = result.current.tenant.contextVersion;
+      window.sessionStorage.setItem("appstruct_draft:order", "alpha-draft");
       act(() => {
         void result.current.records.refetch();
       });
@@ -75,6 +79,12 @@ describe("tenant selection", () => {
       });
       await waitFor(() => expect(pending.has(beta.id)).toBe(true));
       expect(result.current.tenant.current?.id).toBe(beta.id);
+      expect(result.current.tenant.contextVersion).toBeGreaterThan(
+        initialVersion,
+      );
+      expect(
+        window.sessionStorage.getItem("appstruct_draft:order"),
+      ).toBeNull();
       expect(result.current.records.data).toBeUndefined();
       await act(async () => pending.get(alpha.id)!(["Late Alpha project"]));
       expect(result.current.records.data).toBeUndefined();
