@@ -31,6 +31,7 @@ pub(super) fn tenant_field(entity_id: &EntityId) -> FieldIr {
         write_access: None,
         ui_component: None,
         ui_semantic: None,
+        mask: None,
     }
 }
 
@@ -57,6 +58,7 @@ pub(super) fn revision_field(entity_id: &EntityId) -> FieldIr {
         write_access: None,
         ui_component: None,
         ui_semantic: None,
+        mask: None,
     }
 }
 
@@ -202,6 +204,17 @@ fn build_field(
         || field.flags.primary_key()
         || generated.is_some()
         || field.default.is_some());
+    let mask_valid = matches!(
+        field_type,
+        appstruct_ir::FieldTypeIr::String | appstruct_ir::FieldTypeIr::Text
+    );
+    if field.mask.is_some() && !mask_valid {
+        diagnostics.push(Diagnostic::error(
+            "AS2053",
+            "field `mask` is only supported on `string` and `text` fields",
+            field.span.clone(),
+        ));
+    }
     Some((
         FieldIr {
             id: field_id,
@@ -264,6 +277,7 @@ fn build_field(
                     "files" => Some(FieldSemanticIr::Files),
                     _ => None,
                 }),
+            mask: field.mask.clone(),
         },
         relation,
     ))

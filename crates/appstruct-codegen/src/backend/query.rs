@@ -120,7 +120,11 @@ pub(super) fn list_support(
                 };
                 let previous_cursor = data.first().filter(|_| has_previous).map(encode).transpose()?;
                 let next_cursor = data.last().filter(|_| has_next).map(encode).transpose()?;
-                let data = data.into_iter().map(|row| row.json(&fields)).collect::<Result<Vec<_>, _>>()?;
+                let data = data.into_iter().map(|row| {
+                    let mut value = row.json(&fields)?;
+                    apply_field_masks(&context, &mut value);
+                    Ok::<_, ApiError>(value)
+                }).collect::<Result<Vec<_>, _>>()?;
                 return Ok(Json(ListResponse { data, meta: ListMeta::Cursor { limit, next_cursor, previous_cursor, has_more: has_next } }));
             }
             let page = query.page.unwrap_or(1);
@@ -158,7 +162,11 @@ pub(super) fn list_support(
             };
             let page_select = select.order_by(&order, &#module::Model::META, false).limit(page_size).offset((page - 1) * page_size);
             let data = #module::projected(page_select, &fields, &order)?.all(&state.database).await?
-                .into_iter().map(|row| row.json(&fields)).collect::<Result<Vec<_>, _>>()?;
+                .into_iter().map(|row| {
+                    let mut value = row.json(&fields)?;
+                    apply_field_masks(&context, &mut value);
+                    Ok::<_, ApiError>(value)
+                }).collect::<Result<Vec<_>, _>>()?;
             Ok(Json(ListResponse { data, meta: ListMeta::Page { page, page_size, total, total_exact } }))
         }
     })

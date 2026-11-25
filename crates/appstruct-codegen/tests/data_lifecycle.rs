@@ -84,6 +84,7 @@ fn push_file_field(ir: &mut appstruct_ir::AppIr, entity_name: &str, field_name: 
         write_access: None,
         ui_component: None,
         ui_semantic: Some(appstruct_ir::FieldSemanticIr::File),
+        mask: None,
     });
 }
 

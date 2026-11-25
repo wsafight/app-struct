@@ -198,6 +198,7 @@ pub(crate) struct SurfaceField {
     pub ui_component: Option<Located<String>>,
     pub ui_semantic: Option<SurfaceFieldSemantic>,
     pub access: Option<SurfaceFieldAccess>,
+    pub mask: Option<appstruct_ir::FieldMaskIr>,
     pub span: SourceSpan,
 }
 

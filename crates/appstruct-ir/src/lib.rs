@@ -27,7 +27,7 @@ pub use service::{
     ServerIr, TenantIr, WebhookEndpointIr, WebhooksIr,
 };
 use std::fmt;
-pub use ui::FieldSemanticIr;
+pub use ui::{FieldMaskIr, FieldSemanticIr, MaskStrategyIr};
 pub use validation::aggregates::validate_aggregates;
 pub use validation::charts::validate_charts;
 pub use validation::{IrValidationError, IrValidationErrors, validate_app_ir, validate_form_rules};
@@ -198,6 +198,8 @@ pub struct FieldIr {
     pub write_access: Option<AccessRuleIr>,
     pub ui_component: Option<String>,
     pub ui_semantic: Option<FieldSemanticIr>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask: Option<FieldMaskIr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

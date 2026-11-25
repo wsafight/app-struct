@@ -310,6 +310,7 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             "target",
             "on_delete",
             "ui",
+            "mask",
         ],
         "field definition in M0",
     )?;
@@ -366,7 +367,46 @@ fn decode_field(name: &str, entry: &MappingEntry) -> Result<SurfaceField, Diagno
             .get("access")
             .map(|access| access::decode_field_access(&access.value))
             .transpose()?,
+        mask: mapping
+            .get("mask")
+            .map(|entry| decode_field_mask(&entry.value))
+            .transpose()?,
         span: entry.value.span.clone(),
+    })
+}
+
+fn decode_field_mask(node: &Node) -> Result<appstruct_ir::FieldMaskIr, Diagnostic> {
+    let mapping = expect_mapping(node, "field `mask`")?;
+    ensure_known_keys(mapping, &["strategy", "except_roles"], "field `mask`")?;
+    let strategy_node = required(mapping, "strategy", &node.span)?;
+    let strategy_raw = expect_string(&strategy_node.value, "field `mask.strategy`")?;
+    let strategy = match strategy_raw.value.as_str() {
+        "email" => appstruct_ir::MaskStrategyIr::Email,
+        "phone" => appstruct_ir::MaskStrategyIr::Phone,
+        "last4" => appstruct_ir::MaskStrategyIr::Last4,
+        "redact" => appstruct_ir::MaskStrategyIr::Redact,
+        other => {
+            return Err(Diagnostic::error(
+                "AS2052",
+                format!("unsupported field mask strategy `{other}`"),
+                strategy_raw.span,
+            )
+            .with_help("use `email`, `phone`, `last4`, or `redact`"));
+        }
+    };
+    let except_roles = mapping
+        .get("except_roles")
+        .map(|entry| {
+            expect_sequence(&entry.value, "field `mask.except_roles`")?
+                .iter()
+                .map(|item| expect_string(item, "mask exempt role").map(|v| v.value))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    Ok(appstruct_ir::FieldMaskIr {
+        strategy,
+        except_roles,
     })
 }
 

@@ -27,6 +27,7 @@ pub(super) fn export(_entity: &EntityIr, context: &BulkContext<'_>) -> TokenStre
             if select.bounded_count(&transaction, MAX_CSV_EXPORT_ROWS).await? > MAX_CSV_EXPORT_ROWS {
                 return Err(ApiError::InvalidQuery(format!("CSV export is limited to {MAX_CSV_EXPORT_ROWS} rows")));
             }
+            let mask_roles: Vec<String> = context.actor().map(|actor| actor.roles.clone()).unwrap_or_default();
             let statement = #module::projected(select.order_by(&order, &#module::Model::META, false).limit(MAX_CSV_EXPORT_ROWS), &fields, &order)?.statement();
             let stream: std::pin::Pin<Box<dyn futures_core::Stream<Item = Result<Vec<u8>, std::io::Error>> + Send>> = Box::pin(async_stream::try_stream! {
                 let mut rows = std::pin::pin!(transaction.stream_models::<#module::ProjectedModel>(statement));
@@ -34,7 +35,8 @@ pub(super) fn export(_entity: &EntityIr, context: &BulkContext<'_>) -> TokenStre
                 chunk.push('\n');
                 yield std::mem::take(&mut chunk).into_bytes();
                 while let Some(row) = rows.try_next().await.map_err(std::io::Error::other)? {
-                    let value = row.json(&fields).map_err(|_| std::io::Error::other("CSV serialization failed"))?;
+                    let mut value = row.json(&fields).map_err(|_| std::io::Error::other("CSV serialization failed"))?;
+                    apply_field_masks_for_roles(&mask_roles, &mut value);
                     let object = value.as_object().ok_or_else(|| std::io::Error::other("invalid CSV row"))?;
                     chunk.push_str(&fields.iter().map(|field| csv_escape(&object.get(field).map(csv_cell).unwrap_or_default())).collect::<Vec<_>>().join(","));
                     chunk.push('\n');

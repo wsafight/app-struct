@@ -138,6 +138,7 @@ fn attachment_field(entity_id: appstruct_ir::EntityId) -> appstruct_ir::FieldIr 
         write_access: None,
         ui_component: None,
         ui_semantic: Some(appstruct_ir::FieldSemanticIr::File),
+        mask: None,
     }
 }
 

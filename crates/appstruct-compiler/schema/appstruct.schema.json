@@ -1122,6 +1122,30 @@
         "access": {
           "$ref": "#/$defs/fieldAccess"
         },
+        "mask": {
+          "type": "object",
+          "required": [
+            "strategy"
+          ],
+          "properties": {
+            "strategy": {
+              "enum": [
+                "email",
+                "phone",
+                "last4",
+                "redact"
+              ]
+            },
+            "except_roles": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
         "values": {
           "type": "array",
           "minItems": 1,
