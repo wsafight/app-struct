@@ -1,0 +1,159 @@
+domain: crm
+
+entities:
+  Account:
+    label: Accounts
+    table: accounts
+    tenant: true
+    audit: true
+    display_field: name
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      name:
+        type: string
+        required: true
+        max_length: 160
+        searchable: true
+        sortable: true
+      industry:
+        type: string
+        max_length: 80
+        filterable: true
+      tier:
+        type: enum
+        values: [starter, growth, enterprise]
+        default: starter
+        filterable: true
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { role: admin }
+
+  Contact:
+    label: Contacts
+    table: contacts
+    tenant: true
+    audit: true
+    display_field: email
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      account:
+        type: relation
+        target: Account
+        required: true
+        on_delete: cascade
+        filterable: true
+      first_name:
+        type: string
+        required: true
+        max_length: 80
+        searchable: true
+      last_name:
+        type: string
+        required: true
+        max_length: 80
+        searchable: true
+      email:
+        type: string
+        required: true
+        max_length: 320
+        searchable: true
+        mask:
+          strategy: email
+          except_roles: [admin, sales_manager]
+      phone:
+        type: string
+        max_length: 40
+        mask:
+          strategy: phone
+          except_roles: [admin, sales_manager]
+    computed:
+      full_name: "{first_name} {last_name}"
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { role: admin }
+
+  Deal:
+    label: Deals
+    table: deals
+    tenant: true
+    audit: true
+    display_field: title
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      account:
+        type: relation
+        target: Account
+        required: true
+        on_delete: restrict
+        filterable: true
+      title:
+        type: string
+        required: true
+        max_length: 180
+        searchable: true
+        sortable: true
+      stage:
+        type: enum
+        values: [lead, qualified, proposal, won, lost]
+        required: true
+        filterable: true
+      amount_cents:
+        type: integer
+        required: true
+        minimum: 0
+        sortable: true
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    workflow:
+      field: stage
+      initial: lead
+      transitions:
+        qualify:
+          from: [lead]
+          to: qualified
+          access: { authenticated: true }
+        propose:
+          from: [qualified]
+          to: proposal
+          access: { authenticated: true }
+        close_won:
+          from: [proposal]
+          to: won
+          access: { role: sales_manager }
+        close_lost:
+          from: [lead, qualified, proposal]
+          to: lost
+          access: { authenticated: true }
+    charts:
+      deals_by_stage:
+        label: Deals by Stage
+        type: bar
+        dimension: stage
+        measure: count
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { role: admin }

@@ -1,0 +1,168 @@
+domain: workbench
+
+value_objects:
+  InferenceDispatchInput:
+    fields:
+      run_id: { type: uuid, required: true }
+      prompt: { type: text, required: true }
+      model_name: { type: string, required: true }
+  InferenceDispatchOutput:
+    fields:
+      provider_job_id: { type: string, required: true }
+      estimated_tokens: { type: integer, required: true }
+
+entities:
+  PromptTemplate:
+    label: Prompt Templates
+    table: prompt_templates
+    tenant: true
+    audit: true
+    display_field: name
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      name:
+        type: string
+        required: true
+        max_length: 120
+        searchable: true
+        sortable: true
+      model_name:
+        type: string
+        required: true
+        max_length: 80
+        filterable: true
+      system_prompt:
+        type: text
+        required: true
+        max_length: 8000
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { role: admin }
+
+  Dataset:
+    label: Datasets
+    table: datasets
+    tenant: true
+    audit: true
+    display_field: name
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      name:
+        type: string
+        required: true
+        max_length: 140
+        searchable: true
+      kind:
+        type: enum
+        values: [eval, fine_tune, rag_corpus]
+        default: eval
+        filterable: true
+      source_file:
+        type: file
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    charts:
+      datasets_by_kind:
+        label: Datasets by Kind
+        type: donut
+        dimension: kind
+        measure: count
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { role: admin }
+
+  GenerationRun:
+    label: Generation Runs
+    table: generation_runs
+    tenant: true
+    audit: true
+    display_field: model_name
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      template:
+        type: relation
+        target: PromptTemplate
+        required: true
+        on_delete: restrict
+        filterable: true
+      model_name:
+        type: string
+        required: true
+        max_length: 80
+        filterable: true
+      status:
+        type: enum
+        values: [queued, running, completed, failed]
+        required: true
+        filterable: true
+      tokens_used:
+        type: integer
+        default: "0"
+        minimum: 0
+        sortable: true
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    computed:
+      summary_label: "{model_name} ({status})"
+    workflow:
+      field: status
+      initial: queued
+      transitions:
+        start_run:
+          from: [queued]
+          to: running
+          access: { role: operator }
+        complete_run:
+          from: [running]
+          to: completed
+          access: { role: operator }
+        fail_run:
+          from: [queued, running]
+          to: failed
+          access: { role: operator }
+    charts:
+      runs_by_status:
+        label: Generation Runs by Status
+        type: bar
+        dimension: status
+        measure: count
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { role: operator }
+      delete: { role: admin }
+
+commands:
+  DispatchInference:
+    input: InferenceDispatchInput
+    output: InferenceDispatchOutput
+    access: { authenticated: true }
+    http:
+      url_env: AI_WORKER_URL
+      secret_env: AI_WORKER_HMAC_SECRET
+      timeout_ms: 30000
+      retries: 2

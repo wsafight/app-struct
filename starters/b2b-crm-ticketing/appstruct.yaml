@@ -1,0 +1,39 @@
+version: 1
+
+app:
+  name: b2b-crm-ticketing
+
+database:
+  provider: postgres
+  dev:
+    mode: managed
+
+preset:
+  name: appstruct/saas
+  version: 1
+
+modules:
+  rbac:
+    roles: [admin, sales_manager, support_agent, member]
+  tenant:
+    enabled: true
+    rls: true
+
+dashboard:
+  title: "Revenue & Support Operations"
+  widgets:
+    - id: pipeline_by_stage
+      title: "Deals by Stage"
+      entity: Deal
+      chart: deals_by_stage
+      span: 6
+    - id: tickets_by_priority
+      title: "Tickets by Priority"
+      entity: Ticket
+      chart: tickets_by_priority
+      span: 6
+
+includes:
+  - spec/identity.yaml
+  - spec/crm.yaml
+  - spec/support.yaml

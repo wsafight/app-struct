@@ -20,6 +20,7 @@ const DATABASE_MODE_MARKER: &str = "__APPSTRUCT_DATABASE_MODE__";
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub(crate) enum ProjectTemplate {
     Minimal,
+    #[value(alias = "admin")]
     Dashboard,
     Saas,
 }

@@ -1,0 +1,38 @@
+version: 1
+
+app:
+  name: ai-workbench
+
+database:
+  provider: postgres
+  dev:
+    mode: managed
+
+preset:
+  name: appstruct/saas
+  version: 1
+
+modules:
+  rbac:
+    roles: [admin, operator, member]
+  tenant:
+    enabled: true
+    rls: true
+
+dashboard:
+  title: "AI Workbench Operations"
+  widgets:
+    - id: runs_by_status
+      title: "Generation Runs by Status"
+      entity: GenerationRun
+      chart: runs_by_status
+      span: 6
+    - id: datasets_by_kind
+      title: "Datasets by Kind"
+      entity: Dataset
+      chart: datasets_by_kind
+      span: 6
+
+includes:
+  - spec/identity.yaml
+  - spec/workbench.yaml

@@ -1,0 +1,94 @@
+domain: support
+
+value_objects:
+  EscalateTicketInput:
+    fields:
+      ticket_id: { type: uuid, required: true }
+      reason: { type: string, required: true }
+  EscalateTicketOutput:
+    fields:
+      incident_id: { type: string, required: true }
+      status: { type: string, required: true }
+
+entities:
+  Ticket:
+    label: Support Tickets
+    table: tickets
+    tenant: true
+    audit: true
+    display_field: subject
+    fields:
+      id:
+        type: uuid
+        primary_key: true
+        generated: uuid_v7
+      account:
+        type: relation
+        target: Account
+        required: true
+        on_delete: restrict
+        filterable: true
+      subject:
+        type: string
+        required: true
+        max_length: 200
+        searchable: true
+        sortable: true
+      priority:
+        type: enum
+        values: [low, normal, high, urgent]
+        default: normal
+        filterable: true
+      status:
+        type: enum
+        values: [open, in_progress, resolved, closed]
+        required: true
+        filterable: true
+      description:
+        type: text
+        max_length: 4000
+      attachments:
+        type: files
+      created_at:
+        type: datetime
+        generated: now
+        sortable: true
+    workflow:
+      field: status
+      initial: open
+      transitions:
+        start_work:
+          from: [open]
+          to: in_progress
+          access: { role: support_agent }
+        resolve:
+          from: [open, in_progress]
+          to: resolved
+          access: { role: support_agent }
+        close:
+          from: [resolved]
+          to: closed
+          access: { authenticated: true }
+    charts:
+      tickets_by_priority:
+        label: Tickets by Priority
+        type: donut
+        dimension: priority
+        measure: count
+    access:
+      list: { authenticated: true }
+      read: { authenticated: true }
+      create: { authenticated: true }
+      update: { authenticated: true }
+      delete: { role: admin }
+
+commands:
+  EscalateTicket:
+    input: EscalateTicketInput
+    output: EscalateTicketOutput
+    access: { role: support_agent }
+    http:
+      url_env: ESCALATION_WEBHOOK_URL
+      secret_env: ESCALATION_WEBHOOK_SECRET
+      timeout_ms: 8000
+      retries: 2
