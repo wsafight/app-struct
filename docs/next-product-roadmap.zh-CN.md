@@ -78,9 +78,9 @@ Jobs outbox 是 schedules、数据库变更事件、签名 webhooks、重放以�
 - [x] 远程模块 registry 生命周期（`install`、`update`、`verify`、`uninstall` 和 `list`），带 `appstruct.modules.lock`、签名校验、离线缓存校验和兼容性检查。
 - [x] 确定性发布清单和环境晋级前 Artifact 校验，无需强制托管控制面。
 - 面向具体平台的部署适配器；只有至少三个试点重复使用同一平台流程后才进入核心。
-- Billing 和订阅操作（Stripe Billing v1 已支持，复杂用量计费仍未支持）。
+- [x] Billing 和订阅操作（已支持 Stripe 与 Polar Billing v1，复杂用量计费仍未支持）。
 - 产出可审阅 App Spec 差异的可视化 schema、权限、页面和迁移编辑器（延期，直到访谈显示文本审阅是前三大流失原因）。
-- 项目本地的 agent 指令以及受策略约束的 MCP 适配器（延期，直到核心 CLI/API 契约稳定且有三个真实项目提出相同自动化需求）。
+- [x] 项目本地的 agent 指令（`AGENTS.md`）以及内置 stdio MCP 服务器（`appstruct mcp`），覆盖 schema、校验、权限预览/矩阵、影响面分析、迁移计划/lint、数据库反向导入与代码生成。
 
 ### 下一份契约冻结
 

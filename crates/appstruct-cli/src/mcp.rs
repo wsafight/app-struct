@@ -243,6 +243,20 @@ fn tool_definitions() -> Value {
             }
         },
         {
+            "name": "appstruct_access_matrix",
+            "description": "Compute the full declared CRUD and field-level access permission matrix across anonymous, authenticated, and every configured role.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "project": { "type": "string" },
+                    "entity": {
+                        "type": "string",
+                        "description": "Optional entity name or full IR ID (e.g. 'Task' or 'Work::Task')."
+                    }
+                }
+            }
+        },
+        {
             "name": "appstruct_migrate_plan",
             "description": "Compute the forward-only PostgreSQL migration diff, SQL preview, and migration lint warnings against .appstruct/schema.snapshot.json without writing files or connecting to a database.",
             "inputSchema": {
@@ -250,6 +264,27 @@ fn tool_definitions() -> Value {
                 "properties": {
                     "project": { "type": "string" },
                     "deny_warnings": { "type": "boolean" }
+                }
+            }
+        },
+        {
+            "name": "appstruct_migrate_lint",
+            "description": "Run forward-only PostgreSQL migration safety lint checks against .appstruct/schema.snapshot.json without writing files or connecting to a database.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "project": { "type": "string" },
+                    "deny_warnings": { "type": "boolean" }
+                }
+            }
+        },
+        {
+            "name": "appstruct_impact",
+            "description": "Compute the deterministic change-impact and blast-radius index (relations, aggregates, workflows, dashboards, extensions, reports) from the compiled IR.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "project": { "type": "string" }
                 }
             }
         },
@@ -313,7 +348,10 @@ fn handle_tool_call(id: Value, params: &Value, default_project: Option<&Path>) -
         "appstruct_schema" => tool_schema(&arguments),
         "appstruct_check" => tool_check(&arguments, default_project),
         "appstruct_access_preview" => tool_access_preview(&arguments, default_project),
+        "appstruct_access_matrix" => tool_access_matrix(&arguments, default_project),
         "appstruct_migrate_plan" => tool_migrate_plan(&arguments, default_project),
+        "appstruct_migrate_lint" => tool_migrate_lint(&arguments, default_project),
+        "appstruct_impact" => tool_impact(&arguments, default_project),
         "appstruct_db_pull" => tool_db_pull(&arguments, default_project),
         "appstruct_generate" => tool_generate(&arguments, default_project),
         unknown => {
@@ -505,6 +543,69 @@ fn tool_access_preview(arguments: &Value, default_project: Option<&Path>) -> (Va
         Ok(value) => (value, false),
         Err(error) => (error, true),
     }
+}
+
+fn tool_access_matrix(arguments: &Value, default_project: Option<&Path>) -> (Value, bool) {
+    let project = match resolve_project(arguments, default_project) {
+        Ok(path) => path,
+        Err(error) => return (error, true),
+    };
+    let entity = arguments.get("entity").and_then(Value::as_str);
+    match crate::access_preview::matrix_value(&project, entity) {
+        Ok(value) => (value, false),
+        Err(error) => (error, true),
+    }
+}
+
+fn tool_impact(arguments: &Value, default_project: Option<&Path>) -> (Value, bool) {
+    let project = match resolve_project(arguments, default_project) {
+        Ok(path) => path,
+        Err(error) => return (error, true),
+    };
+    let ir = match appstruct_compiler::compile_project(&project) {
+        Ok(ir) => ir,
+        Err(diagnostics) => {
+            return (
+                json!({ "error": "validation_failed", "diagnostics": diagnostics }),
+                true,
+            );
+        }
+    };
+    let markdown = appstruct_codegen::render_impact(&ir);
+    (
+        json!({
+            "app_name": ir.app.name,
+            "entity_count": ir.entities.len(),
+            "relation_count": ir.relations.len(),
+            "markdown": markdown,
+        }),
+        false,
+    )
+}
+
+fn tool_migrate_lint(arguments: &Value, default_project: Option<&Path>) -> (Value, bool) {
+    let (plan_value, is_error) = tool_migrate_plan(arguments, default_project);
+    if plan_value.get("error").is_some() {
+        return (plan_value, true);
+    }
+    let lint = plan_value.get("lint").cloned().unwrap_or_else(|| json!([]));
+    let has_changes = plan_value
+        .get("has_changes")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let blocked = plan_value
+        .get("blocked")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    (
+        json!({
+            "has_changes": has_changes,
+            "blocked": blocked,
+            "lint_count": lint.as_array().map_or(0, Vec::len),
+            "lint": lint,
+        }),
+        is_error,
+    )
 }
 
 fn parse_optional_uuid(arguments: &Value, field: &str) -> Result<Option<uuid::Uuid>, Value> {

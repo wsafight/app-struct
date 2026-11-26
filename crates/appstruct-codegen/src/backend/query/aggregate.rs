@@ -196,7 +196,7 @@ fn aggregate_handler(tokens: &AggregateHandlerTokens<'_>) -> TokenStream {
             let data = select
                 .limit(limit)
                 .into_json()
-                .all(&state.database)
+                .all(&context)
                 .await?;
             Ok(Json(AggregateResponse {
                 data,

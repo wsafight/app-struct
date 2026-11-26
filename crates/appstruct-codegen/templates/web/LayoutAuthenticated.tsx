@@ -59,6 +59,7 @@ export function Layout({
   });
   const visibleResources = useVisibleResources(resources);
   const systemPages: Record<string, string> = {
+    dashboard: t("Dashboard"),
     tokens: uiText("apiTokens"),
     admin: uiText("administration"),
     audit: uiText("auditLog"),
@@ -132,7 +133,7 @@ export function Layout({
         >
           <div className="nav-section">
             <span className="nav-heading">{uiText("workspace")}</span>
-            {pages.map((page) => (
+__DASHBOARD_LINK__            {pages.map((page) => (
               <NavLink key={page.name} to={`/${page.path}`}>
                 <LayoutDashboard size={17} aria-hidden />
                 <span>{t(page.label)}</span>

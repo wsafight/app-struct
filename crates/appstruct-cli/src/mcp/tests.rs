@@ -36,7 +36,7 @@ fn mcp_initialize_list_resources_and_tools() {
     // Notification produces no response, so 4 responses total.
     assert_eq!(responses.len(), 4);
     assert_eq!(responses[0]["result"]["serverInfo"]["name"], "appstruct");
-    assert!(responses[1]["result"]["tools"].as_array().unwrap().len() >= 6);
+    assert!(responses[1]["result"]["tools"].as_array().unwrap().len() >= 9);
     assert_eq!(
         responses[2]["result"]["resources"]
             .as_array()
@@ -83,10 +83,28 @@ fn mcp_tools_check_schema_access_and_migrate_plan() {
                 "method": "tools/call",
                 "params": { "name": "appstruct_migrate_plan", "arguments": {} }
             }),
+            json!({
+                "jsonrpc": "2.0",
+                "id": 14,
+                "method": "tools/call",
+                "params": { "name": "appstruct_access_matrix", "arguments": {} }
+            }),
+            json!({
+                "jsonrpc": "2.0",
+                "id": 15,
+                "method": "tools/call",
+                "params": { "name": "appstruct_migrate_lint", "arguments": {} }
+            }),
+            json!({
+                "jsonrpc": "2.0",
+                "id": 16,
+                "method": "tools/call",
+                "params": { "name": "appstruct_impact", "arguments": {} }
+            }),
         ],
         Some(&fixture()),
     );
-    assert_eq!(responses.len(), 4);
+    assert_eq!(responses.len(), 7);
     assert_eq!(responses[0]["result"]["isError"], false);
     assert_eq!(responses[1]["result"]["isError"], false);
     assert_eq!(responses[1]["result"]["structuredContent"]["valid"], true);
@@ -99,6 +117,22 @@ fn mcp_tools_check_schema_access_and_migrate_plan() {
         &[] as &[Value]
     );
     assert_eq!(responses[3]["result"]["isError"], false);
+    assert_eq!(responses[4]["result"]["isError"], false);
+    assert_ne!(
+        responses[4]["result"]["structuredContent"]["rows"]
+            .as_array()
+            .unwrap()
+            .as_slice(),
+        &[] as &[Value]
+    );
+    assert_eq!(responses[5]["result"]["isError"], false);
+    assert_eq!(responses[6]["result"]["isError"], false);
+    assert!(
+        responses[6]["result"]["structuredContent"]["markdown"]
+            .as_str()
+            .unwrap()
+            .contains("# Change Impact Index:")
+    );
 }
 
 #[test]

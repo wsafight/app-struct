@@ -153,8 +153,8 @@ fn trash_handler(context: &BulkContext<'_>) -> TokenStream {
             let mut select = #module::select();
             #trash_scope
             select = select.order_by_asc(#module::Column::#primary_column);
-            let total = select.clone().count(&state.database).await?;
-            let data = select.limit(page_size).offset((page - 1) * page_size).all(&state.database).await?
+            let total = select.clone().count(&context).await?;
+            let data = select.limit(page_size).offset((page - 1) * page_size).all(&context).await?
                 .into_iter().map(|model| redact_model(&context, model))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Json(ListResponse {

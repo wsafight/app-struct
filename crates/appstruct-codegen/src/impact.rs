@@ -75,7 +75,7 @@ impl<'a> ImpactGraph<'a> {
     }
 }
 
-fn render(ir: &AppIr) -> String {
+pub(crate) fn render(ir: &AppIr) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,

@@ -110,7 +110,7 @@ fn read_handler(
             #read_scope
             let model = #module::select_by_id(id)
                 .filter(access_condition)
-                .one(&state.database).await?.ok_or(ApiError::NotFound)?;
+                .one(&context).await?.ok_or(ApiError::NotFound)?;
             if !state.extensions.#policy().can_read(&context, &model).await? {
                 return Err(ApiError::NotFound);
             }
@@ -144,7 +144,7 @@ fn create_handler(
             authorize_create_fields(&context, &input)?;
             state.extensions.#hooks().before_validate_create(&context, &mut input).await?;
             validate_create(&input)?;
-            let transaction = state.database.begin().await?;
+            let transaction = state.begin_transaction(tenant).await?;
             let model = {
                 let context = RequestContext::transaction_with_file(
                     &transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant,
@@ -209,7 +209,7 @@ fn update_handler(
             state.extensions.#hooks().before_validate_update(&context, &mut input).await?;
             validate_update(&input)?;
             let id = #parse_id;
-            let transaction = state.database.begin().await?;
+            let transaction = state.begin_transaction(tenant).await?;
             let after = {
                 let context = RequestContext::transaction_with_file(
                     &transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant,
@@ -300,7 +300,7 @@ fn delete_handler(
             let actor = context.shared_actor();
             let tenant = context.tenant();
             let id = #parse_id;
-            let transaction = state.database.begin().await?;
+            let transaction = state.begin_transaction(tenant).await?;
             let deleted = {
                 let context = RequestContext::transaction_with_file(
                     &transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant,

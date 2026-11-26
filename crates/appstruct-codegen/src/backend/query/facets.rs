@@ -48,6 +48,7 @@ pub(in crate::backend) fn support(
             let select = filtered_select(&context, &filters)?;
             let transaction = state.database.begin().await?;
             transaction.execute_unprepared("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY").await?;
+            state.apply_tenant_context(&transaction, context.tenant()).await?;
             let total = select.count(&transaction).await?;
             let mut data = serde_json::Map::new();
             for name in names {

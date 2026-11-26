@@ -12,7 +12,7 @@ pub(super) fn metrics_artifact() -> Result<crate::Artifact, CodegenError> {
 }
 
 pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, CodegenError> {
-    let contract = contract_source();
+    let contract = contract_source(ir);
     let application = application_source();
     let routing = router_source(ir, routes);
     let security = super::security::source(ir);
@@ -49,7 +49,39 @@ pub(super) fn source(ir: &AppIr, routes: &[TokenStream]) -> Result<TokenStream, 
     })
 }
 
-fn contract_source() -> TokenStream {
+fn contract_source(ir: &AppIr) -> TokenStream {
+    let rls = ir.tenant.enabled && ir.tenant.rls;
+    let begin_transaction = if rls {
+        quote! {
+            pub async fn begin_transaction(
+                &self, tenant: Option<TenantId>,
+            ) -> Result<crate::database::Transaction, crate::database::DbErr> {
+                self.database.begin_for_tenant(tenant).await
+            }
+            pub async fn apply_tenant_context(
+                &self,
+                transaction: &crate::database::Transaction,
+                tenant: Option<TenantId>,
+            ) -> Result<(), crate::database::DbErr> {
+                transaction.set_tenant_context(tenant).await
+            }
+        }
+    } else {
+        quote! {
+            pub async fn begin_transaction(
+                &self, _tenant: Option<TenantId>,
+            ) -> Result<crate::database::Transaction, crate::database::DbErr> {
+                self.database.begin().await
+            }
+            pub async fn apply_tenant_context(
+                &self,
+                _transaction: &crate::database::Transaction,
+                _tenant: Option<TenantId>,
+            ) -> Result<(), crate::database::DbErr> {
+                Ok(())
+            }
+        }
+    };
     quote! {
         #[derive(Clone)]
         pub struct AppState {
@@ -62,6 +94,7 @@ fn contract_source() -> TokenStream {
             health: ApplicationHealth,
         }
         impl AppState {
+            #begin_transaction
             pub async fn context(&self, headers: &HeaderMap) -> Result<RequestContext<'_>, ApiError> {
                 let actor = self.auth.actor(&self.database, headers).await?;
                 let tenant = tenant::resolve(&self.database, headers, actor.as_ref()).await?;
@@ -230,39 +263,60 @@ fn application_source() -> TokenStream {
     }
 }
 
-fn router_source(ir: &AppIr, routes: &[TokenStream]) -> TokenStream {
-    let (dashboard_route, dashboard_handler) = if let Some(dashboard) = &ir.dashboard {
-        let widgets = dashboard
-            .widgets
-            .iter()
-            .filter_map(|widget| {
-                let entity = ir.entities.iter().find(|e| e.id == widget.entity)?;
-                Some(serde_json::json!({
-                    "id": widget.id,
-                    "title": widget.title,
-                    "entity": entity.rust_name,
-                    "chart": widget.chart,
-                    "span": widget.span,
-                    "endpoint": format!("/api/{}/charts/{}", entity.table_name, widget.chart),
-                }))
-            })
-            .collect::<Vec<_>>();
-        let payload = serde_json::json!({
-            "title": dashboard.title.as_deref().unwrap_or(&ir.app.name),
-            "widgets": widgets,
-        })
-        .to_string();
-        (
-            quote! { .route("/api/dashboard", get(dashboard_manifest)) },
-            quote! {
-                async fn dashboard_manifest() -> impl IntoResponse {
-                    ([(axum::http::header::CONTENT_TYPE, "application/json")], #payload)
-                }
-            },
-        )
-    } else {
-        (quote! {}, quote! {})
+fn dashboard_route_source(ir: &AppIr) -> (TokenStream, TokenStream) {
+    let Some(dashboard) = &ir.dashboard else {
+        return (quote! {}, quote! {});
     };
+    let widgets = dashboard
+        .widgets
+        .iter()
+        .filter_map(|widget| {
+            let entity = ir.entities.iter().find(|e| e.id == widget.entity)?;
+            Some(serde_json::json!({
+                "id": widget.id,
+                "title": widget.title,
+                "entity_id": entity.id.0,
+                "entity": entity.rust_name,
+                "resource": entity.table_name,
+                "chart": widget.chart,
+                "span": widget.span,
+                "endpoint": format!("/api/{}/aggregate", entity.table_name),
+            }))
+        })
+        .collect::<Vec<_>>();
+    let payload = serde_json::json!({
+        "title": dashboard.title.as_deref().unwrap_or(&ir.app.name),
+        "widgets": widgets,
+    })
+    .to_string();
+    let handler = if ir.auth.enabled {
+        quote! {
+            async fn dashboard_manifest(
+                State(state): State<AppState>,
+                headers: HeaderMap,
+            ) -> Result<impl IntoResponse, ApiError> {
+                let context = state.context(&headers).await?;
+                if context.actor.is_none() {
+                    return Err(ApiError::Unauthorized);
+                }
+                Ok(([(axum::http::header::CONTENT_TYPE, "application/json")], #payload))
+            }
+        }
+    } else {
+        quote! {
+            async fn dashboard_manifest() -> impl IntoResponse {
+                ([(axum::http::header::CONTENT_TYPE, "application/json")], #payload)
+            }
+        }
+    };
+    (
+        quote! { .route("/api/dashboard", get(dashboard_manifest)) },
+        handler,
+    )
+}
+
+fn router_source(ir: &AppIr, routes: &[TokenStream]) -> TokenStream {
+    let (dashboard_route, dashboard_handler) = dashboard_route_source(ir);
     quote! {
         pub fn router_with_services(
             database: Database, extensions: AppExtensions, auth: AuthState,

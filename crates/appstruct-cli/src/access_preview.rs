@@ -244,6 +244,98 @@ fn run_matrix(project: &Path, entity: Option<&str>, output: Option<&Path>) -> Ex
     ExitCode::SUCCESS
 }
 
+pub(crate) fn matrix_value(
+    project: &Path,
+    entity: Option<&str>,
+) -> Result<serde_json::Value, serde_json::Value> {
+    let ir = appstruct_compiler::compile_project(project).map_err(|diagnostics| {
+        serde_json::json!({
+            "error": "validation_failed",
+            "diagnostics": diagnostics
+        })
+    })?;
+    let entities = ir
+        .entities
+        .iter()
+        .filter(|item| entity.is_none_or(|name| item.id.0 == name || item.rust_name == name))
+        .collect::<Vec<_>>();
+    if entities.is_empty() || (entity.is_some() && entities.len() != 1) {
+        return Err(serde_json::json!({
+            "error": "invalid_entity",
+            "message": "select one existing entity by its name or full IR ID"
+        }));
+    }
+    let tenant_id = ir.tenant.enabled.then(uuid::Uuid::nil);
+    let mut profiles: Vec<(String, bool, Vec<String>)> = vec![
+        ("anonymous".to_owned(), false, Vec::new()),
+        ("authenticated".to_owned(), true, Vec::new()),
+    ];
+    for role in &ir.auth.roles {
+        profiles.push((format!("role:{role}"), true, vec![role.clone()]));
+    }
+    let mut row_meta = Vec::new();
+    let mut actor_labels = Vec::new();
+    let mut actor_decisions: Vec<Vec<&'static str>> = Vec::new();
+    for (profile_index, (label, authenticated, roles)) in profiles.iter().enumerate() {
+        let sample = Sample {
+            authenticated: *authenticated,
+            roles,
+            actor_id: None,
+            tenant_id,
+            record: None,
+        };
+        let evaluated = entities
+            .iter()
+            .flat_map(|item| matrix(&ir, item, &sample))
+            .collect::<Vec<_>>();
+        if profile_index == 0 {
+            row_meta = evaluated
+                .iter()
+                .map(|row| (row.entity.clone(), row.operation.clone(), row.field.clone()))
+                .collect();
+        }
+        actor_labels.push(label.clone());
+        actor_decisions.push(
+            evaluated
+                .iter()
+                .map(|row| decision_badge(row.declarative.decision).code)
+                .collect(),
+        );
+    }
+    let rows = row_meta
+        .iter()
+        .enumerate()
+        .map(|(row_index, (entity_name, operation, field))| {
+            let decisions: serde_json::Map<String, serde_json::Value> = actor_labels
+                .iter()
+                .enumerate()
+                .map(|(actor_index, label)| {
+                    let code = actor_decisions
+                        .get(actor_index)
+                        .and_then(|items| items.get(row_index))
+                        .copied()
+                        .unwrap_or("denied");
+                    (label.clone(), serde_json::Value::String(code.to_owned()))
+                })
+                .collect();
+            serde_json::json!({
+                "entity": entity_name,
+                "operation": operation,
+                "field": field,
+                "decisions": decisions,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(serde_json::json!({
+        "app_name": ir.app.name,
+        "scope": "declarations_only",
+        "entity_count": entities.len(),
+        "role_count": ir.auth.roles.len(),
+        "actors": actor_labels,
+        "rows": rows,
+    }))
+}
+
 const fn decision_badge(decision: Decision) -> crate::access_matrix_html::MatrixDecision {
     match decision {
         Decision::Allowed => crate::access_matrix_html::MatrixDecision {

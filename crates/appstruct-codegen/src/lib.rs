@@ -15,6 +15,12 @@ pub use artifact::{Artifact, ArtifactKind, CodegenError};
 pub(crate) use naming::entity_api_name;
 pub use web::symbols::{RequiredSymbols, check_user_symbols, required_symbols};
 
+/// Render the deterministic change-impact Markdown index (`ir/impact.md`) for an IR.
+#[must_use]
+pub fn render_impact(ir: &AppIr) -> String {
+    impact::render(ir)
+}
+
 use appstruct_ir::{AppIr, to_canonical_json, validate_app_ir};
 use quote::ToTokens;
 use std::path::Path;

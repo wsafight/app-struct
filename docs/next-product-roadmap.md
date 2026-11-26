@@ -111,11 +111,11 @@ remains out of scope.
   `appstruct.modules.lock`, signature verification, offline cache validation, and compatibility checks.
 - [x] Deterministic release manifests and pre-promotion artifact verification without a mandatory hosted control plane.
 - Platform-specific deployment adapters, admitted only after three pilots repeat the same platform workflow.
-- Billing and subscription operations (Stripe Billing v1 is supported; metered usage remains out of scope).
+- [x] Billing and subscription operations (Stripe and Polar Billing v1 are supported; metered usage remains out of scope).
 - Visual schema, permission, page, and migration editor that produces reviewable App Spec diffs
   (deferred until interviews identify text review as a top-three abandonment cause).
-- Project-local agent instructions and a policy-governed MCP adapter (deferred until core CLI/API
-  contracts are stable and three real projects request the same automation journey).
+- [x] Project-local agent instructions (`AGENTS.md`) and a built-in stdio MCP server (`appstruct mcp`)
+  exposing schema, validation, access preview/matrix, impact analysis, migration plan/lint, DB pull, and code generation.
 
 ### Next contract freeze
 

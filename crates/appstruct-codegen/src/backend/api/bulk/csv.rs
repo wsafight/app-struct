@@ -23,6 +23,7 @@ pub(super) fn export(_entity: &EntityIr, context: &BulkContext<'_>) -> TokenStre
             let order = crate::database::resource_order::<#module::Model>(query.sort.as_deref(), |field| field_read_allowed(&context, field))?;
             let transaction = state.database.begin().await?;
             transaction.execute_unprepared("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY").await?;
+            state.apply_tenant_context(&transaction, context.tenant()).await?;
             transaction.execute_unprepared("SET LOCAL statement_timeout = '30s'; SET LOCAL idle_in_transaction_session_timeout = '30s'").await?;
             if select.bounded_count(&transaction, MAX_CSV_EXPORT_ROWS).await? > MAX_CSV_EXPORT_ROWS {
                 return Err(ApiError::InvalidQuery(format!("CSV export is limited to {MAX_CSV_EXPORT_ROWS} rows")));
@@ -111,7 +112,7 @@ pub(super) fn import(entity: &EntityIr, context: &BulkContext<'_>) -> TokenStrea
                 return Err(ApiError::InvalidQuery("CSV headers must be nonempty and unique".to_owned()));
             }
             if header_row.iter().map(String::as_str).any(|name| !expected.contains(&name)) { return Err(ApiError::InvalidQuery("CSV contains an unknown column".to_owned())); }
-            let actor = context.shared_actor(); let tenant = context.tenant(); let transaction = state.database.begin().await?;
+            let actor = context.shared_actor(); let tenant = context.tenant(); let transaction = state.begin_transaction(tenant).await?;
             if let Some(result) = crate::import_batches::begin(&transaction, &context, #entity_id, batch, &body).await? {
                 return Ok(Json(result));
             }

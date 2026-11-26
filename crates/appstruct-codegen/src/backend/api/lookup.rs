@@ -24,7 +24,7 @@ pub(super) fn support(
             let ids = raw_ids.into_iter().map(|id| { let id = id.to_owned(); Ok(#parse_id) }).collect::<Result<Vec<_>, ApiError>>()?;
             let mut select = #module::select();
             #scope
-            let models = select.filter(#module::Column::#primary.is_in(ids)).all(&state.database).await?;
+            let models = select.filter(#module::Column::#primary.is_in(ids)).all(&context).await?;
             let mut records = Vec::with_capacity(models.len());
             for model in models {
                 if state.extensions.#policy().can_read(&context, &model).await? {

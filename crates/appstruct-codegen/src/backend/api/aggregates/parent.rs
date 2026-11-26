@@ -96,7 +96,7 @@ pub(super) fn support(
             authorize_create_fields(&request, &input)?;
             state.extensions.#hooks().before_validate_create(&request, &mut input).await?;
             validate_create(&input)?;
-            let transaction = state.database.begin().await?;
+            let transaction = state.begin_transaction(request.tenant()).await?;
             let mut events = Vec::new();
             let (model, response) = {
                 let context = RequestContext::transaction_with_file(
@@ -137,7 +137,7 @@ pub(super) fn support(
         }
         async fn #read(State(state): State<AppState>, Path(id): Path<uuid::Uuid>, headers: HeaderMap) -> Result<([(header::HeaderName, String); 1], Json<serde_json::Value>), ApiError> {
             let request = state.context(&headers).await?;
-            let transaction = state.database.begin().await?;
+            let transaction = state.begin_transaction(request.tenant()).await?;
             let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, request.shared_actor(), request.tenant());
             #scope
             let parent = #module::select_by_id(id).filter(access_condition).lock_shared().one(&transaction).await?.ok_or(ApiError::NotFound)?;
@@ -153,7 +153,7 @@ pub(super) fn support(
             let expected = expected_revision(&headers)?;
             let request = state.mutation_context(&headers).await?;
             input.validate(#limit as usize)?;
-            let transaction = state.database.begin().await?;
+            let transaction = state.begin_transaction(request.tenant()).await?;
             let mut events = Vec::new();
             let (after, response) = {
                 let context = RequestContext::transaction_with_file(&transaction, &state.mail, &state.file, &state.realtime, request.shared_actor(), request.tenant());

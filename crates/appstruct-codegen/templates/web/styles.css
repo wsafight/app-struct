@@ -772,6 +772,38 @@ a {
 .insights-table {
   max-width: 720px;
 }
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+.dashboard-widget {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  padding: 18px 20px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.dashboard-widget-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dashboard-widget-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-widget {
+    grid-column: span 1 !important;
+  }
+}
 .list-controls {
   min-height: 48px;
   display: flex;

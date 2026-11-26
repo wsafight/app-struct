@@ -11,14 +11,63 @@ pub(super) fn requires_registry(ir: &AppIr) -> bool {
 
 #[allow(clippy::too_many_lines)]
 pub(super) fn source(ir: &AppIr) -> String {
+    let dashboard = ir.dashboard.is_some();
     if !ir.auth.enabled {
-        return include_str!("../../templates/web/App.tsx").to_owned();
+        return include_str!("../../templates/web/App.tsx")
+            .replace(
+                "__REACT_IMPORT__",
+                if dashboard {
+                    "import { lazy, useState } from \"react\";"
+                } else {
+                    "import { useState } from \"react\";"
+                },
+            )
+            .replace(
+                "__DASHBOARD_PAGE__",
+                if dashboard {
+                    "const DashboardPage = lazy(() => import(\"../dashboard/DashboardPage\").then(({ DashboardPage: component }) => ({ default: component })));\n"
+                } else {
+                    ""
+                },
+            )
+            .replace(
+                "__DASHBOARD_ROUTE__",
+                if dashboard {
+                    "          { path: \"/dashboard\", component: DashboardPage },\n"
+                } else {
+                    ""
+                },
+            )
+            .replace(
+                "__HOME_REDIRECT__",
+                if dashboard {
+                    "  return <Navigate to=\"/dashboard\" replace />;"
+                } else {
+                    "  const first = useVisibleResources(resources)[0];\n  return (\n    <Navigate\n      to={`/${first?.slug ?? workspacePages[0]?.path ?? \"empty\"}`}\n      replace\n    />\n  );"
+                },
+            );
     }
     let audit = ir.audit.enabled;
     let report = ir.report.enabled;
     let billing = ir.billing.enabled;
     let tenant = ir.tenant.enabled;
     include_str!("../../templates/web/AppAuthenticated.tsx")
+        .replace(
+            "__DASHBOARD_PAGE__",
+            if dashboard {
+                "const DashboardPage = lazy(() => import(\"../dashboard/DashboardPage\").then(({ DashboardPage: component }) => ({ default: component })));\n"
+            } else {
+                ""
+            },
+        )
+        .replace(
+            "__DASHBOARD_ROUTE__",
+            if dashboard {
+                "    { path: \"/dashboard\", component: DashboardPage },\n"
+            } else {
+                ""
+            },
+        )
         .replace("__FILE_PAGE__", if ir.file.enabled { "const FilesPage = lazy(() => import(\"../file/FilesPage\").then(({ FilesPage: component }) => ({ default: component })));" } else { "" })
         .replace("__FILE_ROUTE__", if ir.file.enabled { "    { path: \"/files\", component: FilesPage }," } else { "" })
         .replace("__PRODUCT_PAGES__", &format!("{}\n{}", if ir.tenant.enabled { "const TeamPage = lazy(() => import(\"../product/ProductPages\").then(({ TeamPage: component }) => ({ default: component })));\nconst CreditsPage = lazy(() => import(\"../product/ProductPages\").then(({ CreditsPage: component }) => ({ default: component })));" } else { "" }, if report { "const TaskCenterPage = lazy(() => import(\"../product/TaskCenterPage\").then(({ TaskCenterPage: component }) => ({ default: component })));" } else { "" }))
@@ -144,7 +193,9 @@ pub(super) fn source(ir: &AppIr) -> String {
         )
         .replace(
             "__HOME_REDIRECT__",
-            if audit {
+            if dashboard {
+                "  return <Navigate to=\"/dashboard\" replace />;"
+            } else if audit {
                 "  const canReadAudit = useCanAccessRule(auditAccess);\n  return <Navigate to={`/${first?.slug ?? workspacePages[0]?.path ?? (canReadAudit ? \"audit\" : \"empty\")}`} replace />;"
             } else {
                 "  return <Navigate to={`/${first?.slug ?? workspacePages[0]?.path ?? \"empty\"}`} replace />;"
@@ -154,8 +205,18 @@ pub(super) fn source(ir: &AppIr) -> String {
 
 pub(super) fn layout_source(ir: &AppIr) -> String {
     let title = super::app_display_name(&ir.app.name);
+    let dashboard = ir.dashboard.is_some();
     if !ir.auth.enabled {
-        return include_str!("../../templates/web/Layout.tsx").replace("__APP_TITLE__", &title);
+        return include_str!("../../templates/web/Layout.tsx")
+            .replace("__APP_TITLE__", &title)
+            .replace(
+                "__DASHBOARD_LINK__",
+                if dashboard {
+                    "          <NavLink to=\"/dashboard\">\n            <LayoutDashboard size={17} aria-hidden />\n            <span>{t(\"Dashboard\")}</span>\n          </NavLink>\n"
+                } else {
+                    ""
+                },
+            );
     }
     let audit = ir.audit.enabled;
     let report = ir.report.enabled;
@@ -226,6 +287,14 @@ pub(super) fn layout_source(ir: &AppIr) -> String {
             if billing { "        <NavLink to=\"/billing\"><CreditCard size={15} /> {uiText(\"billing\")}</NavLink>" } else { "" },
         )
         .replace("__APP_TITLE__", &title)
+        .replace(
+            "__DASHBOARD_LINK__",
+            if dashboard {
+                "            <NavLink to=\"/dashboard\"><LayoutDashboard size={17} aria-hidden /><span>{t(\"Dashboard\")}</span></NavLink>\n"
+            } else {
+                ""
+            },
+        )
         .replace("__FILE_LINK__", if ir.file.enabled { "<NavLink to=\"/files\"><FileIcon size={15} /> {uiText(\"files\")}</NavLink>" } else { "" })
         .replace("__FILE_ICON__", if ir.file.enabled { ", File as FileIcon" } else { "" })
 }

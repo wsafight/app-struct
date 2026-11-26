@@ -104,7 +104,7 @@ pub(super) fn list_support(
                     select = select.filter(crate::database::cursor_condition::<#module::Model>(&order, cursor.values(), previous)?);
                 }
                 let page = select.order_by(&order, &#module::Model::META, previous).limit(limit + 1);
-                let mut data = #module::projected(page, &fields, &order)?.all(&state.database).await?;
+                let mut data = #module::projected(page, &fields, &order)?.all(&context).await?;
                 let has_extra = data.len() > usize::try_from(limit).unwrap_or(usize::MAX);
                 if has_extra { data.pop(); }
                 if previous { data.reverse(); }
@@ -149,7 +149,7 @@ pub(super) fn list_support(
                 Some(_) => return Err(ApiError::InvalidQuery("`count` must be `exact` or `bounded`".to_owned())),
             };
             let (total, total_exact) = if let Some(cap) = count_cap {
-                let probe = select.clone().bounded_count(&state.database, cap).await?;
+                let probe = select.clone().bounded_count(&context, cap).await?;
                 if probe > cap {
                     (cap, Some(false))
                 } else if query.count.as_deref() == Some("bounded") {
@@ -158,10 +158,10 @@ pub(super) fn list_support(
                     (probe, None)
                 }
             } else {
-                (select.clone().count(&state.database).await?, None)
+                (select.clone().count(&context).await?, None)
             };
             let page_select = select.order_by(&order, &#module::Model::META, false).limit(page_size).offset((page - 1) * page_size);
-            let data = #module::projected(page_select, &fields, &order)?.all(&state.database).await?
+            let data = #module::projected(page_select, &fields, &order)?.all(&context).await?
                 .into_iter().map(|row| {
                     let mut value = row.json(&fields)?;
                     apply_field_masks(&context, &mut value);

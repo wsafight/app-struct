@@ -11,7 +11,7 @@ import { resourceRoutes } from "./ResourceRoutes";
 import { customPageRoutes, PageScopeLayout, workspacePages } from "./PageRoutes";
 
 __AUDIT_PAGE__
-__REPORT_PAGE__
+__DASHBOARD_PAGE____REPORT_PAGE__
 __BILLING_PAGE__
 __BILLING_ADMIN_PAGE__
 __FILE_PAGE__
@@ -88,7 +88,7 @@ __ONBOARDING_ROUTE__
 function layoutRoutes(registry?: AppStructRegistry): RuntimeRoute[] {
   return [
     { path: workspacePath, component: HomeRedirect },
-    ...resourceRoutes(registry),
+__DASHBOARD_ROUTE__    ...resourceRoutes(registry),
 __AUDIT_ROUTE__
 __REPORT_ROUTE__
 __BILLING_ROUTE__

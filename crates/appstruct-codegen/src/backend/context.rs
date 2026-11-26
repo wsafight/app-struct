@@ -1,9 +1,9 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-pub(super) fn contract() -> TokenStream {
+pub(super) fn contract(rls: bool) -> TokenStream {
     let methods = methods();
-    let connection = connection_trait();
+    let connection = connection_trait(rls);
     quote! {
         #[derive(Clone, Copy)]
         enum RequestDatabase<'db> {
@@ -175,7 +175,61 @@ fn methods() -> TokenStream {
     }
 }
 
-fn connection_trait() -> TokenStream {
+fn connection_trait(rls: bool) -> TokenStream {
+    if rls {
+        return quote! {
+            #[async_trait]
+            impl DatabaseExecutor for RequestContext<'_> {
+                async fn execute(&self, statement: Sql) -> Result<PgQueryResult, DbErr> {
+                    match self.database {
+                        RequestDatabase::Connection(database) => {
+                            let transaction = database.begin_for_tenant(self.tenant).await?;
+                            let result = transaction.execute(statement).await?;
+                            transaction.commit().await?;
+                            Ok(result)
+                        }
+                        RequestDatabase::Transaction(database) => database.execute(statement).await,
+                    }
+                }
+
+                async fn execute_unprepared(&self, sql: &str) -> Result<PgQueryResult, DbErr> {
+                    match self.database {
+                        RequestDatabase::Connection(database) => {
+                            let transaction = database.begin_for_tenant(self.tenant).await?;
+                            let result = transaction.execute_unprepared(sql).await?;
+                            transaction.commit().await?;
+                            Ok(result)
+                        }
+                        RequestDatabase::Transaction(database) => database.execute_unprepared(sql).await,
+                    }
+                }
+
+                async fn fetch_optional(&self, statement: Sql) -> Result<Option<PgRow>, DbErr> {
+                    match self.database {
+                        RequestDatabase::Connection(database) => {
+                            let transaction = database.begin_for_tenant(self.tenant).await?;
+                            let result = transaction.fetch_optional(statement).await?;
+                            transaction.commit().await?;
+                            Ok(result)
+                        }
+                        RequestDatabase::Transaction(database) => database.fetch_optional(statement).await,
+                    }
+                }
+
+                async fn fetch_all(&self, statement: Sql) -> Result<Vec<PgRow>, DbErr> {
+                    match self.database {
+                        RequestDatabase::Connection(database) => {
+                            let transaction = database.begin_for_tenant(self.tenant).await?;
+                            let result = transaction.fetch_all(statement).await?;
+                            transaction.commit().await?;
+                            Ok(result)
+                        }
+                        RequestDatabase::Transaction(database) => database.fetch_all(statement).await,
+                    }
+                }
+            }
+        };
+    }
     quote! {
         #[async_trait]
         impl DatabaseExecutor for RequestContext<'_> {

@@ -119,6 +119,14 @@ impl Database {
             savepoint: None,
         })
     }
+    pub async fn begin_for_tenant(
+        &self,
+        tenant: Option<uuid::Uuid>,
+    ) -> Result<Transaction, DbErr> {
+        let transaction = self.begin().await?;
+        transaction.set_tenant_context(tenant).await?;
+        Ok(transaction)
+    }
 }
 #[async_trait]
 impl DatabaseExecutor for Database {
@@ -176,6 +184,15 @@ impl Transaction {
             sqlx::raw_sql(sqlx::AssertSqlSafe(sql.as_str())).execute(&mut **connection).await?;
         }
         Ok(guard)
+    }
+    pub async fn set_tenant_context(&self, tenant: Option<uuid::Uuid>) -> Result<(), DbErr> {
+        let value = tenant.map(|id| id.to_string()).unwrap_or_default();
+        self.execute(Sql::bind(
+            "SELECT set_config('app.current_tenant_id', $1, true)",
+            [value.into()],
+        ))
+        .await?;
+        Ok(())
     }
     pub async fn begin(&self) -> Result<Self, DbErr> {
         let name = format!(

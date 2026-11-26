@@ -229,7 +229,7 @@ pub(super) fn support(
             #read_scope
             let model = #module::select_by_id(id)
                 .filter(access_condition)
-                .one(&state.database).await?.ok_or(ApiError::NotFound)?;
+                .one(&context).await?.ok_or(ApiError::NotFound)?;
             if !state.extensions.#policy().can_read(&context, &model).await? {
                 return Err(ApiError::NotFound);
             }
@@ -259,7 +259,7 @@ pub(super) fn support(
             let raw_input = input
                 .map_err(|error| ApiError::InvalidWorkflowInput(error.body_text()))?.0;
             let id = #parse_id;
-            let transaction = state.database.begin().await?;
+            let transaction = state.begin_transaction(tenant).await?;
             let after = {
                 let context = RequestContext::transaction_with_file(
                     &transaction, &state.mail, &state.file, &state.realtime, actor.clone(), tenant,

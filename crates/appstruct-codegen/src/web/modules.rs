@@ -5,6 +5,24 @@ use appstruct_ir::AppIr;
 #[allow(clippy::too_many_lines)]
 pub(super) fn extend_artifacts(ir: &AppIr, artifacts: &mut Vec<Artifact>) {
     let title = app_display_name(&ir.app.name);
+    if let Some(dashboard) = &ir.dashboard {
+        let config = serde_json::json!({
+            "title": dashboard.title.as_deref().unwrap_or(&title),
+            "widgets": dashboard.widgets.iter().map(|widget| serde_json::json!({
+                "id": widget.id,
+                "title": widget.title,
+                "entityId": widget.entity.0,
+                "chart": widget.chart,
+                "span": widget.span,
+            })).collect::<Vec<_>>(),
+        });
+        artifacts.push(Artifact::text(
+            "web/src/dashboard/DashboardPage.tsx",
+            include_str!("../../templates/web/dashboard/DashboardPage.tsx")
+                .replace("__DASHBOARD_CONFIG__", &config.to_string()),
+            ArtifactKind::Web,
+        ));
+    }
     if ir.file.enabled && ir.auth.enabled {
         artifacts.push(Artifact::text(
             "web/src/file/RecordAttachments.tsx",

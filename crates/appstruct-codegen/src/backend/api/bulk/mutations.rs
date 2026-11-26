@@ -29,7 +29,7 @@ pub(super) fn restore(context: &BulkContext<'_>) -> TokenStream {
             if !bulk_request_size_is_valid(input.ids.len(), input.expected_revisions.len()) { return Err(ApiError::InvalidQuery(format!("bulk requests must contain between 1 and {MAX_BULK_ITEMS} ids"))); }
             let actor = context.shared_actor();
             let tenant = context.tenant();
-            let transaction = state.database.begin().await?;
+            let transaction = state.begin_transaction(tenant).await?;
             let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };
             let mut restored = Vec::new();
             for id_text in &input.ids {
@@ -129,7 +129,7 @@ pub(super) fn update(context: &BulkContext<'_>) -> TokenStream {
             validate_update(&input.patch)?;
             let actor = context.shared_actor();
             let tenant = context.tenant();
-            let transaction = state.database.begin().await?;
+            let transaction = state.begin_transaction(tenant).await?;
             let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };
             let mut updated = Vec::new();
             for id_text in &input.ids {
@@ -244,7 +244,7 @@ pub(super) fn delete(context: &BulkContext<'_>) -> TokenStream {
             if !bulk_request_size_is_valid(input.ids.len(), input.expected_revisions.len()) { return Err(ApiError::InvalidQuery(format!("bulk requests must contain between 1 and {MAX_BULK_ITEMS} ids"))); }
             let actor = context.shared_actor();
             let tenant = context.tenant();
-            let transaction = state.database.begin().await?;
+            let transaction = state.begin_transaction(tenant).await?;
             let mut result = BulkResult { succeeded: Vec::new(), failed: Vec::new() };
             let mut deleted_models = Vec::new();
             for id_text in &input.ids {

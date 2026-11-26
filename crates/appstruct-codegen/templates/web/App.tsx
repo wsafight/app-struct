@@ -1,5 +1,5 @@
 import { t } from "../ui";
-import { useState } from "react";
+__REACT_IMPORT__
 import { resources } from "../generated/resources";
 import { workspacePath, type AppStructRegistry } from "../generated/registry";
 import {
@@ -17,7 +17,7 @@ import {
   PageScopeLayout,
   workspacePages,
 } from "./PageRoutes";
-
+__DASHBOARD_PAGE__
 export function App({ registry }: { registry?: AppStructRegistry }) {
   const [router] = useState(() => {
     const routes: RuntimeRoute[] = [
@@ -36,7 +36,7 @@ export function App({ registry }: { registry?: AppStructRegistry }) {
           ),
         children: [
           { path: workspacePath, component: HomeRedirect },
-          ...resourceRoutes(registry),
+__DASHBOARD_ROUTE__          ...resourceRoutes(registry),
           ...customPageRoutes(registry, "workspace"),
           { path: "/empty", component: EmptyPage },
         ],
@@ -56,13 +56,7 @@ function PublicRoot() {
 }
 
 function HomeRedirect() {
-  const first = useVisibleResources(resources)[0];
-  return (
-    <Navigate
-      to={`/${first?.slug ?? workspacePages[0]?.path ?? "empty"}`}
-      replace
-    />
-  );
+__HOME_REDIRECT__
 }
 
 function EmptyPage() {

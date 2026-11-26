@@ -30,7 +30,7 @@ pub(super) fn support(
                 #read_scope
                 let model = #module::select_by_id(id)
                     .filter(access_condition)
-                    .one(&state.database).await?.ok_or(ApiError::NotFound)?;
+                    .one(context).await?.ok_or(ApiError::NotFound)?;
                 if !state.extensions.#policy().can_read(context, &model).await? {
                     return Err(ApiError::NotFound);
                 }

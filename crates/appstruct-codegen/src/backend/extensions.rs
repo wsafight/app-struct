@@ -7,7 +7,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 pub(super) fn source(ir: &AppIr) -> Result<String, CodegenError> {
-    let request_context = super::context::contract();
+    let request_context = super::context::contract(ir.tenant.enabled && ir.tenant.rls);
     let values = ir
         .value_objects
         .iter()
