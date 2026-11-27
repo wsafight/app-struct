@@ -10,8 +10,8 @@
     "site:test": "pnpm --dir site test"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.14.0",
-    "@playwright/test": "1.65.0"
+    "@axe-core/playwright": "4.14.1",
+    "@playwright/test": "1.65.1"
   },
   "engines": {
     "node": ">=20.0.0"
